@@ -1,0 +1,23 @@
+# 미래에셋 금융상품 AI Agent 프로젝트 핵심 개발 규칙
+
+## 1. LLM 및 모델 사용 규칙
+- 최종 답변 생성 및 메인 Agent 오케스트레이션에는 **반드시 HyperCLOVA X**(`HCX-005` 권장)만 사용합니다.
+- 외부 타사 LLM 모델 사용은 엄격히 금지됩니다. (단, 전처리/정형 데이터 파싱 등 단순 보조작업은 타 기술 자율 활용 가능)
+
+## 2. 데이터 시점 및 외부 데이터 제한
+- 마스터 데이터 및 수집 데이터의 **기준일은 2026년 7월 11일**입니다.
+- ETF 구성종목(Holdings) 등 마스터 데이터에 미포함된 정보는 외부 수집이 허용되나, **반드시 2026-07-11 이전 데이터만 수집/활용**해야 합니다. (이후 실적/구성종목 반영 시 감점)
+
+## 3. 환각 방지 및 답변 불가 질의(Negative Testing) 처리
+- 존재하지 않는 신용등급(`AAAA`), 존재하지 않는 상품(`KIMI ETF`, `KODEX AI 로봇 ETF` 등 7/11 기준 미존재 상품) 질의 시 지어낸 답변을 절대 금지합니다.
+- DB 조회 결과가 없거나 기준일 이후 질문 시 HyperCLOVA X 호출을 건너뛰고 즉시 `"확인할 수 없음"` 또는 데이터 미제공을 반환해야 합니다.
+
+## 4. 온톨로지(Ontology) & Knowledge Graph (KG)
+- 소스코드 제출 시 `ontology.ttl` 등 Turtle/RDF 형식의 온톨로지 정의 파일이 필수 포함되어야 합니다.
+- 온톨로지 세부 제약 작성: `DisjointWith` (ETF vs ETN 구분), `Constraint` (riskGrade 1~5), `inverseOf` (운용사 ↔ 상품 운용 관계).
+- Federated Search Architecture (RDB SQLite + Knowledge Graph + Vector DB) 기반으로 다단계 관계 질의를 처리합니다.
+
+## 5. API 응답 속도, 배점 및 JSON 규격 (SLA)
+- **배점 구조**: 기술 제안서 40점, API 성능 및 답변 40점, 소스코드 20점.
+- 응답 시간은 **단일 질의당 15초 이내**를 목표로 권장하며, 문항당 60초 초과 시 타임아웃 감점 처리됩니다.
+- 질의응답은 **Single-turn Q&A** 규격을 준수하며, 반환 JSON에는 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer` 필드가 반드시 포함되어야 합니다.

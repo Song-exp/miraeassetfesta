@@ -53,3 +53,8 @@ htmlcov/
 *.sqlite3
 data/*.db
 
+# Raw data files
+1.*/
+1.금융상품/
+*.xlsx
+*.csv

@@ -58,3 +58,17 @@ data/*.db
 1.금융상품/
 *.xlsx
 *.csv
+
+# Jupyter — 개인 탐색 노트북은 커밋하지 않습니다.
+# .ipynb 는 git diff 가 안 읽혀 리뷰가 불가능하고, 출력 셀에 데이터가 박힙니다.
+# 산출물은 docs/eda/*_notes.md 와 eval/*.jsonl 입니다. 템플릿만 공유합니다.
+.ipynb_checkpoints/
+notebooks/*.ipynb
+!notebooks/eda_template.ipynb
+
+# 프로파일러 산출물 — scripts/profile_table.py 로 언제든 재생성되므로 커밋하지 않습니다.
+#   *.values.txt : distinct 값 목록 (사실상 원본 데이터 재출력, 총 10MB+)
+#   *.auto.yaml  : 컬럼 프로파일. 탐지기를 고칠 때마다 전체가 바뀌어 diff 노이즈가 큽니다.
+# 사람의 판단이 들어간 ontology/enums/<domain>.yaml 은 커밋 대상입니다.
+ontology/enums/*.values.txt
+ontology/enums/*.auto.yaml

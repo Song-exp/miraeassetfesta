@@ -1,0 +1,11 @@
+# 개발·탐색 전용 의존성 (EDA 노트북)
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# ⚠️ 제출용 Dockerfile 에는 넣지 마세요.
+#    requirements.txt 만으로 API 서버가 구동되어야 합니다 (재현성 배점 항목).
+
+-r requirements.txt
+
+jupyterlab>=4.1.0
+ipykernel>=6.29.0

@@ -61,6 +61,9 @@ python scripts/profile_table.py --report <내_테이블>    # 중요 발견 요�
 > 예) 채권 `BD_KND`: `WHERE = '일반회사채'` → **188건** / `TRIM()` 적용 → **13,998건** (74배)
 > 예) 국내ETF마스터 1,734건 중 **532건(30.7%)이 ETF가 아니라 ETN**입니다
 
+> 🎯 **schema 엑셀의 `Sheet2_Sample` 을 반드시 여세요.** 주최 측이 제시한 분류 축(`axis_*`)과
+> **정답 100건**이 들어 있습니다. 채권 8축 / 국내ETF 7축 / 공모펀드 6축. → §3 첫 절
+
 ---
 
 ## 0. 작업 지시 요약
@@ -331,8 +334,9 @@ DETECTORS = [..., detect_my_pattern]      # ← 등록
 - [ ] `python scripts/build_db.py` → `data/financial_products.db` 생성 확인
 - [ ] `python scripts/profile_table.py <domain>` → `.auto.yaml` 생성
 - [ ] `table_findings` 와 `severity: high` 항목을 먼저 훑기
-- [ ] 원본 `1.금융상품/<테이블ID>_*_schema.xlsx`를 열어 **컬럼 정의와 단위**를 대조
-  (⚠️ DB에는 없는 정보입니다. 단위를 틀리면 답변 숫자가 100배 틀립니다.)
+- [ ] 원본 `1.금융상품/<테이블ID>_*_schema.xlsx` **두 시트를 모두** 열기
+  - `Sheet1_Schema` — **컬럼 정의와 단위** 대조 (DB에 없는 정보. 단위 틀리면 답변이 100배 틀립니다)
+  - `Sheet2_Sample` — 🎯 **`axis_*` 분류 축 + 정답 100건** (§3 첫 절 참조)
 
 프로파일은 **결론이 아니라 재료**입니다. 여기서부터 진짜 작업이 시작됩니다.
 
@@ -403,6 +407,58 @@ conn = sqlite3.connect(f"{DB.as_uri()}?mode=ro", uri=True)   # 쓰기 시도 →
 
 ---
 
+### 🎯 먼저 볼 것 — schema 엑셀의 `axis_*` 정답 시트
+
+🚨 **`1.금융상품/<테이블ID>_*_schema.xlsx` 의 `Sheet2_Sample` 시트에,
+DB에는 없는 `axis_*` 컬럼이 샘플 100건의 정답값과 함께 들어 있습니다.**
+
+주최 측이 **기대하는 분류 축**을 제시해 둔 것입니다. 4개 파일 중 3개에 있습니다.
+
+| 테이블 | 축 | 목록 |
+| :--- | :-: | :--- |
+| `domestic_bonds` | **8** | `issuerType` `maturityClass` `couponType` `creditRating` `collateralType` `currency` `issuanceMarket` `issuerCategory` |
+| `domestic_etfs` | **7** | `assetType` `region` `strategy` `replicationMethod` `leverageType` `underlyingScope` `distributionType` |
+| `public_funds` | **6** | `fundType` `redemptionType` `issuanceType` `listingType` `classDifferentiation` `investorEligibility` |
+| `overseas_etfs` | — | 없음 |
+
+#### 이걸 어떻게 쓰나 — 정답이 붙은 검증셋입니다
+
+`axis_*` 값은 **DB에 없으므로 기존 컬럼에서 유도해야 합니다.**
+그런데 샘플 100건에 정답이 있으니, **유도 규칙을 세우고 그 자리에서 채점**할 수 있습니다.
+
+```python
+# 노트북에서: 샘플 시트 ↔ DB 를 itm_no(또는 pd_no/pd_itm_no)로 조인하고 교차표
+m = sample.merge(db, on='<식별자>')
+pd.crosstab(m['axis_fundType'], m['or_attr_desc'])
+```
+
+공모펀드 실측 결과 (샘플 96건 매칭):
+
+| 축 | 유도 규칙 | 결과 |
+| :--- | :--- | :--- |
+| `axis_fundType` | `or_attr_desc` 매핑 | ✅ **96/96 완전 일치** |
+| `axis_investorEligibility` | `prvo_pbff_desc` (공모/사모) | ✅ **96/96** |
+| `axis_listingType` | `itm_nm LIKE '%상장지수%'` | ✅ **96/96** |
+| `axis_classDifferentiation` | 종목명에 `종류`/`클래스` | ❌ **안 맞음** — 다른 규칙 필요 |
+| `axis_issuanceType` | `fd_set_pcd` | ⚠️ 부분만 |
+
+> **정답이 없었다면 뒤 두 개가 틀렸다는 것도 몰랐을 겁니다.**
+> 그럴듯한 규칙을 세우고 넘어가지 말고, **반드시 샘플로 채점하세요.**
+
+#### 담당자가 할 일
+
+- [ ] 담당 테이블의 `Sheet2_Sample` 을 열어 `axis_*` 컬럼과 값 종류를 파악
+- [ ] 각 축을 **DB의 어떤 컬럼에서 유도할 수 있는지** 규칙을 세우고 샘플로 채점
+- [ ] 규칙과 **정확도(N/100)** 를 `_notes.md` 에 기록 — 안 맞는 축도 그대로 남기기
+- [ ] 못 맞춘 축은 §5 워크샵에 가져오기
+
+> ⚠️ **이 축을 그대로 쓸지는 워크샵에서 정합니다.** 주최 측 제시안이지 확정안이 아닙니다.
+> 다만 평가자가 기대하는 모델이 드러난 것이므로, **다르게 갈 거라면 근거가 필요합니다.**
+> 그리고 이건 상품군 **내부** 축입니다 — 상품군을 **관통하는** 축(운용사·지역 등)은
+> 여전히 §5-A와 아래 질문 4·5로 따로 찾아야 합니다.
+
+---
+
 ### 🔹 개체 (Entity)
 
 1. 내 상품군에서 **"상품 하나"를 식별하는 것**은 무엇인가?
@@ -426,6 +482,9 @@ conn = sqlite3.connect(f"{DB.as_uri()}?mode=ro", uri=True)   # 쓰기 시도 →
 
 6. 내 상품군을 **분류하는 방식이 몇 가지**이고, **무엇이 1차 분류**인가?
    > 자산군? 운용전략? 투자지역? 위험등급? 여러 축이 있다면 서로 직교하는지 겹치는지.
+   > **주최 측 `axis_*`(위 🎯)를 출발점으로 삼되, 데이터에만 있는 축도 함께 적어주세요.**
+   > 예: 공모펀드 `prfd_attr_cd` 안에 국가 태그(`CHN` 646종목 등)가 숨어 있는데
+   > 이건 `axis_*` 에도 `fd_ivst_rgn_desc` 에도 없습니다.
 7. 그 분류에 **계층**이 있는가?
    > 예: 일본 ⊂ 아시아 ⊂ 글로벌. 계층이 있으면 온톨로지에서 `rdfs:subClassOf`가 실제로 값어치를 합니다.
 
@@ -533,19 +592,23 @@ conn = sqlite3.connect(f"{DB.as_uri()}?mode=ro", uri=True)   # 쓰기 시도 →
 
 ### 안건
 
-1. **최상위 클래스를 어떻게 나눌 것인가** — 상품군별? 자산군별? 둘 다?
-2. **각 트랙의 개체 식별자** — §3 질문 1의 답을 맞춰봅니다
-3. **교차 관계 확정** — §3 질문 4의 답을 모아 붙입니다. 여기서 공통 축이 결정됩니다
-4. **불일치 해소 방침** — 아래 §5-A의 발견들을 어떻게 정규화할지
-5. **계층 설계** — §3 질문 7의 답 (지역·자산군 등)
-6. **제약(Constraint) 확정** — `DisjointWith` / 값 범위 / `inverseOf`
-7. **`교차상품군` 질의 검토** — 각자 쓴 질의가 이 온톨로지로 답이 나오는지 역검증
+1. **주최 측 `axis_*` 축(§3 🎯)을 채택할 것인가** — 채택 / 수정 / 자체 설계.
+   각 트랙이 가져온 **유도 규칙과 정확도(N/100)** 를 보고 판단합니다.
+   다르게 갈 거라면 그 근거가 곧 기술제안서의 "온톨로지 설계 의도"가 됩니다.
+2. **최상위 클래스를 어떻게 나눌 것인가** — 상품군별? 자산군별? 둘 다?
+3. **각 트랙의 개체 식별자** — §3 질문 1의 답을 맞춰봅니다
+4. **교차 관계 확정** — §3 질문 4의 답을 모아 붙입니다.
+   `axis_*` 는 상품군 **내부** 축이라, 상품군을 **관통하는** 축은 여기서 따로 정합니다
+5. **불일치 해소 방침** — 아래 §5-A의 발견들을 어떻게 정규화할지
+6. **계층 설계** — §3 질문 7의 답 (지역·자산군 등)
+7. **제약(Constraint) 확정** — `DisjointWith` / 값 범위 / `inverseOf`
+8. **`교차상품군` 질의 검토** — 각자 쓴 질의가 이 온톨로지로 답이 나오는지 역검증
 
 ---
 
 ### §5-A. 이미 발견된 교차 불일치 — 논의 재료
 
-> 사전 조사에서 확인된 **불일치 목록**입니다. 위 안건 4번의 재료로 씁니다.
+> 사전 조사에서 확인된 **불일치 목록**입니다. 위 안건 5번(불일치 해소 방침)의 재료로 씁니다.
 > 정규화 방식은 워크샵에서 정합니다.
 > **여기 없는 불일치를 찾아 가져오는 것**이 §3 질문 5의 목적입니다.
 
@@ -651,6 +714,7 @@ conn = sqlite3.connect(f"{DB.as_uri()}?mode=ro", uri=True)   # 쓰기 시도 →
 ### 2단계 완료 조건
 
 - [ ] `docs/eda/<domain>_notes.md` 에 §3의 11개 질문에 대한 답이 있다
+- [ ] **`axis_*` 축별 유도 규칙과 정확도(N/100)** 를 기록했다 (§3 🎯) — 못 맞춘 축 포함
 - [ ] §3 질문 5·9·11의 답을 T0에 공유했다 (워크샵 안건용)
 - [ ] `eval/questions_<domain>.jsonl` 20문항 작성 완료
 - [ ] 질의 20개 각각에 대해 `gold_sql`을 **직접 실행해 결과를 눈으로 확인**했다
@@ -909,6 +973,7 @@ ETF 구성종목(Holdings) 등 마스터에 없는 정보를 외부에서 보완
 | `PROJECT.md` | 과제 개요·배점·API 명세 |
 | `.agents/rules/miraeasset-rules.md` | 핵심 개발 규칙 (확정 규칙 — 이 문서보다 우선) |
 | `docs/sqlite_db_architecture.md` | DB 구축 구조·인덱스 설계·컬럼별 함정 |
+| `docs/domain/<domain>.md` | **상품군별 도메인 가이드** — 배경지식 + 데이터 구조 (작성된 것부터) |
 | `docs/agent_architecture_notes.md` | Agent 그래프 구조 참고 노트 — 산출물이 런타임에서 어떻게 쓰이는지 |
 | `scripts/build_db.py` | 엑셀 → SQLite 변환 스크립트 |
 | `scripts/profile_table.py` | 컬럼 프로파일 자동 생성 (1단계) |

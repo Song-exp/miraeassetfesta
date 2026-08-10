@@ -65,3 +65,84 @@ query_rules:
   공모만: prvo_pbff_desc = '공모'
   ETF제외: itm_nm NOT LIKE '%상장지수%'
   수익률정상: fd_yr1_ern_r > -100 AND fd_yr3_ern_r > -100
+  자산군_주식형: trim(or_attr_desc)='주식형' OR (trim(or_attr_desc) IN ('재간접','06') AND itm_nm LIKE '%(주식%')
+entities:
+  FundClass:
+    kind: entity
+    role: 주 노드
+    source: itm_no
+    count: 11139
+    label: itm_nm
+    note: 판매 단위(클래스). 44컬럼 속성이 여기 붙음
+  Fund:
+    kind: entity
+    source: mtco_itm_no
+    count: 4660
+    label: null
+    relation: FundClass -belongsToFund-> Fund
+    note: 모펀드/운용 단위. NULL 1건. 순자산은 이 단위 합계
+  ShareClass:
+    kind: entity
+    source: itm_nm 파싱(종류X/클래스X)
+    count: 112
+    relation: FundClass -hasShareClass-> ShareClass
+    note: 펀드 간 통용 어휘(C 614펀드·A 607펀드). FIBO FundShareClassUnit 대응
+  AssetManager:
+    kind: entity
+    source: or_co_xtn_itt_cd
+    count: 67
+    label: null
+    relation: Fund -managedBy-> AssetManager  (FIBO hasManagementCompany)
+    note: 🔴 이름 컬럼 없음 — 코드↔이름 매핑 필요
+  Custodian:
+    kind: entity
+    source: trusc_xtn_itt_cd
+    count: 18
+    label: null
+    relation: Fund -custodiedBy-> Custodian  (FIBO hasDepository)
+    note: 🔴 이름 컬럼 없음
+  Benchmark:
+    kind: entity
+    source: bmrk_nm
+    count: 391
+    label: bmrk_nm
+    relation: FundClass -benchmarkedTo-> Benchmark  (FIBO definesBenchmark)
+    note: '복합식 파싱 필요: ''MSCI ACWI CR 50% + 종합채권01Y 50%'''
+  Country:
+    kind: entity
+    source: prfd_attr_cd 국가태그 / fd_estb_ctry_cd
+    count: 17
+    relation: FundClass -investsIn-> Country · Fund -establishedIn-> Country
+    note: 투자국(17종, 1,549종목 커버)과 설립국(410=한국)은 다른 관계
+class_hierarchy:
+  note: FIBO 원칙 — 펀드 유형은 owl:Class 하위클래스이지 개체가 아님. axis_fundType(주최 측 제시)이 법적 5분류 층위와 일치.
+  Fund:
+    SecuritiesFund:
+    - EquityFund
+    - BondFund
+    - EquityMixedFund
+    - BondMixedFund
+    MoneyMarketFund: []
+    MixedAssetsFund: []
+    RealEstateFund: []
+    SpecialAssetsFund: []
+derivation_rules:
+  _note: 🔴 or_attr_desc 는 단일 축이 아님 — 자산군·운용구조·파생활용 3축이 압축돼 있음. 재간접 3,022종목 중 1,604개가 실제로는 주식형. or_attr_desc='주식형'
+    만 쓰면 1,461종목(25%)이 누락됨.
+  assetClass:
+    축: 무엇에 투자하는가 (하위클래스 결정)
+    규칙: ① 종목명 괄호 표기 우선 — (주식…)→Equity, (채권…)→Bond, (주식혼합…)→EquityMixed, (채권혼합…)→BondMixed  ② 없으면 or_attr_desc
+      로 폴백 (주식형/채권형/MMF/혼합자산/특별자산/임대형·대출형)
+    판정률: 94.3% (10,500/11,139) · 불명 639종목
+  isFundOfFunds:
+    축: 운용 구조 (자산군과 직교)
+    규칙: 종목명에 '재간접' 또는 or_attr_desc='재간접'
+    해당: 3182
+  usesDerivatives:
+    축: 파생 활용 (직교)
+    규칙: 종목명에 '파생' 또는 or_attr_desc='06'
+    해당: 736
+  isMasterFeeder:
+    축: 모자형 구조 (직교)
+    규칙: 종목명에 '증권자'/'자투자신탁' 패턴
+    해당: 7237

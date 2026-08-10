@@ -903,25 +903,86 @@ notebooks/*.ipynb              탐색 — 정의하지 않고 읽어서 씀
 > **정제본을 만들면 `gold_sql` 이 런타임과 어긋납니다.**
 > 노트북에서 검증한 쿼리가 원본에서 다른 결과를 내면 평가셋 전체가 무의미해집니다.
 
-### 이 파일이 담는 것 — 3블록
+### 이 파일이 담는 것 — 6블록
 
 ```yaml
 domain: public_funds
 
+# ── 2단계 (결측·품질) ──────────────────────────────
 normalization:                    # ① 정규화 규칙
   trim_columns: [itm_nm, prfd_attr_cd, ...]
 
 query_rules:                      # ② 질의 필수 조건 — gold_sql 에도 그대로
   종목단위: "GROUP BY itm_no"
   공모만:  "prvo_pbff_desc = '공모'"
-  ETF제외: "itm_nm NOT LIKE '%상장지수%'"
+  수익률정상: "fd_yr1_ern_r > -100"      # 데이터 오류 종목 제외
 
 columns:                          # ③ 컬럼별 판정
   exchdg_yn:
     missing_reason: not_applicable
     note: 국내 87.7% 결측 vs 해외 0.8% — 국내 투자엔 환헤지 개념이 없음
     answer_policy: 국내 펀드의 환헤지 문의 → '해당사항 없음'
+
+# ── 2단계 (엔티티 분해) ────────────────────────────
+entities:                         # ④ 독립 노드로 세울 것
+  ShareClass:
+    kind: entity
+    source: itm_nm 파싱(종류X/클래스X)
+    count: 112
+    relation: FundClass -hasShareClass-> ShareClass
+    note: 펀드 간 통용 어휘. FIBO FundShareClassUnit 대응
+
+class_hierarchy:                  # ⑤ 하위클래스 축 (개체 아님)
+  Fund:
+    SecuritiesFund: [EquityFund, BondFund, EquityMixedFund, BondMixedFund]
+    MoneyMarketFund: []
+    RealEstateFund: []
+
+derivation_rules:                 # ⑥ 컬럼 → 엔티티/클래스 유도 규칙
+  assetClass:
+    축: 무엇에 투자하는가
+    규칙: 종목명 괄호 표기 우선 → 없으면 or_attr_desc 폴백
+    판정률: 94.3% (10,500/11,139)
+  isFundOfFunds:
+    축: 운용 구조 (자산군과 직교)
+    규칙: 종목명에 '재간접' 또는 or_attr_desc='재간접'
 ```
+
+### ④⑤⑥ — 엔티티도 "데이터를 나누는" 게 아니라 **규칙을 적는 것**입니다
+
+> 🔴 **엔티티별 DataFrame 을 만들지 마세요.** 결측·정규화와 같은 이유입니다.
+> 런타임은 원본 테이블에 SQL 을 날리고, KG 는 **빌드 시점에 이 규칙으로 생성**됩니다.
+> 노트북에서 나눠 놓은 데이터는 어디에도 전달되지 않습니다.
+>
+> 산출물은 **나뉜 데이터가 아니라 나누는 규칙**입니다.
+
+**⑤ `class_hierarchy` 를 따로 두는 이유 — 개체와 클래스는 다릅니다**
+
+금융 표준 온톨로지 FIBO 에서 펀드 유형은 **`owl:Class` 하위클래스**이지 개체가 아닙니다
+(`EquityFund` ⊑ `CollectiveInvestmentVehicle`). 반면 클래스(종류형)는
+`FundShareClassUnit` 이라는 **독립 개체**입니다. → `docs/research/notes/FIBO_funds-model.md`
+
+```
+❌ FundClass ─ofType→ FundType(11개 값)     ← 유형을 값으로 취급
+✅ EquityFund ⊑ Fund, 특정 펀드는 그 인스턴스   ← 유형은 클래스
+```
+
+**⑥ `derivation_rules` 가 필요한 이유 — 컬럼 하나에 여러 축이 섞여 있습니다**
+
+공모펀드 실례: `or_attr_desc` 는 **자산군·운용구조·파생활용 3축이 압축**돼 있습니다.
+`재간접` 3,022종목 중 1,604개가 실제로는 주식형입니다.
+
+```sql
+-- ❌ 1,461종목(25%) 누락
+WHERE or_attr_desc = '주식형'                        → 4,280
+
+-- ✅ 종목명 파싱 병행
+WHERE or_attr_desc = '주식형'
+   OR (or_attr_desc IN ('재간접','06') AND itm_nm LIKE '%(주식%')  → 5,741
+```
+
+**컬럼 하나 = 축 하나라고 가정하지 마세요.** 담당 테이블에서도 확인해 보시고,
+축이 섞여 있으면 유도 규칙을 `derivation_rules` 에 적으세요.
 
 각 필드가 쓰이는 곳:
 
@@ -931,6 +992,9 @@ columns:                          # ③ 컬럼별 판정
 | `missing_semantics` | **특정 값**이 결측인지 정보인지 | 결측 계산 · 프로파일러가 읽음 |
 | `normalization.trim_columns` | `TRIM` 이 필요한 컬럼 | SQL 생성 |
 | `query_rules` | 필수 필터·`GROUP BY` | SQL 생성 · **`gold_sql`** |
+| `entities` | 독립 노드와 관계 | **`ontology.ttl` 생성** · 질의어 그라운딩 |
+| `class_hierarchy` | 하위클래스 축 | `ontology.ttl` 의 `rdfs:subClassOf` |
+| `derivation_rules` | 컬럼 → 엔티티/클래스 유도 | KG 빌드 · SQL 생성 |
 | `trap` | 이 컬럼의 함정 (패딩·센티넬·오염값) | SQL 생성 — `TRIM()` 적용, ETN 필터 등 |
 | `answer_policy` | 모수 기반 답변 정책<br>예: *"총보수는 1,734건 중 67건만 유효값. 모수 명시 필수"* | 답변 조립 — 모수 문구 삽입 |
 | `canonical_*` | 워크샵에서 정한 개체·관계에 이 컬럼이 어떻게 매핑되는지 | 질의어 그라운딩 — "미래에셋자산운용" → 축 값 |
@@ -952,6 +1016,9 @@ columns:                          # ③ 컬럼별 판정
       — `judgment_needed` 가 비워질 때까지. 판정마다 **근거 수치**를 `note` 에 남길 것
 - [ ] **정규화 규칙·질의 규칙**을 같은 파일의 `normalization` / `query_rules` 에 기록했다 (§6)
       — 노트북에만 두지 말 것. `gold_sql` 이 이 규칙을 따라야 합니다
+- [ ] **엔티티 분해**를 `entities` / `class_hierarchy` / `derivation_rules` 에 기록했다 (§3 🧬 · §6)
+      — 엔티티별 DataFrame 을 만드는 게 아니라 **규칙**을 적을 것
+- [ ] **컬럼 하나에 여러 축이 섞였는지** 확인했다 — 섞였으면 `derivation_rules` 로 분해
 - [ ] **`axis_*` 축별 유도 규칙과 정확도(N/100)** 를 기록했다 (§3 🎯) — 못 맞춘 축 포함
 - [ ] §3 질문 5·9·11의 답을 T0에 공유했다 (워크샵 안건용)
 - [ ] `eval/questions_<domain>.jsonl` 20문항 작성 완료

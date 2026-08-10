@@ -543,8 +543,14 @@ FROM public_funds GROUP BY 1,2;
 
 #### 판정을 선언하는 법
 
+**노트북 템플릿의 「🕳️ 결측 판정」 절이 이 작업을 순서대로 안내합니다.**
+결측 컬럼 나열 → 원인 교차 확인(`why_missing`, `co_missing`) → 판정 기록 → yaml 내보내기.
+
 `ontology/enums/<domain>.yaml` 에 씁니다. **이 파일은 2단계에서 만들기 시작합니다**
 (결측 판정은 컬럼 단위라 워크샵 합의가 필요 없습니다).
+
+> 🔴 **판정을 노트북에만 적지 마세요.** 노트북은 `.gitignore` 대상이라 전달되지 않습니다.
+> 반드시 yaml 로 내보내야 런타임과 팀원이 봅니다. (§6 참조)
 
 ```yaml
 domain: public_funds
@@ -855,10 +861,57 @@ pd.crosstab(m['axis_fundType'], m['or_attr_desc'])
 
 `ontology/enums/<domain>.yaml` — `.auto.yaml` 위에 **판단이 들어가는 필드만** 채웁니다.
 
-**이 파일은 문서가 아니라 에이전트가 실행 중에 로드하는 설정입니다.** 각 필드가 쓰이는 곳:
+**이 파일은 문서가 아니라 에이전트가 실행 중에 로드하는 설정입니다.**
+
+### 🔴 규칙: 데이터 설정은 노트북이 아니라 이 파일에 씁니다
+
+노트북은 `.gitignore` 대상입니다. **판정이나 규칙을 노트북에만 적으면 런타임에도 팀원에게도 전달되지 않습니다.**
+
+```
+scripts/profile_table.py       판정 "기준" (무엇을 후보로 볼지) — 코드
+        ↓ 후보 제시
+ontology/enums/<domain>.yaml   판정 "결과" + 규칙        ★ 단일 진실 원천
+        ↓ 로드
+notebooks/*.ipynb              탐색 — 정의하지 않고 읽어서 씀
+```
+
+| ❌ 하지 말 것 | ✅ 할 것 |
+| :--- | :--- |
+| 노트북에 `RULES = {...}` 하드코딩 | yaml 에 `query_rules` 로 기록하고 노트북은 로드 |
+| 노트북에서 결측 판정 기준 재정의 | `from profile_table import NOT_PROVIDED_PATTERNS, …` |
+| 정제된 DataFrame 을 만들어 탐색 | 원본에 규칙을 매번 적용 (SQL 조각으로) |
+
+> **정제본을 만들면 `gold_sql` 이 런타임과 어긋납니다.**
+> 노트북에서 검증한 쿼리가 원본에서 다른 결과를 내면 평가셋 전체가 무의미해집니다.
+
+### 이 파일이 담는 것 — 3블록
+
+```yaml
+domain: public_funds
+
+normalization:                    # ① 정규화 규칙
+  trim_columns: [itm_nm, prfd_attr_cd, ...]
+
+query_rules:                      # ② 질의 필수 조건 — gold_sql 에도 그대로
+  종목단위: "GROUP BY itm_no"
+  공모만:  "prvo_pbff_desc = '공모'"
+  ETF제외: "itm_nm NOT LIKE '%상장지수%'"
+
+columns:                          # ③ 컬럼별 판정
+  exchdg_yn:
+    missing_reason: not_applicable
+    note: 국내 87.7% 결측 vs 해외 0.8% — 국내 투자엔 환헤지 개념이 없음
+    answer_policy: 국내 펀드의 환헤지 문의 → '해당사항 없음'
+```
+
+각 필드가 쓰이는 곳:
 
 | 필드 | 내용 | 런타임 소비처 |
 | :--- | :--- | :--- |
+| `missing_reason` | 컬럼 전체의 결측 성격 (`missing` / `not_applicable`) | 응답 분기 |
+| `missing_semantics` | **특정 값**이 결측인지 정보인지 | 결측 계산 · 프로파일러가 읽음 |
+| `normalization.trim_columns` | `TRIM` 이 필요한 컬럼 | SQL 생성 |
+| `query_rules` | 필수 필터·`GROUP BY` | SQL 생성 · **`gold_sql`** |
 | `trap` | 이 컬럼의 함정 (패딩·센티넬·오염값) | SQL 생성 — `TRIM()` 적용, ETN 필터 등 |
 | `answer_policy` | 모수 기반 답변 정책<br>예: *"총보수는 1,734건 중 67건만 유효값. 모수 명시 필수"* | 답변 조립 — 모수 문구 삽입 |
 | `canonical_*` | 워크샵에서 정한 개체·관계에 이 컬럼이 어떻게 매핑되는지 | 질의어 그라운딩 — "미래에셋자산운용" → 축 값 |
@@ -876,8 +929,10 @@ pd.crosstab(m['axis_fundType'], m['or_attr_desc'])
 ### 2단계 완료 조건
 
 - [ ] `docs/eda/<domain>_notes.md` 에 §3의 11개 질문에 대한 답이 있다
-- [ ] **결측 판정**을 `ontology/enums/<domain>.yaml` 의 `missing_semantics` 에 선언했다
-      (§3 🕳️) — `judgment_needed` 가 비워질 때까지
+- [ ] **결측 판정**을 `ontology/enums/<domain>.yaml` 에 선언했다 (§3 🕳️)
+      — `judgment_needed` 가 비워질 때까지. 판정마다 **근거 수치**를 `note` 에 남길 것
+- [ ] **정규화 규칙·질의 규칙**을 같은 파일의 `normalization` / `query_rules` 에 기록했다 (§6)
+      — 노트북에만 두지 말 것. `gold_sql` 이 이 규칙을 따라야 합니다
 - [ ] **`axis_*` 축별 유도 규칙과 정확도(N/100)** 를 기록했다 (§3 🎯) — 못 맞춘 축 포함
 - [ ] §3 질문 5·9·11의 답을 T0에 공유했다 (워크샵 안건용)
 - [ ] `eval/questions_<domain>.jsonl` 20문항 작성 완료

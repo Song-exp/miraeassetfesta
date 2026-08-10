@@ -1,27 +1,57 @@
-# 공모펀드 — 사람의 판단을 담는 파일
-#
-# 기계적 사실(null/공백/분포/값목록)은 public_funds.auto.yaml 에 있습니다.
-# 여기에는 **사람이 내린 판정만** 씁니다. auto.yaml 의 값을 복사하지 마세요.
-#
-# 작성: T4 (개발 리드)
+# public_funds — 사람의 판단을 담는 파일
+# 기계적 사실은 *.auto.yaml 에 있습니다. 여기엔 판정과 규칙만 씁니다.
+# 런타임 가드레일이 이 파일을 읽습니다.
 
 domain: public_funds
-
 columns:
-
-  # ── 결측 판정 ────────────────────────────────────────────────
   prvo_fd_desc:
     korean_name: 사모펀드구분코드 설명
     missing_semantics:
-      # '해당없음' 95,451건은 prvo_pbff_desc='공모' 와 1:1 완전 대응.
-      # "공모라서 사모 세부구분이 없다"는 정상 정보이지 결측이 아님.
-      #   SELECT trim(prvo_fd_desc), trim(prvo_pbff_desc), COUNT(*)
-      #   FROM public_funds GROUP BY 1,2;
-      #   ▶ ('해당없음','공모') 95,451 / ('일반사모(2015년전)','사모') 102
-      "해당없음": not_applicable
-
+      해당없음: not_applicable
+    note: '''해당없음'' 95,451건은 prvo_pbff_desc=''공모'' 와 1:1 완전 대응. 정상 정보.'
   pers_corp_desc:
     korean_name: 개인법인구분코드 설명
     missing_semantics:
-      # '해당없음' 73,054건 = 개인/법인 전용이 아닌 일반 펀드. 정상 값.
-      "해당없음": not_applicable
+      해당없음: not_applicable
+    note: '''해당없음'' 73,054건 = 개인/법인 전용이 아닌 일반 펀드. 정상 정보.'
+  exchdg_yn:
+    korean_name: 환헤지여부
+    missing_reason: not_applicable
+    answer_policy: 국내 펀드의 환헤지 문의 → '해당사항 없음'. 해외/혼합 펀드의 결측만 '확인할 수 없음'.
+    note: 국내 투자 펀드는 환율 위험이 없어 환헤지 개념 자체가 없음. 국내 87.7%(29,040/33,107) 결측 vs 해외 0.8%(435/51,628).
+  fd_nast_suma:
+    korean_name: 펀드 순자산
+    missing_reason: missing
+    answer_policy: 순자산 Top-N 질의는 sale_yn='판매중' 으로 한정하고 모수를 밝힐 것. 값은 클래스 합계이므로 GROUP BY mtco_itm_no 필요.
+    note: 판매완료 59.0%(11,390/19,300) vs 판매중 1.5%(1,148/76,318). 판매중단 펀드에 집중되나 완전 대응은 아니므로 결측으로 둠.
+  zrin_fd_ivst_risk_gcd:
+    korean_name: 제로인펀드투자위험등급코드
+    missing_reason: missing
+    answer_policy: 위험등급 필터 질의는 모수 77,203/95,619 를 명시.
+    note: 전 운용유형에 걸쳐 결측(7~45%). 특정 유형 문제가 아니라 평가사(제로인)가 등급을 산출하지 않은 펀드로 보임.
+  fd_yr1_ern_r:
+    korean_name: 펀드 1년수익률
+    missing_reason: missing
+    answer_policy: 수익률 Top-N 은 모수를 밝힐 것. 단위(누적/연환산) 미확정이므로 확정 전까지 비교 답변 주의.
+    note: 위험등급 결측과 18,404건 동시 발생, 등급만 결측은 12건뿐. → 수익률과 위험등급이 같은 평가 데이터 소스일 가능성. 기간이 길수록 결측 증가(1주 27% →
+      5년 47%)는 운용기간 때문으로 보이나 중첩 위반 수천 건이 있어 단정 불가.
+  itm_eabrv_nm:
+    korean_name: 종목영문약어명
+    missing_reason: missing
+    answer_policy: 영문약어 질의는 '데이터 미제공'.
+    note: 99.8%(95,447/95,619) 결측, distinct 14종. 사실상 빈 컬럼.
+normalization:
+  trim_columns:
+  - itm_abrv_nm
+  - itm_eng_nm
+  - itm_nm
+  - kofia_fd_ccd
+  - ksd_itm_no
+  - prfd_attr_cd
+  - rptt_ksd_itm_no
+query_rules:
+  종목단위: GROUP BY itm_no
+  펀드단위: GROUP BY mtco_itm_no
+  판매중만: sale_yn = '판매중'
+  공모만: prvo_pbff_desc = '공모'
+  ETF제외: itm_nm NOT LIKE '%상장지수%'

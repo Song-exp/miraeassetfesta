@@ -1,0 +1,27 @@
+# 공모펀드 — 사람의 판단을 담는 파일
+#
+# 기계적 사실(null/공백/분포/값목록)은 public_funds.auto.yaml 에 있습니다.
+# 여기에는 **사람이 내린 판정만** 씁니다. auto.yaml 의 값을 복사하지 마세요.
+#
+# 작성: T4 (개발 리드)
+
+domain: public_funds
+
+columns:
+
+  # ── 결측 판정 ────────────────────────────────────────────────
+  prvo_fd_desc:
+    korean_name: 사모펀드구분코드 설명
+    missing_semantics:
+      # '해당없음' 95,451건은 prvo_pbff_desc='공모' 와 1:1 완전 대응.
+      # "공모라서 사모 세부구분이 없다"는 정상 정보이지 결측이 아님.
+      #   SELECT trim(prvo_fd_desc), trim(prvo_pbff_desc), COUNT(*)
+      #   FROM public_funds GROUP BY 1,2;
+      #   ▶ ('해당없음','공모') 95,451 / ('일반사모(2015년전)','사모') 102
+      "해당없음": not_applicable
+
+  pers_corp_desc:
+    korean_name: 개인법인구분코드 설명
+    missing_semantics:
+      # '해당없음' 73,054건 = 개인/법인 전용이 아닌 일반 펀드. 정상 값.
+      "해당없음": not_applicable

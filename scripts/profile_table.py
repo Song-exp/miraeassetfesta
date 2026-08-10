@@ -36,6 +36,7 @@ import re
 import sys
 import sqlite3
 import argparse
+import collections
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -58,11 +59,25 @@ OUTLIER_RATIO = 5.0
 # 분포 폭 판정: p99가 p50의 이 배수를 넘으면 플래그
 WIDE_RANGE_RATIO = 10.0
 
-# "값이 있는 척하는 결측" 문자열 패턴 (§8-② 위장 결측)
-SENTINEL_PATTERNS = [
-    "not provided", "not available", "no data", "n/a", "na.",
-    "unknown", "미제공", "해당없음", "해당 없음", "확인불가",
+# ── 결측 후보 문자열 ────────────────────────────────────────────
+# ⚠️ 이 값들이 결측인지 아닌지는 **기계가 판정하지 않습니다.**
+#    판정 후보로 표시만 하고, 사람이 <domain>.yaml 의 missing_semantics 에 선언합니다.
+#
+#   not_provided   "값이 있어야 하는데 제공자가 안 줬다"  → 결측일 가능성 높음
+#   not_applicable "그 대상에는 원래 해당하지 않는다"      → 정보일 가능성 높음
+#
+# 실례: public_funds.prvo_fd_desc='해당없음' 95,451건은 prvo_pbff_desc='공모'와
+#       1:1 대응하는 **정상 값**이었습니다. 결측으로 세면 결측률이 99.9%로 부풀려집니다.
+NOT_PROVIDED_PATTERNS = [
+    "not provided", "not available", "no data", "n/a",
+    "unknown", "미제공", "확인불가", "확인 불가",
 ]
+NOT_APPLICABLE_PATTERNS = [
+    "해당없음", "해당 없음", "해당사항없음", "해당사항 없음",
+]
+
+# 사람이 선언할 수 있는 판정값
+MISSING_SEMANTICS = ("missing", "not_applicable")
 
 # 식별자(키) 후보로 볼 컬럼명 패턴
 ID_COLUMN_RE = re.compile(r"(^|_)(no|cd|id|code|isin)$|itm_no|isin", re.IGNORECASE)
@@ -105,6 +120,7 @@ class ColumnContext:
     n_distinct: int
     values: list = field(default_factory=list)  # [(값, 건수)] — text 계열만
     numeric: dict = field(default_factory=dict)  # min/p01/p50/p99/max/mean
+    semantics: dict = field(default_factory=dict)  # 사람이 선언한 값별 판정
 
     # ── 탐지기가 쓰는 헬퍼 ──
     def sql(self, template: str) -> str:
@@ -174,21 +190,42 @@ def detect_blank_string(ctx):
     )]
 
 
-def detect_sentinel(ctx):
-    """§8-② 센티넬 문자열 결측. 'Index is not provided by ...' 같은 문장형 결측."""
+def detect_judgment_needed(ctx):
+    """
+    §8-② 결측일 수도 있는 값들을 **판정 후보로 표시만** 합니다. 결측으로 단정하지 않습니다.
+
+    사람이 <domain>.yaml 의 missing_semantics 에 선언하면 다음 실행부터 반영됩니다:
+
+        columns:
+          prvo_fd_desc:
+            missing_semantics:
+              "해당없음": not_applicable    # 결측 아님
+          cu_base_index:
+            missing_semantics:
+              "Index is not provided by Management Company": missing
+    """
     out = []
     for value, cnt in ctx.values:
         if not isinstance(value, str):
             continue
         low = value.lower()
-        if any(p in low for p in SENTINEL_PATTERNS):
-            escaped = value.replace("'", "''")
-            out.append(Finding(
-                "sentinel", "high",
-                f"센티넬(위장 결측) 값 {cnt:,}건: {value!r}",
-                cnt,
-                f"SELECT COUNT(*) FROM {ctx.table} WHERE TRIM(\"{ctx.column}\")='{escaped}'",
-            ))
+        if any(p in low for p in NOT_PROVIDED_PATTERNS):
+            hint = "not_provided"
+        elif any(p in low for p in NOT_APPLICABLE_PATTERNS):
+            hint = "not_applicable"
+        else:
+            continue
+        decided = ctx.semantics.get(value)
+        if decided:
+            continue                      # 이미 판정된 값은 후보에서 제외
+        escaped = value.replace("'", "''")
+        out.append(Finding(
+            "judgment_needed", "medium",
+            f"결측 여부 판정 필요 ({hint}) {cnt:,}건: {value!r} "
+            f"— missing_semantics 에 선언하세요",
+            cnt,
+            f"SELECT COUNT(*) FROM {ctx.table} WHERE TRIM(\"{ctx.column}\")='{escaped}'",
+        ))
     return out
 
 
@@ -335,7 +372,7 @@ def detect_boolean_variant(ctx):
 DETECTORS = [
     detect_padding,
     detect_blank_string,
-    detect_sentinel,
+    detect_judgment_needed,
     detect_multivalue,
     detect_mixed_type_categorical,
     detect_outlier,
@@ -417,6 +454,83 @@ TABLE_DETECTORS = [
 
 
 # ────────────────────────────────────────────────────────────────
+# 컬럼 그룹 분석
+# ────────────────────────────────────────────────────────────────
+#
+# 207컬럼을 하나씩 보면 발견이 평평하게 나열되어 무엇이 중요한지 알 수 없습니다.
+# 컬럼명 접미사로 묶으면 판단 횟수가 크게 줄고, 다음 구분이 드러납니다:
+#
+#   그룹 전체가 걸림  → 그 그룹의 **성질** (예: _cnt 전부 광범위 분포 = 수량이니 당연)
+#   그룹 일부만 걸림  → 진짜 **이상치**   (예: _yn 18개 중 2개만 오염)
+#
+GROUP_MIN_SIZE = 3          # 이보다 작은 그룹은 묶지 않음
+GROUP_ALL_THRESHOLD = 0.9   # 이 비율 이상이면 "그룹의 성질"로 판정
+
+
+def column_group(name):
+    """컬럼명 접미사로 그룹 키를 만든다."""
+    m = re.search(r"_([a-z]+)$", name.lower())
+    return f"_{m.group(1)}" if m else "(접미사 없음)"
+
+
+def analyze_groups(contexts, findings_by_col):
+    """
+    접미사 그룹별로 탐지기 발생을 응축한다.
+    반환: [{group, size, traits:[...], exceptions:[...]}]
+    """
+    groups = collections.defaultdict(list)
+    for col in contexts:
+        groups[column_group(col)].append(col)
+
+    out = []
+    for gname, cols in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        if len(cols) < GROUP_MIN_SIZE:
+            continue
+        hit = collections.defaultdict(list)
+        for col in cols:
+            for f in findings_by_col.get(col, []):
+                hit[f.detector].append(col)
+
+        traits, exceptions = [], []
+        for det, hits in sorted(hit.items(), key=lambda kv: -len(kv[1])):
+            ratio = len(hits) / len(cols)
+            if ratio >= GROUP_ALL_THRESHOLD:
+                traits.append({
+                    "detector": det, "columns": len(hits), "ratio": round(ratio, 2),
+                    "note": "그룹 전체 특성 — 개별 조치 불필요할 가능성",
+                })
+            else:
+                exceptions.append({
+                    "detector": det, "ratio": round(ratio, 2),
+                    "columns": sorted(hits)[:8],
+                    "note": "일부만 해당 — 개별 확인 필요",
+                })
+
+        # 값 표현이 그룹 내에서 갈리는지 (예: _yn 이 Y/N · 0/1 · 한글 혼재)
+        shapes = collections.defaultdict(list)
+        for col in cols:
+            ctx = contexts[col]
+            if ctx.kind == "text" and 0 < ctx.n_distinct <= 4:
+                shapes["|".join(sorted(str(v) for v, _ in ctx.values[:4]))].append(col)
+            elif ctx.kind == "numeric" and 0 < ctx.n_distinct <= 4:
+                shapes["numeric:" + "|".join(
+                    sorted(str(v) for v, _ in [(x, 0) for x in
+                           (ctx.numeric.get("min"), ctx.numeric.get("max")) if x is not None]))
+                ].append(col)
+        entry = {"group": gname, "size": len(cols)}
+        if traits:
+            entry["traits"] = traits
+        if exceptions:
+            entry["exceptions"] = exceptions
+        if len(shapes) > 1:
+            entry["value_shapes"] = {k: v for k, v in
+                                     sorted(shapes.items(), key=lambda kv: -len(kv[1]))}
+        if traits or exceptions or len(shapes) > 1:
+            out.append(entry)
+    return out
+
+
+# ────────────────────────────────────────────────────────────────
 # 프로파일링 본체
 # ────────────────────────────────────────────────────────────────
 
@@ -473,7 +587,31 @@ def percentiles(values):
     }
 
 
-def profile_column(conn, table, column, total, korean_name):
+def load_semantics(table):
+    """
+    사람이 작성한 ontology/enums/<domain>.yaml 의 missing_semantics 를 읽는다.
+    없으면 빈 dict — 1차 실행에서는 판정 없이 사실만 낸다.
+    """
+    path = OUT_DIR / f"{table}.yaml"
+    if not path.exists():
+        return {}
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        print(f"  ⚠️ {path.name} 파싱 실패 — 판정 없이 진행합니다 ({e})")
+        return {}
+    out = {}
+    for col, entry in (doc.get("columns") or {}).items():
+        sem = (entry or {}).get("missing_semantics") or {}
+        bad = {v for v in sem.values() if v not in MISSING_SEMANTICS}
+        if bad:
+            print(f"  ⚠️ {col}.missing_semantics 에 알 수 없는 판정값 {bad} "
+                  f"— 허용: {MISSING_SEMANTICS}")
+        out[col] = {k: v for k, v in sem.items() if v in MISSING_SEMANTICS}
+    return out
+
+
+def profile_column(conn, table, column, total, korean_name, semantics=None):
     kind = infer_kind(conn, table, column)
     q = f'''
         SELECT
@@ -494,6 +632,7 @@ def profile_column(conn, table, column, total, korean_name):
         conn=conn, table=table, column=column, korean_name=korean_name, kind=kind,
         total=total, n_null=n_null or 0, n_blank=n_blank or 0,
         n_padded=n_padded or 0, n_distinct=n_distinct,
+        semantics=(semantics or {}).get(column, {}),
     )
 
     if kind == "numeric":
@@ -509,26 +648,43 @@ def profile_column(conn, table, column, total, korean_name):
         ''').fetchall()
 
     findings = [f for det in DETECTORS for f in det(ctx)]
-
-    # 결측 = NULL + 공백문자열 + 센티넬
-    sentinel_n = sum(f.count for f in findings if f.detector == "sentinel")
-    missing = ctx.n_null + ctx.n_blank + sentinel_n
-    return ctx, findings, missing, sentinel_n
+    return ctx, findings
 
 
-def to_yaml_column(ctx, findings, missing, sentinel_n, values_path):
+def to_yaml_column(ctx, findings, values_path):
+    """
+    ⚠️ 결측률(missing_rate)을 내지 않습니다.
+       "무엇을 결측으로 볼 것인가"는 판정이고, 판정은 사람이 합니다.
+       여기서는 사실만 냅니다 — null / 공백 / 실제 값 / 판정 대기 목록.
+    """
+    declared_missing = sum(
+        cnt for v, cnt in ctx.values
+        if isinstance(v, str) and ctx.semantics.get(v) == "missing"
+    )
+    pending = [
+        {"value": v, "count": cnt,
+         "hint": ("not_provided"
+                  if any(p in v.lower() for p in NOT_PROVIDED_PATTERNS) else "not_applicable")}
+        for v, cnt in ctx.values
+        if isinstance(v, str) and not ctx.semantics.get(v)
+        and any(p in v.lower() for p in NOT_PROVIDED_PATTERNS + NOT_APPLICABLE_PATTERNS)
+    ]
+
     entry = {
         "korean_name": ctx.korean_name,
         "kind": ctx.kind,
         "total": ctx.total,
-        "missing": missing,
-        "missing_rate": round(missing / ctx.total, 4) if ctx.total else 0.0,
-        "answerable_n": ctx.total - missing,
-        "missing_breakdown": {
-            "null": ctx.n_null, "blank_string": ctx.n_blank, "sentinel": sentinel_n,
-        },
+        # ── 사실 ──
+        "null": ctx.n_null,
+        "blank_string": ctx.n_blank,
+        "values_present": ctx.total - ctx.n_null - ctx.n_blank,
         "distinct_count": ctx.n_distinct,
     }
+    if pending:
+        entry["judgment_needed"] = pending            # 사람이 결측 여부를 정할 값
+    if declared_missing:
+        entry["declared_missing"] = declared_missing  # 사람이 missing 으로 선언한 건수
+        entry["values_confirmed"] = entry["values_present"] - declared_missing
     if ctx.numeric:
         entry["numeric"] = {k: round(v, 4) for k, v in ctx.numeric.items()}
     if ctx.kind == "text" and ctx.values:
@@ -551,16 +707,20 @@ def profile_table(conn, table):
     total = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
     korean = load_korean_names(conn, table)
+    semantics = load_semantics(table)
 
-    print(f"\n📊 [{table}] {total:,}행 × {len(columns)}컬럼 프로파일링")
+    print(f"\n📊 [{table}] {total:,}행 × {len(columns)}컬럼 프로파일링"
+          + (f"  (missing_semantics {len(semantics)}컬럼 반영)" if semantics else ""))
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     contexts, col_yaml, all_findings = {}, {}, []
-    for i, column in enumerate(columns, 1):
-        ctx, findings, missing, sentinel_n = profile_column(
-            conn, table, column, total, korean.get(column, "")
+    findings_by_col = {}
+    for column in columns:
+        ctx, findings = profile_column(
+            conn, table, column, total, korean.get(column, ""), semantics
         )
         contexts[column] = ctx
+        findings_by_col[column] = findings
         all_findings.extend(findings)
 
         values_path = ""
@@ -571,15 +731,12 @@ def profile_table(conn, table):
             )
             values_path = f"ontology/enums/{fname}"
 
-        col_yaml[column] = to_yaml_column(ctx, findings, missing, sentinel_n, values_path)
-        flag = "  ⚠️" if any(f.severity == "high" for f in findings) else ""
-        print(f"  [{i:>2}/{len(columns)}] {column:<28} "
-              f"결측 {col_yaml[column]['missing_rate']:>6.1%}  "
-              f"distinct {ctx.n_distinct:>6,}{flag}")
+        col_yaml[column] = to_yaml_column(ctx, findings, values_path)
 
     tctx = TableContext(conn=conn, table=table, total=total, columns=contexts)
     table_findings = [f for det in TABLE_DETECTORS for f in det(tctx)]
     all_findings.extend(table_findings)
+    group_findings = analyze_groups(contexts, findings_by_col)
 
     doc = {
         "meta": {
@@ -591,7 +748,8 @@ def profile_table(conn, table):
             "generator": "scripts/profile_table.py",
             "db_access": "read-only (mode=ro)",
             "note": "자동 생성 파일입니다. 직접 편집하지 마세요 — 언제든 재생성됩니다. "
-                    "해석과 판단은 docs/eda/<domain>_notes.md 와 ontology/enums/<domain>.yaml 에 씁니다.",
+                    "결측률(missing_rate)은 판정이므로 여기서 내지 않습니다. "
+                    "판정은 ontology/enums/<domain>.yaml 의 missing_semantics 에 선언하세요.",
         },
         "table_findings": [
             {"detector": f.detector, "severity": f.severity, "message": f.message,
@@ -599,6 +757,7 @@ def profile_table(conn, table):
              **({"repro_sql": f.repro_sql} if f.repro_sql else {})}
             for f in table_findings
         ],
+        "group_findings": group_findings,
         "columns": col_yaml,
     }
 
@@ -609,39 +768,67 @@ def profile_table(conn, table):
 
     highs = [f for f in all_findings if f.severity == "high"]
     print(f"  ✅ {out_path.relative_to(PROJECT_ROOT)} 생성 "
-          f"(발견 {len(all_findings)}건 / 그중 high {len(highs)}건)")
+          f"(컬럼 발견 {len(all_findings)}건 / high {len(highs)}건 "
+          f"→ 그룹 {len(group_findings)}개로 응축)")
     for f in table_findings:
         print(f"     🔴 [{f.detector}] {f.message}")
     return all_findings
 
 
 def print_report(targets):
-    """이미 만들어진 .auto.yaml 에서 중요 발견만 다시 요약해 출력 (재프로파일링 없음)."""
+    """
+    이미 만들어진 .auto.yaml 을 **그룹 중심**으로 요약한다 (재프로파일링 없음).
+
+    컬럼 하나씩 나열하면 판단할 게 200건이 됩니다. 그룹으로 묶으면
+    "그룹의 성질"과 "그룹 내 예외"가 갈려 판단 횟수가 크게 줍니다.
+    """
     for table in targets:
         path = OUT_DIR / f"{table}.auto.yaml"
         if not path.exists():
             print(f"\n⚠️ {path.name} 없음 — 먼저 `python scripts/profile_table.py {table}` 실행")
             continue
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-        print(f"\n📊 [{table}] {doc['meta']['row_count']:,}행 × {doc['meta']['column_count']}컬럼")
+        cols = doc["columns"]
+        print(f"\n{'═' * 68}")
+        print(f"📊 [{table}] {doc['meta']['row_count']:,}행 × {doc['meta']['column_count']}컬럼")
 
+        # ① 테이블 전체에 걸린 문제
         for f in doc.get("table_findings", []):
-            print(f"  🔴 [테이블] {f['detector']}: {f['message']}")
+            print(f"\n  🔴 [테이블] {f['detector']}")
+            print(f"      {f['message']}")
 
-        rows = [(col, f) for col, e in doc["columns"].items()
-                for f in e.get("findings", []) if f["severity"] == "high"]
-        for col, f in rows:
-            print(f"  ⚠️  {col:<28} [{f['detector']}] {f['message']}")
+        # ② 컬럼 그룹
+        for g in doc.get("group_findings", []):
+            print(f"\n  ▪ 그룹 {g['group']}  ({g['size']}개 컬럼)")
+            for t in g.get("traits", []):
+                print(f"      ─ {t['detector']}: {t['columns']}/{g['size']} 전부 해당 "
+                      f"→ 이 그룹의 성질 (개별 조치 불필요)")
+            for e in g.get("exceptions", []):
+                print(f"      ⚠️ {e['detector']}: {e['ratio']:.0%} 만 해당 → 개별 확인")
+                print(f"         {', '.join(e['columns'])}")
+            shapes = g.get("value_shapes")
+            if shapes:
+                print(f"      ⚠️ 값 표현이 {len(shapes)}가지로 갈림:")
+                for shape, owners in list(shapes.items())[:6]:
+                    print(f"         {shape:<28} ← {', '.join(owners[:3])}"
+                          f"{' …' if len(owners) > 3 else ''}")
 
+        # ③ 실제 값이 적은 컬럼 — 답변 정책이 필요한 곳
         thin = sorted(
-            ((col, e["answerable_n"], e["total"]) for col, e in doc["columns"].items()
-             if e["total"] and e["answerable_n"] / e["total"] < 0.5),
-            key=lambda r: r[1],
-        )[:8]
+            ((c, e["values_present"], e["total"]) for c, e in cols.items()
+             if e["total"] and e["values_present"] / e["total"] < 0.5),
+            key=lambda r: r[1])[:8]
         if thin:
-            print("  📉 답변 가능 모수가 절반 미만인 컬럼 (답변 정책 필요):")
-            for col, n, total in thin:
-                print(f"       {col:<28} {n:>7,} / {total:,}")
+            print("\n  📉 실제 값이 절반 미만인 컬럼 (답변 정책 필요)")
+            for c, n, total in thin:
+                print(f"       {c:<28} {n:>7,} / {total:,}")
+
+        # ④ 결측 여부 판정이 필요한 값
+        pend = [(c, j) for c, e in cols.items() for j in e.get("judgment_needed", [])]
+        if pend:
+            print("\n  ❓ 결측 여부 판정 필요 — <domain>.yaml 의 missing_semantics 에 선언하세요")
+            for c, j in sorted(pend, key=lambda r: -r[1]["count"])[:8]:
+                print(f"       {c:<24} {j['count']:>7,}건  [{j['hint']}]  {j['value'][:44]!r}")
 
 
 def main():
@@ -657,7 +844,7 @@ def main():
 
     if args.report:
         print("=" * 70)
-        print("📋 프로파일 요약 — 테이블 발견 + severity:high + 저모수 컬럼")
+        print("📋 프로파일 요약 — 테이블 문제 → 컬럼 그룹 → 저모수 → 판정 대기")
         print("=" * 70)
         print_report(targets)
         print("\n" + "=" * 70)

@@ -89,15 +89,17 @@ python scripts/profile_table.py --report <내_테이블>    # 중요 발견 요�
 | 1 | `ontology/enums/<domain>.auto.yaml` | 1단계 — **스크립트가 생성** | 사람·2단계 재료 | 손대지 않음 |
 | 2 | `docs/eda/<domain>_notes.md` | **2단계 — 각자** | 사람 (워크샵 참석자) | **자유** |
 | 3 | `eval/questions_<domain>.jsonl` | **2단계 — 각자** | 자동 테스트 | **고정** (§4) |
-| 4 | `ontology/enums/<domain>.yaml` | 4단계 — 워크샵 이후 | **런타임 가드레일** | **고정** (§6) |
+| 4 | `ontology/enums/<domain>.yaml` | **2단계**(결측 판정) → 4단계(온톨로지 매핑) | **런타임 가드레일** | **고정** (§6) |
 
 **기계가 읽는 파일(3·4번)은 형식 고정, 사람이 읽는 파일(2번)은 자유입니다.**
 `_notes.md` 는 표를 쓰든 글로 쓰든 §3의 질문에 답만 있으면 됩니다.
 
-> 📌 **2단계에서 4번(`<domain>.yaml`)을 만들지 마세요.**
-> 개체·관계를 어떻게 모델링할지는 §5 워크샵에서 전원이 함께 정합니다.
-> 그 전에 각자 쓰면 축 이름과 값이 제각각이라 병합되지 않습니다.
-> 2단계에서 발견한 것은 전부 **`_notes.md`(2번)** 에 적어두었다가, 워크샵 후 4번으로 옮깁니다.
+> 📌 **4번은 두 번에 나눠 씁니다.**
+> - **2단계** — `missing_semantics`(결측 판정)만. 컬럼 단위 판단이라 합의가 필요 없습니다
+> - **4단계** — `canonical_*`(개체·관계 매핑). 이건 §5 워크샵에서 정해진 뒤에 씁니다
+>
+> 워크샵 전에 `canonical_*` 을 각자 쓰면 축 이름과 값이 제각각이라 병합되지 않습니다.
+> 나머지 발견은 전부 **`_notes.md`(2번)** 에 적어두었다가 워크샵 후 옮깁니다.
 
 ### 작업 시 지켜야 할 단 하나의 원칙
 
@@ -194,16 +196,24 @@ diff 노이즈가 큽니다. → **각자 로컬에서 직접 돌리세요.** (4
 **손으로 편집하지도 마세요.** 실행할 때마다 통째로 덮어씁니다.
 사람의 판단은 `<domain>.yaml`(§6)에 씁니다 — 이건 커밋 대상입니다.
 
-### 뽑히는 것
+### 뽑히는 것 — **사실만** 냅니다
 
 | 항목 | 내용 |
 | :--- | :--- |
-| 컬럼별 결측률 | `NULL` + 공백문자열 + 센티넬을 **모두 포함**해 계산하고, 내역을 분리해 표시 |
-| `answerable_n` | 실제 답변 가능 모수 |
+| `null` / `blank_string` | 각각의 건수 (합치지 않음) |
+| `values_present` | 값이 들어 있는 행 수 = `total − null − blank` |
+| `judgment_needed` | **결측일 수도 있는 값 목록** — 판정은 사람이 (§3 결측 판정) |
 | distinct 값 목록 | 값 + 건수. 200종 초과 시 별도 `.txt` |
 | 수치 분포 | min / p01 / p50 / p99 / max / mean / 0의 개수 |
 | 한글 컬럼명 | `schema_metadata` 테이블(207행) 조인 |
 | **탐지기 결과** | 아래 12종 — 각 발견마다 재현 SQL 포함 |
+| **`group_findings`** | 컬럼 그룹별 응축 (§ 아래) |
+
+> 🔑 **`missing_rate`(결측률)를 내지 않습니다.**
+> *"무엇을 결측으로 볼 것인가"* 는 사실이 아니라 **판정**입니다.
+> `null` 개수는 사실이고, `'해당없음' 95,451건`도 사실이지만,
+> **그 둘을 합쳐 "결측 99.9%"라고 하는 건 결정**입니다.
+> 그 결정은 §3에서 사람이 내리고 `<domain>.yaml` 에 선언합니다.
 
 ### 탑재된 탐지기 12종
 
@@ -211,7 +221,7 @@ diff 노이즈가 큽니다. → **각자 로컬에서 직접 돌리세요.** (4
 | :--- | :--- | :--- |
 | `padding` | 앞뒤 공백 패딩 — 정확일치가 조용히 실패 | §8-① |
 | `blank_string` | 공백만 든 문자열 (NULL 아닌 결측) | §8-② |
-| `sentinel` | `not provided` 류 문장형 결측 | §8-② |
+| `judgment_needed` | `not provided`·`해당없음` 류 — **결측 여부 판정 대기** | §8-② |
 | `zero_heavy` | non-null의 30% 이상이 `0` — 미입력을 0으로 채웠는지 | |
 | `repeated_extreme` | 극단값이 정확히 반복 — 수치형 센티넬(`-100` 등) 의심 | |
 | `outlier_high` | 최대값이 p99의 5배 초과 | §8-⑧ |
@@ -231,32 +241,41 @@ diff 노이즈가 큽니다. → **각자 로컬에서 직접 돌리세요.** (4
 
 ### 결과 읽는 법
 
-`.auto.yaml`은 `meta` / `table_findings` / `columns` 세 블록입니다. 컬럼 하나는 이렇게 생겼습니다:
+`.auto.yaml`은 `meta` / `table_findings` / **`group_findings`** / `columns` 네 블록입니다.
+
+**컬럼 하나:**
 
 ```yaml
 cu_charge_rt:
   korean_name: 총보수요율
   kind: numeric
   total: 1734
-  missing: 1517
-  missing_rate: 0.8749
-  answerable_n: 217              # ← 답변 가능 모수
-  missing_breakdown:             # ← 결측이 어떤 종류인지
-    'null': 1517
-    blank_string: 0
-    sentinel: 0
+  null: 1517
+  blank_string: 0
+  values_present: 217            # ← 값이 들어 있는 행 (결측률이 아님)
   distinct_count: 17
   numeric:
     p50: 0.0
     max: 0.64
-    n_nonnull: 217
-    n_zero: 150                  # ← non-null인데 값이 0
+    n_zero: 150                  # ← 값은 있는데 0
   findings:
   - detector: zero_heavy
     severity: high
     message: non-null 217건 중 150건(69%)이 0 — 실제 0인지 미입력인지 확인 필요. 실질 모수는 67건
-    count: 150
-    repro_sql: SELECT COUNT(*) FROM domestic_etfs WHERE "cu_charge_rt" = 0
+```
+
+**판정이 필요한 값이 있으면:**
+
+```yaml
+cu_base_index:
+  values_present: 5638
+  judgment_needed:               # ← 사람이 결측 여부를 정할 값
+  - value: Index is not provided by Management Company
+    count: 1984
+    hint: not_provided           # 문장형 → 결측 가능성 높음
+  - value: 해당없음
+    count: 95451
+    hint: not_applicable         # → 정보일 가능성 높음
 ```
 
 **중요한 것만 먼저 보려면 — `--report`**
@@ -270,22 +289,32 @@ python scripts/profile_table.py --report domestic_etfs   # 담당 테이블만
 
 ```
 📊 [public_funds] 95,619행 × 45컬럼
-  🔴 [테이블] not_unique_key: 'itm_no' 는 유일하지 않음 — 95,619행 / 고유 11,139개 (평균 8.6배 중복)
-  🔴 [테이블] composite_key_hint: … 값이 달라지는 컬럼은 ['prfd_attr_cd'] 뿐
-  ⚠️  prfd_attr_cd    [padding] 앞뒤 공백 패딩 1,670건 (1.7%) — 정확일치 비교 시 TRIM() 필수
-  ⚠️  prvo_fd_desc    [sentinel] 센티넬(위장 결측) 값 95,451건: '해당없음'
-  📉 답변 가능 모수가 절반 미만인 컬럼 (답변 정책 필요):
-       prvo_fd_desc        102 / 95,619
-       itm_eabrv_nm        172 / 95,619
+
+  🔴 [테이블] not_unique_key
+      'itm_no' 는 유일하지 않음 — 95,619행 / 고유 11,139개 (평균 8.6배 중복)
+
+  ▪ 그룹 _yn  (6개 컬럼)
+      ─ boolean_variant: 6/6 전부 해당 → 이 그룹의 성질 (개별 조치 불필요)
+      ⚠️ 값 표현이 5가지로 갈림:
+         numeric:0.0|0.0     ← hdge_fd_yn, ofsfd_yn
+         00080008|N|Y        ← exchdg_yn
+         판매완료|판매중         ← sale_yn
+         KRZ50226929C|Y      ← thco_sale_yn
+
+  📉 실제 값이 절반 미만인 컬럼 (답변 정책 필요)
+       itm_eabrv_nm            172 / 95,619
+
+  ❓ 결측 여부 판정 필요 — <domain>.yaml 의 missing_semantics 에 선언하세요
+       cu_base_index         1,984건  [not_provided]  'Index is not provided by Management…'
 ```
 
 **보는 순서**
 
-1. **`🔴 [테이블]`** — 테이블 전체에 걸린 문제(PK 중복 등). 가장 파급력이 큽니다.
-2. **`⚠️` (severity: high)** — 이것만 훑어도 대부분의 함정이 잡힙니다.
-3. **`📉` 저모수 컬럼** — 그대로 답변 정책(`확인할 수 없음` / 모수 명시)이 필요한 컬럼입니다.
-4. 관심 가는 항목은 `.auto.yaml`을 열어 `repro_sql`을 복사해 직접 돌려보세요.
-   **모든 발견에 재현 SQL이 붙어 있습니다.**
+1. **`🔴 [테이블]`** — 테이블 전체에 걸린 문제(PK 중복 등). 가장 파급력이 큽니다
+2. **`▪ 그룹`** — `전부 해당` 은 그룹의 성질이라 넘기고, **`⚠️` 만 개별 확인**
+3. **`📉` 저모수 컬럼** — 답변 정책(`확인할 수 없음` / 모수 명시)이 필요한 곳
+4. **`❓` 판정 대기** — §3 🕳️ 절차로 판정하고 `missing_semantics` 에 선언
+5. 관심 가는 항목은 `.auto.yaml` 의 `repro_sql` 을 복사해 직접 돌려보세요
 
 > ⚠️ **탐지기 결과는 "사실"이지 "결론"이 아닙니다.**
 > `zero_heavy`가 울렸다고 그 컬럼이 잘못된 건 아닙니다 — 진짜 무보수 ETF일 수도 있습니다.
@@ -335,8 +364,14 @@ DETECTORS = [..., detect_my_pattern]      # ← 등록
 - [ ] `python scripts/profile_table.py <domain>` → `.auto.yaml` 생성
 - [ ] `table_findings` 와 `severity: high` 항목을 먼저 훑기
 - [ ] 원본 `1.금융상품/<테이블ID>_*_schema.xlsx` **두 시트를 모두** 열기
-  - `Sheet1_Schema` — **컬럼 정의와 단위** 대조 (DB에 없는 정보. 단위 틀리면 답변이 100배 틀립니다)
-  - `Sheet2_Sample` — 🎯 **`axis_*` 분류 축 + 정답 100건** (§3 첫 절 참조)
+  - `Sheet1_Schema` — **컬럼 정의·단위·PK 표기** 대조 (DB에 없는 정보. 단위 틀리면 답변이 100배 틀립니다)
+  - `Sheet2_Sample` — 🎯 **`axis_*` 분류 축 + 정답 100건** (§3 참조)
+
+> 📌 **`Sheet1_Schema` 의 `PK/FK` 열에 주최 측이 키를 표기해 뒀습니다.**
+> 공모펀드 `(itm_no, prfd_attr_cd, zrin_fd_ivst_risk_gcd)` · 국내ETF `(pd_exg_mkt_cd, pd_itm_no, pd_itm_no_ma)` ·
+> 해외ETF `(pd_itm_no)` · **국내채권은 표기 없음**.
+> 실측하면 다를 수 있습니다 — 공모펀드는 `(itm_no, prfd_attr_cd)` 2개만으로 완전한 키였습니다.
+> **표기를 확인하고, 실제로 유일한지 검증하세요.**
 
 프로파일은 **결론이 아니라 재료**입니다. 여기서부터 진짜 작업이 시작됩니다.
 
@@ -404,6 +439,133 @@ conn = sqlite3.connect(f"{DB.as_uri()}?mode=ro", uri=True)   # 쓰기 시도 →
 `.ipynb` 는 git diff 가 안 읽혀 리뷰가 안 되고, 탐색 과정이 전부 남아 결론이 묻힙니다.
 
 **결론은 반드시 `_notes.md` 로 옮겨 적으세요. 노트북에만 있으면 없는 것과 같습니다.**
+
+---
+
+### 📦 컬럼을 하나씩 보지 말고 **그룹으로** 보세요
+
+207컬럼을 하나씩 훑으면 판단할 게 200건이 됩니다. **컬럼명 접미사로 묶으면 20건 안팎**으로 줍니다.
+프로파일러가 `group_findings` 로 자동 응축해 주고, `--report` 가 그룹 중심으로 출력합니다.
+
+그룹으로 보면 이 구분이 드러납니다:
+
+| 패턴 | 해석 | 대응 |
+| :--- | :--- | :--- |
+| **그룹 전체가 걸림** | 그 그룹의 **성질** | 무시하거나 규칙 하나로 처리 |
+| **그룹 일부만 걸림** | **진짜 이상치** | 개별 확인 |
+| **테이블 단위로 갈림** | **소스 시스템 차이** | 테이블별 정규화 규칙 |
+
+실제 사례:
+
+```
+▪ 그룹 _yn (6개)
+    ─ boolean_variant: 6/6 전부 → 그룹의 성질 (개별 조치 불필요)
+    ⚠️ 값 표현이 5가지로 갈림:
+       numeric:0.0|0.0    ← hdge_fd_yn, ofsfd_yn
+       00080008|N|Y       ← exchdg_yn        ← 오염
+       판매완료|판매중        ← sale_yn          ← 한글
+       KRZ50226929C|Y     ← thco_sale_yn     ← 오염
+```
+
+컬럼별 목록에 흩어져 있을 땐 안 보이던 **오염 2건이 한 화면에서 잡힙니다.**
+
+그리고 **패딩은 컬럼 성격이 아니라 테이블 성격**이었습니다:
+
+| 테이블 | 패딩 컬럼 | 비율 |
+| :--- | ---: | :--- |
+| `domestic_bonds` | 6개 | **95~98%** ← 고정폭 레거시 |
+| `domestic_etfs` | 4개 | **89~100%** |
+| `overseas_etfs` | **0개** | 깨끗 |
+| `public_funds` | 7개 | 0~2% (산발) |
+
+→ 정규화 규칙을 **컬럼별이 아니라 테이블별**로 세우면 됩니다.
+
+---
+
+### 🕳️ 결측 판정 — 채우지 말고 **분류**하세요
+
+> 🔴 **이 프로젝트에서는 결측을 채우면(impute) 안 됩니다.**
+> 일반 EDA는 평균·중앙값 대치를 하지만, 여기선 **환각 방지가 최우선**입니다.
+> 없는 값을 만들어내는 게 곧 환각입니다.
+> **전처리 = 채우기가 아니라 "유형을 판정하고 라벨링하기"** 입니다.
+
+#### 결측 4유형
+
+| 유형 | 뜻 | 판정법 | 런타임 응답 |
+| :--- | :--- | :--- | :--- |
+| **① 해당없음**<br>`not_applicable` | 그 대상엔 원래 없는 속성 | **다른 컬럼과 완벽 대응**하는지 확인 | "그 상품에는 해당하지 않습니다" |
+| **② 미제공**<br>`missing` | 제공자가 안 줌 | 명세에 명시 / 문장형 센티넬 | "데이터 미제공" |
+| **③ 진짜 결측** | 있어야 하는데 없음 | ①②가 아닌 `null` | "확인할 수 없음" |
+| **④ 위장 결측** | `null` 아닌 형태 | 공백문자열 · 센티넬 · `0` 다수 | ②③으로 재분류 |
+
+**①과 ②를 가르는 게 핵심입니다.** 실증 사례:
+
+```sql
+-- ① 해당없음 — 채권 매수수익률
+SELECT
+  SUM(CASE WHEN BUY_YIELD IS NOT NULL AND BUYABLE_QUANTITY IS NOT NULL THEN 1 ELSE 0 END),
+  SUM(CASE WHEN BUY_YIELD IS     NULL AND BUYABLE_QUANTITY IS     NULL THEN 1 ELSE 0 END),
+  SUM(CASE WHEN (BUY_YIELD IS NULL) <> (BUYABLE_QUANTITY IS NULL) THEN 1 ELSE 0 END)
+FROM domestic_bonds;
+-- ▶ 881 / 41,513 / 0   ← 엇갈림 0건 = 완벽 대응
+```
+
+**결측률 97.9%가 아니라 "매수 가능한 채권이 881개뿐"** 입니다.
+과제 명세에도 *"매수/세후 수익률은 **매수가능 종목 일부만** 수록"* 이라고 적혀 있습니다.
+→ 이건 데이터 품질 문제가 **아닙니다.**
+
+```sql
+-- ① 해당없음 — 펀드 사모구분
+SELECT trim(prvo_fd_desc), trim(prvo_pbff_desc), COUNT(*)
+FROM public_funds GROUP BY 1,2;
+-- ▶ ('해당없음','공모') 95,451 / ('일반사모(2015년전)','사모') 102   ← 1:1 대응
+```
+
+`'해당없음'` 은 **"공모라서 사모 세부구분이 없다"는 정보**이지 결측이 아닙니다.
+
+```
+-- ② 미제공 — 해외ETF 기초지수
+"Index is not provided by Management Company"  1,984건
+   → 지수는 있는데 운용사가 안 준 것. 결측으로 처리
+```
+
+#### 명세가 알려주는 결측 사유
+
+📄 과제 PDF의 데이터 명세표에 **결측 사유가 일부 명시**되어 있습니다:
+
+| 테이블 | 명세 기술 | 해석 |
+| :--- | :--- | :--- |
+| 국내채권 | *"매수/세후 수익률은 **매수가능 종목 일부만** 수록"* | ① 해당없음 |
+| 국내ETF | *"기초지수·총보수는 **일부 종목만** 수록"* | ② 미제공 |
+| 공모펀드 | *"**보수 정보 미포함**"* | ② 미제공 (컬럼 자체 없음) |
+
+> ⚠️ `*_schema.xlsx` 에는 **nullable 표기가 없습니다.** 위 3건 외에는 우리가 판정해야 합니다.
+
+#### 판정을 선언하는 법
+
+`ontology/enums/<domain>.yaml` 에 씁니다. **이 파일은 2단계에서 만들기 시작합니다**
+(결측 판정은 컬럼 단위라 워크샵 합의가 필요 없습니다).
+
+```yaml
+domain: public_funds
+columns:
+  prvo_fd_desc:
+    missing_semantics:
+      # prvo_pbff_desc='공모' 와 1:1 대응 → 정상 정보
+      "해당없음": not_applicable
+  cu_base_index:
+    missing_semantics:
+      "Index is not provided by Management Company": missing
+```
+
+선언 후 프로파일러를 다시 돌리면 반영됩니다:
+
+```bash
+python scripts/profile_table.py public_funds
+# ▶ (missing_semantics 2컬럼 반영)
+```
+
+> ✅ 이 파일은 **커밋 대상**입니다 (`.auto.yaml` 은 gitignore).
 
 ---
 
@@ -714,6 +876,8 @@ pd.crosstab(m['axis_fundType'], m['or_attr_desc'])
 ### 2단계 완료 조건
 
 - [ ] `docs/eda/<domain>_notes.md` 에 §3의 11개 질문에 대한 답이 있다
+- [ ] **결측 판정**을 `ontology/enums/<domain>.yaml` 의 `missing_semantics` 에 선언했다
+      (§3 🕳️) — `judgment_needed` 가 비워질 때까지
 - [ ] **`axis_*` 축별 유도 규칙과 정확도(N/100)** 를 기록했다 (§3 🎯) — 못 맞춘 축 포함
 - [ ] §3 질문 5·9·11의 답을 T0에 공유했다 (워크샵 안건용)
 - [ ] `eval/questions_<domain>.jsonl` 20문항 작성 완료
@@ -777,14 +941,20 @@ SELECT COUNT(*) FROM domestic_bonds WHERE TRIM(BD_KND) = '일반회사채';  -- 
 
 결측은 3가지 형태로 존재합니다:
 
-| 형태 | 실례 |
-| :--- | :--- |
-| 진짜 `NULL` | `domestic_etfs.cu_base_index` 125건 |
-| **공백 문자열** | `domestic_etfs.cu_base_index` 1,551건 (`'                '`) |
-| **센티넬 문장** | `overseas_etfs.cu_base_index`의 `Index is not provided by Management Company` 1,984건 / `Index is not available on Lipper Database` 721건 |
+| 형태 | 실례 | 판정 |
+| :--- | :--- | :--- |
+| 진짜 `NULL` | `domestic_etfs.cu_base_index` 125건 | 결측 |
+| **공백 문자열** | `domestic_etfs.cu_base_index` 1,551건 (`'                '`) | 결측 |
+| **문장형 센티넬** | `overseas_etfs.cu_base_index` 의 `Index is not provided by Management Company` 1,984건 | ⚠️ **판정 필요** |
+| **`해당없음`** | `public_funds.prvo_fd_desc` 95,451건 | ⚠️ **판정 필요 — 대개 정보** |
 
-`IS NULL`만 세면 해외ETF 기초지수 결측률이 **0.1%** 로 나오지만, 실제 답변 가능한 것은 **51.9%** 입니다.
-→ 프로파일 스크립트가 세 가지를 모두 포함해 계산합니다. **새 센티넬 문자열을 발견하면 노트에 기록**하세요.
+`IS NULL`만 세면 해외ETF 기초지수 결측이 **0.1%** 로 보이지만 실제 값은 **51.9%** 뿐입니다.
+반대로 `해당없음`을 결측으로 세면 `prvo_fd_desc` 가 **99.9% 결측**으로 부풀려집니다 —
+실제로는 `prvo_pbff_desc='공모'` 와 1:1 대응하는 **정상 값**입니다.
+
+> 🔑 **뒤 두 형태는 기계가 판정하지 않습니다.** `judgment_needed` 로 표시만 하고,
+> 사람이 §3 🕳️ 절차에 따라 `missing_semantics` 에 선언합니다.
+> **새 센티넬 문자열을 발견하면 노트에 기록**하세요.
 
 ### ③ 주요 컬럼 결측률 (조사 완료 — 재조사 불필요)
 

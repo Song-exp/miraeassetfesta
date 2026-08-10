@@ -32,14 +32,23 @@ columns:
   fd_yr1_ern_r:
     korean_name: 펀드 1년수익률
     missing_reason: missing
-    answer_policy: 수익률 Top-N 은 모수를 밝힐 것. 단위(누적/연환산) 미확정이므로 확정 전까지 비교 답변 주의.
-    note: 위험등급 결측과 18,404건 동시 발생, 등급만 결측은 12건뿐. → 수익률과 위험등급이 같은 평가 데이터 소스일 가능성. 기간이 길수록 결측 증가(1주 27% →
-      5년 47%)는 운용기간 때문으로 보이나 중첩 위반 수천 건이 있어 단정 불가.
+    answer_policy: 수익률은 **누적**임을 답변에 명시할 것 ('3년 수익률 10.5%' 를 연 10.5% 로 오해 방지). Top-N 은 모수를 밝히고, 아래 데이터
+      오류 종목을 제외할 것.
+    note: '위험등급 결측과 18,404건 동시 발생, 등급만 결측은 12건뿐. → 수익률과 위험등급이 같은 평가 데이터 소스일 가능성. 기간이 길수록 결측 증가(1주 27%
+      → 5년 47%)는 운용기간 때문으로 보이나 중첩 위반 수천 건이 있어 단정 불가. / 단위 확정: 누적 수익률(연환산 아님). MMF 5년 16.07% ≈ (1.03)^5=15.9%
+      로 검증, MMF만 98%가 5년>3년 (주식형 15%) 로 시장 정합.'
+    unit: percent_cumulative
   itm_eabrv_nm:
     korean_name: 종목영문약어명
     missing_reason: missing
     answer_policy: 영문약어 질의는 '데이터 미제공'.
     note: 99.8%(95,447/95,619) 결측, distinct 14종. 사실상 빈 컬럼.
+  fd_yr3_ern_r:
+    korean_name: 펀드 3년수익률
+    unit: percent_cumulative
+    trap: KCGI베트남증권투자신탁(KR515303001M) 5행이 -4,381% 등 -100% 미만. 원금 전액 손실이 -100% 이므로 데이터 오류. 2년·3년·5년·18개월
+      컬럼 동시 발생.
+    answer_policy: 수익률 Top-N(최저) 질의 시 `> -100` 조건으로 오류 종목 제외.
 normalization:
   trim_columns:
   - itm_abrv_nm
@@ -55,3 +64,4 @@ query_rules:
   판매중만: sale_yn = '판매중'
   공모만: prvo_pbff_desc = '공모'
   ETF제외: itm_nm NOT LIKE '%상장지수%'
+  수익률정상: fd_yr1_ern_r > -100 AND fd_yr3_ern_r > -100

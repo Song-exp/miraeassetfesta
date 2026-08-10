@@ -295,6 +295,27 @@ def detect_outlier(ctx):
     return out
 
 
+def detect_impossible_rate(ctx):
+    """
+    비율 컬럼이 이론적 하한(-100%)을 벗어난 경우.
+
+    수익률은 원금을 전부 잃어도 -100% 가 최저입니다. 그보다 낮은 값은
+    누적이든 연환산이든 설명되지 않으므로 **데이터 오류**입니다.
+    `detect_outlier` 는 최대값만 보기 때문에 이 경우를 놓칩니다.
+    """
+    n = ctx.numeric
+    if not n or not ctx.is_rate_like or n["min"] >= -100:
+        return []
+    cnt = ctx.scalar("SELECT COUNT(*) FROM {t} WHERE {c} < -100")
+    return [Finding(
+        "impossible_rate", "high",
+        f"비율 컬럼인데 이론적 하한(-100%)을 벗어난 값 {cnt:,}건 (최소 {n['min']:,.1f}) "
+        f"— 원금 전액 손실이 -100% 이므로 데이터 오류",
+        cnt,
+        ctx.sql("SELECT * FROM {t} WHERE {c} < -100"),
+    )]
+
+
 def detect_zero_heavy(ctx):
     """
     non-null 값의 상당수가 0인 수치 컬럼.
@@ -376,6 +397,7 @@ DETECTORS = [
     detect_multivalue,
     detect_mixed_type_categorical,
     detect_outlier,
+    detect_impossible_rate,
     detect_zero_heavy,
     detect_repeated_extreme,
     detect_empty_or_constant,

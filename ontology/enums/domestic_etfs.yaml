@@ -94,13 +94,32 @@ columns:
     answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd(숫자)는 있으나 의미 매핑 없음."
     note: 100% 결측. 코드(pd_sect_cd)만 있고 라벨 없음.
 
-  # ── 운용사 (약칭 함정) ──
+  # ── 운용사 (약칭 함정 + 상품명 오염) ──
   cu_fund_mgmt_co:
     korean_name: 운용사
     missing_reason: present
-    trap: "약칭 표기 — '미래에셋자산운용' 조회 시 0건(실제 '미래에셋' 193건). 정식명(메리츠증권 주식회사)·상품명 오염 약 60건·'.' 1건 혼재."
-    answer_policy: 운용사 질의는 약칭 기준. 정규화 매핑은 워크샵 결정(§F-4).
-    note: 97종. 삼성224·미래에셋193·KB147. ETN 발행 증권사(메리츠·신한투자)와 ETF 운용사 혼재.
+    trap: "① 약칭 표기 — '미래에셋자산운용' 조회 시 0건(실제 '미래에셋'). ② 상품명 오염 54건 — '삼성KODEX철강증권상장지수투자신탁[주식]'이 운용사 자리에. ③ 정식명(메리츠증권 주식회사)·'.' 1건 혼재."
+    answer_policy: "운용사 질의는 약칭 기준. 목록/집계 시 상품명 오염 행 제외(cu_fund_mgmt_co NOT LIKE '%상장지수%'). 정규화 매핑은 워크샵 §F-4."
+    note: "정상 약칭 32종(삼성·미래에셋·KB) + 상품명 오염 54건 = DISTINCT 97종으로 부풀려짐. ETN 발행 증권사와 ETF 운용사 혼재."
+
+  # ── 전일NAV·등락금액 (깨진 컬럼) ──
+  du_nav_yday:
+    korean_name: 전일NAV
+    missing_reason: broken
+    answer_policy: "'전일 대비 NAV 등락' 질의에 사용 금지. 일간 등락은 du_er_1d 사용."
+    note: "1,137건 전부 오늘 NAV 값이 복사됨(전일 값 아님). D.6."
+  du_nav_rnf_amt:
+    korean_name: 전일NAV등락금액
+    missing_reason: broken
+    answer_policy: "사용 금지 — 실제 등락이 아니라 -전일NAV로 잘못 계산됨."
+    note: "1,137건 전부 = -du_nav_yday. 실제등락(오늘-어제)인 종목 0건. D.6."
+
+  # ── 종가 (0값 = 미거래) ──
+  du_clpr:
+    korean_name: 종가
+    missing_reason: present
+    answer_policy: "가격 기반 Top-N/조회 시 du_clpr > 0 필터. 0값은 만기채권ETF·신규상장 미거래."
+    note: "0값 50건. AUM은 있으나 종가 0인 종목 존재."
 
 # ── ETF/ETN 구분 (핵심) ──
 product_group:

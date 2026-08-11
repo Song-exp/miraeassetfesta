@@ -1,0 +1,115 @@
+# overseas_etfs — 사람의 판단을 담는 파일
+# 기계적 사실은 *.auto.yaml 에 있습니다. 여기엔 판정과 규칙만 씁니다.
+# 런타임 가드레일이 이 파일을 읽습니다.
+#
+# 범위: 2단계(결측 판정 · 컬럼 판단 · 쿼리 규칙).
+#   개체·관계 매핑은 4단계(워크샵 후). → docs/eda/overseas_etfs_notes.md §F 참조.
+#   ⚠️ 국내ETF(domestic_etfs.yaml)와 비대칭이 큼 — 위험등급·기간수익률 컬럼 자체가 없음.
+
+domain: overseas_etfs
+
+columns:
+  # ── 없는 컬럼 = 대량 "데이터 미제공" (국내ETF엔 있으나 해외엔 부재) ──
+  _absent_columns:
+    korean_name: 국내ETF엔 있으나 해외ETF엔 없는 컬럼
+    answer_policy: "위험등급·1년/YTD/기간수익률 질의는 해외ETF 대상 시 '데이터 미제공' 명시. 국내ETF로 유도하거나 확인 불가 안내."
+    note: "pd_risk_nm·pd_risk_cd(위험등급), du_er_1y·du_er_ytd·du_er_1m/3m/6m(기간수익률) 컬럼 자체가 스키마에 없음. du_er_1d 는 있으나 전부 0."
+
+  # ── 기초지수 (센티넬) ──
+  cu_base_index:
+    korean_name: 기초지수
+    missing_reason: missing
+    answer_policy: "기초지수 질의는 센티넬 제외 후 유효 약 2,941건(52%) 한정 + 모수 명시."
+    trap: "센티넬 문자열 — 'Index is not provided by Management Company' 1,984건 + 'Index is not available on Lipper Database' 721건. IS NULL 로는 안 잡힘."
+    note: distinct 1,733종으로 보이나 절반이 센티넬. 실질 수록 52.1%.
+
+  # ── 수익률 (1일만, 전부 0) ──
+  du_er_1d:
+    korean_name: 1일수익률
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'. 해외ETF는 유일한 수익률 컬럼(du_er_1d)이 전부 0. 수익률 질의 답변 불가."
+    note: 유효 5,388건 전부 0. 기간수익률 컬럼은 아예 없음.
+    unit: percent
+
+  # ── 총보수 (국내와 대조 — 깨끗) ──
+  cu_charge_rt:
+    korean_name: 총보수요율
+    missing_reason: present
+    answer_policy: "결측 0% — 보수 질의에 신뢰도 높게 답변 가능. 0값 363건(레버리지/인버스/ETN 위주)만 개별 주의."
+    note: "국내ETF와 정반대. 중앙값 0.49%, max 2.50%. 0값 363건 중 ETN 51건. 단위 USD 기준 아님(요율 %)."
+    unit: percent
+
+  du_last_aum:
+    korean_name: 최종AUM
+    missing_reason: present
+    answer_policy: "AUM 질의 답변 가능(결측 3.3%). 단위 USD — 원화 비교 시 환율 주의."
+    note: 국내ETF(결측16.2%)보다 깨끗. 단위 USD.
+    unit: usd
+
+  # ── 실시간 (국내와 달리 채워짐) ──
+  ru_mkt_price:
+    korean_name: 현재가
+    missing_reason: present
+    answer_policy: "결측 0.2% — 종가로 백필된 값. 참고용."
+    note: 국내ETF는 100% 결측이나 해외는 종가(du_clpr)로 채워짐.
+
+  # ── 100%/고결측 ──
+  cu_lev_fector:
+    korean_name: 레버리지배수
+    missing_reason: missing
+    answer_policy: "레버리지/인버스 판별은 cu_inverse_short_yn='Y'(171건) + 상품명(Ultra/2X/Bull/Bear)으로 대체. cu_lev_fector 는 100% 결측이라 못 씀."
+    note: 100% 결측. 국내ETF는 유효했으나 해외는 전무.
+  du_diff_rt:
+    korean_name: 괴리율
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'."
+    note: 99.9% 결측.
+  du_last_nav:
+    korean_name: 최종NAV
+    missing_reason: missing
+    answer_policy: "NAV 질의는 유효 약 12%만. 모수 명시."
+    note: 87.9% 결측.
+
+  # ── 운용사 (영문) ──
+  cu_fund_mgmt_co:
+    korean_name: 운용사
+    missing_reason: present
+    trap: "영문 372종(BlackRock Fund Advisors 등). 국내ETF(한글 약칭)와 표기 체계 완전히 다름 → 교차질의 매핑 필요."
+    answer_policy: 운용사 질의는 영문 기준. 국내 운용사명과 매핑은 워크샵 결정(§F-2).
+    note: BlackRock 497·First Trust 316·Tidal 298. 결측 0.1%.
+
+# ── ETF/ETN 구분 ──
+product_group:
+  column: pd_grp_no
+  values:
+    ETF: 5587
+    ETN: 59
+  secondary: cu_etn_yn='Y' (59건), cu_inverse_short_yn='Y' (171건, 인버스/숏)
+  note: "ETN 1.0%로 국내(30.7%)보다 경미. ETF 전용 질의는 pd_grp_no='ETF'."
+
+# ── 정규화 ──
+normalization:
+  trim_columns:
+  - pd_nm
+  - pd_abrv_nm
+  - cu_fund_mgmt_co
+  - cu_base_index
+  - wu_inv_ast_type
+  - wu_inv_rgn
+  language_note: "자산군·지역이 영문. 국내ETF(한글)와 교차 시 매핑 테이블 필요 (주식↔Equity, 미국↔United States of America). → 워크샵 §F-2."
+
+# ── 쿼리 가드레일 ──
+query_rules:
+  ETF만: pd_grp_no = 'ETF'
+  ETN만: pd_grp_no = 'ETN'
+  기초지수유효: "cu_base_index NOT LIKE '%not provided%' AND cu_base_index NOT LIKE '%not available%'"
+  인버스숏: cu_inverse_short_yn = 'Y'
+  판매중만: pd_sale_yn = '1'
+  거래정상: pd_tr_yn = '0'
+
+# ── 국내ETF 대비 비대칭 요약 (교차질의 주의) ──
+domestic_asymmetry:
+  해외에_없는_것: [위험등급, 기간수익률(1일제외), axis정답축]
+  해외가_나은_것: [총보수(결측0%), AUM(결측3.3%), 식별자(ISIN/Lipper/CIK)]
+  언어차이: 자산군·지역 영문 (국내는 한글)
+  지역입도: 59종 국가단위 (국내는 11종 대분류)

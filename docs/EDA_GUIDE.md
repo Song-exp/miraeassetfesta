@@ -166,7 +166,9 @@ python scripts/build_db.py          # 엑셀 → SQLite (data/financial_products
 > ⚠️ **이미 가상환경을 만들어 둔 분도 `pip install` 을 다시 실행하세요.**
 > 프로파일러가 `pyyaml` 을 새로 씁니다. 안 하면 `ModuleNotFoundError: No module named 'yaml'` 로 죽습니다.
 >
-> `requirements-dev.txt` 는 노트북용(`jupyterlab`·`ipykernel`)이라 지금 같이 깔아두면 §3에서 바로 씁니다.
+> `requirements-dev.txt` 는 노트북용(`jupyterlab`·`ipykernel`·`matplotlib`)이라 지금 같이 깔아두면
+> §3에서 바로 씁니다. `matplotlib` 은 「📊 기초 통계」의 `dist()` 용이고 **없어도 텍스트 막대로
+> 동작**하니, 설치가 번거로우면 건너뛰어도 됩니다.
 > **제출용 Dockerfile 에는 넣지 마세요** — `requirements.txt` 만으로 API 서버가 구동되어야 합니다.
 
 ### 실행
@@ -568,6 +570,12 @@ FROM public_funds GROUP BY 1,2;
 >
 > 💡 `co_missing_matrix()` 는 컬럼을 **덩어리로 묶어** 줍니다. 하나씩 판정하지 말고
 > 덩어리 단위로 판정하세요. (공모펀드: 수익률 9컬럼 + 위험등급 2컬럼 → 판정 2번이면 11컬럼이 끝)
+>
+> ⚠️ **전(全)결측 컬럼은 덩어리에서 빠집니다.** 값이 하나도 없는 컬럼끼리는 자카드가
+> **자명하게 1.0** 이라 무조건 뭉치고, 사슬로 연결돼 원인이 전혀 다른 컬럼까지 끌어들입니다.
+> 국내ETF에서 실제로 그렇게 돼 빈 컬럼 6개가 `cu_base_index`·`cu_charge_rt` 를 같은
+> 덩어리로 만들었고, "8개가 같은 소스" 라는 **틀린 결론**이 나올 뻔했습니다 (§8-⑩).
+> 도구가 이제 이 둘을 갈라서 출력합니다. **`덩어리 내 최소 자카드`가 낮으면 사슬 연결을 의심하세요.**
 
 `ontology/enums/<domain>.yaml` 에 씁니다. **이 파일은 2단계에서 만들기 시작합니다**
 (결측 판정은 컬럼 단위라 워크샵 합의가 필요 없습니다).
@@ -1132,7 +1140,7 @@ SELECT COUNT(*) FROM domestic_bonds WHERE TRIM(BD_KND) = '일반회사채';  -- 
 | `domestic_etfs` | `cu_charge_rt` (총보수) | **87.5%** | 217 / 1,734 → ⚠️ **그중 150건이 `0`. 실질 67건** |
 | `domestic_etfs` | `du_er_1y` (1년수익률) | 20.6% | 1,377 |
 | `domestic_etfs` | `du_last_aum` (AUM) | 16.2% | 1,453 |
-| `domestic_etfs` | `pd_sect_nm` (섹터) | **100%** | 0 |
+| `domestic_etfs` | **컬럼 6개가 전(全)결측** | **100%** | 0 → §8-⑩ |
 | `overseas_etfs` | `cu_charge_rt` (총보수) | **0.0%** | 5,646 |
 | `overseas_etfs` | `cu_base_index` (센티넬 포함) | 48.1% | 2,933 |
 | `public_funds` | `fd_yr1_ern_r` (1년수익률) | 32.6% | 64,426 |
@@ -1275,6 +1283,74 @@ GROUP BY std_itm_no ORDER BY er DESC LIMIT 5;
 | `overseas_etfs.pd_sale_yn` | `1.0` (REAL, 단일값) |
 
 > **판매/거래 여부는 "모수 필터"입니다.** *"지금 살 수 있는 상품 중에서"* 라는 질의에 직결됩니다.
+
+### ⑩ 국내ETF — 빈 컬럼 6종 + ETN에는 기초지수·총보수가 아예 없음 🔴 **T2 확인 요망**
+
+노트북의 `miss_scan()` · `co_missing_matrix()` 로 새로 확인한 항목입니다 (2026-08-12, T0).
+
+**(가) 값이 단 하나도 없는 컬럼이 6개입니다** — 73컬럼 중 6개(8.2%).
+
+| 컬럼 | 한글명 | 성격 |
+| :--- | :--- | :--- |
+| `nru_mkt_inav` | 장중 iNAV | 실시간 시세 |
+| `ru_mkt_price` | 현재가 | 실시간 시세 |
+| `ru_mkt_volume` | 거래량 | 실시간 시세 |
+| `nru_mkt_diff_rt` | 괴리율 | 실시간 시세 |
+| `pd_dvid_cycl` | 당주기 | 배당 |
+| `pd_sect_nm` | ETF 섹터명 | 분류 |
+
+```sql
+SELECT COUNT(nru_mkt_inav), COUNT(ru_mkt_price), COUNT(ru_mkt_volume),
+       COUNT(nru_mkt_diff_rt), COUNT(pd_sect_nm) FROM domestic_etfs;
+-- ▶ 0 / 0 / 0 / 0 / 0     (pd_dvid_cycl 은 공백문자열 1,551 + NULL 183 = 1,734)
+```
+
+> ⚠️ `pd_dvid_cycl` 은 `IS NULL` 로 세면 10.6% 로 보입니다. **공백문자열 1,551건이 결측**이라
+> 실제로는 100% 입니다 (§8-② 의 위장 결측).
+>
+> **다른 테이블 대조:** 해외ETF는 `cu_lev_fector`(배수) 1개, 국내채권·공모펀드는 **0개**입니다.
+> → 전결측이 이 정도로 몰린 건 국내ETF뿐입니다.
+
+**→ 답변 정책:** 괴리율·현재가·거래량·iNAV·섹터·배당주기 질의는 **전건 `unanswerable`** 입니다.
+"실시간 시세는 마스터에 수록되지 않았습니다" 로 답해야 합니다.
+
+> 🔴 **괴리율은 컬럼이 두 개인데 둘 다 못 씁니다.** `nru_mkt_diff_rt` 는 전건 NULL이고,
+> `du_diff_rt` 는 값이 1,517건 있지만 **그 1,517건이 전부 `0`** 입니다 (유효값 0건).
+> `du_diff_rt` 가 채워져 있는 걸 보고 "괴리율은 답할 수 있다" 고 판단하면
+> **"괴리율 0%" 라는 환각**이 그대로 나갑니다.
+>
+> ```sql
+> SELECT COUNT(*), COUNT(du_diff_rt), SUM(CASE WHEN du_diff_rt=0 THEN 1 ELSE 0 END)
+> FROM domestic_etfs;   -- ▶ 1,734 / 1,517 / 1,517
+> ```
+
+**(나) ETN 532건은 기초지수·총보수가 0건입니다.**
+
+```sql
+SELECT TRIM(pd_grp_no), COUNT(*),
+  SUM(CASE WHEN TRIM(COALESCE(CAST(cu_base_index AS TEXT),''))<>'' THEN 1 ELSE 0 END) AS 기초지수,
+  SUM(CASE WHEN cu_charge_rt IS NOT NULL THEN 1 ELSE 0 END) AS 총보수
+FROM domestic_etfs GROUP BY 1;
+-- ▶ ETF 1,202 → 기초지수 58 · 총보수 217
+--   ETN   532 → 기초지수  0 · 총보수   0
+```
+
+**값을 가진 종목은 100% ETF입니다.** ETN의 보수·기초지수 질의는 예외 없이 `unanswerable` 이며,
+§8-⑤ 의 `pd_grp_no` 필터가 여기서도 그대로 필요합니다.
+
+**(다) 기초지수와 총보수를 함께 가진 종목은 2개뿐입니다.**
+
+| | 총보수 있음 | 총보수 없음 |
+| :--- | ---: | ---: |
+| **기초지수 있음** | **2** | 56 |
+| **기초지수 없음** | 215 | 1,461 |
+
+> 🔴 *"기초지수를 추종하면서 보수가 낮은 ETF"* 처럼 **두 컬럼을 함께 거는 질의는 모수가 2건**입니다.
+> 결측률을 컬럼별로만 보면(96.7% / 87.5%) 이 사실이 안 보입니다. **교차 모수를 확인하세요.**
+
+**T2가 할 일:** 원본 `*_schema.xlsx` 와 대조해 (1) 빈 컬럼 6종이 명세에는 있는데 데이터만 없는지
+아니면 명세부터 비어 있는지, (2) ETN에 기초지수·보수 개념이 원래 없는 것인지(→ `not_applicable`)
+아니면 미제공인지(→ `missing`) 판정해 `ontology/enums/domestic_etfs.yaml` 에 적어 주세요.
 
 ---
 

@@ -110,10 +110,84 @@ entities:
     note: '복합식 파싱 필요: ''MSCI ACWI CR 50% + 종합채권01Y 50%'''
   Country:
     kind: entity
-    source: prfd_attr_cd 국가태그 / fd_estb_ctry_cd
+    source: prfd_attr_cd 의 ISO 3자 태그 (17종) + fd_estb_ctry_cd(설립국)
     count: 17
     relation: FundClass -investsIn-> Country · Fund -establishedIn-> Country
-    note: 투자국(17종, 1,549종목 커버)과 설립국(410=한국)은 다른 관계
+    note: 투자국과 설립국(410=한국)은 다른 관계. 커버리지 13.9% 이므로 '중국 투자 펀드' 질의 시 모수 명시 필수 — 태그가 없다고 그 나라에 투자 안 하는 게 아님
+    coverage: prfd_attr_cd 행 1,670/95,619 (1.7%) · 종목 1,549/11,139 (13.9%)
+    trap: '''해외'' 1건이 태그 자리에 한글로 들어 있음 (ISO 코드 아님) — 화이트리스트에서 제외'
+  FundAttribute:
+    kind: entity
+    source: prfd_attr_cd 의 <문자><3자리숫자> 태그 (210종)
+    count: 210
+    label: null
+    relation: FundClass -hasAttribute-> FundAttribute
+    coverage: prfd_attr_cd 행 93,948/95,619 (98.3%) · 종목 11,138/11,139
+    axis_count: 15
+    note: 🔴 의미 미해독. 문자=축, 숫자=축 안의 값 (EAV). 축 15개가 각각 무엇인지는 원본 schema/금투협 코드표와 대조 필요. 축별 카디널리티는 axes 참조.
+      값 210종을 평면 태그로 모델링하지 말 것 — 축 15개 × 값 구조여야 한다
+    axes:
+      C:
+        값: 4
+        종목: 11138
+        카디널리티: 정확히 2 (고정 2슬롯)
+      D:
+        값: 5
+        종목: 11137
+        카디널리티: 0..3 다중값
+      V:
+        값: 3
+        종목: 11129
+        카디널리티: 0..2 다중값 (99.96%가 1개)
+      M:
+        값: 16
+        종목: 10645
+        카디널리티: 0..5 다중값
+      W:
+        값: 35
+        종목: 5359
+        카디널리티: 정확히 1 (단일값 축)
+      G:
+        값: 15
+        종목: 5143
+        카디널리티: 0..2 다중값
+      F:
+        값: 7
+        종목: 3751
+        카디널리티: 0..2 다중값
+      N:
+        값: 60
+        종목: 3486
+        카디널리티: 0..4 다중값
+      P:
+        값: 10
+        종목: 1610
+        카디널리티: 0..4 다중값
+      S:
+        값: 16
+        종목: 1354
+        카디널리티: 0..3 다중값
+      T:
+        값: 11
+        종목: 746
+        카디널리티: 정확히 1 (단일값 축)
+      R:
+        값: 10
+        종목: 532
+        카디널리티: 0..3 다중값
+      O:
+        값: 10
+        종목: 381
+        카디널리티: 정확히 1 (단일값 축)
+      E:
+        값: 3
+        종목: 272
+        카디널리티: 정확히 1 (단일값 축)
+      Q:
+        값: 5
+        종목: 38
+        카디널리티: 0..2 다중값
+    next: 해독 착수점은 C(4값·전종목·2슬롯)와 V(3값·전종목·단일) — 값 종류가 적고 커버리지가 전수라 기존 컬럼과 교차표로 정체가 드러날 가능성이 높음
 class_hierarchy:
   note: FIBO 원칙 — 펀드 유형은 owl:Class 하위클래스이지 개체가 아님. axis_fundType(주최 측 제시)이 법적 5분류 층위와 일치.
   Fund:
@@ -146,3 +220,54 @@ derivation_rules:
     축: 모자형 구조 (직교)
     규칙: 종목명에 '증권자'/'자투자신탁' 패턴
     해당: 7237
+  prfdAttrTag:
+    축: prfd_attr_cd 한 컬럼에 3종류가 섞여 있음 — 형태로 갈라야 한다
+    규칙: ① ISO 3자 대문자 → Country (investsIn)  ② <문자><3자리숫자> → FundAttribute (문자=축, 숫자=값)  ③ 그 외('해외' 1건)
+      → 오염, 제외
+    판정률: 국가 1,670행 + 코드형 93,948행 + 오염 1행 = 95,619 (100%)
+    note: 이 컬럼이 행을 가르는 유일한 축이다 (45컬럼 중 itm_no 안에서 갈리는 건 이것뿐). 따라서 FundClass 의 스칼라 속성이 아니라 관계로 모델링해야 한다
+attributes:
+  식별:
+  - std_itm_no
+  - ksd_itm_no
+  - fss_itm_no
+  - rptt_ksd_itm_no
+  이름:
+  - itm_abrv_nm
+  - itm_eng_nm
+  - itm_eabrv_nm
+  - bmrk_eng_nm
+  성과:
+  - fd_wk1_ern_r
+  - fd_mm1_ern_r
+  - fd_mm3_ern_r
+  - fd_mm6_ern_r
+  - fd_yr1_ern_r
+  - fd_mm18_ern_r
+  - fd_yr2_ern_r
+  - fd_yr3_ern_r
+  - fd_yr5_ern_r
+  규모:
+  - fd_nast_suma
+  위험:
+  - zrin_fd_ivst_risk_gcd
+  - zrin_fd_ivst_risk_grd_nm
+  분류:
+  - ovrs_fd_desc
+  - fd_ivst_rgn_desc
+  - kofia_fd_ccd
+  - prvo_fd_desc
+  - prvo_pbff_desc
+  - pers_corp_desc
+  - int_dvd_desc
+  - fd_set_pcd
+  거래판매:
+  - sale_yn
+  - thco_sale_yn
+  - pfiv_sale_cntl_tcd
+  - exchdg_yn
+  - frc_bpr_itm_yn
+  - hdge_fd_yn
+  - ofsfd_yn
+  - curr_cd
+  _note: 엔티티로 세우지 않고 FundClass 의 속성으로 두는 컬럼. 배정 검증이 이 블록을 함께 봐야 '전 컬럼 배정' 이 성립한다

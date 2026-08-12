@@ -134,7 +134,8 @@ python scripts/profile_table.py --report <내_테이블>    # 중요 발견 요�
 
 > 📌 **실제 인원은 3명입니다.** ETF 2개 트랙(T2·T3, 합 122컬럼)을 LEEbyeoungchul 한 사람이,
 > 공모펀드(T4)와 리드(T0)를 Song-exp 한 사람이 겸합니다.
-> → 작업 배분은 `docs/superpowers/specs/2026-08-12-ontology-design-and-roadmap.md` §7.7 참조.
+>
+> 🚀 **이 문서(EDA 단계)를 마친 뒤의 작업 지시는 → `docs/NEXT_STEPS.md`**
 
 > **T0가 하는 일:** T1~T4가 보낸 §3 질문 4·5의 답을 모아 테이블 간 불일치를 정리하고,
 > 워크샵(§5) 안건을 구성합니다.

@@ -53,11 +53,15 @@ htmlcov/
 *.sqlite3
 data/*.db
 
-# Raw data files
+# Raw data files — 원본 데이터는 절대 push 금지.
+# data/ 는 로컬 산출물/캐시 전용입니다.
 1.*/
 1.금융상품/
+data/
 *.xlsx
+*.xls
 *.csv
+*.parquet
 
 # Jupyter — 개인 탐색 노트북은 커밋하지 않습니다.
 # .ipynb 는 git diff 가 안 읽혀 리뷰가 불가능하고, 출력 셀에 데이터가 박힙니다.

@@ -1,0 +1,180 @@
+# domestic_etfs — 사람의 판단을 담는 파일
+# 기계적 사실은 *.auto.yaml 에 있습니다. 여기엔 판정과 규칙만 씁니다.
+# 런타임 가드레일이 이 파일을 읽습니다.
+#
+# 범위: 2단계(결측 판정 · 컬럼 판단 · 쿼리 규칙 · 검증된 축 유도).
+#   개체·관계 매핑(entities/class_hierarchy)은 4단계(워크샵 후). → docs/eda/domestic_etfs_notes.md §F 참조.
+
+domain: domestic_etfs
+
+columns:
+  # ── 보수 ──
+  cu_charge_rt:
+    korean_name: 총보수요율
+    missing_reason: missing
+    answer_policy: "'보수 낮은 ETF' 질의는 `cu_charge_rt > 0 AND pd_grp_no='ETF'` 로 한정하고 **유효 모수 67건** 명시. 0값은 미입력이므로 정렬에서 제외."
+    note: 결측 87.5%. non-null 217건 중 150건이 0(미입력). 실질 유효 67건(3.9%). 배당형 상품명 113건도 보수 0 → 0=미입력 확증. ETN 532건은 전부 NULL(ETN은 보수 개념 다름).
+    unit: percent
+  cu_charge_etc_rt:
+    korean_name: 기타비용요율
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'. 기타비용 질의 불가."
+    note: non-null 1,553건이 전부 0. 통째 미입력.
+    unit: percent
+
+  # ── 배당 (전부 0 = 미입력) ──
+  pd_divd_amt_pshr:
+    korean_name: 주당배당금
+    missing_reason: missing
+    answer_policy: "'배당 많이 주는 ETF' 질의 → 정확한 배당액은 '데이터 미제공' 명시. 단 상품명에 '배당'/'커버드콜'/'고배당' 포함 ETF 113건은 '배당형 상품 목록'으로 조건부 안내 가능."
+    note: non-null 1,551건 전부 0. 배당형 상품명 113건도 전부 0 → 무배당이 아니라 미입력.
+  pd_dvid_yield:
+    korean_name: 배당수익률
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'. 배당수익률 순위 질의 불가."
+    note: non-null 1,551건 전부 0. 미입력.
+  pd_dvid_cycl:
+    korean_name: 배당주기
+    missing_reason: missing
+    answer_policy: "월배당/분기배당 질의 → '데이터 미제공'. 상품명 '위클리'/'월배당' 등으로만 부분 유추."
+    note: 89.4% 결측(공백문자열). 유효 183건.
+
+  # ── 전부 0 (미입력) ──
+  du_chas_errt:
+    korean_name: 추적오차율
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'. 추적오차 질의 불가."
+    note: non-null 1,551건 전부 0.
+  du_diff_rt:
+    korean_name: 괴리율
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'. 괴리율 질의 불가."
+    note: non-null 1,517건 전부 0.
+
+  # ── 기초지수 ──
+  cu_base_index:
+    korean_name: 기초지수
+    missing_reason: missing
+    answer_policy: 기초지수 질의는 유효 58건 한정 + 모수 명시. 결측 대부분 공백문자열.
+    note: 결측 89.4%(유효 19종/58건). NULL 125 + 공백문자열 1,551. 상품명으로 부분 유추 가능.
+
+  # ── 수익률 (센티넬 + 이상치) ──
+  du_er_1y:
+    korean_name: 1년수익률
+    missing_reason: missing
+    answer_policy: "Top-N 질의 시 `du_er_1y > -100 AND du_er_1y IS NOT NULL` 로 센티넬 제외. 2,000% 초과 이상치는 단서 부기."
+    trap: "-100.0 이 98건 — 실제 -100%가 아니라 수치형 센티넬(상장폐지/미산출). max 2,738.95%(TIGER 200IT레버리지) 이상치."
+    note: 결측 20.6%. -100 센티넬 + 레버리지 이상치 동시 존재.
+    unit: percent
+
+  # ── 100% 결측 (스냅샷 · 미수록) ──
+  ru_mkt_price:
+    korean_name: 현재가
+    missing_reason: not_applicable
+    answer_policy: "현재가 질의 → '데이터 미제공'. 대신 종가(du_clpr)로 안내. 7/11 마감 스냅샷이라 실시간가 없음."
+    note: 100% 결측. ru_(실시간) 접두사 — EOD 스냅샷이라 구조적으로 부재.
+  ru_mkt_volume:
+    korean_name: 실시간거래량
+    missing_reason: not_applicable
+    answer_policy: "실시간 거래량 → '데이터 미제공'. 대신 du_vol_1d(일거래량)로 안내."
+    note: 100% 결측. ru_ 실시간 접두사.
+  nru_mkt_inav:
+    korean_name: 장중iNAV
+    missing_reason: not_applicable
+    answer_policy: "장중 iNAV → '데이터 미제공'. 대신 du_last_nav(최종NAV)로 안내."
+    note: 100% 결측. nru_ 장중실시간 접두사.
+  nru_mkt_diff_rt:
+    korean_name: 장중괴리율
+    missing_reason: not_applicable
+    answer_policy: "'데이터 미제공'."
+    note: 100% 결측. nru_ 장중실시간 접두사.
+  pd_sect_nm:
+    korean_name: ETF섹터명
+    missing_reason: missing
+    answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd(숫자)는 있으나 의미 매핑 없음."
+    note: 100% 결측. 코드(pd_sect_cd)만 있고 라벨 없음.
+
+  # ── 운용사 (약칭 함정 + 상품명 오염) ──
+  cu_fund_mgmt_co:
+    korean_name: 운용사
+    missing_reason: present
+    trap: "① 약칭 표기 — '미래에셋자산운용' 조회 시 0건(실제 '미래에셋'). ② 상품명 오염 54건 — '삼성KODEX철강증권상장지수투자신탁[주식]'이 운용사 자리에. ③ 정식명(메리츠증권 주식회사)·'.' 1건 혼재."
+    answer_policy: "운용사 질의는 약칭 기준. 목록/집계 시 상품명 오염 행 제외(cu_fund_mgmt_co NOT LIKE '%상장지수%'). 정규화 매핑은 워크샵 §F-4."
+    note: "정상 약칭 32종(삼성·미래에셋·KB) + 상품명 오염 54건 = DISTINCT 97종으로 부풀려짐. ETN 발행 증권사와 ETF 운용사 혼재."
+
+  # ── 전일NAV·등락금액 (깨진 컬럼) ──
+  du_nav_yday:
+    korean_name: 전일NAV
+    missing_reason: broken
+    answer_policy: "'전일 대비 NAV 등락' 질의에 사용 금지. 일간 등락은 du_er_1d 사용."
+    note: "1,137건 전부 오늘 NAV 값이 복사됨(전일 값 아님). D.6."
+  du_nav_rnf_amt:
+    korean_name: 전일NAV등락금액
+    missing_reason: broken
+    answer_policy: "사용 금지 — 실제 등락이 아니라 -전일NAV로 잘못 계산됨."
+    note: "1,137건 전부 = -du_nav_yday. 실제등락(오늘-어제)인 종목 0건. D.6."
+
+  # ── 종가 (0값 = 미거래) ──
+  du_clpr:
+    korean_name: 종가
+    missing_reason: present
+    answer_policy: "가격 기반 Top-N/조회 시 du_clpr > 0 필터. 0값은 만기채권ETF·신규상장 미거래."
+    note: "0값 50건. AUM은 있으나 종가 0인 종목 존재."
+
+# ── ETF/ETN 구분 (핵심) ──
+product_group:
+  column: pd_grp_no
+  values:
+    ETF: 1202
+    ETN: 532
+  note: "'국내ETF마스터'에 ETN 30.7% 혼입. ETF 전용 질의는 pd_grp_no='ETF' 필수. 보조신호: cu_strtegy='C'(409건 전부 ETN), ETN은 cu_charge_rt 전부 NULL."
+  workshop: ETF/ETN 별도 클래스 vs 공통상위 → §F-1
+
+# ── 정규화 (문자열 비교 시 TRIM) ──
+normalization:
+  trim_columns:
+  - pd_nm
+  - pd_abrv_nm
+  - cu_fund_mgmt_co
+  - cu_base_index
+  - wu_inv_ast_type
+  - wu_inv_rgn
+  - pd_exg_mkt_nm
+  - pd_mkt_nm
+
+# ── 쿼리 가드레일 ──
+query_rules:
+  ETF만: pd_grp_no = 'ETF'
+  ETN만: pd_grp_no = 'ETN'
+  보수유효: cu_charge_rt > 0            # 0은 미입력
+  수익률정상: du_er_1y > -100 AND du_er_1y IS NOT NULL   # -100 센티넬 제외
+  판매중만: pd_sale_yn = '1'
+  거래정상: pd_tr_yn = '0'
+  레버리지: cu_lev_fector >= 2
+  인버스: cu_lev_fector < 0
+
+# ── 축 유도 규칙 (샘플 100건 검증, docs/eda/domestic_etfs_notes.md §B) ──
+axis_derivation:
+  confirmed:            # 검증 완료 — 바로 사용 가능
+    strategy:
+      accuracy: 100/100
+      rule: cu_strtegy='액티브' → Active, else Passive
+    leverageType:
+      accuracy: 100/100
+      rule: cu_lev_fector 값매핑 (1→Standard, 2→Leveraged2X, -1→Inverse1X, -2→Inverse2X, ±3→Lev/Inv3X)
+    distributionType:
+      accuracy: 100/100
+      rule: 상품명에 'TR'/'Total Return' → TotalReturn, else Distributing
+    replicationMethod:
+      accuracy: 99/100
+      rule: cu_strtegy 실물복제→Physical / 합성복제→Synthetic
+    region:
+      accuracy: 94/100
+      rule: wu_inv_rgn='국내'→Domestic, else Overseas (+ '미국달러/엔선물' 통화는 Overseas 보정)
+  pending_workshop:     # 주최 기준이 특이 — 워크샵 확정 필요
+    assetType:
+      accuracy: 92/100
+      issue: 주최 정답이 wu_inv_ast_type·legacy_leaf 와 상충 (국고채→Equity, MMF/통화 별도). §F-2
+    underlyingScope:
+      accuracy: 87/100
+      issue: 독립축. 상품명 기초자산(대표지수/단일종목/섹터)으로 결정. legacy_leaf 계층으로는 안 나옴. §F-3

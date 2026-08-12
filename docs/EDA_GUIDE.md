@@ -126,11 +126,15 @@ python scripts/profile_table.py --report <내_테이블>    # 중요 발견 요�
 
 | 트랙 | 테이블 | 건수 | 컬럼 | 담당 |
 | :--- | :--- | ---: | ---: | :--- |
-| **T1** | `domestic_bonds` (국내채권) | 42,394 | 40 | |
-| **T2** | `domestic_etfs` (국내ETF) | 1,734 | 73 | |
-| **T3** | `overseas_etfs` (해외ETF) | 5,646 | 49 | |
-| **T4** | `public_funds` (공모펀드) | 95,619행 (고유 11,127) | 45 | |
-| **T0** | **워크샵 진행 + 교차 관계 취합** | — | — | 개발 리드 |
+| **T1** | `domestic_bonds` (국내채권) | 42,394 | 40 | **seohynun** |
+| **T2** | `domestic_etfs` (국내ETF) | 1,734 | 73 | **LEEbyeoungchul** |
+| **T3** | `overseas_etfs` (해외ETF) | 5,646 | 49 | **LEEbyeoungchul** |
+| **T4** | `public_funds` (공모펀드) | 95,619행 (고유 11,127) | 45 | **Song-exp** |
+| **T0** | **워크샵 진행 + 교차 관계 취합** | — | — | **Song-exp** (개발 리드) |
+
+> 📌 **실제 인원은 3명입니다.** ETF 2개 트랙(T2·T3, 합 122컬럼)을 LEEbyeoungchul 한 사람이,
+> 공모펀드(T4)와 리드(T0)를 Song-exp 한 사람이 겸합니다.
+> → 작업 배분은 `docs/superpowers/specs/2026-08-12-ontology-design-and-roadmap.md` §7.7 참조.
 
 > **T0가 하는 일:** T1~T4가 보낸 §3 질문 4·5의 답을 모아 테이블 간 불일치를 정리하고,
 > 워크샵(§5) 안건을 구성합니다.

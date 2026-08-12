@@ -82,6 +82,24 @@ MISSING_SEMANTICS = ("missing", "not_applicable")
 # 식별자(키) 후보로 볼 컬럼명 패턴
 ID_COLUMN_RE = re.compile(r"(^|_)(no|cd|id|code|isin)$|itm_no|isin", re.IGNORECASE)
 
+# ── 자리표시자(placeholder) 값 조건 — 단일 출처 ──────────────────
+# 값은 있는데 내용이 없는 것. IS NULL 로도 공백으로도 문장형 센티넬로도 안 잡힙니다.
+# 노트북도 이걸 import 해서 씁니다 — 조건을 두 곳에 쓰면 반드시 어긋납니다.
+#
+#   0이 3개 이상   'BBB0'·'AA0' 은 신용등급의 정상 표기입니다 (§8-④). 실제로
+#                  이 조건이 없을 때 domestic_bonds.CRD_GRD 116건을 오탐했습니다.
+#   1~9 없음       'KR7005930003' 같은 실제 코드를 보호합니다.
+PLACEHOLDER_ZERO_SQL = (
+    "LENGTH(TRIM({c})) >= 4 "
+    "AND LENGTH(TRIM({c})) - LENGTH(REPLACE(TRIM({c}), '0', '')) >= 3 "
+    "AND REPLACE(TRIM({c}), '0', '') NOT GLOB '*[1-9]*' "
+    "AND LENGTH(REPLACE(TRIM({c}), '0', '')) <= 4"
+)
+PLACEHOLDER_MARKS = (".", "-", "--", "?", "N/A", "n/a", "NA", "NULL", "null", "#N/A")
+PLACEHOLDER_MARK_SQL = (
+    "TRIM({c}) IN (" + ", ".join("'" + m.replace("'", "''") + "'" for m in PLACEHOLDER_MARKS) + ")"
+)
+
 # 플래그·날짜·코드 컬럼 — 수치처럼 저장돼 있지만 연속량이 아니므로 분포 탐지에서 제외
 NON_CONTINUOUS_RE = re.compile(r"_(yn|dt|cd|gcd|pcd|tcd|ccd|id)$", re.IGNORECASE)
 
@@ -369,6 +387,55 @@ def detect_repeated_extreme(ctx):
     return out
 
 
+def detect_placeholder_value(ctx):
+    """
+    **값은 있는데 내용이 없는** 자리표시자 값.
+
+    `IS NULL` 로도 공백으로도 안 잡히고, 문장형 센티넬 패턴에도 안 걸립니다.
+    그러나 이런 값이 든 행은 실질적으로 결측이고, 식별자 컬럼이라면 **무관한
+    레코드가 한 값으로 뭉쳐** 조인·집계를 오염시킵니다.
+
+    실례 (public_funds.rptt_ksd_itm_no):
+        'KR0000000000' 1,525행 · '000000000000' 976행
+        → 더미 하나에 무관한 펀드 284개가 묶임
+
+    잡는 것 — 두 부류:
+      ① 0으로만 채워진 식별자: 접두 문자를 빼면 0 외에 아무것도 안 남는 값
+      ② 텍스트 자리표시자: '.', '-', 'N/A', 'NULL' 등 한 글자~짧은 관용 표기
+
+    오탐을 막기 위해 ①에서 제외하는 것:
+      · 1~9 가 하나라도 남는 값 — 'KR7005930003' 같은 실제 코드
+      · 0이 2개 이하인 값 — 신용등급 'BBB0' · 'AA0' 은 0이 붙는 게 정상 표기입니다
+        (§8-④). 실제로 이 조건이 없을 때 CRD_GRD 116건을 오탐했습니다.
+
+    **결측 여부는 판정하지 않습니다** — 후보로만 표시하고 사람이 선언합니다.
+    """
+    if ctx.kind != "text" or not ctx.total:
+        return []
+
+    out = []
+    for label, cond, why in (
+        ("0으로만 채워진 값", PLACEHOLDER_ZERO_SQL,
+         "무관한 레코드가 한 값으로 뭉쳐 조인·집계를 오염시킵니다"),
+        ("자리표시 기호", PLACEHOLDER_MARK_SQL,
+         "DISTINCT 로 뽑으면 화이트리스트에 그대로 들어갑니다"),
+    ):
+        cnt = ctx.scalar(f"SELECT COUNT(*) FROM {{t}} WHERE {cond}")
+        if not cnt:
+            continue
+        vals = [r[0] for r in ctx.conn.execute(
+            ctx.sql(f"SELECT DISTINCT TRIM({{c}}) FROM {{t}} WHERE {cond} LIMIT 4"))]
+        out.append(Finding(
+            "placeholder_value",
+            "high" if cnt / ctx.total >= 0.01 else "medium",
+            f"{label} {cnt:,}건 ({cnt / ctx.total:.1%}) — {', '.join(map(repr, vals))}. "
+            f"값은 있지만 내용이 없습니다: {why}. 결측 여부는 판정 필요",
+            cnt,
+            ctx.sql(f"SELECT TRIM({{c}}), COUNT(*) FROM {{t}} WHERE {cond} GROUP BY 1 ORDER BY 2 DESC"),
+        ))
+    return out
+
+
 def detect_empty_or_constant(ctx):
     """전 레코드 결측이거나 값이 한 종류뿐인 컬럼. 질의 대상이 될 수 없습니다."""
     if ctx.n_distinct == 0:
@@ -400,6 +467,7 @@ DETECTORS = [
     detect_impossible_rate,
     detect_zero_heavy,
     detect_repeated_extreme,
+    detect_placeholder_value,
     detect_empty_or_constant,
     detect_boolean_variant,
     # ← 새 패턴을 발견하면 여기에 함수를 추가하세요 (파일 상단 주석 참조)

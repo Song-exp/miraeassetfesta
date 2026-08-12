@@ -1434,6 +1434,7 @@ ETF 구성종목(Holdings) 등 마스터에 없는 정보를 외부에서 보완
 | `.agents/rules/miraeasset-rules.md` | 핵심 개발 규칙 (확정 규칙 — 이 문서보다 우선) |
 | `docs/sqlite_db_architecture.md` | DB 구축 구조·인덱스 설계·컬럼별 함정 |
 | `docs/domain/<domain>.md` | **상품군별 도메인 가이드** — 배경지식 + 데이터 구조 (작성된 것부터) |
+| `docs/eda/<domain>_entity_map.md` | **엔티티 구조도** — 컬럼 전수를 개체·관계·속성에 배정한 표 (`scripts/gen_entity_map.py` 로 재생성) |
 | `docs/agent_architecture_notes.md` | Agent 그래프 구조 참고 노트 — 산출물이 런타임에서 어떻게 쓰이는지 |
 | `scripts/build_db.py` | 엑셀 → SQLite 변환 스크립트 |
 | `scripts/profile_table.py` | 컬럼 프로파일 자동 생성 (1단계) |

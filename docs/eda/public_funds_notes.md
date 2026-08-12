@@ -3,6 +3,7 @@
 > 담당: 개발 리드 · 테이블: `public_funds` (95,619행 × 45컬럼)
 > 도메인 배경지식은 `docs/domain/public_funds.md` 참조 — **이 문서는 데이터 분석 결과입니다.**
 > 작성 중 — §3 질문 11개 중 **1·2·3·4·5·8·9·10 완료**, 6·7·11 부분 완료
+> 🧬 **엔티티 구조도(컬럼 45개 전수 배정)는 별도 문서:** [`public_funds_entity_map.md`](public_funds_entity_map.md) — `python scripts/gen_entity_map.py` 로 재생성
 > 최종 갱신 2026-08-12 · 근거 도구: `notebooks/eda_template.ipynb` 의 🕳️ 결측 판정 · 📊 기초 통계 · 🔗 컬럼 패밀리
 
 ---

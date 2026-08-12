@@ -40,11 +40,60 @@
 > 따라서 *"미래에셋이 운용하는 상품 전부"* 는 **SQL로 표현할 수 없습니다.**
 > **온톨로지 = 그 조인을 가능하게 하는 층.** 상품의 속성을 기술하는 문서가 아닙니다.
 
-### 1.2 그래서 개체로 세울 것의 판별 기준
+### 1.2 그래서 KG 개체로 세울 것의 판별 기준
 
-> **"두 개 이상의 테이블에 등장하는가?"**
+> **"이 값으로 다른 테이블을 찾아가야 하는가?"**
+> - **예** → KG 개체 (표기가 달라서 정규화가 필요하므로)
+> - **아니오** → SQLite 컬럼 그대로. **범주형이어도**
 
-한 테이블에만 있는 값은 개체가 아니라 **컬럼**입니다. 207개 컬럼 중 200개는 SQLite에 그대로 두고, 온톨로지는 **노드 종류 6~8개짜리 작은 그래프**로 유지합니다.
+🔴 **"범주형이면 KG"가 아닙니다.** 범주형 컬럼 대부분은 한 테이블 전용이라 SQL이 바로 처리합니다.
+
+#### 이 기준으로 전 컬럼을 거르면 — 정확히 §3의 6종만 남습니다
+
+| KG로 감 | 왜 |
+| :--- | :--- |
+| Organization | `삼성` / `0008xxxx` / `(주)신한은행` / 영문 — 4테이블 표기가 전부 다름 |
+| Index | ETF `cu_base_index` ↔ 펀드 `bmrk_nm`. 해외는 체계가 다르고 펀드는 복합식 |
+| Region | 한글 11종 ↔ 영문 59종 ↔ ISO3 17종 |
+| AssetClass | `주식` ↔ `Equity` |
+| RiskGrade | INTEGER `1` ↔ 문자열 `PD_RISK_GCD_11` ↔ REAL `1.0` |
+| Currency | `KRW` ↔ `CURR_CD_KRW` |
+
+**KG에 안 가는 범주형 — 훨씬 많습니다** (한 테이블 전용이라 다른 테이블을 찾아갈 일이 없음)
+
+```
+채권      BD_KND(39) · STD_PD_MCLS_NM(6) · STD_PD_SCLS_NM(16) · CRD_GRD(20) · PD_EXG_MKT
+국내ETF   cu_strtegy(4) · cu_lev_fector · pd_pen_tr_yn · wu_core_yn · pd_sect_cd
+해외ETF   cu_index_repl_mthd · cu_inverse_short_yn · pd_exg_mkt_cd
+펀드      or_attr_desc(11) · prfd_attr_cd(210) · exchdg_yn · prvo_pbff_desc · sale_yn
+```
+
+> 💡 **위험등급은 KG에 갑니다** (4테이블 걸침 + 표기 3종). 반면 **펀드 `or_attr_desc`(11종)는 범주형인데 안 갑니다** — 펀드에만 있으니까요.
+
+#### ⚠️ `.ttl`에 있다고 KG 인스턴스가 필요한 건 아닙니다
+
+`pd_grp_no`(ETF/ETN)가 그 예입니다.
+
+```
+.ttl  ✅  ETF owl:disjointWith ETN     ← 제약은 필요
+KG    ❌  인스턴스 불필요               ← 국내·해외 표기가 'ETF'/'ETN' 로 동일
+SQL   ✅  WHERE pd_grp_no='ETF'        ← 바로 필터
+```
+
+`.ttl ⊃ KG` 관계가 아니라 **역할이 다릅니다.** `.ttl`은 모든 클래스·제약을, KG는 그중 **표기 정규화가 필요한 값만** 인스턴스로 갖습니다.
+
+#### ⚠️ KG는 원본 값을 대체하지 않습니다
+
+```
+SQLite  domestic_etfs.wu_inv_ast_type = '주식'      ← 원본 그대로
+SQLite  overseas_etfs.wu_inv_ast_type = 'Equity'    ← 원본 그대로
+KG      kg_assetclass: Equity(정규명) ─┬→ domestic_etfs · '주식'
+                                       └→ overseas_etfs · 'Equity'
+```
+
+**정규명 ↔ 원본값 매핑만** 갖습니다. §1.5 additive only와 같은 원리입니다.
+
+207개 컬럼 중 200개는 SQLite에 그대로 두고, KG는 **노드 종류 6종짜리 작은 그래프**로 유지합니다.
 
 ### 1.3 `.ttl` / KG / `yaml` — 셋의 역할 분담
 
@@ -93,6 +142,36 @@ yaml   →  어떤 필터를 반드시 붙이나   (ETF 한정·센티넬 제외
 | `yaml` | ✅ **절반** | `query_rules` → 코드가 SQL에 주입 (LLM 안 봄)<br>`answer_policy` → 프롬프트 주입 (LLM 봄) |
 
 **셋 중 어느 것도 LLM이 "검색"하지 않습니다.** 전부 코드가 읽어 프롬프트를 조립하거나 SQL을 만듭니다. **LLM은 DB 커넥션을 갖지 않습니다** — SQL 문자열을 만들 뿐이고 실행은 코드가 합니다 (`SELECT`만 허용 · 컬럼 화이트리스트 · `LIMIT` 강제).
+
+#### 📊 차원 / 사실 — 스타 스키마와 같은 구분
+
+```
+KG  =  차원 (무엇으로 찾아가나)          SQLite  =  사실 (답이 되는 값)
+       운용사 · 지수 · 지역                        수익률 · AUM · 보수
+       자산군 · 위험등급 · 통화                     종가 · 만기 · 듀레이션
+         └─────────── 조인 키 ───────────┘         + KG에 안 간 범주형 전부
+```
+
+**KG에는 수치가 없습니다.** `WHERE` 절을 만들고, `SELECT`·`ORDER BY`는 SQL이 담당합니다.
+
+#### 한 질의에서 셋이 도는 모습
+
+> *"미래에셋이 운용하는 미국 주식형 ETF 중 1년 수익률 상위 3개"*
+
+```
+① .ttl  DomesticETF 에 realizedReturn 속성 있음        → 진행 (없으면 즉시 기각)
+② KG    '미래에셋자산운용' → cu_fund_mgmt_co = '미래에셋'
+        '미국'             → wu_inv_rgn      = '미국'      (해외였다면 'United States of America')
+        '주식형'           → wu_inv_ast_type = '주식'      (해외였다면 'Equity')
+             ↓ 여기까지 수치는 하나도 없음
+③ yaml  query_rules.ETF만      → AND pd_grp_no='ETF'
+        query_rules.수익률정상 → AND du_er_1y > -100      (센티넬 34건 제외)
+④ SQL   SELECT … ORDER BY du_er_1y DESC LIMIT 3
+             ↓ 여기서 처음 수치가 나옴
+⑤ HCX   결과 3행 + 근거로 문장 생성
+```
+
+**①②③이 빠지면** — ①없으면 없는 속성을 지어내고, ②없으면 `'미래에셋자산운용'` 조회가 0건이고, ③없으면 ETN이 섞이고 센티넬이 최하위를 채웁니다.
 
 #### 📌 KG는 트리플스토어가 아니라 **SQLite 테이블**로
 

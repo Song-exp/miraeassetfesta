@@ -126,11 +126,16 @@ python scripts/profile_table.py --report <내_테이블>    # 중요 발견 요�
 
 | 트랙 | 테이블 | 건수 | 컬럼 | 담당 |
 | :--- | :--- | ---: | ---: | :--- |
-| **T1** | `domestic_bonds` (국내채권) | 42,394 | 40 | |
-| **T2** | `domestic_etfs` (국내ETF) | 1,734 | 73 | |
-| **T3** | `overseas_etfs` (해외ETF) | 5,646 | 49 | |
-| **T4** | `public_funds` (공모펀드) | 95,619행 (고유 11,127) | 45 | |
-| **T0** | **워크샵 진행 + 교차 관계 취합** | — | — | 개발 리드 |
+| **T1** | `domestic_bonds` (국내채권) | 42,394 | 40 | **seohynun** |
+| **T2** | `domestic_etfs` (국내ETF) | 1,734 | 73 | **LEEbyeoungchul** |
+| **T3** | `overseas_etfs` (해외ETF) | 5,646 | 49 | **LEEbyeoungchul** |
+| **T4** | `public_funds` (공모펀드) | 95,619행 (고유 11,127) | 45 | **Song-exp** |
+| **T0** | **워크샵 진행 + 교차 관계 취합** | — | — | **Song-exp** (개발 리드) |
+
+> 📌 **실제 인원은 3명입니다.** ETF 2개 트랙(T2·T3, 합 122컬럼)을 LEEbyeoungchul 한 사람이,
+> 공모펀드(T4)와 리드(T0)를 Song-exp 한 사람이 겸합니다.
+>
+> 🚀 **이 문서(EDA 단계)를 마친 뒤의 작업 지시는 → `docs/NEXT_STEPS.md`**
 
 > **T0가 하는 일:** T1~T4가 보낸 §3 질문 4·5의 답을 모아 테이블 간 불일치를 정리하고,
 > 워크샵(§5) 안건을 구성합니다.
@@ -166,7 +171,9 @@ python scripts/build_db.py          # 엑셀 → SQLite (data/financial_products
 > ⚠️ **이미 가상환경을 만들어 둔 분도 `pip install` 을 다시 실행하세요.**
 > 프로파일러가 `pyyaml` 을 새로 씁니다. 안 하면 `ModuleNotFoundError: No module named 'yaml'` 로 죽습니다.
 >
-> `requirements-dev.txt` 는 노트북용(`jupyterlab`·`ipykernel`)이라 지금 같이 깔아두면 §3에서 바로 씁니다.
+> `requirements-dev.txt` 는 노트북용(`jupyterlab`·`ipykernel`·`matplotlib`)이라 지금 같이 깔아두면
+> §3에서 바로 씁니다. `matplotlib` 은 「📊 기초 통계」의 `dist()` 용이고 **없어도 텍스트 막대로
+> 동작**하니, 설치가 번거로우면 건너뛰어도 됩니다.
 > **제출용 Dockerfile 에는 넣지 마세요** — `requirements.txt` 만으로 API 서버가 구동되어야 합니다.
 
 ### 실행
@@ -425,11 +432,35 @@ conn = sqlite3.connect(f"{DB.as_uri()}?mode=ro", uri=True)   # 쓰기 시도 →
 | 안전 셋업 | 읽기 전용 커넥션 + 쓰기 차단 검증 + `DOMAIN` 변수 하나만 바꾸면 됨 |
 | 헬퍼 | `q()` `vals()` `miss()` `peek()` `cross()` `kor()` — **전부 `TRIM()` 기본 적용** |
 | 1단계 요약 | `.auto.yaml` 을 읽어 `table_findings` · high · 저모수 컬럼 출력 |
+| 🕳️ 결측 판정 | `miss_scan()` `explain_missing()` `why_missing()` `co_missing_matrix()` → yaml 내보내기 |
+| 📊 기초 통계 | `stats_num()` `stats_cat()` `varying_cols()` `dist()` `show_outliers()` `corr_num()` |
+| 🔗 컬럼 패밀리 | `families()` `series_shape()` `codebook()` `code_layout()` — **컬럼끼리의 관계** |
 | §3 질문 11개 | 마크다운 셀로 박혀 있고 그 아래 출발점 코드 — 답을 채워 나가는 구조 |
 | §4 질의 작성 | `QUESTIONS` 리스트 → **전량 `gold_sql` 실행 검증** → `jsonl` 자동 생성 |
 
 `cross()` 가 §3 질문 5(다른 테이블과 표기가 같은가) 전용입니다 — 두 테이블의 값 집합을
 **겹침 / 우리만 / 상대만** 으로 갈라 보여줍니다.
+
+> 📊 **기초 통계는 전부 "행 단위 ‖ 엔티티 단위" 로 나란히 나옵니다.**
+> `<domain>.yaml` 의 `query_rules` 에 `종목단위: GROUP BY <컬럼>` 이 있으면 자동으로 잡습니다.
+> 공모펀드는 95,619행 / 11,139종목이라 행 단위 평균이 **속성태그 개수로 가중된 값**입니다.
+> `왜곡배수` 가 1에서 멀면 그 컬럼의 집계 질의는 `GROUP BY` 없이는 틀립니다.
+>
+> `varying_cols()` 는 **엔티티 안에서 값이 갈리는 컬럼** — 곧 *행을 가르는 축* 을 전수로 냅니다.
+> §3 질문 1(상품 하나를 식별하는 것)의 직접 재료입니다.
+> (공모펀드 실측: `prfd_attr_cd` 하나가 11,138/11,139 종목에서 갈림 → 이게 8.6배의 원인)
+
+> 🔗 **컬럼 하나로는 답이 안 나오는 질문이 있습니다.** 「🔗 컬럼 패밀리」 절이 그걸 다룹니다.
+>
+> | 도구 | 답하는 질문 | 공모펀드 실측 |
+> | :--- | :--- | :--- |
+> | `series_shape()` | 기간 수익률이 **누적인가 연환산인가** | 저변동군 예측오차 누적 0.014 vs 연환산 0.048 → **누적** |
+> | `codebook()` | 코드↔이름이 **1:1로 맞물리나** | 코드 `2.0` → `높은 위험` 3,281 / `높은위험` **20** (표기 흔들림) |
+> | `code_layout()` | 고정길이 코드의 **어느 자리가 무슨 뜻인가** | `kofia_fd_ccd` 1~5자리 숫자 계층 · 6자리부터 알파벳 · 10자리 경계 |
+> | `families()` | **짝 없는 코드 컬럼**은 무엇인가 | 13개 — 이름이 없으면 사용자 질의어와 못 잇습니다 (§5-A) |
+>
+> ⚠️ `series_shape()` 는 **1년 미만 기간을 제외**합니다. 안 그러면 1주 수익률의 연환산이
+> `(1+r)^52` 로 폭발해 **정반대 결론**이 나옵니다 (전 기간 0.3295 vs 1년 이상 0.0675).
 
 #### ⚠️ 노트북은 산출물이 아닙니다
 
@@ -544,7 +575,25 @@ FROM public_funds GROUP BY 1,2;
 #### 판정을 선언하는 법
 
 **노트북 템플릿의 「🕳️ 결측 판정」 절이 이 작업을 순서대로 안내합니다.**
-결측 컬럼 나열 → 원인 교차 확인(`why_missing`, `co_missing`) → 판정 기록 → yaml 내보내기.
+전 컬럼 훑기(`miss_scan`) → **원인 컬럼 자동 탐색**(`explain_missing`) → 상세(`why_missing`) →
+**결측 덩어리 묶기**(`co_missing_matrix`) → 판정 기록 → yaml 내보내기.
+
+> 🔑 **결측의 정의는 `is_missing()` 하나로 통일돼 있습니다** — `NULL` + 공백문자열 +
+> yaml 에 `missing` 으로 선언한 센티넬. `not_applicable` 로 선언한 값은 정보이므로 빠집니다.
+> **선언을 바꾸면 결측 집계가 그 자리에서 바뀝니다** — yaml 이 문서가 아니라 동작이라는 뜻입니다.
+>
+> 💡 `explain_missing()` 이 **`설명력 1.00` (엇갈림 0건)** 을 내면 그게 §8-② 의 `해당없음` 류를
+> 자동으로 찾아낸 것입니다. 실측 확인: `prvo_fd_desc` 를 결측으로 두면 `prvo_pbff_desc` 가
+> 설명력 1.00 으로 1위 → `not_applicable` 판정 근거.
+>
+> 💡 `co_missing_matrix()` 는 컬럼을 **덩어리로 묶어** 줍니다. 하나씩 판정하지 말고
+> 덩어리 단위로 판정하세요. (공모펀드: 수익률 9컬럼 + 위험등급 2컬럼 → 판정 2번이면 11컬럼이 끝)
+>
+> ⚠️ **전(全)결측 컬럼은 덩어리에서 빠집니다.** 값이 하나도 없는 컬럼끼리는 자카드가
+> **자명하게 1.0** 이라 무조건 뭉치고, 사슬로 연결돼 원인이 전혀 다른 컬럼까지 끌어들입니다.
+> 국내ETF에서 실제로 그렇게 돼 빈 컬럼 6개가 `cu_base_index`·`cu_charge_rt` 를 같은
+> 덩어리로 만들었고, "8개가 같은 소스" 라는 **틀린 결론**이 나올 뻔했습니다 (§8-⑩).
+> 도구가 이제 이 둘을 갈라서 출력합니다. **`덩어리 내 최소 자카드`가 낮으면 사슬 연결을 의심하세요.**
 
 `ontology/enums/<domain>.yaml` 에 씁니다. **이 파일은 2단계에서 만들기 시작합니다**
 (결측 판정은 컬럼 단위라 워크샵 합의가 필요 없습니다).
@@ -1109,7 +1158,7 @@ SELECT COUNT(*) FROM domestic_bonds WHERE TRIM(BD_KND) = '일반회사채';  -- 
 | `domestic_etfs` | `cu_charge_rt` (총보수) | **87.5%** | 217 / 1,734 → ⚠️ **그중 150건이 `0`. 실질 67건** |
 | `domestic_etfs` | `du_er_1y` (1년수익률) | 20.6% | 1,377 |
 | `domestic_etfs` | `du_last_aum` (AUM) | 16.2% | 1,453 |
-| `domestic_etfs` | `pd_sect_nm` (섹터) | **100%** | 0 |
+| `domestic_etfs` | **컬럼 6개가 전(全)결측** | **100%** | 0 → §8-⑩ |
 | `overseas_etfs` | `cu_charge_rt` (총보수) | **0.0%** | 5,646 |
 | `overseas_etfs` | `cu_base_index` (센티넬 포함) | 48.1% | 2,933 |
 | `public_funds` | `fd_yr1_ern_r` (1년수익률) | 32.6% | 64,426 |
@@ -1253,6 +1302,111 @@ GROUP BY std_itm_no ORDER BY er DESC LIMIT 5;
 
 > **판매/거래 여부는 "모수 필터"입니다.** *"지금 살 수 있는 상품 중에서"* 라는 질의에 직결됩니다.
 
+### ⑩ 국내ETF — 빈 컬럼 6종 + ETN에는 기초지수·총보수가 아예 없음 🔴 **T2 확인 요망**
+
+노트북의 `miss_scan()` · `co_missing_matrix()` 로 새로 확인한 항목입니다 (2026-08-12, T0).
+
+**(가) 값이 단 하나도 없는 컬럼이 6개입니다** — 73컬럼 중 6개(8.2%).
+
+| 컬럼 | 한글명 | 성격 |
+| :--- | :--- | :--- |
+| `nru_mkt_inav` | 장중 iNAV | 실시간 시세 |
+| `ru_mkt_price` | 현재가 | 실시간 시세 |
+| `ru_mkt_volume` | 거래량 | 실시간 시세 |
+| `nru_mkt_diff_rt` | 괴리율 | 실시간 시세 |
+| `pd_dvid_cycl` | 당주기 | 배당 |
+| `pd_sect_nm` | ETF 섹터명 | 분류 |
+
+```sql
+SELECT COUNT(nru_mkt_inav), COUNT(ru_mkt_price), COUNT(ru_mkt_volume),
+       COUNT(nru_mkt_diff_rt), COUNT(pd_sect_nm) FROM domestic_etfs;
+-- ▶ 0 / 0 / 0 / 0 / 0     (pd_dvid_cycl 은 공백문자열 1,551 + NULL 183 = 1,734)
+```
+
+> ⚠️ `pd_dvid_cycl` 은 `IS NULL` 로 세면 10.6% 로 보입니다. **공백문자열 1,551건이 결측**이라
+> 실제로는 100% 입니다 (§8-② 의 위장 결측).
+>
+> **다른 테이블 대조:** 해외ETF는 `cu_lev_fector`(배수) 1개, 국내채권·공모펀드는 **0개**입니다.
+> → 전결측이 이 정도로 몰린 건 국내ETF뿐입니다.
+
+**→ 답변 정책:** 괴리율·현재가·거래량·iNAV·섹터·배당주기 질의는 **전건 `unanswerable`** 입니다.
+"실시간 시세는 마스터에 수록되지 않았습니다" 로 답해야 합니다.
+
+> 🔴 **괴리율은 컬럼이 두 개인데 둘 다 못 씁니다.** `nru_mkt_diff_rt` 는 전건 NULL이고,
+> `du_diff_rt` 는 값이 1,517건 있지만 **그 1,517건이 전부 `0`** 입니다 (유효값 0건).
+> `du_diff_rt` 가 채워져 있는 걸 보고 "괴리율은 답할 수 있다" 고 판단하면
+> **"괴리율 0%" 라는 환각**이 그대로 나갑니다.
+>
+> ```sql
+> SELECT COUNT(*), COUNT(du_diff_rt), SUM(CASE WHEN du_diff_rt=0 THEN 1 ELSE 0 END)
+> FROM domestic_etfs;   -- ▶ 1,734 / 1,517 / 1,517
+> ```
+
+**(나) ETN 532건은 기초지수·총보수가 0건입니다.**
+
+```sql
+SELECT TRIM(pd_grp_no), COUNT(*),
+  SUM(CASE WHEN TRIM(COALESCE(CAST(cu_base_index AS TEXT),''))<>'' THEN 1 ELSE 0 END) AS 기초지수,
+  SUM(CASE WHEN cu_charge_rt IS NOT NULL THEN 1 ELSE 0 END) AS 총보수
+FROM domestic_etfs GROUP BY 1;
+-- ▶ ETF 1,202 → 기초지수 58 · 총보수 217
+--   ETN   532 → 기초지수  0 · 총보수   0
+```
+
+**값을 가진 종목은 100% ETF입니다.** ETN의 보수·기초지수 질의는 예외 없이 `unanswerable` 이며,
+§8-⑤ 의 `pd_grp_no` 필터가 여기서도 그대로 필요합니다.
+
+**(다) 기초지수와 총보수를 함께 가진 종목은 2개뿐입니다.**
+
+| | 총보수 있음 | 총보수 없음 |
+| :--- | ---: | ---: |
+| **기초지수 있음** | **2** | 56 |
+| **기초지수 없음** | 215 | 1,461 |
+
+> 🔴 *"기초지수를 추종하면서 보수가 낮은 ETF"* 처럼 **두 컬럼을 함께 거는 질의는 모수가 2건**입니다.
+> 결측률을 컬럼별로만 보면(96.7% / 87.5%) 이 사실이 안 보입니다. **교차 모수를 확인하세요.**
+
+**T2가 할 일:** 원본 `*_schema.xlsx` 와 대조해 (1) 빈 컬럼 6종이 명세에는 있는데 데이터만 없는지
+아니면 명세부터 비어 있는지, (2) ETN에 기초지수·보수 개념이 원래 없는 것인지(→ `not_applicable`)
+아니면 미제공인지(→ `missing`) 판정해 `ontology/enums/domestic_etfs.yaml` 에 적어 주세요.
+
+### ⑪ 같은 상품이 두 테이블에 다른 ID로 들어 있습니다 🔴 **T2·T4 공통 · 워크샵 안건**
+
+**공모펀드의 "상장지수" 펀드 23종이 국내ETF마스터에도 있습니다.** 그런데 **식별자로는 0건** 겹칩니다.
+
+```sql
+-- 펀드 쪽 상장지수 종목
+SELECT COUNT(DISTINCT itm_no) FROM public_funds WHERE itm_nm LIKE '%상장지수%';  -- ▶ 62
+
+-- ID 로 조인 → 0건. 종목명(공백 제거)으로만 23건 일치
+```
+
+| 종목명 | 펀드 `itm_no` | ETF `pd_itm_no` |
+| :--- | :--- | :--- |
+| 삼성KODEX200증권상장지수투자신탁[주식] | `KR5114601001` | `KR7069500007` |
+| 삼성KODEX단기채권증권상장지수투자신탁[채권] | `KR5114601049` | `KR7153130000` |
+
+원인은 **ISIN 접두 대역이 상품군마다 다르기 때문**입니다:
+
+| 테이블 | 컬럼 | 접두 대역 |
+| :--- | :--- | :--- |
+| `public_funds` | `itm_no` | `KR51` `KR50` `KR55` `KR52` |
+| `domestic_bonds` | `PD_NO` | `KR60` `KR35` `KR64` `KR61` |
+| `domestic_etfs` | `pd_itm_no` | `KR74` `KRG5` `KR70` `KR72` |
+| `overseas_etfs` | `pd_itm_no` / `pd_isin_cd` | 티커(`AAAA.K`) / `US…` |
+
+> 🔴 **두 테이블을 합쳐 세면 23개가 이중 계상됩니다.** *"국내 ETF가 몇 개야?"* 에 직결됩니다.
+> 조인 키가 없어 **이름으로만 이을 수 있고**, 공백·특수문자 정규화가 전제입니다.
+> → 워크샵 안건: 같은 개체로 병합할 것인가 / 병합한다면 매핑을 무엇으로 만들 것인가.
+>
+> 🔵 **반대로 좋은 소식도 있습니다** — 국내ETF `cu_base_index` 19종 중 **17종이 공모펀드
+> `bmrk_nm` 과 문자열까지 동일**합니다 (`KOSPI200` `MSCI ACWI` `MSCI CHINA` …).
+> **지수를 독립 개체로 세우면 "같은 지수를 추종하는 펀드와 ETF" 교차 질의가 바로 됩니다.**
+> 단 해외ETF(1,733종)와는 0종 겹침이고, 펀드 벤치마크는 복합식(`A 50% + B 50%`) 파싱이 필요합니다.
+
+> ⚠️ **오염 1건:** `domestic_etfs.pd_itm_no = 'KR'` (2글자). 같은 행의 `pd_nm` 도 `'.'` 입니다 —
+> §8-⑥ 의 `cu_fund_mgmt_co = '.'` 와 같은 행으로 보입니다. **행 전체가 오염된 레코드.**
+
 ---
 
 ## 9. 외부 데이터 수집 규칙 (해당 담당자만)
@@ -1285,6 +1439,7 @@ ETF 구성종목(Holdings) 등 마스터에 없는 정보를 외부에서 보완
 | `.agents/rules/miraeasset-rules.md` | 핵심 개발 규칙 (확정 규칙 — 이 문서보다 우선) |
 | `docs/sqlite_db_architecture.md` | DB 구축 구조·인덱스 설계·컬럼별 함정 |
 | `docs/domain/<domain>.md` | **상품군별 도메인 가이드** — 배경지식 + 데이터 구조 (작성된 것부터) |
+| `docs/eda/<domain>_entity_map.md` | **엔티티 구조도** — 컬럼 전수를 개체·관계·속성에 배정한 표 (`scripts/gen_entity_map.py` 로 재생성) |
 | `docs/agent_architecture_notes.md` | Agent 그래프 구조 참고 노트 — 산출물이 런타임에서 어떻게 쓰이는지 |
 | `scripts/build_db.py` | 엑셀 → SQLite 변환 스크립트 |
 | `scripts/profile_table.py` | 컬럼 프로파일 자동 생성 (1단계) |

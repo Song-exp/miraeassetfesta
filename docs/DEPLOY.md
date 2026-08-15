@@ -166,6 +166,41 @@ cd /opt/mirae && git pull && docker compose up -d --build
 
 ## 6. 이후 할 일
 
+### 🔴 DB 반입 — 지금은 서버에 DB가 없습니다
+
+스텁은 DB를 안 읽어서 이 상태로도 뜹니다. **에이전트를 붙이는 순간 걸립니다.**
+
+```
+data/financial_products.db   93MB
+  ├ .gitignore   data/         → git clone 해도 안 따라옴
+  ├ .dockerignore  *.db, data/ → 이미지에도 안 들어감
+  └ docker-compose.yml api:    → volumes 없음
+```
+
+원본 엑셀도 git에 없으므로 **서버에서 재생성도 불가능**합니다. 반입해야 합니다.
+
+```bash
+# 로컬에서 (선행 0 수정본인지 확인하고 보낼 것 — commit dd9b482 이후)
+scp -i <키>.pem data/financial_products.db root@<공인IP>:/opt/mirae/data/
+```
+
+그리고 `docker-compose.yml` 의 `api` 서비스에 마운트를 추가합니다.
+
+```yaml
+  api:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data:ro      # 🔴 읽기 전용. 컨테이너가 DB를 못 건드리게
+```
+
+> 📌 `:ro` 를 붙이는 이유 — 에이전트는 조회만 합니다. 쓰기 권한을 주면
+> SQLite 가 WAL/journal 파일을 만들다 권한 문제로 조용히 실패할 여지가 생깁니다.
+>
+> 📌 재빌드해도 볼륨은 유지되므로 DB는 한 번만 보내면 됩니다.
+
+### 나머지
+
 - [ ] `AGENT_READY=1` — 에이전트 연결 후
 - [ ] `answer_question()` 교체 (`src/api/main.py`) — 이 함수 하나만 바꾸면 됩니다
 - [ ] 서비스 API 키 한도 확인 → 테스트 키로 30문항을 버티는지 (`docs/bench/hcx_latency.md` §4)

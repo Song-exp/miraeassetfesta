@@ -1,0 +1,118 @@
+"""평가용 REST API — 주최측 오토배치가 호출하는 엔드포인트.
+
+규격 (PROJECT.md §7)
+  GET /answer?question_id=Q-001&question=<urlencoded>
+  → { question_id, question, retrieved_context, think_trace, answer }   5필드
+
+🔴 현재는 **생존용 더미**입니다 (지시서 §4.3 ② — "내용은 하드코딩 더미여도 됩니다").
+   에이전트가 완성되면 `answer_question()` 하나만 갈아끼우면 됩니다.
+   응답 형태·필드명·인코딩은 지금 확정해 두고, 내용만 나중에 채웁니다.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+
+from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+log = logging.getLogger("api")
+
+# 에이전트 완성 여부. 더미 응답임을 로그·헬스체크에 드러냅니다.
+AGENT_READY = os.environ.get("AGENT_READY", "0") == "1"
+
+app = FastAPI(
+    title="미래에셋 금융상품 AI Agent",
+    description="평가용 REST API. 데이터 기준일 2026-07-11.",
+    version="0.1.0-stub",
+)
+
+
+class AnswerResponse(BaseModel):
+    """주최측 채점기가 파싱하는 스키마. 필드명·개수를 바꾸면 안 됩니다."""
+
+    question_id: str
+    question: str
+    retrieved_context: str = Field(description="DB 조회 결과 원문. 근거 제시 배점")
+    think_trace: str = Field(description="각 노드의 실행 로그. 🔴 LLM 생성물이 아님")
+    answer: str
+
+
+def answer_question(question_id: str, question: str) -> AnswerResponse:
+    """🔴 스텁. 에이전트 완성 시 이 함수만 교체합니다.
+
+    지어낸 수치를 넣지 않습니다 — 평가 전에 주최측이 찔러볼 수 있고,
+    환각 방지가 우리 차별점인데 스텁이 환각을 반환하면 앞뒤가 안 맞습니다.
+    """
+    trace = "\n".join(
+        [
+            "1. [Normalize] 질의 정규화 완료",
+            "2. [Ground] 개체 매핑 — 미구현 (KG 미구축)",
+            "3. [Route] 온톨로지 라우팅 — 미구현 (.ttl 미작성)",
+            "4. [Decision] 에이전트 파이프라인 미완성 → 답변 보류",
+        ]
+    )
+    return AnswerResponse(
+        question_id=question_id,
+        question=question,
+        retrieved_context="",
+        think_trace=trace,
+        answer="현재 시스템 구축 중으로 답변을 제공할 수 없습니다.",
+    )
+
+
+@app.get("/health")
+def health() -> dict:
+    """엔드포인트 생존 확인용. 배포 모니터링에서 이걸 폴링합니다."""
+    return {"status": "ok", "agent_ready": AGENT_READY, "version": app.version}
+
+
+@app.get("/answer", response_model=AnswerResponse)
+def answer(
+    question_id: str = Query(..., description="문항 ID"),
+    question: str = Query(..., description="질의 원문"),
+) -> AnswerResponse:
+    t0 = time.perf_counter()
+    result = answer_question(question_id, question)
+    dt = time.perf_counter() - t0
+    log.info("answer qid=%s dt=%.3fs q=%r", question_id, dt, question[:80])
+    return result
+
+
+def _fallback(request: Request, trace: str) -> JSONResponse:
+    """🔴 어떤 경우에도 200 + 5필드 JSON 을 반환합니다.
+
+    채점기 입장에서 422/500 은 '파싱 실패'이고, 그건 '답변 불가'보다 나쁩니다.
+    형태를 지키면 최소한 오답으로 채점되지, 무응답으로 처리되지는 않습니다.
+    """
+    return JSONResponse(
+        status_code=200,
+        content=AnswerResponse(
+            question_id=request.query_params.get("question_id", ""),
+            question=request.query_params.get("question", ""),
+            retrieved_context="",
+            think_trace=trace,
+            answer="확인할 수 없습니다.",
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_params(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """필수 파라미터 누락·형식 오류. FastAPI 기본 422 스키마는 5필드가 아닙니다."""
+    log.warning("invalid params: %s", exc.errors())
+    return _fallback(request, "1. [Error] 요청 파라미터 오류 — 답변 불가로 처리")
+
+
+@app.exception_handler(Exception)
+async def unhandled(request: Request, exc: Exception) -> JSONResponse:
+    log.exception("unhandled error")
+    return _fallback(request, "1. [Error] 내부 처리 오류 — 답변 불가로 처리")

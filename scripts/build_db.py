@@ -19,6 +19,35 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 DB_PATH = os.path.join(DATA_DIR, "financial_products.db")
 
+# 🔴 선행 0 보존 대상 — 엑셀 원본이 0패딩 코드인데 숫자로 추론되어 손실된 컬럼.
+#
+#   or_co_xtn_itt_cd   00040010  →  40010.0   앞 4자리(기관 종별)가 통째로 소실
+#   trusc_xtn_itt_cd   00020054  →  20054.0
+#   fd_estb_ctry_cd    000       →  0.0
+#
+# 이들은 KG 개체(Organization·Country)의 식별자이자 코드북 조인 키다.
+# 깨진 채로 두면 스키마는 맞는데 매핑이 안 붙는다.
+#
+# 🔴 dtype=str 을 테이블 전체에 걸면 안 된다. 수익률·AUM·만기일까지 문자열이 되어
+#    모든 수치 비교·정렬이 깨진다. 반드시 컬럼을 지정한다.
+#
+# 근거: 원본 엑셀 전수 대조 (4개 테이블 × 전 컬럼, `^0\d+$` 스캔).
+#       국내채권·국내ETF 는 손실 0건이라 대상이 없다.
+#       해외ETF pd_lstg_dt 의 '00000000' 8건은 선행 0 손실이 아니라
+#       날짜 위장결측(=0)이므로 숫자형을 유지하고 yaml 에 기록한다.
+CODE_COLUMNS = {
+    "domestic_bonds": [],
+    "domestic_etfs": [],
+    "overseas_etfs": [],
+    "public_funds": [
+        "or_co_xtn_itt_cd",     # 운용사 대외기관코드   95,553 / 95,553 손실
+        "trusc_xtn_itt_cd",     # 수탁사 대외기관코드   95,553 / 95,553
+        "pfiv_sale_cntl_tcd",   # 판매통제구분코드      95,553 / 95,553
+        "fd_estb_ctry_cd",      # 펀드설정국가코드      92,838 / 95,553
+        "fd_set_pcd",           # 펀드설정P코드            458 / 95,618
+    ],
+}
+
 
 def find_data_directory():
     """금융상품 데이터 디렉터리 경로 탐색 (NFD/NFC 인코딩 유연 대응)"""
@@ -123,7 +152,20 @@ def build_database():
             continue
 
         print(f"\n📥 [{tbl_name}] 데이터 변환 중... ({os.path.basename(data_file)})")
-        df = pd.read_excel(data_file)
+
+        # 지정 컬럼만 문자열로 고정해 선행 0 을 보존한다 (CODE_COLUMNS 주석 참조).
+        str_cols = {c: str for c in CODE_COLUMNS.get(tbl_name, [])}
+        df = pd.read_excel(data_file, dtype=str_cols) if str_cols else pd.read_excel(data_file)
+
+        # 지정한 컬럼이 실제로 존재했는지, 선행 0 이 살아남았는지 즉시 확인한다.
+        # 컬럼명이 바뀌면 조용히 무시되므로 여기서 잡지 않으면 다음 재빌드에서 다시 깨진다.
+        for col in CODE_COLUMNS.get(tbl_name, []):
+            if col not in df.columns:
+                print(f"  ⚠️ 선행0 대상 컬럼 없음: {col} — CODE_COLUMNS 갱신 필요")
+                continue
+            sample = df[col].dropna().astype(str)
+            padded = sample[sample.str.match(r"^0\d")]
+            print(f"  🔑 {col:<20} 0패딩 {len(padded):>6,}건 보존  예) {padded.iloc[0] if len(padded) else '—'}")
 
         # SQLite 테이블 저장
         df.to_sql(tbl_name, conn, if_exists="replace", index=False)

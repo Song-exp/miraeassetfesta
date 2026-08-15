@@ -1,0 +1,45 @@
+# 배포 스택 — api(FastAPI) + caddy(TLS 종료·리버스 프록시)
+#
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# 🔴 caddy_data 볼륨을 지우지 마세요.
+#    발급받은 인증서가 여기 있습니다. 날리고 재발급을 반복하면
+#    Let's Encrypt 주간 발급 한도(도메인당 5회/주)에 걸려 HTTPS 가 막힙니다.
+
+services:
+  api:
+    build: .
+    env_file: .env
+    # 호스트에 포트를 열지 않습니다. Caddy 만 외부에 노출됩니다.
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # .env 의 SITE_ADDRESS=<공인IP>.nip.io
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # 🔴 인증서. 절대 삭제 금지
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

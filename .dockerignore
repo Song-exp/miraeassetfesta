@@ -1,0 +1,40 @@
+# 🔴 자격증명 — 절대 이미지에 들어가면 안 됩니다. 런타임에 --env-file 로 주입합니다.
+.env
+.env.local
+.env.*.local
+
+# 🔴 원본 데이터 — 이미지에 넣으면 안 되고 (배포물에 원본 유출), 크기도 큽니다.
+1.금융상품/
+1.*/
+data/
+*.xlsx
+*.xls
+*.csv
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+
+# 프로파일러 산출물 — 재생성 가능, 총 10MB+
+ontology/enums/*.values.txt
+ontology/enums/*.auto.yaml
+
+# 개발 전용
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+notebooks/
+.vscode/
+.idea/
+
+# 문서·산출물 (런타임에 안 씁니다)
+docs/
+eval/
+*.pdf

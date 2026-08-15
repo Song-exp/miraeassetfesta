@@ -1,0 +1,23 @@
+# Caddy 리버스 프록시 — Let's Encrypt 인증서를 자동 발급·갱신합니다.
+#
+# SITE_ADDRESS 는 docker-compose 가 .env 에서 주입합니다.
+#   예) SITE_ADDRESS=223.130.145.7.nip.io
+#   nip.io 는 <ip>.nip.io 를 그 IP로 해석해 주는 공개 와일드카드 DNS 입니다.
+#   도메인을 사지 않고도 Let's Encrypt 발급 조건(공인 DNS 이름)을 충족합니다.
+
+{$SITE_ADDRESS} {
+	# api 컨테이너로 넘깁니다. api 는 호스트에 포트를 열지 않습니다 —
+	# 외부에 노출되는 것은 Caddy 의 80/443 뿐입니다.
+	reverse_proxy api:8000
+
+	# 채점기가 무엇을 보냈는지 남깁니다. 평가 후 재현·소명에 씁니다.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format json
+	}
+
+	encode gzip
+}

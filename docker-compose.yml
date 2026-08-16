@@ -14,6 +14,16 @@ services:
     # 호스트에 포트를 열지 않습니다. Caddy 만 외부에 노출됩니다.
     expose:
       - "8000"
+    # DB 는 이미지에 들어가지 않습니다 (.dockerignore 의 *.db · data/).
+    # 호스트의 data/ 를 마운트해서 넣습니다 — 반입 절차는 docs/DEPLOY.md §6.
+    #
+    # 🔴 :ro 인 이유 — 에이전트는 조회만 합니다. DB 가 journal_mode=delete 라
+    #    읽기 전용이어도 SELECT 는 정상 동작합니다. (WAL 이었다면 -wal/-shm 을
+    #    만들지 못해 조회 자체가 막혔을 것입니다. 재빌드 시 journal_mode 를 바꾸지 마세요.)
+    # 📌 서버에 data/ 가 없어도 compose 가 빈 디렉터리로 만들어 줍니다.
+    #    DB 가 아직 없으면 스텁은 그대로 뜨고, 에이전트를 붙일 때 걸립니다.
+    volumes:
+      - ./data:/app/data:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=4).status==200 else 1)"]

@@ -29,10 +29,25 @@ log = logging.getLogger("api")
 # 에이전트 완성 여부. 더미 응답임을 로그·헬스체크에 드러냅니다.
 AGENT_READY = os.environ.get("AGENT_READY", "0") == "1"
 
+class UTF8JSONResponse(JSONResponse):
+    """🔴 규격: `Content-Type: application/json; charset=utf-8` (PROJECT.md §7 계약 조건).
+
+    FastAPI(starlette) 기본 `JSONResponse.media_type` 은 `application/json` 이라
+    charset 파라미터가 빠집니다. starlette 은 `text/*` 에만 charset 을 자동으로 붙이므로
+    JSON 에는 직접 명시해야 합니다.
+
+    본문 바이트는 원래도 UTF-8 이라 지금까지 한글이 깨지지는 않았습니다. 다만 규격이
+    헤더를 명시하고 있고, 위반 시 '파싱 실패 = 무응답 처리'라 형태를 맞춥니다.
+    """
+
+    media_type = "application/json; charset=utf-8"
+
+
 app = FastAPI(
     title="미래에셋 금융상품 AI Agent",
     description="평가용 REST API. 데이터 기준일 2026-07-11.",
     version="0.1.0-stub",
+    default_response_class=UTF8JSONResponse,
 )
 
 
@@ -93,7 +108,7 @@ def _fallback(request: Request, trace: str) -> JSONResponse:
     채점기 입장에서 422/500 은 '파싱 실패'이고, 그건 '답변 불가'보다 나쁩니다.
     형태를 지키면 최소한 오답으로 채점되지, 무응답으로 처리되지는 않습니다.
     """
-    return JSONResponse(
+    return UTF8JSONResponse(
         status_code=200,
         content=AnswerResponse(
             question_id=request.query_params.get("question_id", ""),

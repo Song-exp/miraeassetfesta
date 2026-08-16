@@ -119,17 +119,28 @@ Let's Encrypt 주간 5회 한도 때문에, 원인을 모른 채 `up --build` �
 
 ---
 
-## 5. 통과 기준 — 이게 다 되면 끝
+## 5. 통과 기준 — ✅ **전부 통과 (2026-08-16)**
 
-- [ ] `docker compose up -d --build` 빌드 성공
-- [ ] `docker compose logs caddy` 에 **`certificate obtained successfully`**
-- [ ] 밖에서 `https://<IP>.nip.io/health` → `{"status":"ok","agent_ready":false,...}`
-- [ ] 밖에서 `https://<IP>.nip.io/answer` → **5필드 JSON**
-- [ ] **한글 질의 왕복 무손상** (`question` 에코가 안 깨질 것)
-- [ ] `question` 파라미터 누락 시에도 **200 + 5필드** (폴백 작동)
-- [ ] **서버 재부팅 후 자동 복구** (`restart: unless-stopped`)
+**엔드포인트: `https://49.50.134.229.nip.io/answer`** — 제출물에 이 URL 이 들어갑니다.
 
-> 마지막 항목까지 봅니다. 평가 당일 인스턴스가 한 번 튀어도 알아서 살아나야 합니다.
+- [x] `docker compose up -d --build` 빌드 성공 — **첫 시도 성공**
+- [x] `docker compose logs caddy` 에 **`certificate obtained successfully`** — 첫 시도, 한도 미소모
+- [x] 밖에서 `/health` → `{"status":"ok","agent_ready":false,"version":"0.1.0-stub"}`
+- [x] 밖에서 `/answer` → **5필드 JSON** (필드 순서까지 일치)
+- [x] **한글 질의 왕복 무손상** — 45자 코드포인트 완전 일치
+- [x] `question` 파라미터 누락 시에도 **200 + 5필드** (폴백 작동)
+- [x] **서버 재부팅 후 자동 복구** — SSH 20초 복귀 · 컨테이너 자동 기동 · **인증서 md5 동일(재발급 0회)**
+
+추가로 확인한 것:
+
+- [x] `Content-Type: application/json; charset=utf-8` — §7 계약 조건 (`35a857e` 로 수정)
+- [x] HTTP → HTTPS 리다이렉트 308
+- [x] 응답 시간 7~9ms (권장 15초 / 문항당 60초 대비 여유)
+- [x] 인증서 유효기간 **2026-11-14** — 평가 종료(9/20) 이후라 갱신이 평가 구간에 끼지 않음
+- [x] `systemctl is-enabled docker` = enabled — 재부팅 시 데몬 자동 기동
+- [x] DB 반입 완료 `/opt/mirae/data/financial_products.db` (md5 `29767df7…` 로컬과 일치)
+
+> 재부팅 검증까지 마쳤습니다. 평가 당일 인스턴스가 한 번 튀어도 알아서 살아납니다.
 
 기대 응답:
 

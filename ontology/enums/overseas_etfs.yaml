@@ -42,9 +42,12 @@ columns:
   du_last_aum:
     korean_name: 최종AUM
     missing_reason: present
-    answer_policy: "AUM 질의 답변 가능(결측 3.3%). 단위 USD — 원화 비교 시 환율 주의."
-    note: 국내ETF(결측16.2%)보다 깨끗. 단위 USD.
+    answer_policy: "AUM 질의 답변 가능(결측 3.3%). 단위 USD. 국내ETF(KRW)와 통합 정렬 금지 — 7/11 환율(코드북⑤) 확정 전까지 상품군별로 분리 제시."
+    note: "단위 USD 확정 (VOO $995B·SPY $783B 실제값 대조 + pd_trd_ccy 전부 USD). 국내ETF는 KRW라 숫자 직접 비교 시 순위 역전(함정②)."
     unit: usd
+    layer:
+      scale: USD (달러)
+      cross_sort: "국내ETF du_last_aum(KRW)와 나란히 정렬 불가. VOO $995B > KODEX200 28.4조원(≈$200억)인데 숫자만 보면 KODEX가 28배 커 보임."
 
   # ── 실시간 (국내와 달리 채워짐) ──
   ru_mkt_price:

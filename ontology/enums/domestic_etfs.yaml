@@ -8,6 +8,17 @@
 domain: domestic_etfs
 
 columns:
+  # ── 규모 (단위 주의) ──
+  du_last_aum:
+    korean_name: 최종AUM(순자산총액)
+    missing_reason: missing
+    answer_policy: "AUM 질의 답변 가능(결측 16.2%). 단위 KRW(원). 해외ETF(USD)와 통합 정렬 금지 — 상품군별 분리 제시."
+    note: "단위 KRW 확정 (KODEX200 = 28.4조원, 실제값 일치). 해외ETF du_last_aum은 USD라 숫자 직접 비교 시 순위 역전(함정②). 0값 411건은 미거래/신규."
+    unit: krw
+    layer:
+      scale: KRW (원)
+      cross_sort: "해외ETF du_last_aum(USD)와 나란히 정렬 불가. 7/11 환율(코드북⑤) 확정 후에만 통합 가능."
+
   # ── 보수 ──
   cu_charge_rt:
     korean_name: 총보수요율

@@ -77,6 +77,19 @@ columns:
     answer_policy: "위험등급·1년/YTD/기간수익률 질의는 해외ETF 대상 시 '데이터 미제공' 명시. 국내ETF로 유도하거나 확인 불가 안내."
     note: "pd_risk_nm·pd_risk_cd(위험등급), du_er_1y·du_er_ytd·du_er_1m/3m/6m(기간수익률) 컬럼 자체가 스키마에 없음. du_er_1d 는 있으나 전부 0."
 
+  # ── 상장시장 (101·102 세부코드) ──
+  pd_exg_mkt_cd:
+    korean_name: 거래소코드
+    missing_reason: present
+    answer_policy: "AMX/NAS/NYS는 미국 주요 3시장. 101·102는 미국 소형/신규 상장 세부코드로 취급(전부 pd_mkt_id='US')."
+    note: "AMX 4,241 / NAS 1,296 / NYS 78 / 102 22 / 101 9. 101·102(31건)는 교차대조상 미국 소형·신규 상장 ETF(티커 접미어 .O/.K). 정확한 시장명은 코드북④ 대상이나 영향 작음."
+    value_semantics:
+      AMX: NYSE American (미국)
+      NAS: NASDAQ (미국)
+      NYS: NYSE (미국)
+      "101": 미국 소형/신규 상장(세부, 9건)
+      "102": 미국 소형/신규 상장(세부, 22건)
+
   # ── 기초지수 (센티넬) ──
   cu_base_index:
     korean_name: 기초지수

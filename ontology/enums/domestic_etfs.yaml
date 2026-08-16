@@ -102,8 +102,20 @@ columns:
   pd_sect_nm:
     korean_name: ETF섹터명
     missing_reason: missing
-    answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd(숫자)는 있으나 의미 매핑 없음."
-    note: 100% 결측. 코드(pd_sect_cd)만 있고 라벨 없음.
+    answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd는 섹터가 아니라 상품유형 구분임(아래)."
+    note: 100% 결측. 🔴 섹터명이 없는 게 아니라 pd_sect_cd 자체가 섹터가 아님(상품구조 코드).
+  pd_sect_cd:
+    korean_name: ETF섹터코드(실제=상품유형구분)
+    missing_reason: present
+    answer_policy: "'섹터' 질의에 이 코드로 답하지 말 것 — 섹터가 아니라 상품유형 구분임."
+    note: "🔴 교차대조로 해독: 섹터 아님. 2=일반ETF(1,126) / 3=일반ETN(406) / 8=단일종목ETF(16, 삼성전자·SK하이닉스) / 4·9=ETN소수 / NULL=ETF60+ETN123. pd_grp_no와 거의 대응."
+    value_semantics:
+      "2.0": 일반 ETF
+      "3.0": 일반 ETN
+      "4.0": ETN(기타)
+      "8.0": 단일종목 ETF        # underlyingScope=SingleStock 판별 근거
+      "9.0": ETN(기타)
+    cross_use: "코드 8 = 단일종목 ETF → axis_underlyingScope 의 SingleStock 유도에 활용 가능(§B underlyingScope 87% 보강)."
 
   # ── 운용사 (약칭 함정 + 상품명 오염) ──
   cu_fund_mgmt_co:

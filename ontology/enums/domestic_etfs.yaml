@@ -113,9 +113,9 @@ columns:
       "2.0": 일반 ETF
       "3.0": 일반 ETN
       "4.0": ETN(기타)
-      "8.0": 단일종목 ETF        # underlyingScope=SingleStock 판별 근거
+      "8.0": 단일종목ETF(상품명에 '단일종목')  # ⚠️ underlyingScope=SingleStock 과는 불일치(아래)
       "9.0": ETN(기타)
-    cross_use: "코드 8 = 단일종목 ETF → axis_underlyingScope 의 SingleStock 유도에 활용 가능(§B underlyingScope 87% 보강)."
+    cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. 코드8인데 정답 SectorTheme(예: KODEX SK하이닉스단일종목레버리지), 코드2인데 정답 SingleStock(예: 테슬라밸류체인)이 다수. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
 
   # ── 운용사 (약칭 함정 + 상품명 오염) ──
   cu_fund_mgmt_co:

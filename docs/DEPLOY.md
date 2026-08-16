@@ -14,7 +14,7 @@
           │  HTTPS GET /answer?question_id=&question=
           ▼
   ┌───────────────────────────────────────────┐
-  │  NCP Server (Ubuntu 22.04, 2vCPU/4GB)     │
+  │  NCP Server (Ubuntu 24.04, 2vCPU/4GB)     │
   │                                            │
   │   [Caddy]  :80 :443  ← 외부 노출은 여기뿐  │
   │      │  Let's Encrypt 자동 발급·갱신       │
@@ -32,16 +32,19 @@
 
 ## 1. NCP 콘솔 — 서버 개설
 
+> 📖 **화면별 클릭 순서와 입력값은 `docs/NCP_CONSOLE.md` 에 있습니다.** 아래는 요약입니다.
+
 | 항목 | 값 | 비고 |
 | :--- | :--- | :--- |
 | 플랫폼 | **VPC** | Classic 말고 VPC |
-| 이미지 | Ubuntu Server 22.04 LTS | |
+| 이미지 | Ubuntu Server **24.04 LTS** | 22.04 도 무방. 앱이 컨테이너 안이라 호스트 버전 무관 |
 | 서버 타입 | **2vCPU / 4GB** | PROJECT.md §6-2 명시 사양 |
-| 스토리지 | 기본 50GB | Docker 이미지 여유 |
+| 요금제 | **시간 요금제** | 정지 기간 제한·중도 해지 제약을 피하려고 |
+| 스토리지 | **50GB** | 주최측 권장 20GB 상향. 9/7~9/20 은 정지 불가 = 증설 창구 없음 |
 | 인증키 | 신규 생성 → **`.pem` 다운로드** | 🔴 재발급 불가. 잃으면 서버 재생성 |
 | 공인 IP | **할당** | 이게 있어야 `nip.io` 가 성립 |
 
-순서: `VPC 생성` → `Subnet 생성(Public)` → `Server 생성` → `공인 IP 할당`
+순서: `VPC 생성` → `Subnet 생성(Public)` → `ACG 규칙` → `Server 생성` → `공인 IP 할당`
 
 ### ACG 인바운드 규칙
 
@@ -171,33 +174,71 @@ cd /opt/mirae && git pull && docker compose up -d --build
 스텁은 DB를 안 읽어서 이 상태로도 뜹니다. **에이전트를 붙이는 순간 걸립니다.**
 
 ```
-data/financial_products.db   93MB
-  ├ .gitignore   data/         → git clone 해도 안 따라옴
-  ├ .dockerignore  *.db, data/ → 이미지에도 안 들어감
-  └ docker-compose.yml api:    → volumes 없음
+data/financial_products.db   95MB
+  ├ .gitignore:60    data/       → git clone 해도 안 따라옴
+  ├ .dockerignore    *.db, data/ → 이미지에도 안 들어감
+  └ docker-compose.yml api:      → ✅ volumes 반영 완료 (아래 참조)
 ```
 
 원본 엑셀도 git에 없으므로 **서버에서 재생성도 불가능**합니다. 반입해야 합니다.
 
-```bash
-# 로컬에서 (선행 0 수정본인지 확인하고 보낼 것 — commit dd9b482 이후)
-scp -i <키>.pem data/financial_products.db root@<공인IP>:/opt/mirae/data/
+#### ① 보낼 파일을 확인합니다 — 로컬에 DB가 **2개** 있습니다
+
+```
+data/financial_products.db             ← 🔴 이것을 보냅니다 (선행 0 수정본, dd9b482)
+data/financial_products.pre_dtype.db   ← 수정 전 백업. 보내면 안 됩니다
 ```
 
-그리고 `docker-compose.yml` 의 `api` 서비스에 마운트를 추가합니다.
+이름이 비슷해서 탭 완성으로 잘못 잡기 쉽습니다. **보내기 전에 한 줄로 판별하세요.**
+
+```bash
+python -c "import sqlite3;print(sqlite3.connect('data/financial_products.db').execute(\"select typeof(or_co_xtn_itt_cd), or_co_xtn_itt_cd from public_funds limit 1\").fetchone())"
+```
+
+| 출력 | 판정 |
+| :--- | :--- |
+| `('text', '00040010')` | ✅ 수정본. 이걸 보냅니다 |
+| `('real', 40010.0)` | 🔴 수정 전. 보내면 **코드북 조인이 전부 0건**이 됩니다 |
+
+#### ② 🔴 서버에 디렉터리를 먼저 만듭니다
+
+`data/` 는 `.gitignore` 로 막혀 있어 **`git clone` 후 서버에 존재하지 않습니다.**
+바로 `scp` 하면 `No such file or directory` 로 실패합니다.
+
+```bash
+# 서버에서
+mkdir -p /opt/mirae/data
+```
+
+#### ③ 전송
+
+```bash
+# 로컬에서 — 95MB, 회선에 따라 1~5분
+scp -i <키>.pem data/financial_products.db root@<공인IP>:/opt/mirae/data/
+
+# 서버에서 검증 — 크기가 로컬과 같은지
+ls -l /opt/mirae/data/financial_products.db
+```
+
+#### ④ 마운트 — **이미 반영되어 있습니다**
+
+`docker-compose.yml` 의 `api` 서비스에 아래가 들어가 있습니다. 서버에서 편집할 필요 없습니다.
 
 ```yaml
   api:
-    build: .
-    env_file: .env
     volumes:
-      - ./data:/app/data:ro      # 🔴 읽기 전용. 컨테이너가 DB를 못 건드리게
+      - ./data:/app/data:ro      # 🔴 읽기 전용
 ```
 
-> 📌 `:ro` 를 붙이는 이유 — 에이전트는 조회만 합니다. 쓰기 권한을 주면
-> SQLite 가 WAL/journal 파일을 만들다 권한 문제로 조용히 실패할 여지가 생깁니다.
+> 📌 `:ro` 를 붙이는 이유 — 에이전트는 조회만 합니다. 쓰기 권한을 주면 컨테이너가
+> DB를 건드릴 여지가 생깁니다.
 >
-> 📌 재빌드해도 볼륨은 유지되므로 DB는 한 번만 보내면 됩니다.
+> 📌 **읽기 전용인데 SELECT가 되는 이유** — 이 DB는 `journal_mode=delete` 입니다.
+> WAL 모드였다면 `-wal`·`-shm` 파일을 만들지 못해 **조회 자체가 막힙니다.**
+> `build_db.py` 를 고칠 때 journal_mode를 바꾸지 마세요.
+>
+> 📌 바인드 마운트라 **재빌드해도 유지됩니다.** DB는 한 번만 보내면 됩니다.
+> (`caddy_data` 와 달리 named volume이 아니라 호스트 디렉터리를 직접 봅니다)
 
 ### 나머지
 

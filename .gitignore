@@ -36,6 +36,15 @@ env/
 .env.local
 .env.*.local
 
+# 🔴 SSH 개인키 — 커밋하면 서버가 통째로 넘어갑니다. NCP 인증키는 재발급도 불가.
+#    secrets/ 안에 두고, 확장자 규칙으로 한 번 더 막습니다.
+secrets/
+*.pem
+*.key
+*.ppk
+id_rsa
+id_ed25519
+
 # IDEs and Editors
 .vscode/
 .idea/

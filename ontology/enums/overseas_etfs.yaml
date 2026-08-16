@@ -8,6 +8,68 @@
 
 domain: overseas_etfs
 
+# ── 컬럼 한글명 49종 (schema_metadata 공란 대체) ──
+#   36종: 국내ETF schema Sheet1_Schema 에서 매핑 (공유 컬럼)
+#   13종: 해외ETF 전용 — 컬럼명 의미로 직접 확정
+column_korean_names:
+  # 식별자
+  pd_itm_no: 상품번호(티커)
+  pd_itm_no_ma: 상품번호_미래에셋
+  pd_isin_cd: ISIN코드                 # 해외전용
+  pd_lipper_id: Lipper식별자           # 해외전용(글로벌 펀드평가사)
+  pd_us_cik: 미국SEC등록번호(CIK)      # 해외전용
+  pd_nm: 상품명
+  pd_abrv_nm: 상품약어명
+  # 분류·속성
+  pd_grp_no: 상품군종류
+  wu_inv_ast_type: 투자자산군
+  wu_inv_rgn: 투자지역
+  wu_core_yn: 핵심ETF여부
+  cu_strtegy: 운용전략
+  cu_lev_fector: 배수
+  cu_base_index: 기초지수
+  cu_etn_yn: ETN여부                   # 해외전용
+  cu_inverse_short_yn: 인버스/숏여부   # 해외전용
+  cu_index_repl_mthd: 지수복제방법     # 해외전용(Optimized/Swap/Full)
+  cu_index_tracking_yn: 지수추종여부   # 해외전용
+  # 운용사·보수
+  cu_fund_mgmt_co: 운용사
+  cu_charge_rt: 총보수요율
+  # 시장·통화
+  pd_exg_mkt_cd: 거래소코드
+  pd_mkt_id: 상품거래시장코드
+  pd_curr_cd: 상품통화코드
+  pd_trd_ccy: 거래통화                 # 해외전용(전부 USD)
+  # 가격·시세
+  du_clpr: 종가
+  du_clpr_base_dt: 종가기준일          # 해외전용
+  du_clpr_src: 종가출처                # 해외전용
+  du_opr: 시가                         # 해외전용(국내는 du_lpr)
+  du_hpr: 고가
+  du_lpr: 저가
+  du_bpr: 기준가
+  du_last_nav: 최종NAV
+  du_nav_base_dt: NAV기준일            # 해외전용
+  du_base_dt_match_yn: 기준일일치여부  # 해외전용
+  ru_mkt_price: 현재가
+  pd_lst_price: 상품액면가
+  # 규모·거래
+  du_last_aum: 최종AUM(순자산총액)
+  du_val_1d: 일거래대금
+  du_vol_1d: 일거래량
+  ru_mkt_volume: 거래량
+  pd_lst_stk_cnt: 상품상장주식수
+  # 수익률·기타
+  du_er_1d: 수익률_1D
+  du_diff_rt: 괴리율
+  # 상태·일자
+  pd_sale_yn: 상품판매여부
+  pd_tr_yn: 상품거래정지여부
+  pd_lstg_dt: 상품거래가능일자(상장일)
+  cu_upt_dt: 변동갱신일자
+  du_upt_dt: 일간갱신일자
+  wu_upt_dt: 주간갱신일자
+
 columns:
   # ── 없는 컬럼 = 대량 "데이터 미제공" (국내ETF엔 있으나 해외엔 부재) ──
   _absent_columns:

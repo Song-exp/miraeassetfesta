@@ -197,7 +197,7 @@ SELECT COUNT(*) FROM domestic_etfs WHERE pd_grp_no='ETF' AND cu_charge_rt = 0;  
 ### D.3 수익률 센티넬 & 이상치
 
 ```
-du_er_1y = -100.0 이 98건  → 수치형 센티넬(상장폐지/미산출), 실제 -100% 아님
+du_er_1y = -100.0 이 98건 (⚠️ 그중 ETF 34건 / ETN 64건) → 수치형 센티넬(상장폐지/미산출), 실제 -100% 아님
 du_er_1y max = 2,738.95%   → 미래에셋 TIGER 200IT레버리지 (레버리지 이상치)
 ```
 > → Top-N 질의 시 `-100` 제외 + 이상치 단위 검토 필요 (원본 schema 대조 — 미완).

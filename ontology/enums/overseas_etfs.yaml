@@ -19,9 +19,9 @@ columns:
   cu_base_index:
     korean_name: 기초지수
     missing_reason: missing
-    answer_policy: "기초지수 질의는 센티넬 제외 후 유효 약 2,941건(52%) 한정 + 모수 명시."
+    answer_policy: "기초지수 질의는 센티넬 제외 후 유효 2,933건(51.9%) 한정 + 모수 명시."
     trap: "센티넬 문자열 — 'Index is not provided by Management Company' 1,984건 + 'Index is not available on Lipper Database' 721건. IS NULL 로는 안 잡힘."
-    note: distinct 1,733종으로 보이나 절반이 센티넬. 실질 수록 52.1%.
+    note: distinct 1,733종으로 보이나 절반이 센티넬. 실질 수록 2,933건(51.9%).
 
   # ── 수익률 (1일만, 전부 0) ──
   du_er_1d:

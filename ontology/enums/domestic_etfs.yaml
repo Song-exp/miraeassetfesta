@@ -146,8 +146,11 @@ normalization:
 query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
-  보수유효: cu_charge_rt > 0            # 0은 미입력
-  수익률정상: du_er_1y > -100 AND du_er_1y IS NOT NULL   # -100 센티넬 제외
+  보수유효: cu_charge_rt > 0            # 0은 미입력 (유효 67건)
+  수익률정상: du_er_1y > -100 AND du_er_1y IS NOT NULL   # -100 센티넬 제외 (ETF 34건)
+  종가정상: du_clpr > 0                 # =0 50건 (만기형 채권ETF·신규상장 미거래)
+  NAV등락금지: "du_nav_yday / du_nav_rnf_amt 사용 금지"   # 1,137건 전부 깨짐 (D.6)
+  전부0컬럼금지: "pd_divd_amt_pshr · pd_dvid_yield · du_chas_errt · du_diff_rt · cu_charge_etc_rt · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · pd_lst_price 사용 금지"  # 9종 non-null 전부 0 = 미제공
   판매중만: pd_sale_yn = '1'
   거래정상: pd_tr_yn = '0'
   레버리지: cu_lev_fector >= 2

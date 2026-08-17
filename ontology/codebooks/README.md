@@ -63,13 +63,17 @@
 
 ## 4. `market.csv` — 거래소 코드 (6개) ✅
 
-| code | 거래소 | 비고 |
+| code | 거래소 | 검증 |
 | :--- | :--- | :--- |
 | `EXG_MKT_NO_001` | 한국거래소 유가증권시장(KRX) | 국내ETF 1,733종 전부 |
-| `AMX` / `NAS` / `NYS` | NYSE American · NASDAQ · NYSE | 해외ETF 대부분 |
-| `101` / `102` | 🔴 기타 미국거래소(Cboe/NYSE Arca **추정**) | 31건, 종목명이 일반 US ETF라 미확정 |
+| `AMX` | **NYSE Arca** | ✅ VOO·SPY·IVV·VTI(전부 Arca)가 AMX로 검증 |
+| `NAS` | NASDAQ | ✅ QQQ가 NAS로 검증 |
+| `NYS` | NYSE | 🟡 미검증 추정 (78건) |
+| `101` / `102` | 🔴 기타 미국거래소 **미확정** | 31건, 종목명이 일반 US ETF라 특정 불가 |
 
-> NEXT_STEPS ③ 요청분. `101`·`102`는 종목 샘플이 일반 미국 ETF라 거래소 특정 불가 → 추정 표기.
+> ⚠️ **정정 이력:** `AMX` 를 약자만 보고 "NYSE American(구 AMEX)"로 적었으나, 거래소가
+> 확실한 ETF(VOO·SPY·IVV 전부 NYSE Arca)가 `AMX` 로 찍혀 있어 **NYSE Arca 로 정정.**
+> 유명 ETF 역대조로 검증. `NYS`·`101`·`102` 는 미검증 → 확정 표기 안 함.
 
 ---
 

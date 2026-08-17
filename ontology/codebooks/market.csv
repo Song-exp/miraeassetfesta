@@ -1,7 +1,7 @@
-﻿code,name,short_name,source,as_of,note
-EXG_MKT_NO_001,한국거래소 유가증권시장,KRX,한국거래소,2026-07-11,"국내ETF 1,733종 전부"
-AMX,NYSE American (구 AMEX),AMEX,거래소 코드(해외ETF),2026-07-11,"해외 4,241 최다"
-NAS,NASDAQ,NASDAQ,거래소 코드(해외ETF),2026-07-11,"해외 1,296"
-NYS,New York Stock Exchange,NYSE,거래소 코드(해외ETF),2026-07-11,해외 78
-102,기타 미국거래소(Cboe/NYSE Arca 추정),,거래소 코드(해외ETF),2026-07-11,🔴추정 22건·미확정
-101,기타 미국거래소(Cboe/NYSE Arca 추정),,거래소 코드(해외ETF),2026-07-11,🔴추정 9건·미확정
+code,name,short_name,source,as_of,note
+EXG_MKT_NO_001,한국거래소 유가증권시장,KRX,한국거래소,2026-07-11,국내ETF 1733종 전부
+AMX,NYSE Arca,NYSE Arca,거래소 코드(해외ETF),2026-07-11,✅검증 VOO·SPY·IVV·VTI 전부 AMX (해외 4241 최다)
+NAS,NASDAQ,NASDAQ,거래소 코드(해외ETF),2026-07-11,✅검증 QQQ=NAS (해외 1296)
+NYS,New York Stock Exchange,NYSE,거래소 코드(해외ETF),2026-07-11,🟡미검증 추정 (해외 78)
+102,기타 미국거래소 미확정,,거래소 코드(해외ETF),2026-07-11,🔴미확정 22건 (샘플이 일반 US ETF)
+101,기타 미국거래소 미확정,,거래소 코드(해외ETF),2026-07-11,🔴미확정 9건 (샘플이 일반 US ETF)

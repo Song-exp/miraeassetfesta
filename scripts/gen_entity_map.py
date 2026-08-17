@@ -24,6 +24,9 @@ assert len(owner) == len(COLS), f"미배정 {[c for c in COLS if c not in owner]
 
 # 엔티티 단위 distinct (행이 아니라 종목 기준)
 ENT_N = {k: v.get("count") for k, v in D["entities"].items()}
+# 🔴 Fund 는 문자열로 박아두면 낡는다 — yaml 에서 읽는다 (2026-08-17: 모펀드 4,660 오기 정정)
+FUND = D["entities"]["Fund"]
+FUND_N, FUND_SRC = FUND.get("count"), FUND.get("source", "")
 
 def facts(c):
     e = A["columns"][c]
@@ -31,6 +34,7 @@ def facts(c):
     miss = 1 - e["values_present"] / TOTAL
     tag = []
     if d.get("missing_reason"): tag.append(f"판정 `{d['missing_reason']}`")
+    if d.get("evidence_grade"): tag.append(f"근거 `{d['evidence_grade']}`")
     if d.get("missing_semantics"): tag.append("값단위 판정")
     if d.get("unit"): tag.append(f"단위 `{d['unit']}`")
     if d.get("trap") or d.get("answer_policy"): tag.append("⚠️ trap/정책")
@@ -49,15 +53,15 @@ w("> 재생성: 이 문서를 만든 스크립트는 노트북 「🧬 엔티티
 w("\n---\n")
 
 w("## 1. 한눈에 — 무엇이 개체이고 무엇이 속성인가\n")
-w("""```
+w(f"""```
                     ┌─────────────────┐
                     │  AssetManager   │ 67   운용사 (or_co_xtn_itt_cd)
                     │  Custodian      │ 18   수탁사 (trusc_xtn_itt_cd)
                     └────────▲────────┘
                              │ managedBy / custodiedBy
               ┌──────────────┴──────────────┐
-              │           Fund              │  4,660   모펀드 = 운용 단위
-              │        mtco_itm_no          │          순자산 합계가 이 단위
+              │           Fund              │ {FUND_N:,}   펀드 = 운용 단위 (모펀드 아님)
+              │  (or_co, mtco) 합성키        │          순자산 합계가 이 단위
               └──────────────▲──────────────┘
                              │ belongsToFund
               ┌──────────────┴──────────────┐
@@ -75,13 +79,15 @@ w("""```
 
   ※ 행(95,619) = FundClass(11,139) × 그 종목의 태그 수(4~16, 평균 8.58)
      45컬럼 중 itm_no 안에서 갈리는 것은 prfd_attr_cd 하나뿐 → 나머지는 전부 FundClass 속성
+  🔴 Fund 는 '모펀드' 가 아니다 — 클래스를 걷어낸 펀드 단위다. 모자형 모펀드는 이 테이블에 없다
+     (모투자신탁·모투자회사 0건). mtco 단독 조인 금지 — 65종이 여러 운용사에 걸친다
 ```\n""")
 
 w("\n### 관계도 (mermaid)\n")
 w("```mermaid")
 w("graph TD")
 w('  FC["<b>FundClass</b><br/>★ 주 노드 11,139<br/>itm_no"]')
-w('  FD["Fund<br/>모펀드 4,660<br/>mtco_itm_no"]')
+w(f'  FD["Fund<br/>펀드 {FUND_N:,} (모펀드 아님)<br/>(or_co, mtco) 합성키"]')
 w('  SC["ShareClass<br/>112<br/>itm_nm 파싱"]')
 w('  FA["FundAttribute<br/>210 · 15축<br/>prfd_attr_cd"]')
 w('  CO["Country<br/>17 · 커버리지 13.9%"]')
@@ -167,8 +173,92 @@ w("""| # | 항목 | 상태 |
 | 3 | **상장지수 펀드 23종이 국내ETF와 중복** — ID 로는 0건 | 같은 개체로 병합할지 (§G.1) |
 | 4 | **Benchmark 를 독립 개체로 세울지** — 국내ETF와 17종 통용 | 세우면 펀드↔ETF 교차 질의 가능 |
 | 5 | **Custodian 채택 여부** — 공모펀드에만 있는 관계 | 다른 3개 테이블에 대응 컬럼 없음 |
-| 6 | `axis_classDifferentiation` · `axis_redemptionType` 유도 규칙 | 미확정 (§B) |
+| 6 | `axis_classDifferentiation` 축의 정의 | 🔴 정답 라벨이 같은 펀드 안에서 갈림 → 주최 측 확인 필요 (§7) |
+| 7 | `axis_issuanceType` 유도 규칙 | `fd_set_pcd '20'` 혼재 · UnitType 표본 1건으로 판정 불가 (§7) |
 """)
+
+# ── 6. 값 정규화 규칙 (런타임 가드레일이 읽는 것) ──────────────────────
+NORM = D.get("normalization") or {}
+w("\n---\n")
+w("## 6. 값 정규화 규칙 — 조회 전에 적용해야 하는 것\n")
+w("> 런타임 가드레일이 `normalization` 에서 읽습니다. **여기 없으면 적용되지 않습니다.**\n")
+w(f"`trim_columns` {len(NORM.get('trim_columns') or [])}컬럼 (공백 제거)\n")
+for key, title in [
+    ("dummy_as_missing", "더미를 결측으로"),
+    ("numeric_string_columns", "숫자형이 소수점 문자열로 저장됨"),
+    ("contaminated_rows", "따옴표로 컬럼이 밀린 행"),
+    ("value_variants", "같은 뜻인데 표기가 갈리는 값"),
+    ("invalid_values", "도메인 범위를 벗어난 값"),
+    ("constant_columns", "정보량이 0인 컬럼"),
+]:
+    v = NORM.get(key)
+    if not isinstance(v, dict):
+        continue
+    w(f"\n### 6.{[k for k in NORM if k != 'trim_columns'].index(key)+1} `{key}` — {title}\n")
+    if v.get("_note"):
+        w("> " + str(v["_note"]).strip().replace("\n", "\n> ") + "\n")
+    for k2, v2 in v.items():
+        if k2 == "_note":
+            continue
+        if isinstance(v2, list):
+            w(f"- **{k2}**: " + (", ".join(f"`{x}`" for x in v2) if v2 else "—"))
+        elif isinstance(v2, dict):
+            w(f"- **{k2}**:")
+            for k3, v3 in v2.items():
+                alt = ", ".join(f"`{x}`" for x in v3) if isinstance(v3, list) and v3 else "—"
+                w(f"    - `{k3}` ← {alt}")
+        else:
+            w(f"- **{k2}**: {v2}")
+    w("")
+
+# ── 7. 주최 측 6축 매핑 ────────────────────────────────────────────────
+AX = D.get("axis_mapping") or {}
+if AX:
+    w("\n---\n")
+    w("## 7. 주최 측 6축 매핑 — 확정된 것만\n")
+    if AX.get("_note"):
+        w("> " + str(AX["_note"]).strip().replace("\n", "\n> ") + "\n")
+    w("| 축 | 출처 | 순도 | 근거등급 | 상태 |")
+    w("| :--- | :--- | :--- | :-: | :--- |")
+    for k, v in AX.items():
+        if k.startswith("_") or not isinstance(v, dict):
+            continue
+        w(f"| `{k}` | {v.get('출처', '—')} | {v.get('순도', '—')} | "
+          f"{v.get('evidence_grade', '—')} | {v.get('상태', '✅ 확정')} |")
+    for k, v in AX.items():
+        if k.startswith("_") or not isinstance(v, dict) or not v.get("매핑"):
+            continue
+        w(f"\n**`{k}` 매핑표**\n")
+        w("| 축값 | 컬럼값 |")
+        w("| :--- | :--- |")
+        for tgt, vals in v["매핑"].items():
+            shown = ", ".join("`NULL`" if x is None else f"`{x}`" for x in vals)
+            w(f"| {tgt} | {shown} |")
+        if v.get("주의"):
+            w("\n> " + str(v["주의"]).strip().replace("\n", "\n> ") + "\n")
+    if AX.get("_미확정"):
+        w("\n### 7.x 미확정 — 규칙을 만들기 전 단계\n")
+        for k, v in AX["_미확정"].items():
+            w(f"- **`{k}`** — {str(v).strip()}")
+        w("")
+
+# ── 8. 질의 규칙 ───────────────────────────────────────────────────────
+QR = D.get("query_rules") or {}
+if QR:
+    w("\n---\n")
+    w("## 8. 질의 규칙 — SQL 조각\n")
+    for k, v in QR.items():
+        if k.endswith("_근거") or k.endswith("_검증") or k.endswith("_주의"):
+            continue
+        w(f"**{k}**\n")
+        w("```sql")
+        w(str(v).strip())
+        w("```")
+        for suf in ("_근거", "_검증", "_주의"):
+            if QR.get(k + suf):
+                w("> " + str(QR[k + suf]).strip().replace("\n", "\n> ") + "\n")
+        w("")
+
 Path("docs/eda/public_funds_entity_map.md").write_text("\n".join(L), encoding="utf-8")
 print("✅ docs/eda/public_funds_entity_map.md")
 print(f"   컬럼 배정 {len(owner)}/{len(COLS)} · 엔티티 {len(D['entities'])} · 속성그룹 "

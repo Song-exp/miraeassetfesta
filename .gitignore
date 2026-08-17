@@ -58,6 +58,8 @@ data/*.db
 1.금융상품/
 *.xlsx
 *.csv
+# 예외: 코드북은 제출용 산출물(코드↔이름 소량 참조표) — 커밋 대상
+!ontology/codebooks/*.csv
 
 # Jupyter — 개인 탐색 노트북은 커밋하지 않습니다.
 # .ipynb 는 git diff 가 안 읽혀 리뷰가 불가능하고, 출력 셀에 데이터가 박힙니다.

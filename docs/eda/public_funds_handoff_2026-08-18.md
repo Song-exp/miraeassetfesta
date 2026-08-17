@@ -246,7 +246,34 @@ ETF 담당은 각 10문항을 냈습니다(`ONTOLOGY_BUILD_PLAN.md` §1). 함정
 
 ---
 
-## 7. 재현 방법
+## 7. 다른 장비에서 이어받는 방법
+
+```
+필요한 것: 원본 데이터 1.금융상품/*.xlsx  (data/ · 1.금융상품/ 은 .gitignore 대상)
+
+1. pip install -r requirements.txt
+2. python scripts/build_db.py        # 1.금융상품/*.xlsx → data/financial_products.db
+3. python scripts/profile_table.py   # DB → ontology/enums/*.auto.yaml + *.values.txt (약 40초)
+4. (선택) python scripts/gen_entity_map.py   # yaml → docs/eda/public_funds_entity_map.md
+```
+
+**이걸로 전부 복구됩니다** — 2026-08-18 부터 EDA 노트북도 추적하기 때문입니다(`.gitignore` 정책 변경).
+
+| 항목 | 상태 |
+| :--- | :--- |
+| 판정·근거·답변 정책 | ✅ 커밋됨 (값 사전 · `public_funds.yaml` · conclusions · DATA_NEEDS · 코드북) |
+| **EDA 노트북 (관측 근거)** | ✅ **커밋됨** — `public_funds_eda2.ipynb`(31셀, 주제1·2) |
+| DB · `*.auto.yaml` · `*.values.txt` | 🔄 재생성 (위 2·3단계) |
+| `secrets/` (HCX 키 등) | 🔴 미추적 — EDA 에는 불필요, Agent 실행 시 필요 |
+
+> ⚠️ **`notebooks/public_funds_eda.ipynb`(1차)는 선행 0 손실 상태에서 쓴 것이라 코드 구조
+> 분석 부분이 무효입니다.** 이력 보존용으로만 추적합니다 — 근거로 인용하지 마세요.
+> 유효한 작업장은 `public_funds_eda2.ipynb` 입니다.
+>
+> ⚠️ **주제 2의 ⓪ 준비 셀이 실행번호 64로 하위 셀(59~63)보다 나중에 재실행돼 있어
+> A-1~C-1 출력이 stale 합니다.** 주제 2 출력을 근거로 쓰기 전에 25번 셀 이후를 순서대로 재실행하세요.
+
+### 7.1 검증 스니펫
 
 ```bash
 # yaml 파싱 + 45컬럼 전수 커버 검증

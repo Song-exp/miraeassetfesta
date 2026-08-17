@@ -76,12 +76,19 @@ data/
 # 원본 데이터가 아니라 '코드 ↔ 이름' 매핑이며, .ttl·KG 생성기의 입력이므로 반드시 추적한다.
 !ontology/codebooks/*.csv
 
-# Jupyter — 개인 탐색 노트북은 커밋하지 않습니다.
-# .ipynb 는 git diff 가 안 읽혀 리뷰가 불가능하고, 출력 셀에 데이터가 박힙니다.
-# 산출물은 docs/eda/*_notes.md 와 eval/*.jsonl 입니다. 템플릿만 공유합니다.
+# Jupyter — EDA 노트북은 커밋합니다 (2026-08-18 정책 변경).
+#
+# 이전 정책은 notebooks/*.ipynb 전체 무시였습니다. 이유는 ① git diff 가 안 읽혀 리뷰가 불가능
+# ② 출력 셀에 데이터가 박힘 이었고, 둘 다 여전히 사실입니다. 그런데 판정 문서들이
+# 노트북 셀을 **근거로 인용**하고 있어(conclusions §6.2 '⑥-D' · 값 사전 '셀 27~31')
+# 인용 대상이 저장소에 없는 상태였습니다 — 다른 장비에서 pull 하면 관측을 재현할 수 없습니다.
+# EDA 노트북은 산출물의 근거이므로 추적합니다.
+#
+# 🔴 개인 탐색·임시 노트북은 notebooks/scratch/ 에 두세요 (아래에서 무시됩니다).
+# 🔴 저장소가 public 입니다. 출력 셀에 원본 전수 목록을 남기지 마세요 —
+#    distinct 값 전량 출력은 ontology/enums/*.values.txt 와 같은 성격이라 커밋 대상이 아닙니다.
 .ipynb_checkpoints/
-notebooks/*.ipynb
-!notebooks/eda_template.ipynb
+notebooks/scratch/
 
 # 프로파일러 산출물 — scripts/profile_table.py 로 언제든 재생성되므로 커밋하지 않습니다.
 #   *.values.txt : distinct 값 목록 (사실상 원본 데이터 재출력, 총 10MB+)

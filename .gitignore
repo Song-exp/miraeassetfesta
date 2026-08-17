@@ -72,6 +72,10 @@ data/
 *.csv
 *.parquet
 
+# 🔴 예외 — 코드북은 산출물이다 (ONTOLOGY_BUILD_PLAN.md §2.2).
+# 원본 데이터가 아니라 '코드 ↔ 이름' 매핑이며, .ttl·KG 생성기의 입력이므로 반드시 추적한다.
+!ontology/codebooks/*.csv
+
 # Jupyter — 개인 탐색 노트북은 커밋하지 않습니다.
 # .ipynb 는 git diff 가 안 읽혀 리뷰가 불가능하고, 출력 셀에 데이터가 박힙니다.
 # 산출물은 docs/eda/*_notes.md 와 eval/*.jsonl 입니다. 템플릿만 공유합니다.

@@ -88,10 +88,22 @@ graph TD
 
 ## 4. 🔴 워크샵에서 확정할 것
 
-| 안건 | 선택지 |
+| 안건 | 선택지 / 제안 |
 | :--- | :--- |
-| ETF/ETN 클래스 층위 | 별도 클래스? `fp:ETF` 공통상위 아래? |
-| Index(기초지수) | 독립 개체? 문자열 속성? (독립이면 국내/해외 통합검색 가능) |
+| ETF/ETN 클래스 층위 | ✅ PDF 확정: `fp:Product → fp:ETF`, ETF `owl:disjointWith` ETN |
+| **Index(기초지수)** | **✅ B안 제안: 독립 개체.** 공모펀드 `Benchmark`(391, ETF와 17종 통용)와 **통일**하면 ETF↔펀드↔해외ETF 교차질의 가능. 국내 89%결측은 상품명 유추로 보완 |
 | RiskGrade | 개체? 값+순서제약? |
-| AssetType/underlyingScope | 주최 axis 채택? 자체정의? |
+| AssetType/underlyingScope | 🟡 주최측 문의 예정 (국고채→Equity 등 axis 기준 불명확) |
 | 국내/해외 ETF | `etf_kr.ttl` / `etf_gl.ttl` 분리, 둘 다 `fp:ETF` 하위 |
+
+### 4.1 🔵 공모펀드와 통일 (교차질의 핵심)
+
+| 개체 | 국내ETF | 공모펀드 | 통일 시 가능해지는 질의 |
+| :--- | :--- | :--- | :--- |
+| **기초지수/벤치마크** | `cu_base_index` (Index) | `bmrk_nm` (Benchmark, 391) | "S&P500 추종 ETF + 그 지수 벤치마크 펀드" |
+| **운용사** | `cu_fund_mgmt_co` | `or_co_xtn_itt_cd` | "미래에셋 운용 ETF+펀드 비교" |
+| **투자지역** | `wu_inv_rgn` | `fd_ivst_rgn_desc` | 상품군 교차 지역검색 |
+
+> 💡 **구성종목(Holding) 형식도 펀드와 통일 가능** — 펀드도 재간접/편입 종목 개념 있음.
+> 제안 스키마: `{상품코드, 종목티커, 종목명, 비중%, 수량, as_of}` (ETF holdings와 동일 구조).
+> → 리드(펀드 담당)와 holdings/KG 스키마 통일 협의.

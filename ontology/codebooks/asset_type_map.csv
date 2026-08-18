@@ -1,0 +1,9 @@
+﻿domestic_ko,overseas_en,note
+주식,Equity,1:1 (국내1069/해외2500)
+채권,Bond,1:1 (국내261/해외1084)
+원자재,Commodity,1:1 (국내207/해외107)
+혼합자산,Mixed Assets,1:1 (국내78/해외138)
+단기자금,Money Market,1:1 (국내42/해외9)
+통화,(Alternatives에 포함 추정),🔴 해외 명시적 대응없음·비대칭
+부동산,(Alternatives에 포함 추정),🔴 해외 명시적 대응없음·비대칭
+기타,Alternatives,🔴 해외 Alternatives 1800건이 국내 통화·부동산·기타로 분산

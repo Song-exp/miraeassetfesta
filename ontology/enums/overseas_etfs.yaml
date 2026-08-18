@@ -8,6 +8,68 @@
 
 domain: overseas_etfs
 
+# ── 컬럼 한글명 49종 (schema_metadata 공란 대체) ──
+#   36종: 국내ETF schema Sheet1_Schema 에서 매핑 (공유 컬럼)
+#   13종: 해외ETF 전용 — 컬럼명 의미로 직접 확정
+column_korean_names:
+  # 식별자
+  pd_itm_no: 상품번호(티커)
+  pd_itm_no_ma: 상품번호_미래에셋
+  pd_isin_cd: ISIN코드                 # 해외전용
+  pd_lipper_id: Lipper식별자           # 해외전용(글로벌 펀드평가사)
+  pd_us_cik: 미국SEC등록번호(CIK)      # 해외전용
+  pd_nm: 상품명
+  pd_abrv_nm: 상품약어명
+  # 분류·속성
+  pd_grp_no: 상품군종류
+  wu_inv_ast_type: 투자자산군
+  wu_inv_rgn: 투자지역
+  wu_core_yn: 핵심ETF여부
+  cu_strtegy: 운용전략
+  cu_lev_fector: 배수
+  cu_base_index: 기초지수
+  cu_etn_yn: ETN여부                   # 해외전용
+  cu_inverse_short_yn: 인버스/숏여부   # 해외전용
+  cu_index_repl_mthd: 지수복제방법     # 해외전용(Optimized/Swap/Full)
+  cu_index_tracking_yn: 지수추종여부   # 해외전용
+  # 운용사·보수
+  cu_fund_mgmt_co: 운용사
+  cu_charge_rt: 총보수요율
+  # 시장·통화
+  pd_exg_mkt_cd: 거래소코드
+  pd_mkt_id: 상품거래시장코드
+  pd_curr_cd: 상품통화코드
+  pd_trd_ccy: 거래통화                 # 해외전용(전부 USD)
+  # 가격·시세
+  du_clpr: 종가
+  du_clpr_base_dt: 종가기준일          # 해외전용
+  du_clpr_src: 종가출처                # 해외전용
+  du_opr: 시가                         # 해외전용(국내는 du_lpr)
+  du_hpr: 고가
+  du_lpr: 저가
+  du_bpr: 기준가
+  du_last_nav: 최종NAV
+  du_nav_base_dt: NAV기준일            # 해외전용
+  du_base_dt_match_yn: 기준일일치여부  # 해외전용
+  ru_mkt_price: 현재가
+  pd_lst_price: 상품액면가
+  # 규모·거래
+  du_last_aum: 최종AUM(순자산총액)
+  du_val_1d: 일거래대금
+  du_vol_1d: 일거래량
+  ru_mkt_volume: 거래량
+  pd_lst_stk_cnt: 상품상장주식수
+  # 수익률·기타
+  du_er_1d: 수익률_1D
+  du_diff_rt: 괴리율
+  # 상태·일자
+  pd_sale_yn: 상품판매여부
+  pd_tr_yn: 상품거래정지여부
+  pd_lstg_dt: 상품거래가능일자(상장일)
+  cu_upt_dt: 변동갱신일자
+  du_upt_dt: 일간갱신일자
+  wu_upt_dt: 주간갱신일자
+
 columns:
   # ── 없는 컬럼 = 대량 "데이터 미제공" (국내ETF엔 있으나 해외엔 부재) ──
   _absent_columns:
@@ -15,13 +77,26 @@ columns:
     answer_policy: "위험등급·1년/YTD/기간수익률 질의는 해외ETF 대상 시 '데이터 미제공' 명시. 국내ETF로 유도하거나 확인 불가 안내."
     note: "pd_risk_nm·pd_risk_cd(위험등급), du_er_1y·du_er_ytd·du_er_1m/3m/6m(기간수익률) 컬럼 자체가 스키마에 없음. du_er_1d 는 있으나 전부 0."
 
+  # ── 상장시장 (101·102 세부코드) ──
+  pd_exg_mkt_cd:
+    korean_name: 거래소코드
+    missing_reason: present
+    answer_policy: "AMX/NAS/NYS는 미국 주요 3시장. 101·102는 미국 소형/신규 상장 세부코드로 취급(전부 pd_mkt_id='US')."
+    note: "AMX 4,241 / NAS 1,296 / NYS 78 / 102 22 / 101 9. 101·102(31건)는 교차대조상 미국 소형·신규 상장 ETF(티커 접미어 .O/.K). 정확한 시장명은 코드북④ 대상이나 영향 작음."
+    value_semantics:
+      AMX: NYSE American (미국)
+      NAS: NASDAQ (미국)
+      NYS: NYSE (미국)
+      "101": 미국 소형/신규 상장(세부, 9건)
+      "102": 미국 소형/신규 상장(세부, 22건)
+
   # ── 기초지수 (센티넬) ──
   cu_base_index:
     korean_name: 기초지수
     missing_reason: missing
-    answer_policy: "기초지수 질의는 센티넬 제외 후 유효 약 2,941건(52%) 한정 + 모수 명시."
+    answer_policy: "기초지수 질의는 센티넬 제외 후 유효 2,933건(51.9%) 한정 + 모수 명시."
     trap: "센티넬 문자열 — 'Index is not provided by Management Company' 1,984건 + 'Index is not available on Lipper Database' 721건. IS NULL 로는 안 잡힘."
-    note: distinct 1,733종으로 보이나 절반이 센티넬. 실질 수록 52.1%.
+    note: distinct 1,733종으로 보이나 절반이 센티넬. 실질 수록 2,933건(51.9%).
 
   # ── 수익률 (1일만, 전부 0) ──
   du_er_1d:
@@ -42,9 +117,12 @@ columns:
   du_last_aum:
     korean_name: 최종AUM
     missing_reason: present
-    answer_policy: "AUM 질의 답변 가능(결측 3.3%). 단위 USD — 원화 비교 시 환율 주의."
-    note: 국내ETF(결측16.2%)보다 깨끗. 단위 USD.
+    answer_policy: "AUM 질의 답변 가능(결측 3.3%). 단위 USD. 국내ETF(KRW)와 통합 정렬 금지 — 7/11 환율(코드북⑤) 확정 전까지 상품군별로 분리 제시."
+    note: "단위 USD 확정 (VOO $995B·SPY $783B 실제값 대조 + pd_trd_ccy 전부 USD). 국내ETF는 KRW라 숫자 직접 비교 시 순위 역전(함정②)."
     unit: usd
+    layer:
+      scale: USD (달러)
+      cross_sort: "국내ETF du_last_aum(KRW)와 나란히 정렬 불가. VOO $995B > KODEX200 28.4조원(≈$200억)인데 숫자만 보면 KODEX가 28배 커 보임."
 
   # ── 실시간 (국내와 달리 채워짐) ──
   ru_mkt_price:

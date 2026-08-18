@@ -114,7 +114,7 @@ SELECT COUNT(*) FROM overseas_etfs WHERE cu_base_index LIKE '%not provided%';   
 SELECT COUNT(*) FROM overseas_etfs WHERE cu_base_index LIKE '%not available%';  -- ▶ 721
 ```
 `Index is not provided by Management Company` 1,984 + `Index is not available on Lipper Database` 721
-→ **실질 지수명 수록 약 2,941건 (52.1%).** distinct 1,733종으로 보이지만 절반이 센티넬.
+→ **실질 지수명 수록 2,933건 (51.9%).** (센티넬 2,705 + NULL·공백 8 차감) distinct 1,733종으로 보이지만 절반이 센티넬.
 
 ### D.3 자산군·지역 국내 vs 해외 언어 불일치
 

@@ -8,6 +8,17 @@
 domain: domestic_etfs
 
 columns:
+  # ── 규모 (단위 주의) ──
+  du_last_aum:
+    korean_name: 최종AUM(순자산총액)
+    missing_reason: missing
+    answer_policy: "AUM 질의 답변 가능(결측 16.2%). 단위 KRW(원). 해외ETF(USD)와 통합 정렬 금지 — 상품군별 분리 제시."
+    note: "단위 KRW 확정 (KODEX200 = 28.4조원, 실제값 일치). 해외ETF du_last_aum은 USD라 숫자 직접 비교 시 순위 역전(함정②). 0값 411건은 미거래/신규."
+    unit: krw
+    layer:
+      scale: KRW (원)
+      cross_sort: "해외ETF du_last_aum(USD)와 나란히 정렬 불가. 7/11 환율(코드북⑤) 확정 후에만 통합 가능."
+
   # ── 보수 ──
   cu_charge_rt:
     korean_name: 총보수요율
@@ -91,8 +102,20 @@ columns:
   pd_sect_nm:
     korean_name: ETF섹터명
     missing_reason: missing
-    answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd(숫자)는 있으나 의미 매핑 없음."
-    note: 100% 결측. 코드(pd_sect_cd)만 있고 라벨 없음.
+    answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd는 섹터가 아니라 상품유형 구분임(아래)."
+    note: 100% 결측. 🔴 섹터명이 없는 게 아니라 pd_sect_cd 자체가 섹터가 아님(상품구조 코드).
+  pd_sect_cd:
+    korean_name: ETF섹터코드(실제=상품유형구분)
+    missing_reason: present
+    answer_policy: "'섹터' 질의에 이 코드로 답하지 말 것 — 섹터가 아니라 상품유형 구분임."
+    note: "🔴 교차대조로 해독: 섹터 아님. 2=일반ETF(1,126) / 3=일반ETN(406) / 8=단일종목ETF(16, 삼성전자·SK하이닉스) / 4·9=ETN소수 / NULL=ETF60+ETN123. pd_grp_no와 거의 대응."
+    value_semantics:
+      "2.0": 일반 ETF
+      "3.0": 일반 ETN
+      "4.0": ETN(기타)
+      "8.0": 단일종목ETF(상품명에 '단일종목')  # ⚠️ underlyingScope=SingleStock 과는 불일치(아래)
+      "9.0": ETN(기타)
+    cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. 코드8인데 정답 SectorTheme(예: KODEX SK하이닉스단일종목레버리지), 코드2인데 정답 SingleStock(예: 테슬라밸류체인)이 다수. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
 
   # ── 운용사 (약칭 함정 + 상품명 오염) ──
   cu_fund_mgmt_co:
@@ -146,8 +169,11 @@ normalization:
 query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
-  보수유효: cu_charge_rt > 0            # 0은 미입력
-  수익률정상: du_er_1y > -100 AND du_er_1y IS NOT NULL   # -100 센티넬 제외
+  보수유효: cu_charge_rt > 0            # 0은 미입력 (유효 67건)
+  수익률정상: du_er_1y > -100 AND du_er_1y IS NOT NULL   # -100 센티넬 제외 (ETF 34건)
+  종가정상: du_clpr > 0                 # =0 50건 (만기형 채권ETF·신규상장 미거래)
+  NAV등락금지: "du_nav_yday / du_nav_rnf_amt 사용 금지"   # 1,137건 전부 깨짐 (D.6)
+  전부0컬럼금지: "pd_divd_amt_pshr · pd_dvid_yield · du_chas_errt · du_diff_rt · cu_charge_etc_rt · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · pd_lst_price 사용 금지"  # 9종 non-null 전부 0 = 미제공
   판매중만: pd_sale_yn = '1'
   거래정상: pd_tr_yn = '0'
   레버리지: cu_lev_fector >= 2

@@ -1,0 +1,7 @@
+﻿code,name,group,count,note_source
+2,일반 ETF,ETF,1126,"교차검증(pd_grp_no+상품명), 전부 ETF·다양한 자산군"
+3,일반 ETN,ETN,406,"교차검증(pd_grp_no+상품명), 전부 ETN·'상장지수증권 제N호'"
+4,특수구조 ETN,ETN,1,"교차검증(pd_grp_no+상품명), 금현물 Auto-KO(조기종료형) 1건·추정"
+8,단일종목(레버리지) ETF,ETF,16,"교차검증(pd_grp_no+상품명), 삼성전자·SK하이닉스 단일종목"
+9,단일종목(레버리지) ETN,ETN,2,"교차검증(pd_grp_no+상품명), 미래에셋 레버리지 단일종목"
+(null),미분류,ETF+ETN,183,"교차검증(pd_grp_no+상품명), ETF60/ETN123·코드 미부여"

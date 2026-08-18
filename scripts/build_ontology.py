@@ -302,7 +302,7 @@ def emit_ttl(shared):
                 L.append(f":{node_id} skos:broader :{node['parent']} .")
         L.append("")
 
-    with open(TTL_PATH, "w", encoding="utf-8") as f:
+    with open(TTL_PATH, "w", encoding="utf-8", newline="\n") as f:  # 커밋 대상 — LF 고정 (CRLF 상태 노이즈 방지)
         f.write("\n".join(L) + "\n")
     return len(L)
 
@@ -358,7 +358,7 @@ def report(con, enums, shared, distinct_cache, warnings):
         lines.append(f"## warnings {len(warnings)}건")
         lines.extend(f"- {w}" for w in warnings)
     text = "\n".join(lines)
-    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+    with open(REPORT_PATH, "w", encoding="utf-8", newline="\n") as f:
         f.write(text + "\n")
     return text
 

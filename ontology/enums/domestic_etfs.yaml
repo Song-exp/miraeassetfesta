@@ -7,6 +7,12 @@
 
 domain: domestic_etfs
 
+# ── 행의 낟알 (2026-08-18 감사 확정) ──
+row_grain:
+  구조: 행 = 상품 (pd_itm_no 완전 유일 — 1,734행 = 1,734 distinct)
+  evidence_grade: A
+  note: 공모펀드(행=종목×속성태그 8.6배 중복)와 달리 이 테이블은 행이 곧 상품이다. COUNT(*) 를 그대로 쓸 수 있다.
+
 columns:
   # ── 규모 (단위 주의) ──
   du_last_aum:
@@ -48,7 +54,9 @@ columns:
     korean_name: 배당주기
     missing_reason: missing
     answer_policy: "월배당/분기배당 질의 → '데이터 미제공'. 상품명 '위클리'/'월배당' 등으로만 부분 유추."
-    note: 89.4% 결측(공백문자열). 유효 183건.
+    note: >-
+      🔴 2026-08-18 감사 정정 — **유효 0건이다.** 현행 DB 전 행이 공백('  ') 또는 NULL, distinct 1.
+      이전 "유효 183건" 은 재현되지 않는다 (구 빌드 관측이거나 오독). 100% 결측 컬럼으로 취급할 것.
 
   # ── 전부 0 (미입력) ──
   du_chas_errt:
@@ -125,24 +133,35 @@ columns:
     answer_policy: "운용사 질의는 약칭 기준. 목록/집계 시 상품명 오염 행 제외(cu_fund_mgmt_co NOT LIKE '%상장지수%'). 정규화 매핑은 워크샵 §F-4."
     note: "정상 약칭 32종(삼성·미래에셋·KB) + 상품명 오염 54건 = DISTINCT 97종으로 부풀려짐. ETN 발행 증권사와 ETF 운용사 혼재."
 
-  # ── 전일NAV·등락금액 (깨진 컬럼) ──
+  # ── 전일NAV·등락금액 (🔴 ETF만 깨짐 — ETN은 정상. 2026-08-18 감사 정정) ──
   du_nav_yday:
     korean_name: 전일NAV
-    missing_reason: broken
-    answer_policy: "'전일 대비 NAV 등락' 질의에 사용 금지. 일간 등락은 du_er_1d 사용."
-    note: "1,137건 전부 오늘 NAV 값이 복사됨(전일 값 아님). D.6."
+    missing_reason: broken_etf_only
+    answer_policy: >-
+      🔴 그룹별로 판정이 갈린다 (2026-08-18 감사) —
+      ETF: 사용 금지 (전일값 아닌 오늘 NAV 복사). 일간 등락은 du_er_1d 사용.
+      ETN: 사용 가능 (정상 전일 NAV).
+    note: >-
+      2026-08-18 전수 분해 — 비교가능 1,517건 중 ETF 1,137건은 전부 du_last_nav(오늘NAV) 복사(깨짐),
+      **ETN 379건은 전일값 ≠ 오늘값이며 du_nav_rnf_amt = (오늘−전일) 등락이 380건 정확히 성립 → 정상**.
+      이전 판정 "1,137건 전부 복사"는 ETF 몫만 본 것이었다. D.6 정정.
   du_nav_rnf_amt:
     korean_name: 전일NAV등락금액
-    missing_reason: broken
-    answer_policy: "사용 금지 — 실제 등락이 아니라 -전일NAV로 잘못 계산됨."
-    note: "1,137건 전부 = -du_nav_yday. 실제등락(오늘-어제)인 종목 0건. D.6."
+    missing_reason: broken_etf_only
+    answer_policy: >-
+      🔴 ETF: 사용 금지 (실제 등락이 아니라 -전일NAV). ETN: 사용 가능 (실제 등락 = 오늘−전일 NAV).
+    note: >-
+      2026-08-18 정정 — ETF 1,137건은 = -du_nav_yday (깨짐). ETN 380건은 du_last_nav - du_nav_yday
+      와 오차 0.01 미만으로 일치(정상). "실제등락인 종목 0건"은 ETF 한정에서만 참이었다.
 
   # ── 종가 (0값 = 미거래) ──
   du_clpr:
     korean_name: 종가
     missing_reason: present
     answer_policy: "가격 기반 Top-N/조회 시 du_clpr > 0 필터. 0값은 만기채권ETF·신규상장 미거래."
-    note: "0값 50건. AUM은 있으나 종가 0인 종목 존재."
+    note: >-
+      🔴 2026-08-18 감사 정정 — 0값은 50건이 아니라 **167건 = ETF 50 + ETN 117**이다
+      (이전 수치는 ETF만 센 것). du_clpr > 0 필터의 영향 범위가 3.3배다. AUM은 있으나 종가 0인 종목 존재.
 
 # ── ETF/ETN 구분 (핵심) ──
 product_group:
@@ -170,9 +189,14 @@ query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
   보수유효: cu_charge_rt > 0            # 0은 미입력 (유효 67건)
-  수익률정상: du_er_1y > -100 AND du_er_1y IS NOT NULL   # -100 센티넬 제외 (ETF 34건)
-  종가정상: du_clpr > 0                 # =0 50건 (만기형 채권ETF·신규상장 미거래)
-  NAV등락금지: "du_nav_yday / du_nav_rnf_amt 사용 금지"   # 1,137건 전부 깨짐 (D.6)
+  수익률정상: <질의 대상 기간 컬럼> > -100 AND <동일 컬럼> IS NOT NULL   # 🔴 2026-08-18 개정
+  수익률정상_개정근거: >-
+    🔴 -100 센티넬은 du_er_1y 만이 아니라 **전 기간에 있다** (2026-08-18 전수) —
+    1m 20 · 3m 37 · 6m 53 · ytd 44 · 1y 98건. 전건이 du_clpr=0 동반(거래중단·상폐 확인).
+    이전 규칙은 1y 고정이라 다른 기간 Top-N 이 무방비였다. 정렬·필터에 쓰는 바로 그 기간
+    컬럼에 건다 — public_funds.query_rules.수익률정상과 동일 형태 (도메인 간 통일).
+  종가정상: du_clpr > 0                 # 🔴 =0 은 167건 = ETF 50 + ETN 117 (2026-08-18 정정 — 이전 '50건' 은 ETF만 센 것)
+  NAV등락금지_ETF만: "ETF 는 du_nav_yday / du_nav_rnf_amt 사용 금지 · 🔴 ETN 은 정상이므로 사용 가능"   # 2026-08-18 정정 — ETN 379건은 전일값·등락이 정확 (columns.du_nav_yday)
   전부0컬럼금지: "pd_divd_amt_pshr · pd_dvid_yield · du_chas_errt · du_diff_rt · cu_charge_etc_rt · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · pd_lst_price 사용 금지"  # 9종 non-null 전부 0 = 미제공
   판매중만: pd_sale_yn = '1'
   거래정상: pd_tr_yn = '0'
@@ -187,7 +211,11 @@ axis_derivation:
       rule: cu_strtegy='액티브' → Active, else Passive
     leverageType:
       accuracy: 100/100
-      rule: cu_lev_fector 값매핑 (1→Standard, 2→Leveraged2X, -1→Inverse1X, -2→Inverse2X, ±3→Lev/Inv3X)
+      rule: cu_lev_fector 값매핑 (1→Standard, 2→Leveraged2X, -1→Inverse1X, -2→Inverse2X, ±3→Lev/Inv3X, ±0.5/±1.5→Lev/Inv 소수배수)
+      rule_보강: >-
+        🔴 2026-08-18 감사 — 매핑에 없던 ±0.5(4건)·±1.5(2건)가 실재한다. 전부 ETN
+        (인버스0.5X VIX · 1.5X 천연가스 등). 샘플 100건에 없어 정확도 100/100 이 유지됐던 것.
+        소수 배수도 매핑에 받을 것 — 안 받으면 6건이 leverageType 미분류로 남는다.
     distributionType:
       accuracy: 100/100
       rule: 상품명에 'TR'/'Total Return' → TotalReturn, else Distributing

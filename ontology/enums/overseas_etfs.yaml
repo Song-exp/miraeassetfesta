@@ -8,6 +8,14 @@
 
 domain: overseas_etfs
 
+# ── 행의 낟알 (2026-08-18 감사 확정) ──
+row_grain:
+  구조: 행 = 상품 (pd_itm_no 완전 유일 — 5,646행 = 5,646 distinct)
+  evidence_grade: A
+  note: >-
+    🔴 유일 키는 pd_itm_no **뿐이다.** pd_isin_cd·pd_lipper_id 는 각각 50종이 2개 상품에 걸려
+    (예: 같은 ISIN 이 OEUR.K/OEFA.K 두 티커에) 단독 조인 키로 쓰면 안 된다 (columns._identifier_dup).
+
 # ── 컬럼 한글명 49종 (schema_metadata 공란 대체) ──
 #   36종: 국내ETF schema Sheet1_Schema 에서 매핑 (공유 컬럼)
 #   13종: 해외ETF 전용 — 컬럼명 의미로 직접 확정
@@ -148,6 +156,37 @@ columns:
     answer_policy: "NAV 질의는 유효 약 12%만. 모수 명시."
     note: 87.9% 결측.
 
+  # ── 식별자 중복 (2026-08-18 감사 신설) ──
+  _identifier_dup:
+    korean_name: ISIN·Lipper 중복 주의
+    evidence_grade: A
+    trap: >-
+      🔴 pd_isin_cd 중복 50종 · pd_lipper_id 중복 50종 (각각 한 값이 2개 상품).
+      "해외가 식별자가 낫다(ISIN/Lipper/CIK)" 는 결측률 이야기이지 유일성 이야기가 아니다.
+    answer_policy: >-
+      ISIN·Lipper 로 조인·단건 조회 시 2건이 나올 수 있다 — pd_itm_no 를 기본 키로 쓰고,
+      ISIN 검색 결과가 복수면 티커를 병기해 모두 제시할 것.
+    applies_to:
+    - pd_isin_cd
+    - pd_lipper_id
+
+  # ── 핵심ETF여부 (2026-08-18 감사 신설 — 사용 불가) ──
+  wu_core_yn:
+    korean_name: 핵심ETF여부
+    missing_reason: missing
+    answer_policy: "🔴 '핵심 ETF' 질의에 이 컬럼 사용 금지 — 98.2% 결측에 유효값이 전부 'N'(Y 는 0건)이라 판별 정보가 없다. '데이터 미제공'."
+    note: 유효 103건 전부 'N'. 컬럼명과 달리 핵심 여부를 담고 있지 않다.
+
+  # ── 거래대금·거래량 0값 (2026-08-18 감사 신설) ──
+  du_val_1d:
+    korean_name: 일거래대금
+    missing_reason: present
+    answer_policy: "거래대금·거래량 Top-N 시 0값 187건(미거래 상품, du_val=du_vol 동시 0) 제외 여부를 모수와 함께 밝힐 것."
+    note: 0값 187건은 du_vol_1d 와 정확히 동일 상품 — 당일 미거래로 해석. 결측 0.2%.
+    applies_to:
+    - du_val_1d
+    - du_vol_1d
+
   # ── 운용사 (영문) ──
   cu_fund_mgmt_co:
     korean_name: 운용사
@@ -176,14 +215,26 @@ normalization:
   - wu_inv_rgn
   language_note: "자산군·지역이 영문. 국내ETF(한글)와 교차 시 매핑 테이블 필요 (주식↔Equity, 미국↔United States of America). → 워크샵 §F-2."
 
+# ── 정보량 0 컬럼 (2026-08-18 감사 신설 — 필터·답변 축으로 쓰지 말 것) ──
+constant_columns:
+  _note: distinct 1 (유효분 기준). 필터로 쓰면 항상 전량 또는 0건.
+  pd_sale_yn: "전부 1(판매중) — 국내ETF 와 달리 판매완료 0건. '판매중만' 규칙이 해외에선 no-op"
+  pd_tr_yn: "전부 0(거래정상) — '거래정상' 규칙도 no-op"
+  pd_trd_ccy: "전부 USD"
+  pd_mkt_id: "전부 US"
+  du_er_1d: "유효 5,388건 전부 0 (columns.du_er_1d)"
+  du_base_dt_match_yn: "전부 N"
+  du_clpr_src: "전부 pd65n101.tday_clpr (출처 상수)"
+  cu_index_tracking_yn: "유효 2,360건 전부 Y — 추종/비추종 판별 정보 없음 (결측 58.2%)"
+
 # ── 쿼리 가드레일 ──
 query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
   기초지수유효: "cu_base_index NOT LIKE '%not provided%' AND cu_base_index NOT LIKE '%not available%'"
   인버스숏: cu_inverse_short_yn = 'Y'
-  판매중만: pd_sale_yn = '1'
-  거래정상: pd_tr_yn = '0'
+  판매중만: pd_sale_yn = '1'     # ⚠️ 해외는 전부 판매중이라 no-op (constant_columns) — 국내와의 대칭 유지용
+  거래정상: pd_tr_yn = '0'       # ⚠️ 동일 — no-op
 
 # ── 국내ETF 대비 비대칭 요약 (교차질의 주의) ──
 domestic_asymmetry:

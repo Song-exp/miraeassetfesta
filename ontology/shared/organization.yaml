@@ -1,0 +1,278 @@
+# shared/organization — 운용사 개체 (횡단 층)
+# 이 파일은 scripts 로 codebooks/public_funds_asset_manager.derived.csv 에서 생성 후 수작업 보정한다.
+# 원천 코드북이 갱신되면(외부 코드북 회신) 재생성할 것.
+#
+# 채택 기준: evidence A(ETF 교차검증)·B(접두 점유율 90%+)·C(구상호 혼재하나 브랜드 식별) 만 확정.
+#           D(접두=상품명)·E(브랜드 미식별) 22종은 제외 — coverage report 미매핑으로 추적, 워크샵 안건.
+# 🔴 미해결: former_names(동양→우리 등 구상호) 는 DB 값이 아니라 질의 표기라 kg_alias 에 못 넣음.
+#           질의측 동의어 테이블(kg_synonym)이 별도로 필요 — 후속 작업.
+# 🔴 미해결: domestic_bonds.PD_PBCM 발행사 8,018종은 규칙 정규화 트랙 별도 (§4.1).
+
+entity: Organization
+description: 운용사·발행사 (자산운용사 브랜드 기준. 정식 법인명 아님 — 코드북 주석 참조)
+property: hasManager
+
+nodes:
+  Org_00080008:
+    label_ko: 미래에셋
+    # codebook evidence A · 접두점유 0.993 · 2852종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080008", source: codebook_v1, evidence: "codebook evidence A · 접두점유 0.993 · 2852종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "미래에셋", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040010:
+    label_ko: 삼성
+    # codebook evidence A · 접두점유 0.998 · 908종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040010", source: codebook_v1, evidence: "codebook evidence A · 접두점유 0.998 · 908종목"}
+    # 🔴 QA 260818: 00080135(뉴딜코리아·메가트렌드 등 64종목)는 삼성액티브자산운용 의심 —
+    #    ETF 데이터가 '삼성'(224)·'삼성액티브'(23)를 별도 표기 = 데이터 자체가 두 회사를 구분.
+    #    삼성자산운용과 동일 노드 병합은 오판정 위험 → pending 강등. 워크샵/코드북 회신으로 확정할 것.
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080135", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 64종목 — 삼성액티브 의심", status: pending}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "삼성", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+
+  Org_SamsungActive:
+    label_ko: 삼성액티브
+    note: "삼성자산운용과 별도 법인(액티브 운용 분사). 펀드 코드 00080135 귀속 여부 확정 시 alias 이전"
+    aliases:
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "삼성액티브", source: manual, evidence: "ETF 23건 — QA 260818 발견"}
+  Org_00040035:
+    label_ko: KB
+    # codebook evidence B · 접두점유 0.994 · 674종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040035", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.994 · 674종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "KB", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040024:
+    label_ko: 한국투자
+    # codebook evidence B · 접두점유 0.974 · 584종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040024", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.974 · 584종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "한국투자", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040067:
+    label_ko: 신한
+    # codebook evidence B · 접두점유 0.957 · 488종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040067", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.957 · 488종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "신한", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040007:
+    label_ko: 우리
+    # codebook evidence B · 접두점유 0.947 · 432종목 · 구상호: 동양
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040007", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.947 · 432종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "우리", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040027:
+    label_ko: 한화
+    # codebook evidence B · 접두점유 1.0 · 398종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040027", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 398종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "한화", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080052:
+    label_ko: 키움
+    # codebook evidence B · 접두점유 0.958 · 357종목 · 구상호: 우리
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080052", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.958 · 357종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "키움", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040040:
+    label_ko: NH-Amundi
+    # codebook evidence A · 접두점유 0.875 · 329종목 · 구상호: NH-C
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040040", source: codebook_v1, evidence: "codebook evidence A · 접두점유 0.875 · 329종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "NH-Amundi", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080029:
+    label_ko: 피델리티
+    # codebook evidence B · 접두점유 0.993 · 278종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080029", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.993 · 278종목"}
+  Org_00080035:
+    label_ko: iM에셋
+    # codebook evidence B · 접두점유 0.951 · 244종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080035", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.951 · 244종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "iM에셋", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040006:
+    label_ko: DB
+    # codebook evidence C · 접두점유 0.854 · 198종목 · 구상호: 동부글로
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040006", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.854 · 198종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "DB", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040001:
+    label_ko: 교보악사
+    # codebook evidence B · 접두점유 0.938 · 195종목 · 구상호: 교보
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040001", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.938 · 195종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "교보악사", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080013:
+    label_ko: 다올
+    # codebook evidence C · 접두점유 0.728 · 191종목 · 구상호: KTB스 / KTB글 / KTB웰
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080013", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.728 · 191종목"}
+  Org_00080005:
+    label_ko: 마이다스
+    # codebook evidence B · 접두점유 1.0 · 179종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080005", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 179종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "마이다스", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040018:
+    label_ko: 브이아이
+    # codebook evidence C · 접두점유 0.757 · 169종목 · 구상호: 제일B& / 하이
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040018", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.757 · 169종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "브이아이", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040005:
+    label_ko: 하나
+    # codebook evidence B · 접두점유 0.958 · 168종목 · 구상호: 대한
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040005", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.958 · 168종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "하나", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040038:
+    label_ko: 카디안
+    # codebook evidence C · 접두점유 0.765 · 166종목 · 구상호: 이스트스 / PCA다
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040038", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.765 · 166종목"}
+  Org_00040014:
+    label_ko: 신영
+    # codebook evidence B · 접두점유 0.994 · 162종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040014", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.994 · 162종목"}
+  Org_00080043:
+    label_ko: 트러스톤
+    # codebook evidence B · 접두점유 1.0 · 153종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080043", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 153종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "트러스톤", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040087:
+    label_ko: KCGI
+    # codebook evidence C · 접두점유 0.897 · 146종목 · 구상호: 메리츠주
+    aliases:
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "케이씨지아이", source: manual, evidence: "KCGI 한글표기 — 수작업 확인 260818"}
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040087", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.897 · 146종목"}
+  Org_00040021:
+    label_ko: 흥국
+    # codebook evidence B · 접두점유 0.992 · 127종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040021", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.992 · 127종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "흥국", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080010:
+    label_ko: 유리
+    # codebook evidence A · 접두점유 1.0 · 125종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080010", source: codebook_v1, evidence: "codebook evidence A · 접두점유 1.0 · 125종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "유리", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080022:
+    label_ko: IBK
+    # codebook evidence C · 접두점유 0.565 · 115종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080022", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.565 · 115종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "IBK", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080042:
+    label_ko: AB
+    # codebook evidence B · 접두점유 1.0 · 95종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080042", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 95종목"}
+  Org_00080086:
+    label_ko: 에셋플러스
+    # codebook evidence B · 접두점유 1.0 · 93종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080086", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 93종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "에셋플러스", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00040013:
+    label_ko: 키움슈로더
+    # codebook evidence C · 접두점유 0.505 · 91종목 · 구상호: 슈로더글 / 슈로더미 / 슈로더재
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040013", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.505 · 91종목"}
+  Org_00080019:
+    label_ko: 베어링
+    # codebook evidence B · 접두점유 1.0 · 82종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080019", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 82종목"}
+  Org_00080021:
+    label_ko: 한국밸류10년투자
+    # codebook evidence C · 접두점유 0.714 · 77종목 · 구상호: 한국밸류
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080021", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.714 · 77종목"}
+  Org_00040026:
+    label_ko: 유진챔피언
+    # codebook evidence C · 접두점유 0.561 · 57종목 · 구상호: 유진디딤 / 한일신종 / 유진인덱
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040026", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.561 · 57종목"}
+  Org_00040004:
+    label_ko: 대신
+    # codebook evidence B · 접두점유 0.981 · 53종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040004", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.981 · 53종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "대신", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080033:
+    label_ko: BNK
+    # codebook evidence B · 접두점유 0.96 · 50종목 · 구상호: GS
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080033", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.96 · 50종목"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "BNK", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080017:
+    label_ko: 유경
+    # codebook evidence C · 접두점유 0.674 · 46종목 · 구상호: 드림10 / 드림포유 / 드림 트
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080017", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.674 · 46종목"}
+  Org_00040016:
+    label_ko: HDC
+    # codebook evidence B · 접두점유 0.927 · 41종목 · 구상호: 아이절세
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040016", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.927 · 41종목"}
+  Org_00080030:
+    label_ko: JP모간
+    # codebook evidence B · 접두점유 1.0 · 40종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080030", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 40종목"}
+  Org_00080006:
+    label_ko: 코레이트
+    # codebook evidence C · 접두점유 0.564 · 39종목 · 구상호: 마이애셋
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080006", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.564 · 39종목"}
+  Org_00080087:
+    label_ko: 브이
+    # codebook evidence C · 접두점유 0.735 · 34종목 · 구상호: 맥쿼리이 / ING
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080087", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.735 · 34종목"}
+  Org_00040084:
+    label_ko: 도이치
+    # codebook evidence C · 접두점유 0.758 · 33종목 · 구상호: 디더블유
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040084", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.758 · 33종목"}
+  Org_00040023:
+    label_ko: 알리안츠
+    # codebook evidence B · 접두점유 0.906 · 32종목 · 구상호: 하나알리 / 알이안츠 / Alli
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040023", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.906 · 32종목"}
+  Org_00080026:
+    label_ko: 스팍스
+    # codebook evidence B · 접두점유 1.0 · 32종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080026", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 32종목"}
+  Org_00080032:
+    label_ko: 현대인베스트먼트
+    # codebook evidence C · 접두점유 0.69 · 29종목 · 구상호: 현대글로 / 현대DJ / 현대플래
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080032", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.69 · 29종목"}
+  Org_00080018:
+    label_ko: 플러스
+    # codebook evidence C · 접두점유 0.696 · 23종목 · 구상호: Plus
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080018", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.696 · 23종목"}
+  Org_00040022:
+    label_ko: 프랭클린
+    # codebook evidence C · 접두점유 0.591 · 22종목 · 구상호: 템플턴프 / 템플턴퇴
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040022", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.591 · 22종목"}
+  Org_00080208:
+    label_ko: 웰컴
+    # codebook evidence B · 접두점유 1.0 · 17종목
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080208", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 17종목"}
+  Org_00080157:
+    label_ko: 와이즈
+    # codebook evidence C · 접두점유 0.75 · 4종목 · 구상호: 현대와이
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080157", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.75 · 4종목"}
+
+  # ── 수작업 보정 ──
+  # KCGI(펀드 코드북) ↔ 케이씨지아이(국내ETF 한글표기) — 동일사
+
+absent_in: {}   # 4테이블 모두 운용사/발행사 컬럼 존재 (해외ETF cu_fund_mgmt_co · 채권 PD_PBCM 은 미매핑 상태로 추적)

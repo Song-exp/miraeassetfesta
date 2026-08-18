@@ -1,0 +1,142 @@
+# shared/region — 투자지역 개체 (횡단 층 + 계층 closure)
+# 국내ETF(한글 11종) ↔ 해외ETF(영문 59종) ↔ 공모펀드(한글 7종).
+# parent 필드가 계층이 되고, 생성기가 kg_closure 로 전개한다 (일본 ⊂ 아시아 ⊂ 글로벌).
+#
+# 값 근거: DB distinct 전수 확인 (2026-08-18)
+# 🔴 해외ETF 국가 단위 값 40여 종(UK·Switzerland 등 각 1~5건)은 미등록 — coverage report 로 추적, 전수 등록은 후속.
+# 🔴 '이머징/브릭스'는 지리 축이 아니라 시장분류 축 — 워크샵에서 별도 축 분리 여부 확정 필요.
+
+entity: Region
+description: "투자지역 (계층: 국가 ⊂ 권역 ⊂ 글로벌)"
+property: hasRegion
+
+nodes:
+  Region_Global:
+    label_ko: 글로벌
+    label_en: Global
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "글로벌", source: manual, evidence: "76건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Global", source: manual, evidence: "718건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "글로벌", source: manual, evidence: "42,875건"}
+
+  Region_GlobalExUS:
+    label_ko: 글로벌(미국 제외)
+    label_en: Global Ex US
+    parent: Region_Global
+    note: "미국 제외 글로벌 — 계층상 Global 하위로 두되 '미국 포함' 질의와 구분 필요"
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Global Ex US", source: manual, evidence: "303건"}
+
+  Region_Asia:
+    label_ko: 아시아
+    label_en: Asia
+    parent: Region_Global
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "아시아", source: manual, evidence: "33건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "아시아", source: manual, evidence: "10,265건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Asia Pacific", source: manual, evidence: "7건 — 오세아니아 포함 여부 미확정", status: pending}
+
+  Region_Korea:
+    label_ko: 국내
+    label_en: Korea
+    parent: Region_Asia
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "국내",  source: manual, evidence: "1,036건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "국내",  source: manual, evidence: "33,223건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Korea", source: manual, evidence: "7건 — 해외상장 한국물"}
+
+  Region_China:
+    label_ko: 중국
+    label_en: China
+    parent: Region_Asia
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn, raw: "중국",  source: manual, evidence: "63건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "China", source: manual, evidence: "46건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Greater China", source: manual, evidence: "2건 — 홍콩·대만 포함 범위 미확정", status: pending}
+
+  Region_Japan:
+    label_ko: 일본
+    label_en: Japan
+    parent: Region_Asia
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn, raw: "일본",  source: manual, evidence: "25건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Japan", source: manual, evidence: "25건"}
+
+  Region_India:
+    label_ko: 인도
+    label_en: India
+    parent: Region_Asia
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn, raw: "인도",  source: manual, evidence: "19건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "India", source: manual, evidence: "24건"}
+
+  Region_Vietnam:
+    label_ko: 베트남
+    label_en: Vietnam
+    parent: Region_Asia
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn, raw: "베트남",  source: manual, evidence: "5건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Vietnam", source: manual, evidence: "3건"}
+
+  Region_Americas:
+    label_ko: 남미/북미
+    label_en: Americas
+    parent: Region_Global
+    note: "국내 데이터가 남미·북미를 하나로 묶어 표기 — 하위에 북미/남미/미국 계층"
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "남미/북미", source: manual, evidence: "12건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "남미/북미", source: manual, evidence: "4,984건"}
+
+  Region_NorthAmerica:
+    label_ko: 북미
+    label_en: North America
+    parent: Region_Americas
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "North America", source: manual, evidence: "1건"}
+
+  Region_LatinAmerica:
+    label_ko: 남미
+    label_en: Latin America
+    parent: Region_Americas
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Latin America", source: manual, evidence: "4건"}
+
+  Region_US:
+    label_ko: 미국
+    label_en: United States
+    parent: Region_NorthAmerica
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn, raw: "미국", source: manual, evidence: "453건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "United States of America", source: manual, evidence: "4,196건"}
+
+  Region_Europe:
+    label_ko: 유럽
+    label_en: Europe
+    parent: Region_Global
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "유럽",   source: manual, evidence: "7건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Europe", source: manual, evidence: "41건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "유럽",   source: manual, evidence: "1,846건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "EuroZone", source: manual, evidence: "2건 — 유로존≠유럽(영국·스위스 제외) 미확정", status: pending}
+
+  Region_Emerging:
+    label_ko: 이머징/브릭스
+    label_en: Emerging Markets
+    parent: Region_Global
+    note: "🔴 지리 축 아닌 시장분류 축 — 별도 축 분리 여부 워크샵 안건"
+    aliases:
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "이머징/브릭스", source: manual, evidence: "5건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "이머징/브릭스", source: manual, evidence: "2,261건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Global Emerging Markets", source: manual, evidence: "175건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "BRIC", source: manual, evidence: "1건"}
+
+  Region_MEA:
+    label_ko: 중동/아프리카
+    label_en: Middle East & Africa
+    parent: Region_Global
+    aliases:
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "중동/아프리카", source: manual, evidence: "99건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,       raw: "Africa",       source: manual, evidence: "1건"}
+
+absent_in:
+  domestic_bonds: "투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)"

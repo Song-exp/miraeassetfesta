@@ -1,0 +1,97 @@
+# -*- coding: utf-8 -*-
+"""런타임 파이프라인 테스트 — 검증 게이트(BUILD_PLAN §5⑤) 문항이 실제로 기각·매핑되는지.
+
+HCX 없이 전부 오프라인으로 돈다. DB(data/financial_products.db)가 없으면 skip.
+"""
+
+import pytest
+
+from src.runtime.loader import db_path, load_context
+from src.runtime.pipeline import answer_question, validate_sql
+
+pytestmark = pytest.mark.skipif(not db_path().exists(), reason="DB 없음 — build_db.py 선행 필요")
+
+
+@pytest.fixture(scope="module")
+def ctx():
+    return load_context()
+
+
+# ── 네거티브 게이트 — HCX 0회 기각 ──────────────────────────────────────
+
+def test_absent_overseas_risk(ctx):
+    r = answer_question("T-01", "위험등급 낮은 해외ETF 추천해줘", ctx=ctx)
+    assert "hasRiskGrade" in r.think_trace and "[Gate] 기각" in r.think_trace
+    assert "제공되지" in r.answer or "확인할 수 없" in r.answer
+
+
+def test_absent_bond_index(ctx):
+    r = answer_question("T-02", "기초지수를 추종하는 채권 알려줘", ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "tracksIndex" in r.think_trace
+
+
+def test_enum_crd_aaaa(ctx):
+    r = answer_question("T-03", "신용등급 AAAA 채권 있어?", ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "AAAA" in r.think_trace
+    assert "존재하지 않는" in r.answer
+
+
+def test_enum_crd_valid_not_rejected(ctx):
+    # 정상 등급(AAA)은 기각되면 안 된다
+    r = answer_question("T-04", "신용등급 AAA 채권 알려줘", ctx=ctx)
+    assert "[Gate] 통과" in r.think_trace
+
+
+def test_risk_grade_out_of_range(ctx):
+    r = answer_question("T-05", "위험등급 9등급 펀드 보여줘", ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "0~6" in r.think_trace
+
+
+def test_risk_grade_6_valid(ctx):
+    # 🔴 규칙 §4 — 6등급은 정상이다 (1~5 제약은 오류). 기각되면 안 된다
+    r = answer_question("T-06", "위험등급 6등급 채권 알려줘", ctx=ctx)
+    assert "[Gate] 통과" in r.think_trace
+
+
+def test_cutoff_future(ctx):
+    r = answer_question("T-07", "2027년 만기 예정 수익률 전망 알려줘", ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "2026-07-11" in r.answer
+
+
+# ── KG Ground — 표기 매핑 ───────────────────────────────────────────────
+
+def test_ground_org(ctx):
+    r = answer_question("T-08", "미래에셋이 운용하는 펀드 알려줘", ctx=ctx)
+    assert "or_co_xtn_itt_cd='00080008'" in r.think_trace.replace('"', "'")
+
+
+def test_ground_index(ctx):
+    r = answer_question("T-09", "KOSPI200 추종 상품 알려줘", ctx=ctx)
+    assert "Idx_KOSPI200" in r.think_trace
+
+
+# ── SQL Guard ───────────────────────────────────────────────────────────
+
+def test_sql_guard():
+    ok = "SELECT pd_nm FROM domestic_etfs WHERE pd_grp_no='ETF' LIMIT 5"
+    assert validate_sql(ok) is None
+    assert validate_sql("DELETE FROM domestic_etfs") is not None
+    assert validate_sql("SELECT * FROM users LIMIT 5") is not None          # 화이트리스트 밖
+    assert validate_sql("SELECT 1 FROM public_funds") is not None           # LIMIT 누락
+    assert validate_sql("SELECT 1 FROM public_funds LIMIT 1; DROP TABLE x") is not None
+
+
+# ── Plan 연결 시 경로 (가짜 planner 로 Execute 까지) ─────────────────────
+
+class FakePlanner:
+    def plan_sql(self, question, grounding):
+        return "SELECT count(*) AS n FROM domestic_etfs WHERE pd_grp_no='ETF' LIMIT 1"
+
+    def compose_answer(self, question, rows):
+        return f"조회 결과: {rows.splitlines()[-1]}건"
+
+
+def test_full_path_with_planner(ctx):
+    r = answer_question("T-10", "국내 ETF 몇 개야?", planner=FakePlanner(), ctx=ctx)
+    assert "[Execute] 1행 조회" in r.think_trace
+    assert "1202" in r.retrieved_context   # ETF 1,202건 — 감사로 확정된 수치

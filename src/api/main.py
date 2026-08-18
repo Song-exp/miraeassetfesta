@@ -62,26 +62,31 @@ class AnswerResponse(BaseModel):
 
 
 def answer_question(question_id: str, question: str) -> AnswerResponse:
-    """🔴 스텁. 에이전트 완성 시 이 함수만 교체합니다.
+    """런타임 파이프라인 호출 (src/runtime/). Ground·Gate·Guard 는 가동,
+    Plan(HCX SQL 생성)은 planner 연결 전까지 보류 응답.
 
-    지어낸 수치를 넣지 않습니다 — 평가 전에 주최측이 찔러볼 수 있고,
-    환각 방지가 우리 차별점인데 스텁이 환각을 반환하면 앞뒤가 안 맞습니다.
+    파이프라인 로드 실패(DB 부재 등) 시 구 스텁 문구로 강등 — 어떤 경우에도 5필드는 지킨다.
     """
-    trace = "\n".join(
-        [
-            "1. [Normalize] 질의 정규화 완료",
-            "2. [Ground] 개체 매핑 — 미구현 (KG 미구축)",
-            "3. [Route] 온톨로지 라우팅 — 미구현 (.ttl 미작성)",
-            "4. [Decision] 에이전트 파이프라인 미완성 → 답변 보류",
-        ]
-    )
-    return AnswerResponse(
-        question_id=question_id,
-        question=question,
-        retrieved_context="",
-        think_trace=trace,
-        answer="현재 시스템 구축 중으로 답변을 제공할 수 없습니다.",
-    )
+    try:
+        from src.runtime.pipeline import answer_question as run
+
+        r = run(question_id, question)
+        return AnswerResponse(
+            question_id=r.question_id,
+            question=r.question,
+            retrieved_context=r.retrieved_context,
+            think_trace=r.think_trace,
+            answer=r.answer,
+        )
+    except Exception:
+        log.exception("runtime pipeline unavailable — falling back to stub")
+        return AnswerResponse(
+            question_id=question_id,
+            question=question,
+            retrieved_context="",
+            think_trace="1. [Error] 런타임 파이프라인 로드 실패 — 답변 보류",
+            answer="현재 시스템 구축 중으로 답변을 제공할 수 없습니다.",
+        )
 
 
 @app.get("/health")

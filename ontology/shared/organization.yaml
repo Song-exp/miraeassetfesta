@@ -4,6 +4,14 @@
 #
 # 채택 기준: evidence A(ETF 교차검증)·B(접두 점유율 90%+)·C(구상호 혼재하나 브랜드 식별) 만 확정.
 #           D(접두=상품명)·E(브랜드 미식별) 22종은 제외 — coverage report 미매핑으로 추적, 워크샵 안건.
+#
+# 🆕 2026-08-18 웹 관측 반영 (source: miraeasset_web · 근거: data/external/miraeasset_web/fund_pages_full.csv)
+#   미래에셋증권 펀드상세 페이지가 코드별 운용사 법인명(ADMICN)을 노출 — 67코드 전부 법인명 관측 완료.
+#   · 정식 법인명의 단일 원천은 codebooks/asset_manager.csv (67행 완성). 이 파일 label 은 브랜드 유지.
+#   · D·E 로 제외됐던 코드들을 관측 근거로 신규 수록 (하단 "웹 관측 신규 노드" 절).
+#   · 🔶 이관 관측 (라벨≠현재 법인, 워크샵 안건): 00040023 알리안츠→우리글로벌자산운용(최빈),
+#     00040013 키움슈로더→키움투자자산운용(최빈. 00080052 와 동일 법인이면 노드 병합 대상),
+#     00040084 도이치→디더블유에스자산운용. 병합·개명은 담당(Song-exp) 확인 후 진행.
 # 🔴 미해결: former_names(동양→우리 등 구상호) 는 DB 값이 아니라 질의 표기라 kg_alias 에 못 넣음.
 #           질의측 동의어 테이블(kg_synonym)이 별도로 필요 — 후속 작업.
 # 🔴 미해결: domestic_bonds.PD_PBCM 발행사 8,018종은 규칙 정규화 트랙 별도 (§4.1).
@@ -24,17 +32,16 @@ nodes:
     # codebook evidence A · 접두점유 0.998 · 908종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040010", source: codebook_v1, evidence: "codebook evidence A · 접두점유 0.998 · 908종목"}
-    # 🔴 QA 260818: 00080135(뉴딜코리아·메가트렌드 등 64종목)는 삼성액티브자산운용 의심 —
-    #    ETF 데이터가 '삼성'(224)·'삼성액티브'(23)를 별도 표기 = 데이터 자체가 두 회사를 구분.
-    #    삼성자산운용과 동일 노드 병합은 오판정 위험 → pending 강등. 워크샵/코드북 회신으로 확정할 것.
-      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080135", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 64종목 — 삼성액티브 의심", status: pending}
+    # ✅ QA 260818 해소: 00080135 는 삼성액티브자산운용으로 확정 — 웹 관측 ADMICN 64종목 전건.
+    #    pending alias 를 Org_SamsungActive 로 이전 (아래 노드 참조).
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "삼성", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
 
   Org_SamsungActive:
     label_ko: 삼성액티브
-    note: "삼성자산운용과 별도 법인(액티브 운용 분사). 펀드 코드 00080135 귀속 여부 확정 시 alias 이전"
+    note: "삼성자산운용과 별도 법인(액티브 운용 분사). 00080135 귀속 확정 — 웹 관측 260818"
     aliases:
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "삼성액티브", source: manual, evidence: "ETF 23건 — QA 260818 발견"}
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080135", source: miraeasset_web, evidence: "웹 상세페이지 ADMICN='삼성액티브자산운용' 64종목 전건 — pending 해소"}
   Org_00040035:
     label_ko: KB
     # codebook evidence B · 접두점유 0.994 · 674종목
@@ -46,6 +53,7 @@ nodes:
     # codebook evidence B · 접두점유 0.974 · 584종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040024", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.974 · 584종목"}
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040105", source: miraeasset_web, evidence: "제2코드 — 웹 관측 ADMICN='한국투자신탁운용' 1종목"}
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "한국투자", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00040067:
     label_ko: 신한
@@ -64,6 +72,7 @@ nodes:
     # codebook evidence B · 접두점유 1.0 · 398종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040027", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 398종목"}
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080015", source: miraeasset_web, evidence: "제2코드(종별 0008) — 웹 관측 ADMICN='한화자산운용' 1종목"}
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "한화", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00080052:
     label_ko: 키움
@@ -184,6 +193,7 @@ nodes:
     # codebook evidence B · 접두점유 1.0 · 82종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080019", source: codebook_v1, evidence: "codebook evidence B · 접두점유 1.0 · 82종목"}
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080159", source: miraeasset_web, evidence: "제2코드 — 웹 관측 ADMICN='베어링자산운용' 1종목"}
   Org_00080021:
     label_ko: 한국밸류10년투자
     # codebook evidence C · 접두점유 0.714 · 77종목 · 구상호: 한국밸류
@@ -274,5 +284,86 @@ nodes:
 
   # ── 수작업 보정 ──
   # KCGI(펀드 코드북) ↔ 케이씨지아이(국내ETF 한글표기) — 동일사
+
+  # ── 웹 관측 신규 노드 (2026-08-18 · source: miraeasset_web) ──
+  # D·E 등급으로 제외됐던 코드들. 법인명은 미래에셋증권 상세페이지 ADMICN 직접 관측.
+  # 정식 법인명은 codebooks/asset_manager.csv 참조 (label 은 브랜드 축약).
+  Org_00040011:
+    label_ko: 멀티에셋
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040011", source: miraeasset_web, evidence: "ADMICN='멀티에셋자산운용' 최빈 262종목"}
+  Org_00080031:
+    label_ko: 알파
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080031", source: miraeasset_web, evidence: "ADMICN='알파자산운용' 16종목"}
+  Org_00080056:
+    label_ko: 라자드코리아
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080056", source: miraeasset_web, evidence: "ADMICN='라자드코리아자산운용' 11종목"}
+  Org_00080016:
+    label_ko: 칸서스
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080016", source: miraeasset_web, evidence: "ADMICN='칸서스자산운용' 10종목"}
+  Org_00080368:
+    label_ko: 브이아이피
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080368", source: miraeasset_web, evidence: "ADMICN='브이아이피자산운용' 10종목"}
+  Org_00080333:
+    label_ko: 한국투자리얼에셋
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080333", source: miraeasset_web, evidence: "ADMICN='한국투자리얼에셋운용' 10종목"}
+  Org_00080041:
+    label_ko: 현대
+    # 🔶 00080032(현대인베스트먼트)와 별개 법인 — 웹 관측으로 두 코드가 갈림 (README 다중코드 의문 해소)
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080041", source: miraeasset_web, evidence: "ADMICN='현대자산운용' 8종목"}
+  Org_00080048:
+    label_ko: 브레인
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080048", source: miraeasset_web, evidence: "ADMICN='브레인자산운용' 8종목"}
+  Org_00080127:
+    label_ko: 머스트
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080127", source: miraeasset_web, evidence: "ADMICN='머스트자산운용' 8종목"}
+  Org_00080002:
+    label_ko: 에이케이파트너스
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080002", source: miraeasset_web, evidence: "ADMICN='에이케이파트너스자산운용' 6종목"}
+  Org_00080003:
+    label_ko: 골든브릿지
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080003", source: miraeasset_web, evidence: "ADMICN='골든브릿지자산운용' 6종목"}
+  Org_00080162:
+    label_ko: 디에스
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080162", source: miraeasset_web, evidence: "ADMICN='디에스자산운용' 5종목"}
+  Org_00080062:
+    label_ko: 이지스
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080062", source: miraeasset_web, evidence: "ADMICN='이지스자산운용' 4종목"}
+  Org_00080007:
+    label_ko: 골드만삭스
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080007", source: miraeasset_web, evidence: "ADMICN='골드만삭스자산운용' 2종목"}
+  Org_00080034:
+    label_ko: 블랙록
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080034", source: miraeasset_web, evidence: "ADMICN='블랙록자산운용' 2종목"}
+  Org_00080204:
+    label_ko: 하나대체투자
+    # 하나자산운용(00040005)과 별개 법인
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080204", source: miraeasset_web, evidence: "ADMICN='하나대체투자자산운용' 1종목"}
+  Org_00080248:
+    label_ko: 타임폴리오
+    # 코드북(codebook_v1)엔 있었으나 yaml 노드 누락이던 코드 — coverage report 로 발견
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080248", source: miraeasset_web, evidence: "ADMICN='타임폴리오자산운용' 17종목 전건"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "타임폴리오", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
+  Org_00080359:
+    label_ko: 더제이
+    # 코드북(codebook_v1)엔 있었으나 yaml 노드 누락이던 코드 — coverage report 로 발견
+    aliases:
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080359", source: miraeasset_web, evidence: "ADMICN='더제이자산운용' 6종목 전건"}
 
 absent_in: {}   # 4테이블 모두 운용사/발행사 컬럼 존재 (해외ETF cu_fund_mgmt_co · 채권 PD_PBCM 은 미매핑 상태로 추적)

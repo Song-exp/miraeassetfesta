@@ -127,6 +127,24 @@
 :Org_00040022 a :Organization ; skos:prefLabel "프랭클린"@ko .
 :Org_00080208 a :Organization ; skos:prefLabel "웰컴"@ko .
 :Org_00080157 a :Organization ; skos:prefLabel "와이즈"@ko .
+:Org_00040011 a :Organization ; skos:prefLabel "멀티에셋"@ko .
+:Org_00080031 a :Organization ; skos:prefLabel "알파"@ko .
+:Org_00080056 a :Organization ; skos:prefLabel "라자드코리아"@ko .
+:Org_00080016 a :Organization ; skos:prefLabel "칸서스"@ko .
+:Org_00080368 a :Organization ; skos:prefLabel "브이아이피"@ko .
+:Org_00080333 a :Organization ; skos:prefLabel "한국투자리얼에셋"@ko .
+:Org_00080041 a :Organization ; skos:prefLabel "현대"@ko .
+:Org_00080048 a :Organization ; skos:prefLabel "브레인"@ko .
+:Org_00080127 a :Organization ; skos:prefLabel "머스트"@ko .
+:Org_00080002 a :Organization ; skos:prefLabel "에이케이파트너스"@ko .
+:Org_00080003 a :Organization ; skos:prefLabel "골든브릿지"@ko .
+:Org_00080162 a :Organization ; skos:prefLabel "디에스"@ko .
+:Org_00080062 a :Organization ; skos:prefLabel "이지스"@ko .
+:Org_00080007 a :Organization ; skos:prefLabel "골드만삭스"@ko .
+:Org_00080034 a :Organization ; skos:prefLabel "블랙록"@ko .
+:Org_00080204 a :Organization ; skos:prefLabel "하나대체투자"@ko .
+:Org_00080248 a :Organization ; skos:prefLabel "타임폴리오"@ko .
+:Org_00080359 a :Organization ; skos:prefLabel "더제이"@ko .
 
 # ── Region (shared/region.yaml) ──
 :Region a owl:Class .

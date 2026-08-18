@@ -71,20 +71,32 @@ def load_yaml_dir(path):
 
 
 def load_codebooks(path):
-    """codebook 은 내용이 아니라 규정 준수(source·as_of 주석) 검사 대상으로만 로드"""
+    """codebook 은 내용이 아니라 규정 준수(source·as_of) 검사 대상으로만 로드.
+    두 형식을 인정한다: ① 머리 주석에 source=/as_of= ② source·as_of CSV 컬럼 (행 단위)"""
     out = {}
     if not os.path.isdir(path):
         return out
     for f in sorted(os.listdir(path)):
         if f.endswith(".csv"):
             with open(os.path.join(path, f), encoding="utf-8-sig") as fh:
-                header_comments = []
+                header_comments, csv_header, as_of_values = [], "", []
+                reader = None
                 for line in fh:
                     if line.startswith("#"):
                         header_comments.append(line)
-                    else:
+                    elif not csv_header:
+                        csv_header = line
+                        cols = [c.strip() for c in line.rstrip("\n").split(",")]
+                        if "as_of" in cols and "source" in cols:
+                            reader = csv.DictReader(fh, fieldnames=cols)
+                    elif reader is not None:
                         break
-            out[f] = "".join(header_comments)
+                if reader is not None:
+                    fh.seek(0)
+                    rows = csv.DictReader(l for l in fh if not l.startswith("#"))
+                    as_of_values = [r.get("as_of", "") for r in rows if r.get("as_of")]
+            out[f] = {"comments": "".join(header_comments), "csv_header": csv_header,
+                      "as_of_values": as_of_values}
     return out
 
 
@@ -161,15 +173,23 @@ def validate(con, enums, shared, codebooks):
             if ke and ke not in entity_names:
                 warnings.append(f"[V3] 미완 kg_entity 포인터: enums/{fname} {col} → {ke!r} (shared 미작성 — 할 일)")
 
-    # V4: codebook 규정 — source · as_of(≤ 기준일) 주석 필수
-    for fname, header in codebooks.items():
-        if "source=" not in header and "source =" not in header:
-            errors.append(f"[V4] codebooks/{fname}: source 주석 없음")
-        m = re.search(r"as_of\s*=\s*(\d{4}-\d{2}-\d{2})", header)
-        if not m:
-            errors.append(f"[V4] codebooks/{fname}: as_of 주석 없음")
-        elif m.group(1) > DATA_CUTOFF:
-            errors.append(f"[V4] codebooks/{fname}: as_of {m.group(1)} > 기준일 {DATA_CUTOFF} — 규정 위반")
+    # V4: codebook 규정 — source · as_of(≤ 기준일) 필수. 주석 형식/CSV 컬럼 형식 모두 인정
+    for fname, cb in codebooks.items():
+        header = cb["comments"]
+        cols = [c.strip() for c in cb["csv_header"].rstrip("\n").split(",")]
+        has_cols = "source" in cols and "as_of" in cols
+        if not has_cols and "source=" not in header and "source =" not in header:
+            errors.append(f"[V4] codebooks/{fname}: source 없음 (주석에도 컬럼에도)")
+        if has_cols:
+            bad = [v for v in cb["as_of_values"] if v > DATA_CUTOFF]
+            if bad:
+                errors.append(f"[V4] codebooks/{fname}: as_of {max(bad)} > 기준일 {DATA_CUTOFF} — 규정 위반 {len(bad)}행")
+        else:
+            m = re.search(r"as_of\s*=\s*(\d{4}-\d{2}-\d{2})", header)
+            if not m:
+                errors.append(f"[V4] codebooks/{fname}: as_of 없음 (주석에도 컬럼에도)")
+            elif m.group(1) > DATA_CUTOFF:
+                errors.append(f"[V4] codebooks/{fname}: as_of {m.group(1)} > 기준일 {DATA_CUTOFF} — 규정 위반")
 
     # V6: absent_in 선언인데 실제로는 컬럼이 있는 경우 (선언 자체가 죽음)
     for fname, doc in shared.items():

@@ -1,4 +1,5 @@
-﻿domestic_ko,overseas_en,note
+﻿# source=internal (마스터 데이터 유도 — 외부 수집 아님) · as_of=2026-07-11
+domestic_ko,overseas_en,note
 주식,Equity,1:1 (국내1069/해외2500)
 채권,Bond,1:1 (국내261/해외1084)
 원자재,Commodity,1:1 (국내207/해외107)

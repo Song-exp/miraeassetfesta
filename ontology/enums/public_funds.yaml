@@ -3,6 +3,25 @@
 # 런타임 가드레일이 이 파일을 읽습니다.
 
 domain: public_funds
+
+# ── 행의 낟알(row grain) — 이 테이블의 구조 그 자체 ──────────────────────
+row_grain:
+  구조: 행 = 종목(itm_no) × 속성태그(prfd_attr_cd)
+  evidence_grade: A
+  증명: >-
+    🔑 2026-08-18 전수 증명 — 45컬럼 전부에 대해 "종목 안에서 값이 갈리는 컬럼"을 검사한 결과
+    prfd_attr_cd **단 하나**였고, (itm_no, prfd_attr_cd) 조합 수가 정확히 95,619 = 전체 행수다.
+    즉 이 테이블은 종목 마스터가 아니라 **종목×속성태그 롱 포맷**이며,
+    행수 95,619 / 종목 11,139 = 8.6배 중복의 정체가 이것이다.
+  규칙: >-
+    🔴 prfd_attr_cd 를 묻는 질의가 아니라면 **모든 집계는 종목 dedup 이 선행**되어야 한다 —
+    COUNT(*) 금지 → COUNT(DISTINCT itm_no) · SUM/AVG 는 종목 단위 축약 후 계산
+    (fd_nast_suma 는 추가로 펀드 단위 MAX — columns.fd_nast_suma.집계함정 참조).
+    이 yaml 에서 반복 정정된 '행 기준 vs 종목 기준' 수치 혼동(338건 사건 포함)의 뿌리가 이 구조다.
+  answer_policy: >-
+    상품 개수를 묻는 질의에 행수(95,619)를 답하면 8.6배 과대계상이다.
+    상품(클래스) = 11,139종목 · 펀드 = 4,643개 (query_rules.펀드단위) 를 쓴다.
+
 columns:
   prvo_fd_desc:
     korean_name: 사모펀드구분코드 설명
@@ -51,7 +70,7 @@ columns:
     answerable_n: 8565          # 종목 11,130(오염 배제) 중 결측 2,565
     unit: grade
     layer:
-      scale: '1~6 (저장 형태는 ''1.0''~''6.0'')'
+      scale: '1~6 (현행 DB 저장형태는 REAL 1.0~6.0 — 2026-08-18 감사 정정, normalization.numeric_string_columns 참조)'
       direction: 🔴 낮을수록 위험 (1=매우높은위험, 6=매우낮은위험) — 직관과 반대
       note: >-
         제3자 평가사(제로인) 산출. ETF·채권 테이블의 위험등급과 산출 주체·기준이 다르다.
@@ -107,8 +126,10 @@ columns:
         모수를 밝힐 때는 판매중 8,445 중 8,418 (99.68%) 을 쓴다.
     evidence_grade: C
     answer_policy: >-
-      🔴 저장 형태가 '1.0'~'6.0' 이다. 정확일치 비교 전 CAST(... AS INTEGER) 로 맞출 것 —
-      = '6' 은 0건, = '6.0' 은 338건이다 (normalization.numeric_string_columns).
+      🔴 비교 전 CAST(... AS INTEGER) 로 맞출 것 (normalization.numeric_string_columns).
+      ⚠️ 2026-08-18 감사 정정 — 현행 재빌드 DB 는 REAL 저장이라 ='6' 도 2,397행이 나온다
+      (이전 문구 "='6' 0건 · ='6.0' 338건" 은 구 dtype=str 빌드 기준이었고 338 은 행이 아니라 종목 수였다).
+      CAST 규칙은 두 저장형태 모두에서 안전하므로 유지한다.
       🔴 숫자가 작을수록 위험이 크다(1 매우높음 ~ 6 매우낮음). 직관과 반대이므로 답변에 방향을 밝힐 것.
       위험등급 필터 질의는 모수 77,203/95,619 를 명시.
       범위 이탈값 '20054.0' 은 배제 (normalization.invalid_values).
@@ -396,6 +417,18 @@ columns:
       실측(2026-08-17). 선행 0 손실로 길이가 흔들리므로 zfill(7) 보정 후 사용.
       ⚠️ 단독 키로 조인 금지 — 운용사 내부 번호라 65종이 최대 3개 운용사에 걸친다.
       펀드 단위 키는 (or_co_xtn_itt_cd, mtco_itm_no) 합성키다.
+
+  int_dvd_desc:
+    korean_name: 이자배당구분코드 설명
+    missing_reason: none
+    evidence_grade: A
+    note: >-
+      2026-08-18 감사 신설 — 준상수. '배당' 99.99% vs **'이자' 10행 = 단 2종목**
+      (KR5019251406 G4한바구니장기 · KR5046101001 칸서스국공채MMF법인1호, 둘 다 판매완료).
+      contaminated_rows 귀속표가 이 컬럼의 99.9% 값('배당')을 인용하므로 판정 블록을 세워둔다.
+    answer_policy: >-
+      '이자 지급형 펀드' 질의 → 모수가 2종목(판매완료)뿐임을 명시. 이 컬럼을 필터 축으로 쓰지 말 것 —
+      distinct 2 에 한쪽이 10행이라 분류 정보량이 사실상 0이다.
 missing_profile:
   _note: >-
     45컬럼 결측 전수 프로파일. **종목(itm_no) 단위 · 오염 9종목 배제 · 모수 11,130 ·
@@ -569,19 +602,25 @@ normalization:
       1주~1년 5기간이 0 인 228종목의 자산군은 주식형 138 · 재간접 50 · 채권혼합 16 · 채권형 10 ·
       주식혼합 7 이다. 주식형 138종목이 5기간 전부 정확히 0.00 인 것이 위장결측의 핵심 근거다.
 
-  # ── 숫자형이 소수점 문자열로 저장된 컬럼 ──────────────────────────────
+  # ── 숫자형 표기가 흔들리는 컬럼 (저장형태가 빌드에 따라 다름) ──────────
   numeric_string_columns:
     _note: >-
-      🔴 DB 재구축(dtype=str)에서 문자열 컬럼은 선행 0 이 복구됐으나 숫자형은 '6.0' 형태로 남았다.
-      정확일치 조회가 0건이 된다. 비교 전 정규화 필수.
+      🔴 2026-08-18 감사 정정 — 전제가 빌드에 따라 다르다.
+      구 dtype=str 빌드: 문자열 '6.0' 저장 → ='6' 이 0건 (이전 판정의 근거).
+      현행 build_db.py 재빌드: **REAL 저장** → ='6' 도 '6.0' 도 6 도 전부 2,397행 매칭 (typeof 실측).
+      🔴 어느 쪽이든 CAST(... AS INTEGER) 비교는 동일 결과를 내므로 규칙은 유지한다.
+      ⚠️ 배포 서버 DB(dd9b482 md5 확인본)와 재빌드 DB 의 dtype 동일 여부는 미확인 — 워크샵 안건
+      (docs/eda/public_funds_audit_2026-08-18.md §안건1).
     columns:
     - zrin_fd_ivst_risk_gcd
     - frc_bpr_itm_yn
     - hdge_fd_yn
     - ofsfd_yn
-    규칙: 비교 전 CAST(컬럼 AS INTEGER) 로 맞출 것 (문자열 '6' 과 직접 비교 금지)
-    검증: "zrin_fd_ivst_risk_gcd = '6' → 0건  /  = '6.0' → 338건"
-    대조: fd_set_pcd('00','10','20') · pfiv_sale_cntl_tcd('00','01','02') · fd_estb_ctry_cd('000','410') 는 문자열 유지됨
+    규칙: 비교 전 CAST(컬럼 AS INTEGER) 로 맞출 것 (표기 직접 비교 금지 — 저장형태에 따라 결과가 달라진다)
+    검증: >-
+      2026-08-18 현행 DB — typeof(zrin_fd_ivst_risk_gcd)=real ·
+      CAST=6 → 2,397행 = 338종목 (행/종목 구분 주의: 이전 문구의 '338건' 은 종목 수였다)
+    대조: fd_set_pcd('00','10','20') · pfiv_sale_cntl_tcd('00','01','02') · fd_estb_ctry_cd('000','410') 는 문자열 유지됨 (0패딩 보존 대상)
 
   # ── 원본 따옴표로 컬럼이 밀린 행 ──────────────────────────────────────
   contaminated_rows:
@@ -694,7 +733,15 @@ query_rules:
   판매중만: sale_yn = '판매중'
   공모만: prvo_pbff_desc = '공모'
   ETF제외: itm_nm NOT LIKE '%상장지수%'
-  수익률정상: fd_yr1_ern_r > -100 AND fd_yr3_ern_r > -100
+  수익률정상: <질의 대상 기간 컬럼> > -100     # 🔴 2026-08-18 감사 개정 — 질의하는 그 컬럼에 건다
+  수익률정상_개정근거: >-
+    🔴 이전 규칙 'fd_yr1_ern_r > -100 AND fd_yr3_ern_r > -100' 의 두 결함 (2026-08-18 실측) —
+    ① NULL 함정: 5년 수익률은 있는데 1년/3년이 NULL 인 종목이 74개 있고, SQL 에서 NULL > -100 은
+       행을 탈락시키므로 5년 Top-N 에서 74종목이 부당 탈락한다.
+    ② 오류값(<-100)은 mm18·yr2·yr3·yr5 4개 컬럼에 존재한다 (전부 KCGI베트남 KR515303001M 1종목 5행,
+       최저 -4,381%). 고정 2컬럼 AND 로는 의도가 불투명하다.
+    → ETF 의 규칙(du_er_1y > -100 단일 컬럼형)과 같은 형태로 통일: 정렬·필터에 쓰는
+    바로 그 기간 컬럼에 '> -100 AND IS NOT NULL' 을 건다. 다른 기간 컬럼은 조건에 넣지 않는다.
   자산군_주식형: trim(or_attr_desc)='주식형' OR (trim(or_attr_desc) IN ('재간접','06') AND itm_nm LIKE '%(주식%')
 entities:
   FundClass:

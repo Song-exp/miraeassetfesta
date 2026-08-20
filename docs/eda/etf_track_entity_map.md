@@ -53,7 +53,7 @@ graph TD
 | 개체 | 국내ETF | 국내ETN | 해외ETF | 통용 열쇠(코드북) |
 | :--- | :--- | :--- | :--- | :--- |
 | **AssetManager/Issuer** | 운용사 약칭 | 🔴 **발행 증권사** | 영문(BlackRock 등) | `asset_manager.csv` + 증권사코드(미확보) |
-| **Index/Benchmark** | 🔴 89% 결측 | 있음 | 🟢 **99.9% 유효** | 표기 정규화 필요 |
+| **Index/Benchmark** | 🔴 89% 결측 | 있음 | 🟡 **51.9% 유효**(2,933건) | 표기 정규화 필요 |
 | **Region** | 한글 11종 | 한글 | 영문 59종 | `region_map.csv` ✅ |
 | **AssetType** | 한글 8종 | 한글 | 영문 6종 | `asset_type_map.csv` ✅ |
 | **Holding** | FunETF 수집 | FunETF | 🟡 **SEC EDGAR**(CIK 99.8%) | 스키마 통일 |
@@ -75,7 +75,7 @@ graph TD
 - 별도 테이블 `overseas_etfs`, `fp:ForeignETF`.
 - **영문 라벨** → `region_map`·`asset_type_map`로 국내와 연결 ✅.
 - **AUM = USD** → `fx_rate`로 환산해야 국내(원)와 비교 ✅.
-- 🟢 **CIK 99.8% 보유**(`pd_us_cik`) → SEC EDGAR로 구성종목 수집 가능(국내 FunETF와 다른 경로).
+- ✅ **SEC EDGAR 구성종목 수집 실증 완료** (2026-08-20) — AUM 상위 200 중 186 ETF·274,997행 수집. 🔵 CIK 운용사 단위(distinct 374) 문제는 SEC 공식 매핑 `company_tickers_mf.json`(티커→seriesId 직접 제공)으로 **해소** — seriesId 로 NPORT-P 를 정확히 특정. 상세: `data/external/holdings_overseas/SOURCES.md`. 잔여: UIT 3종(SPY·DIA·MDY)·상품신탁 4종은 구조상 N-PORT 없음, ETF별 기준일 3/31~5/31 이질(답변 시 report_date 병기).
 - 🔴 **위험등급 없음** → *"위험등급 낮은 해외ETF"* = **unanswerable** (속성 부재로 정답).
 - 해외 전용 컬럼: `cu_index_repl_mthd`(복제법)·`cu_inverse_short_yn`(인버스)·`pd_isin_cd`·`pd_lipper_id`.
 
@@ -104,7 +104,7 @@ graph TD
 | 안건 | 제안 |
 | :--- | :--- |
 | ETN 발행사 개념 | `Issuer`(증권사) 별도 role — `AssetManager`와 구분? |
-| 해외 Index 활용 | 해외 99.9% 유효 → **Index 개체의 주 데이터원**으로 (국내 89% 결측 보완) |
+| 해외 Index 활용 | 🔴 2026-08-20 정정 — 해외 유효는 **51.9%**(2,933건). 이전 '99.9%'는 센티넬 문자열 2,705건('Index is not provided…' 등)을 유효로 센 오기. 국내(11%)보다는 낫지만 "주 데이터원" 제안은 이 수치 기준으로 재검토 필요 |
 | RiskGrade 비대칭 | 해외ETF엔 속성 자체를 안 만듦(cardinality 0) → 환각 차단 |
 | Holding 스키마 | 국내(FunETF)·해외(SEC) 수집원 다름 → 저장 스키마는 통일(`product_type` 컬럼) |
 | 증권사 코드북 | ETN 발행 증권사 10곳 금투협 조회 (후속) |

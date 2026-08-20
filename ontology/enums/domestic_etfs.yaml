@@ -120,9 +120,9 @@ columns:
     value_semantics:
       "2.0": 일반 ETF
       "3.0": 일반 ETN
-      "4.0": ETN(기타)
+      "4.0": 특수구조 ETN — KRX금현물 Auto-KO(조기종료형) 1건   # 2026-08-20 코드북 etf_sector.csv 와 일치시킴 (실측 재확인)
       "8.0": 단일종목ETF(상품명에 '단일종목')  # ⚠️ underlyingScope=SingleStock 과는 불일치(아래)
-      "9.0": ETN(기타)
+      "9.0": 단일종목(레버리지) ETN 2건 — 삼성전자·SK하이닉스   # 2026-08-20 코드북과 일치시킴 (실측 재확인)
     cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. 코드8인데 정답 SectorTheme(예: KODEX SK하이닉스단일종목레버리지), 코드2인데 정답 SingleStock(예: 테슬라밸류체인)이 다수. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
 
   # ── 운용사 (약칭 함정 + 상품명 오염) ──
@@ -200,7 +200,7 @@ query_rules:
   전부0컬럼금지: "pd_divd_amt_pshr · pd_dvid_yield · du_chas_errt · du_diff_rt · cu_charge_etc_rt · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · pd_lst_price 사용 금지"  # 9종 non-null 전부 0 = 미제공
   판매중만: pd_sale_yn = '1'
   거래정상: pd_tr_yn = '0'
-  레버리지: cu_lev_fector >= 2
+  레버리지: cu_lev_fector > 1             # 🔴 2026-08-20 정정 — 이전 '>= 2' 는 +1.5X ETN 2건(미래에셋 1.5X 천연가스·1.5X S&P500 VIX)을 놓침. 감사 ⑤에서 ±1.5 를 값매핑에 받고 규칙은 미개정이었던 것
   인버스: cu_lev_fector < 0
 
 # ── 축 유도 규칙 (샘플 100건 검증, docs/eda/domestic_etfs_notes.md §B) ──
@@ -213,7 +213,8 @@ axis_derivation:
       accuracy: 100/100
       rule: cu_lev_fector 값매핑 (1→Standard, 2→Leveraged2X, -1→Inverse1X, -2→Inverse2X, ±3→Lev/Inv3X, ±0.5/±1.5→Lev/Inv 소수배수)
       rule_보강: >-
-        🔴 2026-08-18 감사 — 매핑에 없던 ±0.5(4건)·±1.5(2건)가 실재한다. 전부 ETN
+        🔴 2026-08-18 감사 — 매핑에 없던 소수 배수가 실재한다: -0.5(3건)·+1.5(2건)·-1.5(1건) 총 6건
+        (2026-08-20 실측 재확인 — 이전 표기 '±0.5 4건·±1.5 2건'은 내역 오기, 총 6건은 동일). 전부 ETN
         (인버스0.5X VIX · 1.5X 천연가스 등). 샘플 100건에 없어 정확도 100/100 이 유지됐던 것.
         소수 배수도 매핑에 받을 것 — 안 받으면 6건이 leverageType 미분류로 남는다.
     distributionType:

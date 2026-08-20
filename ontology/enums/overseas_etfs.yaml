@@ -92,7 +92,7 @@ columns:
     answer_policy: "AMX/NAS/NYS는 미국 주요 3시장. 101·102는 미국 소형/신규 상장 세부코드로 취급(전부 pd_mkt_id='US')."
     note: "AMX 4,241 / NAS 1,296 / NYS 78 / 102 22 / 101 9. 101·102(31건)는 교차대조상 미국 소형·신규 상장 ETF(티커 접미어 .O/.K). 정확한 시장명은 코드북④ 대상이나 영향 작음."
     value_semantics:
-      AMX: NYSE American (미국)
+      AMX: NYSE Arca (미국)                # 🔴 2026-08-20 정정 — 코드북 market.csv 검증(VOO·SPY·IVV 전부 NYSE Arca 상장, 커밋 e7c609b)이 yaml 에 미전파돼 있었음. 'NYSE American' 은 AMEX 오독의 잔재
       NAS: NASDAQ (미국)
       NYS: NYSE (미국)
       "101": 미국 소형/신규 상장(세부, 9건)
@@ -176,6 +176,13 @@ columns:
     missing_reason: missing
     answer_policy: "🔴 '핵심 ETF' 질의에 이 컬럼 사용 금지 — 98.2% 결측에 유효값이 전부 'N'(Y 는 0건)이라 판별 정보가 없다. '데이터 미제공'."
     note: 유효 103건 전부 'N'. 컬럼명과 달리 핵심 여부를 담고 있지 않다.
+
+  # ── 상장일 위장결측 (2026-08-20 신설 — NEXT_STEPS §4.2 기록 지시 이행) ──
+  pd_lstg_dt:
+    korean_name: 상품거래가능일자(상장일)
+    missing_reason: mixed
+    trap: "'00000000' 8건 — 선행 0 손실이 아니라 날짜 위장결측. IS NULL 로 안 잡히고 상장일 정렬 시 최솟값(1900년대처럼) 으로 밀려 올라옴."
+    answer_policy: "상장일 필터·정렬 시 pd_lstg_dt != '00000000' 제외. 해당 8건은 '상장일이 수록되어 있지 않습니다'로 답변."
 
   # ── 거래대금·거래량 0값 (2026-08-18 감사 신설) ──
   du_val_1d:

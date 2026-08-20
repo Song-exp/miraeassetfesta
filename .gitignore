@@ -96,3 +96,6 @@ notebooks/scratch/
 # 사람의 판단이 들어간 ontology/enums/<domain>.yaml 은 커밋 대상입니다.
 ontology/enums/*.values.txt
 ontology/enums/*.auto.yaml
+
+# 도메인 이해용 원본 PDF — 원문 배포 금지 (요지는 docs/domain/*.md 로 정리됨)
+docs/domain/*.pdf

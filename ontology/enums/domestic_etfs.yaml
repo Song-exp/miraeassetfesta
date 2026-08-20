@@ -145,6 +145,8 @@ columns:
       2026-08-18 전수 분해 — 비교가능 1,517건 중 ETF 1,137건은 전부 du_last_nav(오늘NAV) 복사(깨짐),
       **ETN 379건은 전일값 ≠ 오늘값이며 du_nav_rnf_amt = (오늘−전일) 등락이 380건 정확히 성립 → 정상**.
       이전 판정 "1,137건 전부 복사"는 ETF 몫만 본 것이었다. D.6 정정.
+    # ✅ 검토(이병철/08-21): 재현 일치 — ETN 등락정합 380, ETF 복사깨짐 1137. 교차검증서 비대칭 결정적: ETF 등락정합 0건(단 하나도 정상 아님)·ETN 복사깨짐 1건뿐. 그룹 분리 판정 승인.
+    # 💬 서술 제안: ETF 전일NAV/등락 질의 → "당일 NAV가 복사돼 전일값 미제공, 일간 등락률(du_er_1d)로 안내"; ETN → 정상 제공. 상품군 확인 후 답변 분기.
   du_nav_rnf_amt:
     korean_name: 전일NAV등락금액
     missing_reason: broken_etf_only
@@ -195,12 +197,15 @@ query_rules:
     1m 20 · 3m 37 · 6m 53 · ytd 44 · 1y 98건. 전건이 du_clpr=0 동반(거래중단·상폐 확인).
     이전 규칙은 1y 고정이라 다른 기간 Top-N 이 무방비였다. 정렬·필터에 쓰는 바로 그 기간
     컬럼에 건다 — public_funds.query_rules.수익률정상과 동일 형태 (도메인 간 통일).
+  # ✅ 검토(이병철/08-21): 재현 일치 — m1=20·m3=37·m6=53·ytd=44·y1=98, y1=-100&종가≠0=0건(전건 상폐 확인). 매개변수형 타당.
+  # 💡 형식 제안(SQL생성기용): `{er_col} > -100 AND {er_col} IS NOT NULL`, 치환표 {1개월:du_er_1m, 3개월:du_er_3m, 6개월:du_er_6m, 연초이후/YTD:du_er_ytd, 1년:du_er_1y}. 기간 미지정 질의는 du_er_1y 기본.
   종가정상: du_clpr > 0                 # 🔴 =0 은 167건 = ETF 50 + ETN 117 (2026-08-18 정정 — 이전 '50건' 은 ETF만 센 것)
   NAV등락금지_ETF만: "ETF 는 du_nav_yday / du_nav_rnf_amt 사용 금지 · 🔴 ETN 은 정상이므로 사용 가능"   # 2026-08-18 정정 — ETN 379건은 전일값·등락이 정확 (columns.du_nav_yday)
   전부0컬럼금지: "pd_divd_amt_pshr · pd_dvid_yield · du_chas_errt · du_diff_rt · cu_charge_etc_rt · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · pd_lst_price 사용 금지"  # 9종 non-null 전부 0 = 미제공
   판매중만: pd_sale_yn = '1'
   거래정상: pd_tr_yn = '0'
   레버리지: cu_lev_fector > 1             # 🔴 2026-08-20 정정 — 이전 '>= 2' 는 +1.5X ETN 2건(미래에셋 1.5X 천연가스·1.5X S&P500 VIX)을 놓침. 감사 ⑤에서 ±1.5 를 값매핑에 받고 규칙은 미개정이었던 것
+  # ✅ 검토(이병철/08-21): 재현 일치 — >1 은 201건(1.5→2·2.0→190·3.0→9). 1.5X 2건 전부 ETN이고 상품명에 '1.5X' 명시 → 배수>1 전부 레버리지(도메인 통설) 타당, >1 개정 승인. 인버스레버리지(-2X 105·-3X 7·-1.5X 1)는 '인버스' 규칙(<0)이 잡으므로 여기서 누락 아님 — 단 leverageType 축에선 -2X=Inverse2X(레버리지성 인버스)라 "레버리지 상품 전부" 질의 시 축과 규칙 경계는 워크샵서 1줄 정리 권장
   인버스: cu_lev_fector < 0
 
 # ── 축 유도 규칙 (샘플 100건 검증, docs/eda/domestic_etfs_notes.md §B) ──

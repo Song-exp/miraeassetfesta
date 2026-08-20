@@ -123,6 +123,7 @@ columns:
       "4.0": 특수구조 ETN — KRX금현물 Auto-KO(조기종료형) 1건   # 2026-08-20 코드북 etf_sector.csv 와 일치시킴 (실측 재확인)
       "8.0": 단일종목ETF(상품명에 '단일종목')  # ⚠️ underlyingScope=SingleStock 과는 불일치(아래)
       "9.0": 단일종목(레버리지) ETN 2건 — 삼성전자·SK하이닉스   # 2026-08-20 코드북과 일치시킴 (실측 재확인)
+    # ✅ 검토(이병철/08-21): 재확인 일치 — 4=금현물 Auto-KO ETN 1건, 9=단일종목 ETN 2건(미래에셋 레버리지 삼성전자·SK하이닉스). 코드북 etf_sector.csv와 일치.
     cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. 코드8인데 정답 SectorTheme(예: KODEX SK하이닉스단일종목레버리지), 코드2인데 정답 SingleStock(예: 테슬라밸류체인)이 다수. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
 
   # ── 운용사 (약칭 함정 + 상품명 오염) ──

@@ -19,6 +19,7 @@ row_grain:
 # ── 컬럼 한글명 49종 (schema_metadata 공란 대체) ──
 #   36종: 국내ETF schema Sheet1_Schema 에서 매핑 (공유 컬럼)
 #   13종: 해외ETF 전용 — 컬럼명 의미로 직접 확정
+# ✅ 검토(이병철/08-21): 13종 자체명명 전부 값 부합 확인 — repl_mthd=Optimized/Swap/Full/Other, isin=US+10자, cik/lipper=숫자ID, trd_ccy=USD, etn/inverse/tracking/match_yn=Y/N, clpr_src=경로문자열, *_base_dt=날짜. du_opr=시가는 [저가,고가] 정합 99.77%(13/5636 경계반올림). 정정 없음.
 column_korean_names:
   # 식별자
   pd_itm_no: 상품번호(티커)
@@ -97,6 +98,7 @@ columns:
       NYS: NYSE (미국)
       "101": 미국 소형/신규 상장(세부, 9건)
       "102": 미국 소형/신규 상장(세부, 22건)
+    # ✅ 검토(이병철/08-21): AMX=NYSE Arca 정정 재확인 — VOO·SPY·IVV(전부 실세계 NYSE Arca 상장) 3건 모두 DB에서 AMX. 정정 타당, yaml 전파 확인.
 
   # ── 기초지수 (센티넬) ──
   cu_base_index:
@@ -183,6 +185,7 @@ columns:
     missing_reason: mixed
     trap: "'00000000' 8건 — 선행 0 손실이 아니라 날짜 위장결측. IS NULL 로 안 잡히고 상장일 정렬 시 최솟값(1900년대처럼) 으로 밀려 올라옴."
     answer_policy: "상장일 필터·정렬 시 pd_lstg_dt != '00000000' 제외. 해당 8건은 '상장일이 수록되어 있지 않습니다'로 답변."
+    # ✅ 검토(이병철/08-21): 재확인 일치 — pd_lstg_dt='00000000' 정확히 8건. 위장결측(IS NULL 미포착) 판정 타당.
 
   # ── 거래대금·거래량 0값 (2026-08-18 감사 신설) ──
   du_val_1d:

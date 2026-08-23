@@ -72,8 +72,61 @@
 :Idx_DWGRTT90 a :Index ; skos:prefLabel "DWGRTT 90%"@ko .
 :Idx_iSelect_KREITs a :Index ; skos:prefLabel "iSelect K-REITs"@ko .
 :Idx_KRX_Media a :Index ; skos:prefLabel "KRX 미디어통신"@ko .
-:Idx_SP500TR a :Index ; skos:prefLabel "S&P 500 TR"@ko .
-:Idx_BbgUSAgg a :Index ; skos:prefLabel "Bloomberg U.S. Aggregate Bond TR"@ko .
+:Idx_SP500 a :Index ; skos:prefLabel "S&P 500"@ko .
+:Idx_BbgUSAgg a :Index ; skos:prefLabel "Bloomberg US Aggregate Bond"@ko .
+:Idx_Bbg_Commodity a :Index ; skos:prefLabel "Bloomberg Commodity"@ko .
+:Idx_Bbg_Municipal_Bond a :Index ; skos:prefLabel "Bloomberg Municipal Bond"@ko .
+:Idx_Bbg_Municipal_Bond_1_15_Year_Blend a :Index ; skos:prefLabel "Bloomberg Municipal Bond 1-15 Year Blend"@ko .
+:Idx_Bbg_US_Corporate_IG a :Index ; skos:prefLabel "Bloomberg US Corporate Investment Grade"@ko .
+:Idx_Bbg_US_GovCredit_1_3_Year a :Index ; skos:prefLabel "Bloomberg US Government/Credit 1-3 Year"@ko .
+:Idx_Bbg_US_High_Yield_2_Issuer_Capped a :Index ; skos:prefLabel "Bloomberg US High Yield 2% Issuer Capped"@ko .
+:Idx_Bbg_US_MBS a :Index ; skos:prefLabel "Bloomberg US Mortgage-Backed Securities (MBS)"@ko .
+:Idx_Bbg_US_Universal a :Index ; skos:prefLabel "Bloomberg US Universal"@ko .
+:Idx_CME_CF_Bitcoin_NY a :Index ; skos:prefLabel "CME CF Bitcoin Reference Rate - New York Variant"@ko .
+:Idx_CME_CF_Ether_Dollar_NY a :Index ; skos:prefLabel "CME CF Ether-Dollar Reference Rate - New York Variant"@ko .
+:Idx_Cboe_S_P_500_BuyWrite a :Index ; skos:prefLabel "Cboe S&P 500 BuyWrite"@ko .
+:Idx_Consumer_Discretionary_SelSector a :Index ; skos:prefLabel "Consumer Discretionary Select Sector"@ko .
+:Idx_Dow_Jones_Industrial_Average a :Index ; skos:prefLabel "Dow Jones Industrial Average"@ko .
+:Idx_Dow_Jones_U_S_Select_REIT a :Index ; skos:prefLabel "Dow Jones U.S. Select REIT"@ko .
+:Idx_FTSE_3_Month_US_Tsy_Bill a :Index ; skos:prefLabel "FTSE 3-Month US Treasury Bill"@ko .
+:Idx_ICE_BofA_US_3_Month_Tsy_Bill a :Index ; skos:prefLabel "ICE BofA US 3-Month Treasury Bill"@ko .
+:Idx_ICE_BofA_US_Broad_Market a :Index ; skos:prefLabel "ICE BofA US Broad Market"@ko .
+:Idx_ICE_BofA_US_High_Yield_Constrained a :Index ; skos:prefLabel "ICE BofA US High Yield Constrained"@ko .
+:Idx_ICE_US_Tsy_20_Year_Bond a :Index ; skos:prefLabel "ICE US Treasury 20+ Year Bond"@ko .
+:Idx_ICE_US_Tsy_7_10_Year_Bond a :Index ; skos:prefLabel "ICE US Treasury 7-10 Year Bond"@ko .
+:Idx_LBMA_Gold_Price_PM a :Index ; skos:prefLabel "LBMA Gold Price PM"@ko .
+:Idx_MSCI_ACWI_IMI a :Index ; skos:prefLabel "MSCI ACWI IMI"@ko .
+:Idx_MSCI_ACWI_ex_USA a :Index ; skos:prefLabel "MSCI ACWI ex USA"@ko .
+:Idx_MSCI_Brazil_25_50 a :Index ; skos:prefLabel "MSCI Brazil 25/50"@ko .
+:Idx_MSCI_EAFE a :Index ; skos:prefLabel "MSCI EAFE"@ko .
+:Idx_MSCI_Emerging_Markets_IMI a :Index ; skos:prefLabel "MSCI Emerging Markets IMI"@ko .
+:Idx_MSCI_Emerging_Markets_ex_China a :Index ; skos:prefLabel "MSCI Emerging Markets ex China"@ko .
+:Idx_MSCI_World a :Index ; skos:prefLabel "MSCI World"@ko .
+:Idx_MSCI_World_ex_USA_IMI a :Index ; skos:prefLabel "MSCI World ex USA IMI"@ko .
+:Idx_NYSE_FANG a :Index ; skos:prefLabel "NYSE FANG+"@ko .
+:Idx_Nasdaq_Composite a :Index ; skos:prefLabel "Nasdaq Composite"@ko .
+:Idx_Nasdaq_100 a :Index ; skos:prefLabel "Nasdaq-100"@ko .
+:Idx_Real_Estate_SelSector a :Index ; skos:prefLabel "Real Estate Select Sector"@ko .
+:Idx_Russell_1000 a :Index ; skos:prefLabel "Russell 1000"@ko .
+:Idx_Russell_1000_Growth a :Index ; skos:prefLabel "Russell 1000 Growth"@ko .
+:Idx_Russell_1000_Value a :Index ; skos:prefLabel "Russell 1000 Value"@ko .
+:Idx_Russell_2000 a :Index ; skos:prefLabel "Russell 2000"@ko .
+:Idx_Russell_2000_Growth a :Index ; skos:prefLabel "Russell 2000 Growth"@ko .
+:Idx_Russell_2000_Value a :Index ; skos:prefLabel "Russell 2000 Value"@ko .
+:Idx_Russell_2500 a :Index ; skos:prefLabel "Russell 2500"@ko .
+:Idx_Russell_3000 a :Index ; skos:prefLabel "Russell 3000"@ko .
+:Idx_Russell_Midcap a :Index ; skos:prefLabel "Russell Midcap"@ko .
+:Idx_Russell_Midcap_Growth a :Index ; skos:prefLabel "Russell Midcap Growth"@ko .
+:Idx_S_P_1000 a :Index ; skos:prefLabel "S&P 1000"@ko .
+:Idx_S_P_500_Growth a :Index ; skos:prefLabel "S&P 500 Growth"@ko .
+:Idx_S_P_500_Value a :Index ; skos:prefLabel "S&P 500 Value"@ko .
+:Idx_S_P_MidCap_400 a :Index ; skos:prefLabel "S&P MidCap 400"@ko .
+:Idx_S_P_SmallCap_600 a :Index ; skos:prefLabel "S&P SmallCap 600"@ko .
+:Idx_S_P_SmallCap_600_Value a :Index ; skos:prefLabel "S&P SmallCap 600 Value"@ko .
+:Idx_Solactive_GBS_US_1000 a :Index ; skos:prefLabel "Solactive GBS United States 1000"@ko .
+:Idx_Solactive_GBS_US_500 a :Index ; skos:prefLabel "Solactive GBS United States 500"@ko .
+:Idx_Technology_SelSector a :Index ; skos:prefLabel "Technology Select Sector"@ko .
+:Idx_Utilities_SelSector a :Index ; skos:prefLabel "Utilities Select Sector"@ko .
 
 # ── Organization (shared/organization.yaml) ──
 :Organization a owl:Class .

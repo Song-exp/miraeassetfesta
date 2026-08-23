@@ -6,10 +6,16 @@
 # 컬럼이 달라(cu_base_index vs bmrk_nm) 표기가 같아도 alias 가 필요하다 —
 # "어느 테이블 어느 컬럼에서 찾나"가 KG 가 답하는 정보이기 때문 (BUILD_PLAN §3.3).
 #
+# ✅ 2026-08-22 해외ETF 지수 등록 (이병철) — 2종 선반영 → 61종 매핑
+#   원천 codebooks/index_master.csv (base_index 정규화본). 수익률방식(TR/CR/NR)·철자변형은
+#   한 노드에 alias 로 묶는다 — 'S&P 500 TR/CR/NR' → Idx_SP500 (335→387건 통합 조회).
+#   🔥 3중 연결 달성: Idx_MSCI_ACWI · Idx_MSCI_EM 은 국내ETF + 펀드 + 해외ETF 가 한 노드에 매달림.
+#
 # 🔴 미등록 (coverage report 로 추적):
 #   · 펀드 전용 벤치마크 374종 (혼합식 'KOSPI200 25% + 종합채권01Y 75%' 다수 — 합성 벤치마크 분해는 워크샵 안건)
-#   · 해외ETF 지수 ~1,733종 — 센티넬 2종('Index is not provided…' 1,984건 · 'Index is not available…' 721건) 제거 후 자동 등록 트랙
-#   · 대표 해외지수 2종(S&P 500 TR · Bloomberg US Agg)만 선반영
+#   · 해외ETF 긴꼬리 ~1,670종 — 각 1~8건의 니치 지수(S&P 500 Catholic Values 등). 센티넬 2종
+#     ('Index is not provided…' 1,984건 · 'Index is not available…' 721건)은 제외가 정상.
+#     행 기준 커버리지는 비센티넬 2,933행 중 약 1,017행(35%) — 빈발 지수는 대부분 포함.
 
 entity: Index
 description: 기초지수·벤치마크
@@ -37,6 +43,8 @@ nodes:
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI", source: rule, evidence: "ETF 6건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI", source: rule, evidence: "펀드 3,846건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI AC World NR USD", source: manual, evidence: "해외ETF 19건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI AC World TR USD", source: manual, evidence: "해외ETF 4건"}
   Idx_MSCI_ACWI_IT:
     label_ko: MSCI ACWI Information Technology
     aliases:
@@ -62,6 +70,7 @@ nodes:
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "ETF 1건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "펀드 799건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI EM (Emerging Markets) NR USD", source: manual, evidence: "해외ETF 25건"}
   Idx_KapBond_3m1y:
     label_ko: 종합채권 3개월~1년
     aliases:
@@ -116,15 +125,393 @@ nodes:
     note: 국내ETF 전용
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "KRX 미디어통신", source: rule, evidence: "ETF 1건"}
-  Idx_SP500TR:
-    label_ko: S&P 500 TR
-    note: 해외ETF 대표 지수 — 해외 지수 자동 등록 트랙의 선반영
+  Idx_SP500:
+    label_ko: S&P 500
+    note: 수익률방식 변형(TR·CR·NR)을 한 노드로 통합 — codebooks/index_master.csv base_index 규칙
     aliases:
       - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 TR", source: manual, evidence: "해외ETF 335건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 CR", source: manual, evidence: "해외ETF 51건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 NR", source: manual, evidence: "해외ETF 1건"}
   Idx_BbgUSAgg:
-    label_ko: Bloomberg U.S. Aggregate Bond TR
+    label_ko: Bloomberg US Aggregate Bond
     aliases:
       - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg U.S. Aggregate Bond TR", source: manual, evidence: "해외ETF 89건"}
+
+  # ── 해외ETF 지수 (2026-08-22 등록, 이병철) ──
+  # 원천: ontology/codebooks/index_master.csv (base_index 정규화본)
+  # 수익률방식(TR/CR/NR)·철자변형은 한 노드에 alias 로 통합 — 교차질의용
+  Idx_Bbg_Commodity:
+    label_ko: "Bloomberg Commodity"
+    provider: "Bloomberg Index Services"
+    asset_class: "원자재"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg Commodity TR", source: manual, evidence: "해외ETF 9건"}
+  Idx_Bbg_Municipal_Bond:
+    label_ko: "Bloomberg Municipal Bond"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg Municipal Bond TR", source: manual, evidence: "해외ETF 17건"}
+  Idx_Bbg_Municipal_Bond_1_15_Year_Blend:
+    label_ko: "Bloomberg Municipal Bond 1-15 Year Blend"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg 1-15 Y Municipal Blend TR", source: manual, evidence: "해외ETF 8건"}
+  Idx_Bbg_US_Corporate_IG:
+    label_ko: "Bloomberg US Corporate Investment Grade"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg U.S. Corp Investment Grade TR", source: manual, evidence: "해외ETF 10건"}
+  Idx_Bbg_US_GovCredit_1_3_Year:
+    label_ko: "Bloomberg US Government/Credit 1-3 Year"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg 1-3 Y Government/Credit TR", source: manual, evidence: "해외ETF 7건"}
+  Idx_Bbg_US_High_Yield_2_Issuer_Capped:
+    label_ko: "Bloomberg US High Yield 2% Issuer Capped"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg US High Yield 2% Issuer Cap TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_Bbg_US_MBS:
+    label_ko: "Bloomberg US Mortgage-Backed Securities (MBS)"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg US MBS TR", source: manual, evidence: "해외ETF 10건"}
+  Idx_Bbg_US_Universal:
+    label_ko: "Bloomberg US Universal"
+    provider: "Bloomberg Index Services"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg U.S. Universal TR", source: manual, evidence: "해외ETF 5건"}
+  Idx_CME_CF_Bitcoin_NY:
+    label_ko: "CME CF Bitcoin Reference Rate - New York Variant"
+    provider: "CF Benchmarks(CME 제휴)"
+    asset_class: "가상자산"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "CME CF Bitcoin Reference Rate - New York Variant CR USD", source: manual, evidence: "해외ETF 7건"}
+  Idx_CME_CF_Ether_Dollar_NY:
+    label_ko: "CME CF Ether-Dollar Reference Rate - New York Variant"
+    provider: "CF Benchmarks(CME 제휴)"
+    asset_class: "가상자산"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "CME CF Ether-Dollar Reference Rate NY USD", source: manual, evidence: "해외ETF 5건"}
+  Idx_Cboe_S_P_500_BuyWrite:
+    label_ko: "Cboe S&P 500 BuyWrite"
+    provider: "Cboe"
+    asset_class: "주식(커버드콜 전략)"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "CBOE S&P 500 Buywrite (BXM)", source: manual, evidence: "해외ETF 8건"}
+  Idx_Consumer_Discretionary_SelSector:
+    label_ko: "Consumer Discretionary Select Sector"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Consumer Discretionary Select Sector TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_Dow_Jones_Industrial_Average:
+    label_ko: "Dow Jones Industrial Average"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Dow Jones Industrial Average CR", source: manual, evidence: "해외ETF 6건"}
+  Idx_Dow_Jones_U_S_Select_REIT:
+    label_ko: "Dow Jones U.S. Select REIT"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "부동산(리츠)"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Dow Jones US Select REIT TR", source: manual, evidence: "해외ETF 5건"}
+  Idx_FTSE_3_Month_US_Tsy_Bill:
+    label_ko: "FTSE 3-Month US Treasury Bill"
+    provider: "FTSE Russell"
+    asset_class: "단기금리"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "FTSE 3 Months Treasury Bill TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_ICE_BofA_US_3_Month_Tsy_Bill:
+    label_ko: "ICE BofA US 3-Month Treasury Bill"
+    provider: "ICE Data Indices"
+    asset_class: "단기금리"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "ICE BofA US 3-Month Treasury Bill TR USD", source: manual, evidence: "해외ETF 11건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "ICE BofA US 3-Month T Bill TR IX", source: manual, evidence: "해외ETF 5건"}
+  Idx_ICE_BofA_US_Broad_Market:
+    label_ko: "ICE BofA US Broad Market"
+    provider: "ICE Data Indices"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "ICE BofA US Broad Market TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_ICE_BofA_US_High_Yield_Constrained:
+    label_ko: "ICE BofA US High Yield Constrained"
+    provider: "ICE Data Indices"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "ICE BofA US High Yield Constrained TR", source: manual, evidence: "해외ETF 5건"}
+  Idx_ICE_US_Tsy_20_Year_Bond:
+    label_ko: "ICE US Treasury 20+ Year Bond"
+    provider: "ICE Data Indices"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "ICE U.S. Treasury 20+ Year Bond TR USD", source: manual, evidence: "해외ETF 9건"}
+  Idx_ICE_US_Tsy_7_10_Year_Bond:
+    label_ko: "ICE US Treasury 7-10 Year Bond"
+    provider: "ICE Data Indices"
+    asset_class: "채권"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "ICE U.S. Treasury 7-10 Year TR USD", source: manual, evidence: "해외ETF 6건"}
+  Idx_LBMA_Gold_Price_PM:
+    label_ko: "LBMA Gold Price PM"
+    provider: "ICE Benchmark Administration(LBMA 위탁 산출)"
+    asset_class: "원자재"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "LBMA Gold Price PM USD", source: manual, evidence: "해외ETF 5건"}
+  Idx_MSCI_ACWI_IMI:
+    label_ko: "MSCI ACWI IMI"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI ACWI IMI NR", source: manual, evidence: "해외ETF 5건"}
+  Idx_MSCI_ACWI_ex_USA:
+    label_ko: "MSCI ACWI ex USA"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI AC World ex USA NR USD", source: manual, evidence: "해외ETF 20건"}
+  Idx_MSCI_Brazil_25_50:
+    label_ko: "MSCI Brazil 25/50"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI Brazil 25/50 NR USD", source: manual, evidence: "해외ETF 4건"}
+  Idx_MSCI_EAFE:
+    label_ko: "MSCI EAFE"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI EAFE NR USD", source: manual, evidence: "해외ETF 28건"}
+  Idx_MSCI_Emerging_Markets_IMI:
+    label_ko: "MSCI Emerging Markets IMI"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI Emerging Markets IMI NR USD", source: manual, evidence: "해외ETF 6건"}
+  Idx_MSCI_Emerging_Markets_ex_China:
+    label_ko: "MSCI Emerging Markets ex China"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI EM EX CHINA NR USD", source: manual, evidence: "해외ETF 5건"}
+  Idx_MSCI_World:
+    label_ko: "MSCI World"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI World NR USD", source: manual, evidence: "해외ETF 8건"}
+  Idx_MSCI_World_ex_USA_IMI:
+    label_ko: "MSCI World ex USA IMI"
+    provider: "MSCI"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "MSCI World ex USA IMI NR", source: manual, evidence: "해외ETF 6건"}
+  Idx_NYSE_FANG:
+    label_ko: "NYSE FANG+"
+    provider: "ICE Data Indices(NYSE)"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "NYSE FANG+ TR USD", source: manual, evidence: "해외ETF 4건"}
+  Idx_Nasdaq_Composite:
+    label_ko: "Nasdaq Composite"
+    provider: "Nasdaq"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "NASDAQ Composite TR", source: manual, evidence: "해외ETF 6건"}
+  Idx_Nasdaq_100:
+    label_ko: "Nasdaq-100"
+    provider: "Nasdaq"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "NASDAQ 100 TR", source: manual, evidence: "해외ETF 25건"}
+  Idx_Real_Estate_SelSector:
+    label_ko: "Real Estate Select Sector"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "부동산(리츠)"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Real Estate Select Sector TR USD", source: manual, evidence: "해외ETF 5건"}
+  Idx_Russell_1000:
+    label_ko: "Russell 1000"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 1000 TR USD", source: manual, evidence: "해외ETF 9건"}
+  Idx_Russell_1000_Growth:
+    label_ko: "Russell 1000 Growth"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 1000 Growth TR", source: manual, evidence: "해외ETF 35건"}
+  Idx_Russell_1000_Value:
+    label_ko: "Russell 1000 Value"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 1000 Value TR", source: manual, evidence: "해외ETF 34건"}
+  Idx_Russell_2000:
+    label_ko: "Russell 2000"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 2000 TR", source: manual, evidence: "해외ETF 25건"}
+  Idx_Russell_2000_Growth:
+    label_ko: "Russell 2000 Growth"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 2000 Growth TR", source: manual, evidence: "해외ETF 5건"}
+  Idx_Russell_2000_Value:
+    label_ko: "Russell 2000 Value"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 2000 Value TR", source: manual, evidence: "해외ETF 9건"}
+  Idx_Russell_2500:
+    label_ko: "Russell 2500"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 2500 TR", source: manual, evidence: "해외ETF 9건"}
+  Idx_Russell_3000:
+    label_ko: "Russell 3000"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell 3000 TR", source: manual, evidence: "해외ETF 27건"}
+  Idx_Russell_Midcap:
+    label_ko: "Russell Midcap"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell MidCap TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_Russell_Midcap_Growth:
+    label_ko: "Russell Midcap Growth"
+    provider: "FTSE Russell"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Russell MidCap Growth TR", source: manual, evidence: "해외ETF 6건"}
+  Idx_S_P_1000:
+    label_ko: "S&P 1000"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 1000 TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_S_P_500_Growth:
+    label_ko: "S&P 500 Growth"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 Growth Total Return Index", source: manual, evidence: "해외ETF 4건"}
+  Idx_S_P_500_Value:
+    label_ko: "S&P 500 Value"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 Value Total Return Index", source: manual, evidence: "해외ETF 5건"}
+  Idx_S_P_MidCap_400:
+    label_ko: "S&P MidCap 400"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P Mid Cap 400 TR", source: manual, evidence: "해외ETF 12건"}
+  Idx_S_P_SmallCap_600:
+    label_ko: "S&P SmallCap 600"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 600 Small Cap TR", source: manual, evidence: "해외ETF 7건"}
+  Idx_S_P_SmallCap_600_Value:
+    label_ko: "S&P SmallCap 600 Value"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P SmallCap 600 Value TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_Solactive_GBS_US_1000:
+    label_ko: "Solactive GBS United States 1000"
+    provider: "Solactive"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Solactive GBS United States 1000 NR USD", source: manual, evidence: "해외ETF 6건"}
+  Idx_Solactive_GBS_US_500:
+    label_ko: "Solactive GBS United States 500"
+    provider: "Solactive"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Solactive GBS United States 500 TR USD", source: manual, evidence: "해외ETF 4건"}
+  Idx_Technology_SelSector:
+    label_ko: "Technology Select Sector"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Technology Select Sector TR", source: manual, evidence: "해외ETF 4건"}
+  Idx_Utilities_SelSector:
+    label_ko: "Utilities Select Sector"
+    provider: "S&P Dow Jones Indices"
+    asset_class: "주식"
+    confidence: A
+    aliases:
+      - {table: overseas_etfs, column: cu_base_index, raw: "Utilities Select Sector TR", source: manual, evidence: "해외ETF 4건"}
 
 absent_in:
   domestic_bonds: "기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각"

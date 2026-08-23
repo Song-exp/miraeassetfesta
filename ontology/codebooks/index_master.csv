@@ -1,97 +1,98 @@
 ﻿# 지수 마스터 코드북 — 정규화(base_index) 승격본. 원천: data/external/lookups/index_master_draft.csv (리드 수집)
-# base_index = 수익률방식(TR/CR/NR)·배율·철자변형 정규화한 대표지수. B안(펀드↔ETF 교차질의)의 조인 키.
-base_index,name_raw,official_name,provider,asset_class,confidence,source_url,as_of
-CME CF Bitcoin Reference Rate - New York Variant,CME CF Bitcoin Reference Rate - New York Variant CR USD,CME CF Bitcoin Reference Rate - New York Variant (BRRNY),CF Benchmarks(CME 제휴),가상자산,A,https://www.cfbenchmarks.com/indices/BRRNY,2026-08-20
-CME CF Ether-Dollar Reference Rate - New York Variant,CME CF Ether-Dollar Reference Rate NY USD,CME CF Ether-Dollar Reference Rate - New York Variant (ETHUSD_NY),CF Benchmarks(CME 제휴),가상자산,A,https://www.cfbenchmarks.com/indices/ETHUSD_NY,2026-08-20
-FTSE 3-Month US Treasury Bill,FTSE 3 Months Treasury Bill TR,FTSE 3-Month US Treasury Bill Index (TR),FTSE Russell,단기금리,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-ICE BofA US 3-Month Treasury Bill,ICE BofA US 3-Month Treasury Bill TR USD,ICE BofA US 3-Month Treasury Bill Index (TR),ICE Data Indices,단기금리,A,https://www.ice.com/data-services/indices,2026-08-20
-ICE BofA US 3-Month Treasury Bill,ICE BofA US 3-Month T Bill TR IX,ICE BofA US 3-Month Treasury Bill Index (TR),ICE Data Indices,단기금리,A,https://www.ice.com/data-services/indices,2026-08-20
-KAP CD수익률(6개월) 지수,KAP CD 6개월  90%,KAP CD수익률(6개월) 지수 (90% 표기),KAP(한국자산평가),단기금리,A,https://www.koreaap.com/kor/index_pe01_01.html,2026-08-20
-콜금리,CALL,콜금리(무담보 익일물 콜금리),한국은행/자금중개회사(고시),단기금리,B,https://ecos.bok.or.kr,2026-08-20
-제로인 대안투자기대수익지수,제로인 대안투자기대수익지수,제로인 대안투자기대수익지수(국공채·회사채 BBB- 1년물 기반),KG제로인,대안투자,A,https://greened.kr/news/articleView.html?idxno=92412,2026-08-20
-Dow Jones U.S. Select REIT,Dow Jones US Select REIT TR,Dow Jones U.S. Select REIT Index (TR),S&P Dow Jones Indices,부동산(리츠),A,https://www.spglobal.com/spdji/en/indices/equity/dow-jones-us-select-reit-index/,2026-08-20
-Dow Jones Wilshire Global REIT,DWGRTT 90%,Dow Jones Wilshire Global REIT Total Return Index(추정; Bloomberg 티커 DWGRTT) (90% 표기),S&P Dow Jones Indices(구 Dow Jones Wilshire)(추정),부동산(리츠),B,https://www.spglobal.com/spdji/en/indices/equity/dow-jones-global-select-reit-index/,2026-08-20
-Real Estate Select Sector,Real Estate Select Sector TR USD,Real Estate Select Sector Index (TR),S&P Dow Jones Indices,부동산(리츠),A,https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/,2026-08-20
-iSelect K-REITs 지수,iSelect K-REITs,iSelect K-REITs 지수,NH투자증권(iSelect),부동산(리츠),A,https://www.paxetv.com/news/articleView.html?idxno=85629,2026-08-20
-Bloomberg Commodity,Bloomberg Commodity TR,Bloomberg Commodity Index (TR),Bloomberg Index Services,원자재,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-LBMA Gold Price PM,LBMA Gold Price PM USD,LBMA Gold Price PM (USD),ICE Benchmark Administration(LBMA 위탁 산출),원자재,A,https://www.lbma.org.uk/prices-and-data/precious-metal-prices,2026-08-20
-Rogers International Commodity Index (RICI) Total Return,Rogers International Commodity TR,Rogers International Commodity Index (RICI) Total Return,Beeland Interests(Jim Rogers),원자재,A,https://www.rogersrawmaterials.com,2026-08-20
-Consumer Discretionary Select Sector,Consumer Discretionary Select Sector TR,Consumer Discretionary Select Sector Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/,2026-08-20
-Dow Jones Industrial Average,Dow Jones Industrial Average CR,Dow Jones Industrial Average (Price Return),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/dow-jones-industrial-average/,2026-08-20
-KRX 300,KRX 300,KRX 300,KRX(한국거래소),주식,A,https://index.krx.co.kr,2026-08-20
-KRX 미디어&엔터테인먼트/통신 섹터지수,KRX 미디어통신,KRX 미디어&엔터테인먼트/통신 섹터지수,KRX(한국거래소),주식,B,https://index.krx.co.kr,2026-08-20
-MSCI AC Asia,MSCI AC ASIA,MSCI AC Asia Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI AC Asia Pacific ex Japan,MSCI AC ASIA PACIFIC ex JAPAN,MSCI AC Asia Pacific ex Japan Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI AC Asia ex Japan,MSCI AC ASIA ex JAPAN,MSCI AC Asia ex Japan Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI,MSCI ACWI,MSCI ACWI Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI,MSCI AC World NR USD,MSCI ACWI (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI,MSCI AC World TR USD,MSCI ACWI (Gross/Total Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI Energy,MSCI ACWI Energy,MSCI ACWI Energy Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI Health Care,MSCI ACWI Health Care,MSCI ACWI Health Care Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI IMI,MSCI ACWI IMI NR,MSCI ACWI IMI (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI Information Technology,MSCI ACWI Information Technology,MSCI ACWI Information Technology Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI ACWI ex USA,MSCI AC World ex USA NR USD,MSCI ACWI ex USA Index (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI Brazil 25/50,MSCI Brazil 25/50 NR USD,MSCI Brazil 25/50 Index (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI China,MSCI CHINA,MSCI China Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI China A Onshore,MSCI CHINA A(로컬),MSCI China A Onshore Index (Local),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI EAFE,MSCI EAFE NR USD,MSCI EAFE Index (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI Emerging Markets,MSCI EM (EMERGING MARKETS),MSCI Emerging Markets Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI Emerging Markets,MSCI EM (Emerging Markets) NR USD,MSCI Emerging Markets Index (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI Emerging Markets IMI,MSCI Emerging Markets IMI NR USD,MSCI Emerging Markets IMI (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI Emerging Markets ex China,MSCI EM EX CHINA NR USD,MSCI Emerging Markets ex China Index (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI Europe,MSCI EUROPE,MSCI Europe Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI India,MSCI INDIA,MSCI India Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI North America,MSCI NORTH AMERICA,MSCI North America Index,MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI World,MSCI WI,MSCI World Index,MSCI,주식,B,https://www.msci.com/indexes,2026-08-20
-MSCI World,MSCI World NR USD,MSCI World Index (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-MSCI World ex USA IMI,MSCI World ex USA IMI NR,MSCI World ex USA IMI (Net Return),MSCI,주식,A,https://www.msci.com/indexes,2026-08-20
-NYSE FANG+,NYSE FANG+ TR USD,NYSE FANG+ Index (TR),ICE Data Indices(NYSE),주식,A,https://www.ice.com/data-services/indices,2026-08-20
-Nasdaq Composite,NASDAQ Composite TR,Nasdaq Composite Index (TR),Nasdaq,주식,A,https://indexes.nasdaqomx.com,2026-08-20
-Nasdaq-100,NASDAQ 100 TR,Nasdaq-100 Index (TR),Nasdaq,주식,A,https://indexes.nasdaqomx.com/Index/Overview/NDX,2026-08-20
-Russell 1000,Russell 1000 TR USD,Russell 1000 Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 1000 Growth,Russell 1000 Growth TR,Russell 1000 Growth Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 1000 Value,Russell 1000 Value TR,Russell 1000 Value Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 2000,Russell 2000 TR,Russell 2000 Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 2000 Growth,Russell 2000 Growth TR,Russell 2000 Growth Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 2000 Value,Russell 2000 Value TR,Russell 2000 Value Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 2500,Russell 2500 TR,Russell 2500 Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell 3000,Russell 3000 TR,Russell 3000 Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell Midcap,Russell MidCap TR,Russell Midcap Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-Russell Midcap Growth,Russell MidCap Growth TR,Russell Midcap Growth Index (TR),FTSE Russell,주식,A,https://www.lseg.com/en/ftse-russell,2026-08-20
-S&P 1000,S&P 1000 TR,S&P 1000 Index (TR; MidCap 400 + SmallCap 600),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-1000/,2026-08-20
-S&P 500,S&P 500,S&P 500 Index,S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-500/,2026-08-20
-S&P 500,S&P 500 TR,S&P 500 Total Return Index,S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-500/,2026-08-20
-S&P 500,S&P 500 CR,S&P 500 Index (Price Return),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-500/,2026-08-20
-S&P 500 Growth,S&P 500 Growth Total Return Index,S&P 500 Growth Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-500-growth/,2026-08-20
-S&P 500 Value,S&P 500 Value Total Return Index,S&P 500 Value Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-500-value/,2026-08-20
-S&P MidCap 400,S&P Mid Cap 400 TR,S&P MidCap 400 Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-400/,2026-08-20
-S&P SmallCap 600,S&P 600 Small Cap TR,S&P SmallCap 600 Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-600/,2026-08-20
-S&P SmallCap 600 Value,S&P SmallCap 600 Value TR,S&P SmallCap 600 Value Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/indices/equity/sp-600-value/,2026-08-20
-Solactive GBS United States 1000,Solactive GBS United States 1000 NR USD,Solactive GBS United States 1000 Index (NR),Solactive,주식,A,https://www.solactive.com/indices/,2026-08-20
-Solactive GBS United States 500,Solactive GBS United States 500 TR USD,Solactive GBS United States 500 Index (TR),Solactive,주식,A,https://www.solactive.com/indices/,2026-08-20
-Technology Select Sector,Technology Select Sector TR,Technology Select Sector Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/,2026-08-20
-Utilities Select Sector,Utilities Select Sector TR,Utilities Select Sector Index (TR),S&P Dow Jones Indices,주식,A,https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/,2026-08-20
-코스닥 150,코스닥150 150%,코스닥 150 (레버리지 150% 표기),KRX(한국거래소),주식,A,https://index.krx.co.kr,2026-08-20
-코스피 200,KOSPI200,코스피 200 (KOSPI 200),KRX(한국거래소),주식,A,https://index.krx.co.kr,2026-08-20
-코스피 고배당 50,코스피 고배당 50,코스피 고배당 50,KRX(한국거래소),주식,A,https://index.krx.co.kr,2026-08-20
-코스피 중소형주지수,중소형지수,코스피 중소형주지수(추정),KRX(한국거래소),주식,B,https://index.krx.co.kr,2026-08-20
-Cboe S&P 500 BuyWrite,CBOE S&P 500 Buywrite (BXM),Cboe S&P 500 BuyWrite Index (BXM),Cboe,주식(커버드콜 전략),A,https://www.cboe.com/us/indices/dashboard/bxm/,2026-08-20
-Bloomberg Global Aggregate,Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 90%,Bloomberg Global Aggregate Index (KRW Hedged) (90% 표기),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg Municipal Bond,Bloomberg Municipal Bond TR,Bloomberg Municipal Bond Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg Municipal Bond 1-15 Year Blend,Bloomberg 1-15 Y Municipal Blend TR,Bloomberg Municipal Bond 1-15 Year Blend Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg US Aggregate Bond,Bloomberg U.S. Aggregate Bond TR,Bloomberg US Aggregate Bond Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg US Corporate Investment Grade,Bloomberg U.S. Corp Investment Grade TR,Bloomberg US Corporate Investment Grade Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg US Government/Credit 1-3 Year,Bloomberg 1-3 Y Government/Credit TR,Bloomberg US Government/Credit 1-3 Year Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg US High Yield 2% Issuer Capped,Bloomberg US High Yield 2% Issuer Cap TR,Bloomberg US High Yield 2% Issuer Capped Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg US Mortgage-Backed Securities (MBS),Bloomberg US MBS TR,Bloomberg US Mortgage-Backed Securities (MBS) Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-Bloomberg US Universal,Bloomberg U.S. Universal TR,Bloomberg US Universal Index (TR),Bloomberg Index Services,채권,A,https://www.bloomberg.com/professional/products/indices/,2026-08-20
-ICE BofA US Broad Market,ICE BofA US Broad Market TR,ICE BofA US Broad Market Index (TR),ICE Data Indices,채권,A,https://www.ice.com/data-services/indices,2026-08-20
-ICE BofA US High Yield Constrained,ICE BofA US High Yield Constrained TR,ICE BofA US High Yield Constrained Index (TR),ICE Data Indices,채권,A,https://www.ice.com/data-services/indices,2026-08-20
-ICE US Treasury 20+ Year Bond,ICE U.S. Treasury 20+ Year Bond TR USD,ICE US Treasury 20+ Year Bond Index (TR),ICE Data Indices,채권,A,https://www.ice.com/data-services/indices,2026-08-20
-ICE US Treasury 7-10 Year Bond,ICE U.S. Treasury 7-10 Year TR USD,ICE US Treasury 7-10 Year Bond Index (TR),ICE Data Indices,채권,A,https://www.ice.com/data-services/indices,2026-08-20
-KIS 국공채지수 2년,국공채02Y 90%,KIS 국공채지수 2년(추정) (90% 표기),KIS자산평가(추정),채권,B,https://www.kispricing.com,2026-08-20
-KIS 종합채권지수 1~2년,종합채권 1~2년,KIS 종합채권지수 1~2년(추정),KIS자산평가(추정),채권,B,https://www.kispricing.com,2026-08-20
-KIS 종합채권지수 1~2년,채권종합지수 1~2년,KIS 종합채권지수 1~2년(추정),KIS자산평가(추정),채권,B,https://www.kispricing.com,2026-08-20
-KIS 종합채권지수 2년,종합채권02Y 90%,KIS 종합채권지수 2년(추정) (90% 표기),KIS자산평가(추정),채권,B,https://www.kispricing.com,2026-08-20
-KIS 종합채권지수 3개월~1년,종합채권 3개월~1년,KIS 종합채권지수 3개월~1년(추정),KIS자산평가(추정),채권,B,https://www.kispricing.com,2026-08-20
-KIS 종합채권지수 3년,종합채권03Y 90%,KIS 종합채권지수 3년(추정) (90% 표기),KIS자산평가(추정),채권,B,https://www.kispricing.com,2026-08-20
+# base_index = 수익률방식(TR/CR/NR)·배율·철자변형 정규화한 대표지수. B안(펀드↔ETF 교차질의) 조인 키.
+# as_of=2026-07-11 — 지수 정식명·산출기관은 기준일 시점에도 유효한 불변 사실. 웹 관측일은 source 에 명기 (asset_manager.csv 와 동일 규약).
+base_index,name_raw,official_name,provider,asset_class,confidence,source,as_of
+CME CF Bitcoin Reference Rate - New York Variant,CME CF Bitcoin Reference Rate - New York Variant CR USD,CME CF Bitcoin Reference Rate - New York Variant (BRRNY),CF Benchmarks(CME 제휴),가상자산,A,지수 산출기관 공식 페이지 (https://www.cfbenchmarks.com/indices/BRRNY) — 웹 관측 2026-08-20,2026-07-11
+CME CF Ether-Dollar Reference Rate - New York Variant,CME CF Ether-Dollar Reference Rate NY USD,CME CF Ether-Dollar Reference Rate - New York Variant (ETHUSD_NY),CF Benchmarks(CME 제휴),가상자산,A,지수 산출기관 공식 페이지 (https://www.cfbenchmarks.com/indices/ETHUSD_NY) — 웹 관측 2026-08-20,2026-07-11
+FTSE 3-Month US Treasury Bill,FTSE 3 Months Treasury Bill TR,FTSE 3-Month US Treasury Bill Index (TR),FTSE Russell,단기금리,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+ICE BofA US 3-Month Treasury Bill,ICE BofA US 3-Month Treasury Bill TR USD,ICE BofA US 3-Month Treasury Bill Index (TR),ICE Data Indices,단기금리,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+ICE BofA US 3-Month Treasury Bill,ICE BofA US 3-Month T Bill TR IX,ICE BofA US 3-Month Treasury Bill Index (TR),ICE Data Indices,단기금리,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+KAP CD수익률(6개월) 지수,KAP CD 6개월  90%,KAP CD수익률(6개월) 지수 (90% 표기),KAP(한국자산평가),단기금리,A,지수 산출기관 공식 페이지 (https://www.koreaap.com/kor/index_pe01_01.html) — 웹 관측 2026-08-20,2026-07-11
+콜금리,CALL,콜금리(무담보 익일물 콜금리),한국은행/자금중개회사(고시),단기금리,B,지수 산출기관 공식 페이지 (https://ecos.bok.or.kr) — 웹 관측 2026-08-20,2026-07-11
+제로인 대안투자기대수익지수,제로인 대안투자기대수익지수,제로인 대안투자기대수익지수(국공채·회사채 BBB- 1년물 기반),KG제로인,대안투자,A,지수 산출기관 공식 페이지 (https://greened.kr/news/articleView.html?idxno=92412) — 웹 관측 2026-08-20,2026-07-11
+Dow Jones U.S. Select REIT,Dow Jones US Select REIT TR,Dow Jones U.S. Select REIT Index (TR),S&P Dow Jones Indices,부동산(리츠),A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/dow-jones-us-select-reit-index/) — 웹 관측 2026-08-20,2026-07-11
+Dow Jones Wilshire Global REIT,DWGRTT 90%,Dow Jones Wilshire Global REIT Total Return Index(추정; Bloomberg 티커 DWGRTT) (90% 표기),S&P Dow Jones Indices(구 Dow Jones Wilshire)(추정),부동산(리츠),B,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/dow-jones-global-select-reit-index/) — 웹 관측 2026-08-20,2026-07-11
+Real Estate Select Sector,Real Estate Select Sector TR USD,Real Estate Select Sector Index (TR),S&P Dow Jones Indices,부동산(리츠),A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/) — 웹 관측 2026-08-20,2026-07-11
+iSelect K-REITs 지수,iSelect K-REITs,iSelect K-REITs 지수,NH투자증권(iSelect),부동산(리츠),A,지수 산출기관 공식 페이지 (https://www.paxetv.com/news/articleView.html?idxno=85629) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg Commodity,Bloomberg Commodity TR,Bloomberg Commodity Index (TR),Bloomberg Index Services,원자재,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+LBMA Gold Price PM,LBMA Gold Price PM USD,LBMA Gold Price PM (USD),ICE Benchmark Administration(LBMA 위탁 산출),원자재,A,지수 산출기관 공식 페이지 (https://www.lbma.org.uk/prices-and-data/precious-metal-prices) — 웹 관측 2026-08-20,2026-07-11
+Rogers International Commodity Index (RICI) Total Return,Rogers International Commodity TR,Rogers International Commodity Index (RICI) Total Return,Beeland Interests(Jim Rogers),원자재,A,지수 산출기관 공식 페이지 (https://www.rogersrawmaterials.com) — 웹 관측 2026-08-20,2026-07-11
+Consumer Discretionary Select Sector,Consumer Discretionary Select Sector TR,Consumer Discretionary Select Sector Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/) — 웹 관측 2026-08-20,2026-07-11
+Dow Jones Industrial Average,Dow Jones Industrial Average CR,Dow Jones Industrial Average (Price Return),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/dow-jones-industrial-average/) — 웹 관측 2026-08-20,2026-07-11
+KRX 300,KRX 300,KRX 300,KRX(한국거래소),주식,A,지수 산출기관 공식 페이지 (https://index.krx.co.kr) — 웹 관측 2026-08-20,2026-07-11
+KRX 미디어&엔터테인먼트/통신 섹터지수,KRX 미디어통신,KRX 미디어&엔터테인먼트/통신 섹터지수,KRX(한국거래소),주식,B,지수 산출기관 공식 페이지 (https://index.krx.co.kr) — 웹 관측 2026-08-20,2026-07-11
+MSCI AC Asia,MSCI AC ASIA,MSCI AC Asia Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI AC Asia Pacific ex Japan,MSCI AC ASIA PACIFIC ex JAPAN,MSCI AC Asia Pacific ex Japan Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI AC Asia ex Japan,MSCI AC ASIA ex JAPAN,MSCI AC Asia ex Japan Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI,MSCI ACWI,MSCI ACWI Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI,MSCI AC World NR USD,MSCI ACWI (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI,MSCI AC World TR USD,MSCI ACWI (Gross/Total Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI Energy,MSCI ACWI Energy,MSCI ACWI Energy Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI Health Care,MSCI ACWI Health Care,MSCI ACWI Health Care Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI IMI,MSCI ACWI IMI NR,MSCI ACWI IMI (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI Information Technology,MSCI ACWI Information Technology,MSCI ACWI Information Technology Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI ACWI ex USA,MSCI AC World ex USA NR USD,MSCI ACWI ex USA Index (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI Brazil 25/50,MSCI Brazil 25/50 NR USD,MSCI Brazil 25/50 Index (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI China,MSCI CHINA,MSCI China Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI China A Onshore,MSCI CHINA A(로컬),MSCI China A Onshore Index (Local),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI EAFE,MSCI EAFE NR USD,MSCI EAFE Index (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI Emerging Markets,MSCI EM (EMERGING MARKETS),MSCI Emerging Markets Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI Emerging Markets,MSCI EM (Emerging Markets) NR USD,MSCI Emerging Markets Index (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI Emerging Markets IMI,MSCI Emerging Markets IMI NR USD,MSCI Emerging Markets IMI (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI Emerging Markets ex China,MSCI EM EX CHINA NR USD,MSCI Emerging Markets ex China Index (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI Europe,MSCI EUROPE,MSCI Europe Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI India,MSCI INDIA,MSCI India Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI North America,MSCI NORTH AMERICA,MSCI North America Index,MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI World,MSCI WI,MSCI World Index,MSCI,주식,B,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI World,MSCI World NR USD,MSCI World Index (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+MSCI World ex USA IMI,MSCI World ex USA IMI NR,MSCI World ex USA IMI (Net Return),MSCI,주식,A,지수 산출기관 공식 페이지 (https://www.msci.com/indexes) — 웹 관측 2026-08-20,2026-07-11
+NYSE FANG+,NYSE FANG+ TR USD,NYSE FANG+ Index (TR),ICE Data Indices(NYSE),주식,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+Nasdaq Composite,NASDAQ Composite TR,Nasdaq Composite Index (TR),Nasdaq,주식,A,지수 산출기관 공식 페이지 (https://indexes.nasdaqomx.com) — 웹 관측 2026-08-20,2026-07-11
+Nasdaq-100,NASDAQ 100 TR,Nasdaq-100 Index (TR),Nasdaq,주식,A,지수 산출기관 공식 페이지 (https://indexes.nasdaqomx.com/Index/Overview/NDX) — 웹 관측 2026-08-20,2026-07-11
+Russell 1000,Russell 1000 TR USD,Russell 1000 Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 1000 Growth,Russell 1000 Growth TR,Russell 1000 Growth Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 1000 Value,Russell 1000 Value TR,Russell 1000 Value Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 2000,Russell 2000 TR,Russell 2000 Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 2000 Growth,Russell 2000 Growth TR,Russell 2000 Growth Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 2000 Value,Russell 2000 Value TR,Russell 2000 Value Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 2500,Russell 2500 TR,Russell 2500 Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell 3000,Russell 3000 TR,Russell 3000 Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell Midcap,Russell MidCap TR,Russell Midcap Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+Russell Midcap Growth,Russell MidCap Growth TR,Russell Midcap Growth Index (TR),FTSE Russell,주식,A,지수 산출기관 공식 페이지 (https://www.lseg.com/en/ftse-russell) — 웹 관측 2026-08-20,2026-07-11
+S&P 1000,S&P 1000 TR,S&P 1000 Index (TR; MidCap 400 + SmallCap 600),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-1000/) — 웹 관측 2026-08-20,2026-07-11
+S&P 500,S&P 500,S&P 500 Index,S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-500/) — 웹 관측 2026-08-20,2026-07-11
+S&P 500,S&P 500 TR,S&P 500 Total Return Index,S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-500/) — 웹 관측 2026-08-20,2026-07-11
+S&P 500,S&P 500 CR,S&P 500 Index (Price Return),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-500/) — 웹 관측 2026-08-20,2026-07-11
+S&P 500 Growth,S&P 500 Growth Total Return Index,S&P 500 Growth Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-500-growth/) — 웹 관측 2026-08-20,2026-07-11
+S&P 500 Value,S&P 500 Value Total Return Index,S&P 500 Value Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-500-value/) — 웹 관측 2026-08-20,2026-07-11
+S&P MidCap 400,S&P Mid Cap 400 TR,S&P MidCap 400 Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-400/) — 웹 관측 2026-08-20,2026-07-11
+S&P SmallCap 600,S&P 600 Small Cap TR,S&P SmallCap 600 Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-600/) — 웹 관측 2026-08-20,2026-07-11
+S&P SmallCap 600 Value,S&P SmallCap 600 Value TR,S&P SmallCap 600 Value Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/indices/equity/sp-600-value/) — 웹 관측 2026-08-20,2026-07-11
+Solactive GBS United States 1000,Solactive GBS United States 1000 NR USD,Solactive GBS United States 1000 Index (NR),Solactive,주식,A,지수 산출기관 공식 페이지 (https://www.solactive.com/indices/) — 웹 관측 2026-08-20,2026-07-11
+Solactive GBS United States 500,Solactive GBS United States 500 TR USD,Solactive GBS United States 500 Index (TR),Solactive,주식,A,지수 산출기관 공식 페이지 (https://www.solactive.com/indices/) — 웹 관측 2026-08-20,2026-07-11
+Technology Select Sector,Technology Select Sector TR,Technology Select Sector Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/) — 웹 관측 2026-08-20,2026-07-11
+Utilities Select Sector,Utilities Select Sector TR,Utilities Select Sector Index (TR),S&P Dow Jones Indices,주식,A,지수 산출기관 공식 페이지 (https://www.spglobal.com/spdji/en/index-family/equity/us-equity/select-sector/) — 웹 관측 2026-08-20,2026-07-11
+코스닥 150,코스닥150 150%,코스닥 150 (레버리지 150% 표기),KRX(한국거래소),주식,A,지수 산출기관 공식 페이지 (https://index.krx.co.kr) — 웹 관측 2026-08-20,2026-07-11
+코스피 200,KOSPI200,코스피 200 (KOSPI 200),KRX(한국거래소),주식,A,지수 산출기관 공식 페이지 (https://index.krx.co.kr) — 웹 관측 2026-08-20,2026-07-11
+코스피 고배당 50,코스피 고배당 50,코스피 고배당 50,KRX(한국거래소),주식,A,지수 산출기관 공식 페이지 (https://index.krx.co.kr) — 웹 관측 2026-08-20,2026-07-11
+코스피 중소형주지수,중소형지수,코스피 중소형주지수(추정),KRX(한국거래소),주식,B,지수 산출기관 공식 페이지 (https://index.krx.co.kr) — 웹 관측 2026-08-20,2026-07-11
+Cboe S&P 500 BuyWrite,CBOE S&P 500 Buywrite (BXM),Cboe S&P 500 BuyWrite Index (BXM),Cboe,주식(커버드콜 전략),A,지수 산출기관 공식 페이지 (https://www.cboe.com/us/indices/dashboard/bxm/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg Global Aggregate,Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 90%,Bloomberg Global Aggregate Index (KRW Hedged) (90% 표기),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg Municipal Bond,Bloomberg Municipal Bond TR,Bloomberg Municipal Bond Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg Municipal Bond 1-15 Year Blend,Bloomberg 1-15 Y Municipal Blend TR,Bloomberg Municipal Bond 1-15 Year Blend Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg US Aggregate Bond,Bloomberg U.S. Aggregate Bond TR,Bloomberg US Aggregate Bond Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg US Corporate Investment Grade,Bloomberg U.S. Corp Investment Grade TR,Bloomberg US Corporate Investment Grade Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg US Government/Credit 1-3 Year,Bloomberg 1-3 Y Government/Credit TR,Bloomberg US Government/Credit 1-3 Year Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg US High Yield 2% Issuer Capped,Bloomberg US High Yield 2% Issuer Cap TR,Bloomberg US High Yield 2% Issuer Capped Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg US Mortgage-Backed Securities (MBS),Bloomberg US MBS TR,Bloomberg US Mortgage-Backed Securities (MBS) Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+Bloomberg US Universal,Bloomberg U.S. Universal TR,Bloomberg US Universal Index (TR),Bloomberg Index Services,채권,A,지수 산출기관 공식 페이지 (https://www.bloomberg.com/professional/products/indices/) — 웹 관측 2026-08-20,2026-07-11
+ICE BofA US Broad Market,ICE BofA US Broad Market TR,ICE BofA US Broad Market Index (TR),ICE Data Indices,채권,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+ICE BofA US High Yield Constrained,ICE BofA US High Yield Constrained TR,ICE BofA US High Yield Constrained Index (TR),ICE Data Indices,채권,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+ICE US Treasury 20+ Year Bond,ICE U.S. Treasury 20+ Year Bond TR USD,ICE US Treasury 20+ Year Bond Index (TR),ICE Data Indices,채권,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+ICE US Treasury 7-10 Year Bond,ICE U.S. Treasury 7-10 Year TR USD,ICE US Treasury 7-10 Year Bond Index (TR),ICE Data Indices,채권,A,지수 산출기관 공식 페이지 (https://www.ice.com/data-services/indices) — 웹 관측 2026-08-20,2026-07-11
+KIS 국공채지수 2년,국공채02Y 90%,KIS 국공채지수 2년(추정) (90% 표기),KIS자산평가(추정),채권,B,지수 산출기관 공식 페이지 (https://www.kispricing.com) — 웹 관측 2026-08-20,2026-07-11
+KIS 종합채권지수 1~2년,종합채권 1~2년,KIS 종합채권지수 1~2년(추정),KIS자산평가(추정),채권,B,지수 산출기관 공식 페이지 (https://www.kispricing.com) — 웹 관측 2026-08-20,2026-07-11
+KIS 종합채권지수 1~2년,채권종합지수 1~2년,KIS 종합채권지수 1~2년(추정),KIS자산평가(추정),채권,B,지수 산출기관 공식 페이지 (https://www.kispricing.com) — 웹 관측 2026-08-20,2026-07-11
+KIS 종합채권지수 2년,종합채권02Y 90%,KIS 종합채권지수 2년(추정) (90% 표기),KIS자산평가(추정),채권,B,지수 산출기관 공식 페이지 (https://www.kispricing.com) — 웹 관측 2026-08-20,2026-07-11
+KIS 종합채권지수 3개월~1년,종합채권 3개월~1년,KIS 종합채권지수 3개월~1년(추정),KIS자산평가(추정),채권,B,지수 산출기관 공식 페이지 (https://www.kispricing.com) — 웹 관측 2026-08-20,2026-07-11
+KIS 종합채권지수 3년,종합채권03Y 90%,KIS 종합채권지수 3년(추정) (90% 표기),KIS자산평가(추정),채권,B,지수 산출기관 공식 페이지 (https://www.kispricing.com) — 웹 관측 2026-08-20,2026-07-11

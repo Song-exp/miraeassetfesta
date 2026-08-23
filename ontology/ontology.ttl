@@ -21,7 +21,7 @@
 :ETF rdfs:subClassOf :FinancialProduct ; rdfs:comment "상장지수펀드 — 운용사가 설정한 펀드"@ko .
 :ETN rdfs:subClassOf :FinancialProduct ; rdfs:comment "상장지수증권 — 증권사가 발행한 채무증권. 발행사 신용위험이 있고 구성종목 개념이 없다"@ko .
 :ETF owl:disjointWith :ETN .  # 한 상품이 둘 다일 수 없다 — 'ETF' 질의에 ETN 이 섞이면 오답
-:ForeignETF rdfs:subClassOf :ETF ; rdfs:comment "해외 상장 ETF — 과제 규격 p9 fp:ForeignETF 대응"@ko .
+:ForeignETF rdfs:subClassOf :ETF ; rdfs:comment "해외 상장 ETF — PROJECT.md §5 제출 규격의 fp:ForeignETF 대응"@ko .
 # 판별자: domestic_etfs.pd_grp_no → ETF 1,202건 · ETN 532건 (실측). :ETF 질의는 pd_grp_no='ETF' 필터 필수
 # 판별자: overseas_etfs.pd_grp_no → ETF 5,587건 · ETN 59건 (실측). :ETF 질의는 pd_grp_no='ETF' 필터 필수
 

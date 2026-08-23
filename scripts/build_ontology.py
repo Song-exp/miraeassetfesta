@@ -292,7 +292,7 @@ def emit_ttl(shared, con=None):
     L.append(":ETF rdfs:subClassOf :FinancialProduct ; rdfs:comment \"상장지수펀드 — 운용사가 설정한 펀드\"@ko .")
     L.append(":ETN rdfs:subClassOf :FinancialProduct ; rdfs:comment \"상장지수증권 — 증권사가 발행한 채무증권. 발행사 신용위험이 있고 구성종목 개념이 없다\"@ko .")
     L.append(":ETF owl:disjointWith :ETN .  # 한 상품이 둘 다일 수 없다 — 'ETF' 질의에 ETN 이 섞이면 오답")
-    L.append(":ForeignETF rdfs:subClassOf :ETF ; rdfs:comment \"해외 상장 ETF — 과제 규격 p9 fp:ForeignETF 대응\"@ko .")
+    L.append(":ForeignETF rdfs:subClassOf :ETF ; rdfs:comment \"해외 상장 ETF — PROJECT.md §5 제출 규격의 fp:ForeignETF 대응\"@ko .")
     counts = product_kind_counts(con) if con is not None else {}
     for t in ("domestic_etfs", "overseas_etfs"):
         c = counts.get(t) or {}

@@ -6,13 +6,24 @@
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
 # ── 상품 클래스 계층 ──
+# 축이 둘이다. 섞으면 안 된다:
+#   (a) 테이블 클래스 — 데이터가 어느 마스터에서 왔나 (:DomesticETF …)
+#   (b) 상품종류 클래스 — 그 상품이 ETF 인가 ETN 인가 (:ETF / :ETN)
+# 두 ETF 마스터에는 ETN 이 섞여 있어 (a) 는 (b) 의 하위가 아니다 —
+# :DomesticETF rdfs:subClassOf :ETF 로 두면 ETN 행까지 ETF 로 단정해 disjointWith 와 모순이 된다.
 :FinancialProduct a owl:Class .
 :DomesticBond rdfs:subClassOf :FinancialProduct ; rdfs:comment "SQLite 테이블 domestic_bonds"@ko .
 :DomesticETF rdfs:subClassOf :FinancialProduct ; rdfs:comment "SQLite 테이블 domestic_etfs"@ko .
 :OverseasETF rdfs:subClassOf :FinancialProduct ; rdfs:comment "SQLite 테이블 overseas_etfs"@ko .
 :PublicFund rdfs:subClassOf :FinancialProduct ; rdfs:comment "SQLite 테이블 public_funds"@ko .
-:ETF a owl:Class . :ETN a owl:Class .
-:ETF owl:disjointWith :ETN .  # 규칙 §4 — 국내ETF마스터에 ETN 532건 혼입, 구분은 실제 필터
+
+# 상품종류 — 2026-08-22 고립 해소: 이전에는 :ETF·:ETN 이 계층 어디에도 안 걸린 채 떠 있었다
+:ETF rdfs:subClassOf :FinancialProduct ; rdfs:comment "상장지수펀드 — 운용사가 설정한 펀드"@ko .
+:ETN rdfs:subClassOf :FinancialProduct ; rdfs:comment "상장지수증권 — 증권사가 발행한 채무증권. 발행사 신용위험이 있고 구성종목 개념이 없다"@ko .
+:ETF owl:disjointWith :ETN .  # 한 상품이 둘 다일 수 없다 — 'ETF' 질의에 ETN 이 섞이면 오답
+:ForeignETF rdfs:subClassOf :ETF ; rdfs:comment "해외 상장 ETF — 과제 규격 p9 fp:ForeignETF 대응"@ko .
+# 판별자: domestic_etfs.pd_grp_no → ETF 1,202건 · ETN 532건 (실측). :ETF 질의는 pd_grp_no='ETF' 필터 필수
+# 판별자: overseas_etfs.pd_grp_no → ETF 5,587건 · ETN 59건 (실측). :ETF 질의는 pd_grp_no='ETF' 필터 필수
 
 # ── AssetClass (shared/asset_class.yaml) ──
 :AssetClass a owl:Class .

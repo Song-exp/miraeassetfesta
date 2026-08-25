@@ -100,6 +100,27 @@ def load_codebooks(path):
     return out
 
 
+def apply_alias_extensions(shared):
+    """`alias_extensions: {node_id: [alias…]}` — 다른 파일(주로 자동 생성분)이 기존 노드에 alias 만 덧붙인다.
+    대상 노드가 어느 파일에도 없으면 오류 목록으로 반환. 적용 후엔 일반 alias 와 동일하게 검증·생성·리포트된다."""
+    owner = {}
+    for fname, doc in shared.items():
+        for nid in (doc.get("nodes") or {}):
+            owner[nid] = fname
+    errors, n = [], 0
+    for fname, doc in shared.items():
+        for nid, als in (doc.get("alias_extensions") or {}).items():
+            if nid not in owner:
+                errors.append(f"[V7] alias_extensions 대상 노드 없음: {fname} → {nid}")
+                continue
+            node = shared[owner[nid]]["nodes"][nid]
+            node.setdefault("aliases", [])
+            for al in als or []:
+                al = dict(al); al.setdefault("source", "extension")
+                node["aliases"].append(al); n += 1
+    return errors, n
+
+
 def iter_aliases(shared):
     """모든 shared 파일의 alias 를 (파일, entity, node_id, alias dict) 로 평탄화"""
     for fname, doc in shared.items():
@@ -274,14 +295,20 @@ def emit_ttl(shared):
     L.append(":ETF owl:disjointWith :ETN .  # 규칙 §4 — 국내ETF마스터에 ETN 532건 혼입, 구분은 실제 필터")
     L.append("")
 
+    declared_cls, declared_prop = set(), set()
     for fname, doc in shared.items():
         entity, prop = doc.get("entity"), doc.get("property")
         absent = doc.get("absent_in") or {}
         have_tables = sorted({al["table"] for _, _, _, al in iter_aliases({fname: doc})
                               if al.get("status", "confirmed") == "confirmed"})
         L.append(f"# ── {entity} (shared/{fname}) ──")
-        L.append(f":{entity} a owl:Class .")
+        if entity not in declared_cls:   # 같은 entity 를 여러 파일(수동 + 자동 생성)이 선언할 수 있다 — 한 번만
+            L.append(f":{entity} a owl:Class .")
+            declared_cls.add(entity)
+        if prop and prop in declared_prop:
+            prop = None
         if prop:
+            declared_prop.add(prop)
             domains = " ".join(f":{TABLE_CLASS[t]}" for t in have_tables)
             L.append(f":{prop} a owl:ObjectProperty ;")
             L.append(f"    rdfs:domain [ owl:unionOf ( {domains} ) ] ;")
@@ -302,6 +329,8 @@ def emit_ttl(shared):
             L.append(f":{node_id} a :{entity}{lab} .")
             if node.get("parent"):
                 L.append(f":{node_id} skos:broader :{node['parent']} .")
+        for e in doc.get("edges") or []:
+            L.append(f":{e['src']} :{e['predicate']} :{e['dst']} .")
         L.append("")
 
     with open(TTL_PATH, "w", encoding="utf-8", newline="\n") as f:  # 커밋 대상 — LF 고정 (CRLF 상태 노이즈 방지)
@@ -387,8 +416,12 @@ def main():
         print("⚠️  shared/*.yaml 이 없습니다 — 만들 KG 가 없습니다")
         sys.exit(1)
 
+    ext_errors, n_ext = apply_alias_extensions(shared)
+    if n_ext:
+        print(f"           alias_extensions 적용 {n_ext}건")
     con = sqlite3.connect(args.db)
     errors, warnings, distinct_cache = validate(con, enums, shared, codebooks)
+    errors = ext_errors + errors
     print(f"🔍 [2 Validate] 오류 {len(errors)} · 경고 {len(warnings)}")
     for e in errors:
         print(f"   ❌ {e}")

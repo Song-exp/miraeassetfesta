@@ -14,13 +14,13 @@
 >
 > | 테이블 | 행 | 조인 키 | 마스터 커버리지 | 기준일 |
 > | :-- | --: | :-- | :-- | :-- |
-> | `ext_etf_holdings` | 75,081 | `etf_code` = `domestic_etfs.pd_itm_no` | ETF 1,131/1,235 (91.6%) | 2026-07-10 |
-> | `ext_ovs_etf_holdings` | 275,062 | `isin` = `overseas_etfs.pd_isin_cd` (100% 매칭) | ETF 186/5,972 (**3.1%** — 최대 구멍) | 3/31~5/31 (ETF별 상이) |
+> | `ext_etf_holdings` | 75,859 | `etf_code` = `domestic_etfs.pd_itm_no` | ETF 1,160/1,235 (93.9%) | **2026-08-21** (재수집, 7/10본 보존) |
+> | `ext_ovs_etf_holdings` | 906,848 | `isin` = `overseas_etfs.pd_isin_cd` (100% 매칭) | ETF 1,356/5,972 (22.7% · **AUM 가중 88.6%**) | 3/31~6/30 (ETF별 상이, 6/30 94종) |
 > | `ext_fund_holdings` | 59,206 | `grp` = `mtco_itm_no` | (기존) | 행별 `bas_dt` |
 > | `ext_fund_page` | 10,565 | `itm_no` | (기존) — 보수 단위 검증(‰) 근거 | 2026-08-18 관측 |
 >
-> 교차 예시 "삼성전자 보유" 실측: 국내ETF 233 · 해외ETF 13 · 펀드그룹 941. SQL 가드는 `ext_*` 를 마스터와 **함께 쓸 때만** 허용 (`src/runtime/loader.py EXT_TABLES`).
-> 재수집 후보(8/24 완화): 국내 8월 스냅샷, 해외 6/30 NPORT-P + AUM 상위 확장 — 착수는 팀 결정.
+> 교차 예시 "삼성전자 보유" 실측(8/25 재수집 후): 국내ETF 246 · 해외ETF 84 · 펀드그룹 941. NVIDIA 보유 해외ETF 342 · 캠브리콘 보유 31. SQL 가드는 `ext_*` 를 마스터와 **함께 쓸 때만** 허용 (`src/runtime/loader.py EXT_TABLES`).
+> ✅ 재수집 완료(2026-08-25): 국내 8/21 스냅샷(`holdings/domestic_holdings_20260821.csv`), 해외 AUM 상위 1,500 확장(`holdings_overseas_20260824/`, 1,288+60 재시도 = 1,356 · 미제출 13). 6/30 NPORT-P 는 제출기한(8/29) 전이라 94종만 확보 — 규칙(발행 ≤ 8/24)상 정상.
 
 ## 1. 구성종목 (Holdings) — 마스터에 컬럼 자체가 없던 값
 

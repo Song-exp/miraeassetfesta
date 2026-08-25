@@ -2,648 +2,738 @@
 # 기계적 사실(결측률·distinct·값 목록)은 domestic_bonds.auto.yaml 에 있습니다. 여기엔 판정과 규칙만 씁니다.
 # 런타임 가드레일이 이 파일을 읽습니다.
 #
+# 이력:
+#   2026-08-25  🔄 2차 데이터(8/24 배포 · 기준일 2026-08-22) 기준 전면 재작성.
+#               1차(7/11) 42,394행×40컬럼 → 2차 21,882행×58컬럼. 컬럼명 전부 소문자(1차 채권만 대문자였음).
+#               삭제 pd_evco_crd_grd · 신규 19컬럼 · PK 복합화. 1차 판정 중 데이터로 해소/무효화된 항목은
+#               각 항목에 "1차:" 로 남겨 왜 바뀌었는지 추적 가능하게 했다.
+#               근거: docs/DATA_V2_2026-08-24_impact.md §2.1·§6 + DB 전수 실측(2026-08-25).
+#   2026-08-18  감사 확정 (1차 기준)
+#
 # 범위: 2단계(결측 판정 · 컬럼 판단 · 쿼리 규칙 · 축 유도).
-#   개체·관계 매핑(entities/class_hierarchy)은 4단계(워크샵 후). → docs/domain/domestic_bonds_graph.md §0·§4 참조.
-# 근거: docs/domain/domestic_bonds_graph.md (§ 번호 인용) · docs/eda/domestic_bonds_notes.md (노트 §)
-# 미확정(워크샵 안건)은 파일 끝 workshop: 절에 모았습니다.
+#   개체·관계 매핑(entities/class_hierarchy)은 4단계. → docs/domain/domestic_bonds_graph.md §0·§4 참조.
+# 근거: docs/domain/domestic_bonds_graph.md (§ 번호 인용) · docs/eda/domestic_bonds_notes.md (노트 §, 1차 기준)
+# 미확정은 파일 끝 workshop: 절에 모았습니다.
 
 domain: domestic_bonds
 
-# ── 행의 낟알 (2026-08-18 감사 확정) ──
+# ── 행의 낟알 (2026-08-25 2차 재판정) ──
 row_grain:
-  구조: 행 = 종목 (PD_NO 완전 유일 — 42,394행 = 42,394 distinct · NULL 0)
+  구조: >-
+    행 = 종목 × 거래시장 × 기준일 × 판매LOT (pd_no + pd_exg_mkt + info_base_dt + info_seq — 스키마 NOT NULL 4개가 PK).
+    21,882행 / pd_no distinct 20,497. 동일 pd_no 2~4행 = 1,078종목(2행 772 · 3행 305 · 4행 1).
   evidence_grade: A
-  note: 공모펀드(행=종목×속성태그)와 달리 행이 곧 종목이다. COUNT(*) 그대로 사용 가능.
+  구성: >-
+    장내 17,746행(전부 pd_no 유일) + 장외 4,136행(pd_no 3,828). 중복 1,078종목 중 1,077은 "장내 1행 + 장외 1~3행"
+    (같은 종목이 두 시장에 모두 수록) · 1종목만 장외 LOT 2개. info_base_dt 는 전 행 20260821 단일값이라 현 스냅샷에선 키 역할 없음.
+  대표행: >-
+    종목 속성(이름·등급·만기·평가가)은 중복행 간 동일(eval_price 가 다른 종목은 8건뿐) → 종목 단위 질의는 GROUP BY pd_no 또는
+    장내행 우선. 판매 정보(buy_yield·trade_price·buyable_quantity)는 장외 LOT 행에만 있음 → 판매 질의는 buy_yield IS NOT NULL 행.
+  note: >-
+    1차: "행 = 종목 (PD_NO 완전 유일)" — 폐기. COUNT(*) 를 종목 수로 쓰면 1,385행 과대 계상.
+    🔴 1차 42,394행 → 2차 21,882행: 소멸 25,429종목 중 67.5%가 만기 경과분, 나머지는 장외 정리(17,645→4,136행).
+    신규 3,532종목 중 7/11 이후 발행은 18% — 나머지 82%는 1차 스냅샷에 없던 기존 발행 종목(발행일 ≤ 7/11 실측). 주최가 공지한 1차 "정합성 이슈"의 실체로 보이나 주최 확인은 없음(검수 C 2026-08-25).
 
 columns:
 
   # ── 1.1 식별 (6) — 📌 불변 ─────────────────────────────────────────
-  PD_NO:
-    korean_name: 종목코드
+  pd_no:
+    korean_name: 종목코드 (ISIN)
     missing_reason: none
-    answerable_n: 42394
+    answerable_n: 20497                    # distinct — 행 수(21,882) 아님
     note: >
-      PK — 결측 0 · 중복 0. 12자리 ISIN.
-      🔑 앞 3자리에 대분류 인코딩: KR6 회사채 31,327 / KR3 특수채 8,812 / KR2 국공채 1,631 /
-      KR1 국공채·개인국채 333 / KRC 222 · KRB 49 · KRZ 19 · XS3 1.
-      분류 트리가 깨져 있고(§7.1) BD_KND 결측 924건이라 사실상 유일한 분류 보완 수단 (§5.2).
-      🔴 단 1:1 아님 — KR3 에 회사채 57 혼재 등 (name_encoding.isin_prefix 교차표, 2026-08-20 실측).
-  PD_NM:
+      12자리 ISIN. 결측 0 · 🔴 행 유일 아님(row_grain 참조) — 종목 식별자이지 행 식별자가 아니다.
+      🔑 앞 3자리 대분류 인코딩 (2차 실측): KR6 회사채 12,834 / KR3 특수채 6,177(+회사채 3) / KR2 국공채 2,239 /
+      KR1 국공채 392 / KRC 국공채 209 / KRB 회사채 27 / XS3 회사채 1. 1차의 KRZ·개인투자용국채 소멸.
+      bd_knd 결측 152건의 분류 보완 수단 (§5.2). name_encoding.isin_prefix 참조.
+  pd_nm:
     korean_name: 종목명
     missing_reason: none
+    answerable_n: 20497
     trap: >
-      🔴 패딩 3.3% 혼재(다른 컬럼처럼 일괄 패딩이 아님) — TRIM 없으면 종목마다 검색 성패가 갈림.
-      공백 흔들림 3종(붙임/띄움/괄호 앞 공백) — 파싱 전 정규화 필수 (§5.1-⑥).
+      🔴 패딩 684행(3.1%) 혼재 — TRIM 없으면 종목마다 검색 성패가 갈림. 공백 흔들림 3종(붙임/띄움/괄호 앞 공백) —
+      파싱 전 정규화 필수 (§5.1-⑥).
     note: >
-      🔑 이름 자체가 구조화 데이터 (§5.2): 국고채 '01875-5103(21-2)' = 표면 1.875%·만기 2051-03·2021년 2회차
-      (SRFC_IRT·MAT_DT 와 일치 검증됨). 특수구조 플래그 13종·분리채권 221건·이표/할인/복리는
-      종목명이 유일한 식별 수단 → name_encoding: 절.
-  PD_ABRV_NM:
+      🔑 이름 자체가 구조화 데이터 (§5.2): 국고채 '01125-3909(19-6)' = 표면 1.125%·만기 2039-09·2019년 6회차.
+      특수구조 플래그(콜·풋·후순위·CB 등)는 여전히 종목명이 유일한 식별 수단 → name_encoding: 절.
+      ✅ 2차부터 이자지급 방식(이표/할인/복리/단리)·금리 구분(고정/변동)·공모/사모는 전용 컬럼이 생겨 이름 파싱 불필요
+      (bd_intp_tcd · bd_inrt_tcd · bd_ofr_tcd).
+  pd_abrv_nm:
     korean_name: 종목약어명
     missing_reason: missing
     missing_semantics:
-      "": missing                          # 🔴 TRIM 후 빈 문자열 296건
-    answerable_n: 42029
-    answer_policy: 약어명이 없으면 정식명(PD_NM)으로 대체 표기.
-    note: >
-      NULL 69건 + TRIM 후 빈 문자열 296건 = 실제 결측 365건.
-      🔴 IS NULL 로만 세면 80%를 놓칩니다. 고유 정보 없음(정식명의 축약+패딩) — 노트 §D.16 검토 완료.
-  PD_ENG_NM:
+      "": missing                          # TRIM 후 빈 문자열 — NULL 12 + 빈 2 = 14행
+    answer_policy: 약어명이 없으면 정식명(pd_nm)으로 대체 표기.
+    note: 1차 결측 365건 → 2차 14행. 고유 정보 없음(정식명의 축약+패딩).
+  pd_eng_nm:
     korean_name: 종목영문명
     missing_reason: missing
     missing_semantics:
-      "": missing
-    answerable_n: 42070
-    answer_policy: 영문명 없으면 정식명(PD_NM)으로 대체 표기.
-    note: NULL 26건 + 빈 문자열 298건 = 실제 결측 324건.
-  PD_ABRV_ENG_NM:
+      "": missing                          # NULL 3 + 빈 2 = 5행
+    answer_policy: 영문명 없으면 정식명(pd_nm)으로 대체 표기.
+    note: 1차 결측 324건 → 2차 5행.
+  pd_abrv_eng_nm:
     korean_name: 종목영문약어명
     missing_reason: missing
     missing_semantics:
-      "": missing
-    answerable_n: 42024
-    answer_policy: 영문약어명 없으면 정식명(PD_NM)으로 대체 표기.
-    note: NULL 72건 + 빈 문자열 298건 = 실제 결측 370건.
-  PD_CTRY_CD:
+      "": missing                          # NULL 12 + 빈 2 = 14행
+    answer_policy: 영문약어명 없으면 정식명(pd_nm)으로 대체 표기.
+    note: 1차 결측 370건 → 2차 14행.
+  pd_ctry_cd:
     korean_name: 발행국가코드
     missing_reason: none
-    answerable_n: 42394
     value_semantics:
-      "KR": 한국 — 42,393건 (사실상 상수)
-      "XS": 🔸 국제예탁결제기구(Euroclear/Clearstream) 코드 — 국가 아님. 1건
+      "KR": 한국 — 21,881행 (사실상 상수)
+      "XS": 🔸 국제예탁결제기구(Euroclear/Clearstream) 코드 — 국가 아님. 1행
     kg_entity: null                        # 사실상 상수 → KG 개체 무의미 (§4.1)
     note: 상수에 가까움. XS 1건은 enum 화이트리스트에서 '국가'로 등재 금지.
 
   # ── 1.2 분류 (3) — 📌 불변 · 🔴 3층이 트리가 아님 (§7.1) ────────────
-  STD_PD_MCLS_NM:
+  std_pd_mcls_nm:
     korean_name: 표준상품 대분류명
     missing_reason: none
-    answerable_n: 42394
+    answerable_n: 21882
     value_semantics:
-      "회사채": 일반 기업(은행·카드·캐피탈 포함) — 31,447건(74.2%). 부도위험 기업별 상이
-      "특수채": 법률로 설립된 공기업(한전·LH·주금공·산은) — 8,755건(20.7%). 정부가 사실상 보증
-      "국공채": 정부(국고채)·지자체(지방채)·한국은행(통안채) — 2,137건(5.0%). 부도위험 최저
-      "개인투자용국채": >-
-        정부 발행 개인 전용 — 49건. 🔴 전부 '장외'. ✅ 2026-08-20 확정 — 미래에셋증권 단독
-        판매대행(전용계좌 청약)·소유권 이전 불가·유통시장 부존재 → 장내 거래가 제도적으로 불가
-        (근거: data/external/lookups/ktb_individual_structure.md. 이전 '직접판매 추정 🔸' 승격)
-      "외화채권-회사채": 5건
-      "외화채권-금융채": 1건
+      "회사채": 일반 기업(은행·카드·캐피탈 포함) — 12,865행(58.8%). 부도위험 기업별 상이
+      "특수채": 법률로 설립된 공기업(한전·LH·주금공·산은) — 6,177행(28.2%). 정부가 사실상 보증
+      "국공채": 정부(국고채)·지자체(지방채)·한국은행(통안채) — 2,840행(13.0%). 부도위험 최저
     kg_entity: null                        # 채권 전용 → SQL 컬럼으로 충분
     note: >
-      ✅ 분류 3층 중 유일하게 안전한 층 — axis_issuerType 매핑은 여기만 (§7.1).
-      🔴 소분류·채권종류에서 대분류 역추적 금지(842건 오류). 📖 금리는 안전도의 역순(신용스프레드),
-      듀레이션은 안전도의 정순 — 두 위험이 상충 (§6.1·§9.3).
-      🔴 '외화채권' 질의를 이 컬럼으로 grounding 금지 — 실제 외화 21건(USD 19+JPY 1+EUR 1,
-      2026-08-18 감사 정정: 오염값 '000' 제외) vs 여기 6건 (노트 §D.16-④).
-  STD_PD_SCLS_NM:
+      ✅ 분류 3층 중 유일하게 안전한 층 — axis_issuerType 매핑은 여기만 (§7.1). 2차는 3종뿐.
+      🔴 1차의 '개인투자용국채'(49건)·'외화채권-회사채/금융채'(6건)는 2차에서 소멸 — 관련 질의는
+      "이 데이터에 수록되어 있지 않습니다" (1차 lookups/ktb_individual_structure.md 는 배경 지식으로만).
+      🔴 소분류·채권종류에서 대분류 역추적 금지 — 일반사채 = 회사채 12,133 + 특수채 614.
+      📖 금리는 안전도의 역순(신용스프레드), 듀레이션은 안전도의 정순 — 두 위험이 상충 (§6.1·§9.3).
+  std_pd_scls_nm:
     korean_name: 표준상품 소분류명
-    missing_reason: mixed
-    answerable_n: 42381
-    answer_policy: >
-      결측 13건 = 외화채권 6건(소분류 체계 자체가 없음 — "부여되지 않습니다") +
-      회사채 7건(미부여 — "수록되어 있지 않습니다"). 두 문구를 구분해 답합니다.
+    missing_reason: none                   # 1차 결측 13건(외화채·미부여) → 2차 0
+    answerable_n: 21882
     note: >
-      실제 16종(NULL 을 고유값으로 세면 17로 과장). 🔴 소분류 3종이 두 대분류에 걸침
-      (일반사채 = 회사채 30,116 + 특수채 842) → 상위 역추적 금지 (§7.1).
-  BD_KND:
-    korean_name: 채권종류
+      13종. 🔴 두 대분류에 걸치는 소분류 2종 — 일반사채(회사채 12,133 / 특수채 614) · 특수은행채(특수채 1,322 / 회사채 2)
+      → 상위 역추적 금지 (§7.1). 국고채 371 · 국민주택 210 · 지역개발 1,679 · 도시철도 452 · 물가채 6 · 중앙은행채 33.
+  bd_knd:
+    korean_name: 채권종류 (예탁원 기준)
     missing_reason: missing
-    answerable_n: 41470
-    answer_policy: 결측 924건은 "채권종류가 수록되어 있지 않습니다" + PD_NO 앞 3자리로 대분류 수준 보완 (§5.2).
+    missing_semantics:
+      "": missing                          # 공백 패딩 — TRIM 후 빈 문자열 포함
+    answerable_n: 21730
+    answer_policy: 결측 152행은 "채권종류가 수록되어 있지 않습니다" + pd_no 앞 3자리로 대분류 수준 보완 (§5.2).
     trap: >
-      🔴 ① 공백 패딩으로 39종이 51종으로 갈라짐 — TRIM 필수.
-      ② 통안증권의 실값은 '통화안정채권' — '통화안정증권'으로 조회 시 0건 (§5.1-⑧).
-      ③ 분리채권(STRIPS) 221건이 평범한 '국고채권'으로 묻힘 — 종목명 파싱만이 식별 수단 (§9.1).
-    note: 실제 39종(결측 제외). 값 전수는 auto.yaml values 참조. 상위(소분류) 특정 불가 (§7.1).
+      🔴 ① 고정폭 공백 패딩 — TRIM 필수 (TRIM 후 32종). ② 통안증권의 실값은 '통화안정채권'(33행) — '통화안정증권'으로
+      조회 시 0건 (§5.1-⑧). ③ 분리채권(STRIPS) 209건이 평범한 '국고채권'으로 묻힘 — 종목명 파싱만이 식별 수단 (§9.1).
+    note: 1차 결측 924·39종 → 2차 결측 152·32종. 결측 152 중 149는 pd_pbcm 결측과 같은 행. 상위(소분류) 특정 불가 (§7.1).
 
   # ── 1.3 발행자·시장 (3) — 📌 불변 ──────────────────────────────────
-  PD_PBCM:
+  pd_pbcm:
     korean_name: 발행사
     missing_reason: missing
-    answerable_n: 41476
-    answer_policy: 결측 2.2%(918건)는 "발행사 정보가 수록되어 있지 않습니다" (BD_KND 결측과 거의 같은 행 🔸).
+    missing_semantics:
+      "": missing
+    answerable_n: 21733
+    answer_policy: 결측 149행(0.7%)은 "발행사 정보가 수록되어 있지 않습니다" (bd_knd 결측과 149행 동일).
     trap: >
-      🔴 ① '(주)' 위치 제각각((주)신한은행 vs 하이트진로(주)) — 정규화 전 동일사가 갈라짐.
-      ② 종목 수 ≠ 규모 (대한민국 535종목 < 하나캐피탈 541종목 — 규모는 ISU_BAL_AMT 로, §9.6).
-      ③ MBS·유동화는 발행자 = 자산(SPC) — 원 회사 위험과 다름. PD_PBCM 만으로 위험 판단 금지.
-      식별은 BD_KND IN ('MBS','유동화회사채') = 4,957건 (MBS 2,159 + 유동화회사채 2,798 — 2026-08-20 실측).
-      ⚠️ 이전 표기 '7,749건'은 어떤 조합으로도 재현 불가(출처 미상) — 폐기.
+      🔴 ① '(주)' 위치 제각각((주)신한은행 vs 하이트진로(주)) — 정규화 전 동일사가 갈라짐 (raw distinct 1,837 → TRIM 1,818).
+      ② 종목 수 ≠ 규모 — 규모는 isu_bal_amt 합계로 (§9.6).
+      ③ MBS·유동화는 발행자 = 자산(SPC) — 원 회사 위험과 다름. pd_pbcm 만으로 위험 판단 금지.
+      식별은 TRIM(bd_knd) IN ('MBS','유동화회사채') = 2,924행 (MBS 1,396 + 유동화회사채 1,528 — 2차 실측).
     kg_entity: Organization                # 4테이블 교차 → kg_organization (§5.1-①)
-    note: >
-      ✅ 2026-08-20 규명 (워크샵 #4 해소) — 8,018 = 전체 distinct TRIM(PD_PBCM) /
-      8,015 = 만기일 유효(MAT_DT>0) 채권 기준 distinct (그중 만기 종료에만 존재 2,291 = 28.6%,
-      노트 §표와 정확 일치). 두 수 모두 정당 — 서술 시 모수(전체 vs 만기일 유효)를 병기할 것.
-      raw distinct 는 8,103 (TRIM 미적용). 발행사 재무·계열 정보는 없음 (§11).
-  PD_EXG_MKT:
-    korean_name: 거래시장
+    note: 1차 distinct 8,018 → 2차 1,818 (만기 경과분 정리 효과). 발행사 재무·계열 정보는 없음 (§11).
+  pd_exg_mkt:
+    korean_name: 거래구분 (장내/장외)
     missing_reason: none
-    answerable_n: 42394
     value_semantics:
-      "장내": 한국거래소 — 24,749건. 개인도 참여, 표준화·등급 있는 우량채 위주
-      "장외": 증권사·기관 1:1 상대 거래 — 17,645건. 소액 사모·특수구조 몰림
+      "장내": 한국거래소 — 17,746행(pd_no 유일). 표준화·등급 있는 우량채 위주
+      "장외": 증권사 1:1 상대 거래 — 4,136행(pd_no 3,828). 🔑 당사 판매 LOT(buy_yield 634행)는 전부 여기
     trap: >
-      🔴 거래 방식이 아니라 종목 속성 — 종목당 한쪽만 기록(같은 종목 장내/장외 비교 불가).
-      단독 group-by 금지: 장외 YTM 6.1% vs 장내 3.2% 는 시장 효과가 아니라 구성 효과 —
-      대분류·등급·잔존만기 통제 시 0.03~0.2%p 로 소멸 (§9.5).
+      🔴 1차 "종목당 한쪽만 기록" 폐기 — 2차는 1,077종목이 장내·장외 양쪽에 수록(종목 속성 + 판매 채널의 혼합).
+      "장내 채권 수" = COUNT(DISTINCT pd_no) WHERE 장내 (17,746) / "장외" 3,828 — 합이 20,497 을 넘음(1,077 중복).
+      단독 group-by 금지: 장외 평균 적용수익률 8.59% vs 장내 4.13% 는 시장 효과가 아니라 구성 효과
+      (사모 1,981행 전부 장외·장외 등급결측 48.9%) — 대분류·등급·잔존만기 통제 후 비교 (§9.5).
     kg_entity: null
-    note: >-
-      개인투자용국채 49건 전부 장외 — "개인 = 장내" 대응 없음. ✅ 확정(2026-08-20): 단독 판매대행
-      청약 전용 + 유통시장 부존재라 장외 분류가 제도적 필연 (lookups/ktb_individual_structure.md).
-  CURR_CD:
+    note: 1차 개인투자용국채 49건 "전부 장외" 서술은 2차에 해당 대분류가 없어 무효.
+  curr_cd:
     korean_name: 통화코드
     missing_reason: none
-    answerable_n: 42394
     value_semantics:
-      "KRW": 원화 — 42,372건 (사실상 상수)
-      "USD": 미국달러 19건
-      "JPY": 엔화 1건
-      "EUR": 유로 1건
-      "000": 🔴 오염값 1건 — 통화 아님. enum 등재 금지
-    kg_entity: Currency                    # 공유 개체 6종에 포함 (§4.1)
+      "KRW": 원화 — 21,881행 (사실상 상수)
+      "000": 🔴 오염값 1행 — 통화 아님. enum 등재 금지
+    kg_entity: Currency                    # 공유 개체 (shared/currency.yaml — USD/JPY/EUR alias 는 pending 유지)
     note: >
-      🔴 '외화채권' grounding 은 이 컬럼 기준 — 실제 외화는 **21건**(USD 19+JPY 1+EUR 1)이고
-      대분류가 '외화채권-*'인 건 6건뿐, USD/EUR 다수가 그냥 '회사채'로 분류돼 있음 (노트 §D.16-④).
-      ⚠️ 2026-08-18 감사 정정 — 이전 "≠KRW 22건" 은 오염값 '000' 1건을 외화로 센 것.
+      🔴 1차 외화채 21건(USD 19·JPY 1·EUR 1) 은 2차에서 전부 소멸 — '외화채권' 질의는 "국내채권 데이터에
+      외화표시 채권이 수록되어 있지 않습니다"로. 해외ETF 와 혼동 유도 금지.
 
-  # ── 1.4 발행조건 (4) — 📌 발행 시 확정 (🔴 예외: FRN) ───────────────
-  SRFC_IRT:
+  # ── 1.4 발행조건 (9) — 📌 발행 시 확정 (🔴 예외: FRN) — 2차 신규 5 ──
+  bd_intp_tcd:
+    korean_name: 이자지급구분                # 🆕 2차
+    missing_reason: none
+    answerable_n: 21882
+    value_semantics:
+      "이표채": 정기 이자 지급 — 18,059행(82.5%)
+      "복리채": 이자 재투자 후 만기 일시 지급 — 2,867행
+      "할인채": 무이표 — 발행 시 할인 매각 — 689행 (종목명 '분리채권' 209 + '할인' 50 포함)
+      "단리채": 단리 누적 후 만기 지급 — 267행
+    answer_policy: >
+      ✅ couponType(ZeroCoupon 등) 판정의 공식 근거 — 1차의 종목명 파싱 + 가격 구조 추정(노트 §D.15) 을 대체.
+      "할인채/무이표 채권" 질의는 bd_intp_tcd='할인채' 로 grounding.
+    note: >
+      🔑 1차 "할인채 srfc_irt 수수께끼" 해소: 할인채 689행 중 668행이 srfc_irt > 0 — 할인채의 표면금리는
+      '지급 이자율'이 아니라 '발행 할인율'(명목값). 표면금리 정렬 시 할인채는 별도 유형으로 분리 (srfc_irt.trap).
+  bd_inrt_tcd:
+    korean_name: 금리구분                    # 🆕 2차
+    missing_reason: none
+    answerable_n: 21882
+    value_semantics:
+      "고정금리": 20,904행(95.5%)
+      "변동금리": FRN — 830행. srfc_irt 는 기준일 현재 적용 금리 스냅샷
+      "고정+변동금리": "148행 — ✅ 실측(검수 C 2026-08-25) 신종·영구·후순위 0건. Conduit 회사채 76·카드/할부금융채 35·은행채 20·특수법인채 13 (사모 76·콜 26) — 일정 기간 고정 후 변동인 ABS·금융채 구조. 답변 시 '고정+변동' 은 스키마 값 그대로 인용"
+    answer_policy: ✅ FRN 판정의 공식 근거 — 1차 종목명 '변' 파싱(643건) 대체. '변' 이름 431행 중 393이 변동·37이 고정+변동·1이 고정.
+    note: 종목명 파싱보다 넓다(변동 830 vs 이름 393) — 이름에 표기 없는 FRN 이 절반. 이름 파싱 회귀 금지.
+  bd_ofr_tcd:
+    korean_name: 모집구분                    # 🆕 2차
+    missing_reason: none
+    answerable_n: 21882
+    value_semantics:
+      "공모": 19,875행
+      "사모": 2,007행 — 전부 장외 · 퇴직연금 편입 불가(pd_pen_tr_yn 전부 N)
+    answer_policy: ✅ 사모 판정의 공식 근거 — 1차 종목명 '사모' 파싱 대체 (이름 1,981행은 전부 사모 — 26행은 이름에 표기 없음).
+    note: 1차 is_private 15,261건(장외 정리 전) → 2차 2,007. 추천 모수에서 사모 제외 여부는 query_rules.특수구조제외.
+  srfc_irt:
     korean_name: 표면금리
     missing_reason: none
-    answerable_n: 42392
+    missing_semantics:
+      0: mixed                             # 579행 — 값(전환권·무이표) 또는 미기입, 유형별 판정 (아래)
+    answerable_n: 21881
     unit: percent
+    zero_is_value: true                    # 0 = 이자 없는 구조(CB 등) — 정렬 시 배제하되 "값 없음"으로 응답 금지
     trap: >
-      🔴 한 컬럼에 네 의미 (§9.1): 일반채 = 발행 시 약속(불변) / FRN 643건 = 기준일 현재 적용 금리
-      스냅샷 🔸 (구형 84건은 스탬프-값 불일치 — 사용 금지) / 분리채권 221건 = 모체의 명목값(실제 무이표) /
-      할인채 172건 = 발행 시 할인율 ✅. 넷을 한 축에 놓고 정렬 금지.
-      🔴 '=0' 2,758건은 결측 아님 — 53.2%가 전환사채(이자 대신 전환권). ZeroCoupon 판정은
-      SRFC_IRT 가 아니라 종목명('할인'·'분리채권') + 가격 구조로 (노트 §D.15).
+      🔴 한 컬럼에 세 의미 — 유형은 bd_intp_tcd·bd_inrt_tcd 로 판정: 고정 이표/복리/단리 = 발행 시 약속(불변) /
+      변동금리 830 = 기준일 현재 적용 금리 스냅샷 🔸 / 할인채 689 = 발행 할인율(명목, 668행 > 0). 셋을 한 축에 놓고 정렬 금지.
+      🔴 '=0' 579행 구성(2차): 이표채 499 · 복리채 57 · 할인채 21 · 단리채 2. 이 중 종목명 CB(전환) 324행(56%) —
+      ✅ 검수 C 2026-08-25 — 나머지 255행 중 165행은 EB·BW·교환·신주(주식연계, 이름 실측) → 주식연계 합계 489/579(84%). 잔여 90행 = 변동금리 특수법인채(도로공사·LH "(변)")·사모 콜 구조(메릴린치·노무라)·분리신주 — 표면금리 0 은 "구조상 값" 으로 답하되 이유는 서술 금지(스키마에 근거 없음).
+      ZeroCoupon 판정은 srfc_irt=0 이 아니라 bd_intp_tcd='할인채'.
     answer_policy: >
-      "표면금리 높은/낮은 채권" 정렬 시 FRN·분리채권·할인채를 제외하거나 유형별로 나눠 답하고,
-      유형(고정/변동/무이표)을 명시합니다.
-    note: FRN 표기 4종('변' 계열) 643건 — '(변)'만 잡으면 42%. '천변' 오탐 1건 제외 (§5.1-⑦).
-  ISU_DT:
-    korean_name: 발행일
+      "표면금리 높은/낮은 채권" 정렬 시 변동금리·할인채·srfc_irt=0 을 제외하거나 유형별로 나눠 답하고 유형을 명시.
+    note: 1차 FRN 643 → 2차 변동 830 + 고정+변동 148 (bd_inrt_tcd 기준).
+  isu_dt:
+    korean_name: 발행일자
     missing_reason: missing
     missing_semantics:
-      0: missing                           # 🔴 발행일 자리에 0 — 336건 (노트 §D.16-⑤)
-    answerable_n: 42055
-    answer_policy: '"N년에 발행된 채권" 질의는 모수에서 336건 제외를 명시 ("발행일 미수록 336건 제외").'
-    note: NULL 3건 + 0값 336건. "발행조건 100%" 서술의 예외 (노트 §D.16-⑤).
-  MAT_DT:
-    korean_name: 만기일
+      0: missing                           # 발행일 자리에 0 — 25행 (1차 336)
+    answerable_n: 21856
+    answer_policy: '"N년에 발행된 채권" 질의는 모수에서 26행(NULL 1 + 0값 25) 제외를 명시.'
+    note: 1차 336 → 2차 25. "발행조건 100%" 서술의 예외 (노트 §D.16-⑤).
+  mat_dt:
+    korean_name: 상환일자 (영구채는 1차 콜행사개시일)
     missing_reason: missing
     missing_semantics:
-      0: missing                           # 만기일 자리에 0 — 316건
-      99991231: sentinel                   # 영구채 여부 종목명 확인 필요 — 4건 (노트 §H-11)
-    answerable_n: 42075
-    answer_policy: 만기 불명 319건(NULL 3 + 0값 316)은 상태 ④ — 추천 제외, 조회 시 "만기일 미수록" 명시.
+      0: missing                           # 만기일 자리에 0 — 4행
+    answerable_n: 21877
+    answer_policy: >
+      만기 불명 5행(NULL 1 + 0값 4)은 조회 시 "만기일 미수록" 명시. 🔑 스키마 코멘트 명시: 영구채는 만기일 자리에
+      1차 콜행사개시일 — "만기" 답변 시 영구채(name_encoding is_perpetual 266행)는 "콜 개시일 기준" 병기.
     note: >
-      만기상태 4분할의 기준 컬럼 (§3.2): 살 수 있음 254 / 살아있으나 판매 안 함 25,641 /
-      만기 종료 16,180 / 만기일 없음 319. 🔴 만기 종료분 삭제 금지 — 발행사 28.6%가 여기에만 존재.
-      🔴 4분할 경계 미확정 — 기준일 2026-07-11 vs 2026-02-24 (워크샵 #1).
-  ISU_BAL_AMT:
+      2차 만기상태 (기준일 2026-08-22): 만기 경과 49행(잔존일수 0 과 정확 일치) / 미경과 21,828행 / 불명 5행.
+      1차의 99991231 센티넬 4건 소멸. 1차 "만기 종료 16,180 · 발행사 28.6%가 여기에만" — 2차는 만기분을 거의 정리해
+      해당 서술 무효. 기준일 논쟁(7/11 vs 2/24)도 해소 — 전 행 info_base_dt=20260821.
+  isu_bal_amt:
     korean_name: 발행잔액
     missing_reason: none
     missing_semantics:
-      0: sentinel                          # 잔액 0원 4,942건 — 대부분 만기 도래/상환분과 동행
-    answerable_n: 42394
+      0: sentinel                          # 잔액 0원 325행 — 상환·미기입 혼재 🔸
+    answerable_n: 21882
     unit: krw
-    answer_policy: 발행사 규모 비교는 종목 수가 아니라 이 컬럼 합계로 (§9.6).
-    note: 유동성·규모 지표. 최대 46.97조(국고채 단일 종목). 0값 4,942건은 집계에서 제외 여부 명시.
-
-  # ── 1.5 신용·위험등급 (4) — 🕐 평가 시점 값 · 최대 깊이 ─────────────
-  CRD_GRD:
-    korean_name: 신용등급(대표)
-    missing_reason: not_applicable         # 국채·지방채는 등급을 안 매김
-    answerable_n: 24750                    # PD_EVCO 병합 시 26,350 (+1,600)
+    answer_policy: 발행사 규모 비교는 종목 수가 아니라 이 컬럼 합계로 (§9.6). 집계 시 0값 325행 제외 여부 명시.
+    note: 최대 46.50조(국고채 단일 종목). 1차 0값 4,942 → 2차 325 (만기분 정리 효과).
+  bd_tisu_a:
+    korean_name: 총발행금액                  # 🆕 2차
+    missing_reason: none
+    missing_semantics:
+      0: sentinel                          # 259행
+    unit: krw
+    note: >
+      isu_bal_amt(잔액)와 동일 18,704행 · 총발행 > 잔액 2,949행(부분 상환·분할 발행 🔸) · 0값 259.
+      "발행 규모" 질의는 총발행(bd_tisu_a), "현재 유통 규모"는 잔액(isu_bal_amt) — 둘을 구분해 답변.
+  exrt_grte_ern_r_tcd:
+    korean_name: 만기보장수익률구분코드        # 🆕 2차 — 선행0 문자열 (build_db CODE_COLUMNS)
+    missing_reason: none
+    value_semantics:
+      "99": 해당없음 — 21,338행(97.5%). 만기보장수익률 개념이 없는 일반채
+      "01": 49행 (이표채)
+      "02": 264행 (이표채) — 만기보장수익률 >0 184행
+      "03": 3행
+      "04": 226행 (이표채 225 + 단리채 1) — >0 은 30행뿐
+      "05": 2행
     answer_policy: >
-      "확인할 수 없습니다" ❌ → "국채는 신용등급이 부여되지 않습니다" ✅.
-      병합(PD_EVCO_CRD_GRD 보강) 후에도 남는 진짜 무등급 16,044건.
-      등급 조건 질의는 병합 모수 26,350/42,394 명시.
-      등급 답변에는 평가일(CRD_GRD_DT)을 병기 — 5년 초과분은
-      "이후 갱신 기록이 없어 현재 등급은 평가사 공시 확인 권장" 경고 승격 (노트 §D.16-①, 임계는 워크샵 §H-3c).
+      🔴 코드 01~05 의 의미는 코드북 미제공(주최 확정) — "구분 있음(코드 0X)" 이상 해석 금지.
+      만기보장수익률 질의는 tcd<>'99' 544행 모수 + exrt_grte_ern_r>0 인 행만 값 제시.
+    note: ✅ 검수 C 2026-08-25 실측 — tcd 01~05 544행 중 538행(99%)이 종목명 CB·EB·BW·전환·교환·신주 = 주식연계 채권의 만기보장수익률 구분. 코드값 각각의 의미(01~05)는 코드북 미제공으로 확정 불가 — 답변은 "만기보장수익률 X% (구분코드 0X)" 까지만.
+  exrt_grte_ern_r:
+    korean_name: 만기보장수익률              # 🆕 2차
+    missing_reason: not_applicable
+    missing_semantics:
+      0: not_applicable                    # 21,626행 — tcd='99' 전부 + 구분 있어도 0 인 행
+    unit: percent
+    answer_policy: 값 >0 인 256행만 답변 대상. tcd='99' 인데 >0 인 4행은 모순 — 사용 금지.
+  exrt_rpy_r:
+    korean_name: 만기상환율                  # 🆕 2차
+    missing_reason: none
+    unit: percent
+    answer_policy: 100 = 액면 상환(21,642행). ≠100 은 240행(105~116% 할증 상환 등, 최대 779.7 🔸 이상치) — 전부 tcd<>'99' 와 동행(예외 1행).
+    note: 0값 1행. "만기에 얼마 받나" 질의는 액면 10,000 × exrt_rpy_r/100.
+
+  # ── 1.5 신용·위험등급 (4) — 🕐 평가 시점 값 ─────────────────────────
+  crd_grd:
+    korean_name: 적용신용등급
+    missing_reason: not_applicable         # 국공채는 등급을 안 매김 (2,840/2,840 결측)
+    missing_semantics:
+      "": not_applicable
+    answerable_n: 17862
+    answer_policy: >
+      "확인할 수 없습니다" ❌ → 국공채는 "국채·지방채는 신용등급이 부여되지 않습니다" ✅.
+      결측 4,020행(18.4%) = 국공채 2,840 + 특수채 254 + 회사채 926 — 회사채·특수채 결측 1,180은 "등급 미수록".
+      등급 조건 질의는 모수 17,862/21,882 명시. 등급 답변에 평가일(crd_grd_dt)을 병기하되 신선도 판단은 금지 (crd_grd_dt 참조).
     unit: grade
     layer:
-      scale: "AAA ~ C (20종)"
+      scale: "AAA ~ C0 (2차 표기 15종)"
       direction: "AAA 가 최상위. BBB- ↔ BB+ 가 투자/투기등급 경계"
       note: >
-        🔴 위험등급(PD_RISK_GCD)과 다른 축 — 1등급(가장 위험)에 AAA 498건(유동화 위주).
+        🔴 위험등급(pd_risk_gcd)과 다른 축 — 1등급(매우높은위험) 1,441행 중 AAA 는 1행뿐, 921행이 무등급.
         위험등급은 금리위험 포함, 신용등급은 부도위험만 (§8).
     value_semantics:
-      "AAA": 최상위 — 12,240건
-      "AA+": AA 그룹 상단 — 3,191건
-      "AA0": 🔴 사용자가 말하는 'AA'. 'AA' 조회 시 0건 — 1,713건
-      "AA-": AA 그룹 하단 — 4,939건
-      "A+": 906건
-      "A0": 🔴 사용자의 'A' — 904건
-      "A-": 345건
-      "BBB+": 206건
-      "BBB0": 🔴 사용자의 'BBB' — 116건
-      "BBB-": 투자적격 최하단 — 8건
-      "BB+": 투기등급 시작 — 4건
-      "BB0": 10건
-      "BB-": 9건
-      "B+": 6건
-      "B0": 5건
-      "B-": 8건
-      "CCC": 1건
-      "CC0": 1건
-      "C0": 🔴 사실상 부도 임박 — 137건. Top-N·추천에서 기본 제외
-      "C": 1건
+      "AAA": 최상위 — 8,722행
+      "AA+": 3,530행 하단은 AA- — 2,543행
+      "AA0": 🔴 사용자가 말하는 'AA'. 'AA' 조회 시 0건 — 1,241행
+      "AA-": AA 그룹 하단 — 3,530행
+      "A+": 678행
+      "A0": 🔴 사용자의 'A' — 737행
+      "A-": 124행
+      "BBB+": 109행
+      "BBB0": 🔴 사용자의 'BBB' — 45행
+      "BBB-": 투자적격 최하단 — 7행
+      "BB0": 투기등급 — 13행
+      "BB-": 3행
+      "B+": 2행
+      "B-": 5행
+      "C0": 🔴 사실상 부도 임박 — 103행. Top-N·추천에서 기본 제외
     kg_entity: null                        # 채권 전용 → SQL 컬럼으로 충분 (§4.1)
     note: >
-      결측 41.6%(17,644건) 중 1,600건은 PD_EVCO_CRD_GRD 에 값 있음 → 병합 후 판단 (§3.3).
-      🔴 서열 정의(AAA > AA+ > …)는 데이터에 없음 — TODO(수집): 등급 서열·의미 코드북 (§11 #5·#6).
-      투기등급(BB+ 이하)은 전부 200건 미만 — 절대다수가 투자등급.
-  CRD_GRD_DT:
-    korean_name: 등급 평가일
-    missing_reason: missing
-    missing_semantics:
-      0: missing                           # 날짜 자리에 0 — 2건
-    answerable_n: 27563
-    answer_policy: >
-      등급 답변에 항상 병기. 🔴 등급일만 있고 등급값 없는 2,819건(EVCO 구제 111건뿐)은
-      "과거 평가 이력은 있으나 현재 등급값이 데이터에 없습니다" — 무등급 단정 금지 (노트 §D.16-②).
-    trap: >
-      🔴 의미 미확정 — 잔존>0 인 등급의 37.3%가 평가일 2년 초과(절벽 없음). 정기평가 연 1회 제도와
-      어긋나는 규모라 "최종 평가일"이 아니라 "최종 변경·부여일"일 가능성 🔸 (노트 §D.16-① 실측 보강).
-      원본 정의 확인이 신선도 경고 임계 확정의 선행 조건 (워크샵 §H-3c ⓓ).
-    note: 극단 꼬리 — 평가일 2013년 이전인데 잔존>0 인 AAA 등 169건(주금공 MBS 위주, 최고 17년 경과).
-  PD_EVCO_CRD_GRD:
-    korean_name: 평가사별 신용등급
+      1차 20종(결측 41.6%) → 2차 15종(결측 18.4%). 사라진 표기: BB+, B0, CCC, CC0, C. 🔴 1차 "등급병합
+      (COALESCE pd_evco_crd_grd)" 규칙은 컬럼 삭제로 폐기. 서열 코드북: data/external/lookups/credit_grade_scale.csv
+      (2차 표기 15종 커버 여부 재검수 필요 — 특히 C0·B-·BB- 등 투기등급).
+  crd_grd_dt:
+    korean_name: 신용등급 적용일자
     missing_reason: not_applicable
-    answerable_n: 24966
+    missing_semantics:
+      0: missing                           # 1행
+    answerable_n: 17875
     answer_policy: >
-      🔴 자리↔평가사 대응이 데이터에 없음 — "한신평 기준 등급" 질의는 답변 불가
-      ("평가사별 구분은 수록되어 있지 않습니다"). 평가사 수(3곳 14,776 · 2곳 7,829 · 1곳 2,361)와
-      의견 갈림 여부(258건)까지만 답변 가능 (§4.1).
-    trap: 🔴 표기가 CRD_GRD 와 다름 — 여기는 'AA'(0 접미사 없음), CRD_GRD 는 'AA0'. 병합 시 정규화 필수.
-    note: >
-      원본(콤마 결합). CRD_GRD 결측 중 1,600건이 여기 있음 → 병합 모수 26,350.
-      의견 갈린 258건의 최저/다수결 정책은 워크샵 #5. TODO(수집): 평가사 자리↔이름 대응표 (§11 #4).
-  PD_RISK_GCD:
-    korean_name: 위험등급코드
+      등급 답변에 병기 가능. 🔴 스키마 코멘트 명시 — "등급 미변경 시 과거 일자로 유지될 수 있음" → 이 일자는
+      '최종 평가일'이 아니라 '최종 변경·부여일'. 신선도(오래된 등급) 경고·최신성 판단 근거로 사용 금지.
+      1차 "5년 초과분 경고 승격" 정책 폐기 (5년 초과+잔존>0 은 2,291행이나 정상 상태).
+      등급일만 있고 등급값 없는 16행은 "과거 이력은 있으나 현재 등급값이 데이터에 없습니다".
+    note: 최댓값 20260821. ✅ 의미 확정 — 2차 스키마 코멘트 "신용등급 적용일자(등급 미변경 시 과거 일자로 유지될 수 있음)" (검수 C 2026-08-25).
+  pd_risk_gcd:
+    korean_name: 상품위험등급 원문 코드      # 문자열 — 선행0 보존 (build_db CODE_COLUMNS)
     missing_reason: none
-    answerable_n: 42394
-    answer_policy: 전건 수록. 결측 없음.
+    answerable_n: 21882
     unit: grade
     layer:
-      scale: "0~6 (정수)"                   # 🔴 명세의 1~5 는 오류
-      direction: "낮을수록 위험 (1=매우높은위험, 6=매우낮은위험)"
+      scale: "'11'~'16' + '00' (문자열) — 뒤 자리 = 등급 1~6"
+      direction: "낮을수록 위험 (11=매우높은위험, 16=매우낮은위험). ETF pd_risk_cd 'PD_RISK_GCD_1N' 과 같은 체계"
       note: >
-        ✅ 국공채 2,137건 전부 6등급 → 방향 확정. ETF(문자열 PD_RISK_GCD_1N)·펀드(REAL)와
-        방향 동일 — kg_riskgrade 로 교차 (§5.1-②).
-        🔴 1~5 로 제약하면 6등급 10,408건(24.6%)이 차단됨.
+        ✅ 국공채 2,839/2,840 이 '16' → 방향 확정. 🔴 1차 0~6 정수·"1등급 15,950건 최다" 는 주최 코드 이슈로 폐기
+        (2차는 5·6등급이 86%). shared/risk_grade.yaml alias 를 '11'~'16' 으로 교체 완료 (2026-08-25).
     value_semantics:
-      "0": 🔴 미분류 추정 — 채권에만 존재, 58건. 워크샵 #3
-      "1": 매우 높은 위험 — 15,950건 (무등급 사모·CB 다수 + 유동화 AAA 498건 포함)
-      "2": 높은 위험 — 62건
-      "3": 다소 높은 위험 — 282건
-      "4": 보통 위험 — 1,938건
-      "5": 낮은 위험 — 13,696건
-      "6": 매우 낮은 위험 — 10,408건
+      "00": 해당없음 — 19행 (pd_risk_nm '해당없음')
+      "11": 매우높은위험(1등급) — 1,441행 (회사채 1,415 · 무등급 921 · 주식연계·후순위 위주 🔸)
+      "12": 높은위험(2등급) — 74행
+      "13": 다소높은위험(3등급) — 146행
+      "14": 보통위험(4등급) — 1,424행 (전부 회사채)
+      "15": 낮은위험(5등급) — 9,849행 (전부 회사채)
+      "16": 매우낮은위험(6등급) — 8,929행 (국공채 2,839 · 특수채 6,090)
     kg_entity: RiskGrade                   # 4테이블 교차 → KG 개체
-    note: 신용등급과 다른 축(금리위험 포함). "등급" 질의는 신용/위험 중 무엇인지 clarify (§9.7).
+    note: 신용등급과 다른 축(금리위험 포함). "등급" 질의는 신용/위험 중 무엇인지 clarify (§9.7). 등급명은 pd_risk_nm.
+  pd_risk_nm:
+    korean_name: 상품위험등급명              # 🆕 2차
+    missing_reason: none
+    answer_policy: 위험등급 답변은 이 컬럼 문구('낮은위험(5등급)')를 그대로 인용 — 코드 해석 논쟁 불필요.
+    note: pd_risk_gcd 와 1:1 (7종). '해당없음' 19행.
 
   # ── 1.6 위험지표 (5) — 🕐 평가사 산출 ──────────────────────────────
-  DUR:
+  dur:
     korean_name: 듀레이션
-    missing_reason: mixed                  # NULL 13,376 = 미산출(만기 도래 등)
+    missing_reason: mixed
     missing_semantics:
-      99: sentinel                         # 2건
-      0: mixed                             # 8,268건 — 만기 도래 7,768(무해) + 🔴 잔존>0 500(신종자본·영구채류)
-    answerable_n: 29018
+      99: sentinel                         # 3행
+      0: mixed                             # 52행 — 만기 도래 48(무해) + 🔴 잔존>0 4행(산출 불능)
+    answerable_n: 21811
     unit: years
     layer:
-      scale: "0 ~ 47 (연)"
+      scale: "0 ~ 56 (연)"
       direction: "높을수록 금리위험 큼"
-      note: 🔴 안전할수록 높음 — 국공채 4.52 > 특수채 4.01 > 회사채 2.05. 부도위험과 상충 (§9.3).
+      note: 🔴 안전할수록 높음 — 국공채 3.97 > 특수채 3.91 > 회사채 2.02 (2차 평균). 부도위험과 상충 (§9.3).
     answer_policy: >
-      "금리위험 낮은 채권" 정렬 전 특수구조 제외 필수. 🔴 DUR=0 인데 잔존>0 인 500건(신종자본·영구채류)은
-      값이 아니라 산출 불능 표기 — "영구채 구조로 듀레이션이 산출되지 않습니다"로 답하고 정렬 제외
-      (노트 §D.16-③). 등급 필터를 겹치면 국공채가 2건만 남음(국채 무등급) — 신용 축은 대분류로 (§9.3).
+      "금리위험 낮은 채권" 정렬 전 특수구조 제외. dur=0 인데 잔존>0 인 4행은 "듀레이션이 산출되지 않았습니다"로 정렬 제외.
     note: >
-      이론 위반(DUR > 잔존일수/365) 1,035건 — 대부분 영구채·CB (노트 §D.13). 분리채권은 DUR ≈ 만기(무이표 동작).
-      ⚠️ 2026-08-18 감사 보강 — 위반 1,035건 중 **0.1년 초과 실질 위반은 14건뿐**이다.
-      나머지 1,021건은 일수 계산 관행(365 vs 365.25 등) 수준의 경계값 — "데이터 오류 1,035건"으로
-      서술하지 말 것. 환산 계수를 바꾸면 1,037(/365)~1,278(/365.25)로 흔들리는 수치다.
-  COV:
-    korean_name: 볼록성
+      1차 결측 31.6% → 2차 0.1% (NULL 16). 이론 위반(dur > 잔존/365 + 0.1년) 200행 — 대부분 영구채·주식연계 🔸.
+      할인채는 dur ≈ 잔존만기(무이표 동작).
+  cov:
+    korean_name: 컨벡시티
     missing_reason: mixed
     missing_semantics:
-      0: mixed                             # 8,326건 — DUR=0 과 8,268건 동행 (노트 §D.16-③)
-    answerable_n: 29018
-    note: 듀레이션의 곡률 보정 — 일반 질의에는 거의 안 씀. DUR 과 같은 산출 모수.
-  NDY_DUR:
-    korean_name: 익일 듀레이션 (🔸 추정)
+      0: mixed                             # 102행
+    note: 듀레이션의 곡률 보정 — 일반 질의에는 거의 안 씀. NULL 16 = dur 과 동일 행.
+  ndy_dur:
+    korean_name: 익일 듀레이션
     missing_reason: missing
     missing_semantics:
-      0: missing                           # 위장결측 332건
-    answer_policy: 사용 주의 — NDY_ 접두 의미 미확정 (노트 §E.3). 일반 질의는 DUR 사용.
-    note: 원본 DUR>0 인데 0인 332건.
-  NDY_COV:
-    korean_name: 익일 볼록성 (🔸 추정)
+      0: missing                           # dur>0 인데 0 — 20행
+    answer_policy: 일반 질의는 dur 사용. ndy_ 는 "익일" 값 — 스키마 코멘트로 의미 확정(1차 🔸 해소).
+  ndy_cov:
+    korean_name: 익일 컨벡시티
     missing_reason: missing
-    answer_policy: 사용 주의 — NDY_DUR 과 동일.
-    note: NDY_ 계열 공통 — 미산출을 0으로 채움.
-  REMAINING_DAYS:
+    answer_policy: ndy_dur 과 동일 — 일반 질의는 cov.
+  remaining_days:
     korean_name: 잔존일수
-    missing_reason: not_applicable         # 만기 도래분은 계산 대상 아님
-    missing_semantics:
-      0: not_applicable                    # 7,805건 — 전부 만기 도래분 (교차 확인 완료)
-    answerable_n: 31749
-    unit: days
-    trap: 🔴 만기 지났는데 >0 인 3,296건 모순 — 기준일 논쟁(2026-07-11 vs 02-24)의 산물. MAT_DT 기준 재계산 권장 🔸.
-    note: 만기상태 4분할은 이 컬럼이 아니라 MAT_DT 기준으로 판정.
-
-  # ── 1.7 가격 (6) — 🕐 ─────────────────────────────────────────────
-  EVAL_PRICE:
-    korean_name: 평가가격(클린)
-    missing_reason: not_applicable         # 평가 대상 아닌 채권
-    answerable_n: 31823
-    unit: krw
-    answer_policy: >
-      가격 답변 시 "액면 10,000원 기준" 명시 (액면가 컬럼 없음 — 한국 관행 10,000원 고정, §9.2).
-      7252.44 = "만원짜리가 지금 7,252원"(할인) / 10,300 = 할증.
-    trap: >
-      🔴 2026-08-18 전수 스윕 완료 (§9.7 TODO-6 해소) — 정확히 10000.0 파킹은
-      만기 도래분 **1,011건** (회사채 638 · 특수채 327 · 국공채 46 · 그중 '할인' 103).
-      추가 관찰: 만기 **전**인데 정확히 10000.0 인 것도 1,813건 — 액면 파킹(미평가) 의심,
-      판정은 워크샵. 가격 Top-N·"액면가 근처" 질의에서 이 값들을 실평가로 단정하지 말 것.
-    note: 호가·비교의 기준 컬럼. 가격↔수익률 역관계(§9.2) — "싸다" 질의는 clarify 필수.
-  APPLIED_YIELD:
-    korean_name: 적용수익률
     missing_reason: not_applicable
     missing_semantics:
-      0: mixed                             # 🔴 위장결측 1,289건 = 만기도래 550 + 사모 주식연계 728(YTM 무의미) + 만기불명 11
-    answerable_n: 30534
-    unit: percent
-    answer_policy: 수익률 집계·정렬 시 query_rules.수익률정상 적용. 사모 주식연계채는 "YTM 산출 대상이 아닙니다".
-    note: EVAL_PRICE 에 대응하는 시장 YTM. 가격 10,024원인데 수익률 0인 오류 행 포함(노트 §H).
-  DIRTY:
-    korean_name: 더티프라이스
-    missing_reason: mixed
-    missing_semantics:
-      0: missing                           # 클린은 값 있는데 더티 0 — 8건
-    answerable_n: 29018
+      0: not_applicable                    # 49행 — 만기 경과 49행과 정확 일치 ✅
+    answerable_n: 21828
+    unit: days
+    note: >
+      ✅ 1차 "만기 지났는데 >0 인 3,296행 모순" 해소 — 2차 0건. 기준일 2026-08-22 와 정합. 최대 20,742일(56.8년, 영구채류).
+      만기상태 판정은 mat_dt 기준이나 remaining_days 와 일치하므로 어느 쪽을 써도 됨.
+
+  # ── 1.7 가격 (10) — 🕐 · 2차 신규 3 (장내 종가) ─────────────────────
+  eval_price:
+    korean_name: 평가일단가 (Clean Price)
+    missing_reason: none                   # 1차 결측 24.9% → 2차 0
+    answerable_n: 21882
     unit: krw
     answer_policy: >
-      🔴 사용 보류 (워크샵 #7) — 94.6%가 EVAL_PRICE 복사 의심 🔸 ·
-      경과이자(DIRTY−EVAL_PRICE) 음수 21건 · 경과이자가 연이자 초과 111~159건(산식 의존).
-      "실제 결제금액" 질의에 이 컬럼으로 답하지 않습니다.
-      ⚠️ 2026-08-18 감사 정정 — 이전 "음수 21건" 은 DIRTY 자체가 아니라 **경과이자가 음수**라는
-      뜻이다 (DIRTY 자체 음수는 0건, min 0.0).
-    note: 경과이자 역산 불가 — 이표일·지급주기 컬럼 부재와 연동 (§11 #3).
-  NDY_EVAL_PRICE:
-    korean_name: 익일 평가가격 (🔸 추정)
+      가격 답변 시 "액면 10,000원 기준" 명시 (액면가 컬럼 없음 — 관행 10,000원 고정, §9.2).
+      🔴 종목 중복행(장내+장외)은 같은 값(다른 종목 8건) — 종목 단위 조회 시 GROUP BY pd_no.
+    trap: >
+      정확히 10000.0 은 21행(만기 전 18) — 1차 1,813건 "액면 파킹 의심" 은 2차에서 거의 소멸. Top-N 에서 개별 확인 수준.
+    note: 1,112.06 ~ 49,493.53. 가격↔수익률 역관계(§9.2) — "싸다" 질의는 clarify 필수.
+  applied_yield:
+    korean_name: 민평수익률
+    missing_reason: none
+    missing_semantics:
+      0: mixed                             # 201행 — 주식연계(CB·BW·EB) 189 + 만기경과 4 + 기타 8. YTM 산출 대상 아님
+    answerable_n: 21681
+    unit: percent
+    answer_policy: 수익률 집계·정렬 시 query_rules.수익률정상 적용. 주식연계채는 "YTM 산출 대상이 아닙니다".
+    note: eval_price 에 대응하는 시장 YTM. 1차 위장결측 1,289 → 2차 201.
+  dirty:
+    korean_name: 이자부단가 (Dirty Price)
+    missing_reason: missing
+    answerable_n: 21866
+    unit: krw
+    answer_policy: >
+      🔴 사용 금지 확정(검수 C 2026-08-25) — 21,655/21,866행(99.0%)이 eval_price 와 동일값(경과이자 0). 1차 94.6% → 2차 더 악화. 컬럼은 존재하나 정보량 없음.
+      "실제 결제금액" 질의에 이 컬럼으로 답하지 않는다. NULL 16.
+  ndy_eval_price:
+    korean_name: 익일 평가일단가
     missing_reason: missing
     missing_semantics:
-      0: missing                           # 원본>0 인데 0 — 8,503건
-    answer_policy: 🔴 사용 금지 — 미산출을 0으로 채움. "오늘 만원, 내일 0원"은 성립 불가 (노트 §D.14-①).
-    note: NDY_ 3종 공통.
-  NDY_APPLIED_YIELD:
-    korean_name: 익일 적용수익률 (🔸 추정)
+      0: missing                           # 원본>0 인데 0 — 16행
+    answer_policy: 일반 질의는 eval_price. 1차 "사용 금지(위장결측 8,503)" → 2차 위장결측 16행으로 완화 — 익일 질의에만 사용.
+  ndy_applied_yield:
+    korean_name: 익일 민평수익률
     missing_reason: missing
-    answer_policy: 🔴 사용 금지 — 위장결측 7,824건.
-    note: 값이 있으면 APPLIED_YIELD 와 대부분 동일 (수익률 동일, 시점만 이동 — 노트).
-  NDY_DIRTY:
-    korean_name: 익일 더티 (🔸 추정)
+    answer_policy: 일반 질의는 applied_yield (21,817행 동일값). 위장결측 15행.
+  ndy_dirty:
+    korean_name: 익일 이자부단가
     missing_reason: missing
-    answer_policy: 🔴 사용 금지 — 위장결측 8,495건.
-    note: NDY_ 3종 공통.
+    answer_policy: dirty 와 동일 사유로 사용 금지(검수 C 2026-08-25).
+  exg_close_price:
+    korean_name: 장내 채권종가               # 🆕 2차
+    missing_reason: mixed
+    missing_semantics:
+      0: missing                           # 🔴 16,476행 — 거래 없음 = 종가 없음. "값 없음"으로 응답
+    answerable_n: 1270
+    unit: krw
+    answer_policy: >
+      장외 4,136행은 NULL(해당없음) · 장내 17,746행 중 종가 있는 건 1,270행(7.2%) — "장내 종가" 질의는 모수 1,270 명시,
+      exg_close_price_base_dt 를 반드시 병기(월말 등 오래된 기준일 다수). 주최 공지 "0 = 의도된 값 → 빼고 보여주기".
+    note: 2,511 ~ 10,135. 평가가(민평)와 별개의 실거래 가격 — "시장에서 실제 거래된 가격" 질의 전용.
+  exg_close_yield:
+    korean_name: 장내 종가수익률              # 🆕 2차
+    missing_reason: mixed
+    missing_semantics:
+      0: missing                           # exg_close_price 와 동행 (유효 1,269행)
+    unit: percent
+    answer_policy: exg_close_price 와 동일 규칙.
+  exg_close_price_base_dt:
+    korean_name: 장내 종가 기준일             # 🆕 2차 — 문자열, 공백 패딩
+    missing_reason: mixed
+    missing_semantics:
+      "": missing                          # 16,453행 공백 (종가 0 과 동행)
+    answer_policy: 종가 제시 시 필수 병기. 100종 distinct, 최신 20260821 — 월말(0731·0630·0529…) 21건씩 정체된 종목 다수.
+    note: 종가>0 인데 기준일 공백인 행 0 ✅.
 
-  # ── 1.8 매수·수익률 (8) — 🕐 유통시장: 미래에셋 진열대 정보 ──────────
-  BUY_YIELD:
+  # ── 1.8 매수·수익률 (12) — 🕐 당사 판매 LOT (장외 634행) — 2차 신규 4 ──
+  info_seq:
+    korean_name: 판매 LOT 순번                # 🆕 2차 — PK 구성요소
+    missing_reason: none
+    value_semantics:
+      1: 기본행 — 21,574행 (장내 전부 + 장외 3,828)
+      2: 장외 2번째 LOT — 307행 (같은 종목의 다른 매수수익률/단가)
+      3: 1행
+    answer_policy: 종목 단위 답변에서 LOT 는 합치지 말고 "판매 조건 N건" 으로 병기. 정렬은 LOT 단위.
+  info_base_dt:
+    korean_name: 판매/민평 공통 기준일         # 🆕 2차
+    missing_reason: none
+    note: 전 행 20260821 단일값 — 답변의 "데이터 기준일" 문구 근거. pd_std_info_update 도 동일 20260821.
+  buy_yield:
     korean_name: 매수수익률
     missing_reason: not_applicable
-    answerable_n: 881                      # 실질 254 (수량 0 · 만기 도래 제외 — §2.3 모수 사다리)
+    answerable_n: 634                      # 전부 장외 LOT · 전부 만기 미경과 ✅
     answer_policy: >
-      결측 97.9% = "현재 판매 중이 아닙니다"(당사 진열대 기준) — "값을 모른다" ❌.
-      🔴 주어는 시장이 아니라 미래에셋 — 진열대에 없는 채권은
-      "당사 판매 목록에는 현재 없습니다. 타사 판매 여부는 이 데이터에 수록되어 있지 않습니다" (§11.1).
-      추천·실거래 질의의 진짜 모수는 254건(0.6%) — 반드시 명시.
+      결측 97.1% = "현재 당사 판매 목록에 없습니다"(진열대 기준) — "값을 모른다" ❌.
+      🔴 주어는 시장이 아니라 미래에셋 — 타사 판매 여부는 이 데이터에 없음 (§11.1).
+      🔴 주최 공지(8/24): buyable_quantity 는 무효 — "살 수 있나" 는 만기 미경과면 전부 구매가능 → 판매 조건(수익률·단가)이
+      있는 것은 634행, 조건 없는 종목도 "구매 가능하나 당사 판매 조건은 미수록" 으로 답변.
     unit: percent
     layer:
-      scale: "1.71 ~ 5.57 (%)"
+      scale: "2.08 ~ 5.29 (%)"
       direction: "높을수록 수익"
       note: >
-        🔴 YTM("지금 사서 만기까지 보유 시 세전 연환산") — ETF du_er_1y · 펀드 fd_yr1_ern_r 의
-        "지난 1년 실현 수익률"과 다른 개념. "수익률 높은 상품" 교차 정렬 금지 (§8).
+        🔴 YTM("지금 사서 만기까지 보유 시 세전 연환산") — ETF du_er_1y · 펀드 fd_yr1_ern_r 의 "지난 1년 실현 수익률"과
+        다른 개념. "수익률 높은 상품" 교차 정렬 금지 (§8).
     note: >
-      모수 사다리: 881(호가 있음) → 325(수량>0) → 254(만기도 안 지남). 881건 중 277건이 이미 만기 도래.
-      평가X 매수O 는 0건 — 매수 정보는 평가 정보의 부분집합.
-      📖 결측률이 채권의 생애 단계를 반영 (2026-08-20 실측): 발행조건(SRFC_IRT·MAT_DT) 결측 0%
-      ← 채권이 존재하면 반드시 존재 / 평가정보(EVAL_PRICE·APPLIED_YIELD) 24.9% ← 평가사가 값을
-      매겨야 존재 / 매수정보(BUY 7종) 97.9% ← 증권사가 "지금 팝니다" 해야 존재.
-      결측은 오류가 아니라 "그 단계에 없음"이라는 도메인 정보.
-  AFTER_TAX_YIELD:
-    korean_name: 개인 세후수익률 (🔸 추정)
+      1차 881(그중 만기 경과 277) → 2차 634(전부 생존). 1차 "모수 사다리 881→325→254" 는 buyable_quantity 무효화로 폐기.
+      LOT 2개 종목 307 — 같은 종목에 수익률 다른 조건 2개(예: 3.37% / 3.47%).
+  after_tax_yield:
+    korean_name: 개인 세후 운용수익률
     missing_reason: not_applicable
-    answerable_n: 881
+    answerable_n: 634
     unit: percent
     answer_policy: >
-      수익률 질의의 기본값 — "개인 기준 세후입니다" 명시 (노트 §I.4).
-      🔴 일괄 ×0.846 아님(매매차익 비과세로 0.88~0.95) · 세후>세전 37건 · 음수 1건 미해명 (§9.4).
-    note: ✅ DEPO_EQUIV_YIELD_154 × 0.846 = 이 컬럼, 880/881건 성립.
-  CORP_PRETAX_YIELD:
-    korean_name: 법인 세전수익률 (🔸 추정)
+      개인 수익률 질의의 기본값 — "개인 기준 세후" 명시. ✅ depo_equiv_yield_154 × 0.846 = 이 컬럼, 634/634 성립.
+      🔴 세후 > 매수수익률(buy_yield) 인 행 72 — 매매차익 비과세 구조(할인 매수)로 성립 가능, 오류 단정 금지 (§9.4).
+    note: 1차 "음수 1건" 소멸.
+  corp_pretax_yield:
+    korean_name: 법인 세전 투자수익률
     missing_reason: not_applicable
-    answerable_n: 881
+    answerable_n: 634
     unit: percent
-    answer_policy: 법인 투자자 질의에만 사용. BUY_YIELD(개인 세전)와 일치하는 행 0건 — 산식 미확정 (§H-9).
-    note: 수익률 7종 = 상품이 7개가 아니라 "누가 사느냐"(개인/법인/우대)의 경우의 수 (§9.4).
-  CORP_AFTER_TAX_YIELD:
-    korean_name: 법인 세후수익률 (🔸 추정)
+    answer_policy: "법인 투자자 질의에만. 값은 컬럼 그대로 인용하고 산식·세율은 서술 금지 — 검수 C 2026-08-25 실측 buy_yield 대비 비율 1.00~1.08 로 분산(단일 세율 아님), 산식 확정 불가 → 배제."
+  corp_after_tax_yield:
+    korean_name: 법인 세후 투자수익률
     missing_reason: not_applicable
-    answerable_n: 881
+    answerable_n: 634
     unit: percent
-    note: 세전=세후인 행 39건 — 산식 미확정 (§H-9 ⓓ).
-  PREF_TAX_YIELD:
-    korean_name: 세금우대 수익률 (🔸 추정)
+    note: 세전=세후 행 31 · 세후/세전 비율 0.90~1.00 분산 — 산식 확정 불가(검수 C 2026-08-25). 값 인용만, "법인세율 적용" 류 서술 금지.
+  pref_tax_yield:
+    korean_name: 세금우대 세후 운용수익률
     missing_reason: not_applicable
-    answerable_n: 881
+    answerable_n: 634
     unit: percent
-    note: ISA 등 우대세율 계좌 기준 추정 🔸. AFTER_TAX_YIELD 와 일치하는 행 6건뿐.
-  AVG_ANNUAL_TAX_YIELD:
-    korean_name: 연평균 과세수익률 (🔸)
+    note: after_tax_yield 와 일치 4행뿐. 우대세율 계좌 기준 🔸.
+  avg_annual_tax_yield:
+    korean_name: 세후 연평균수익률
     missing_reason: missing
     missing_semantics:
-      0: missing                           # 🔴 non-null 881건 전량 0
+      0: missing                           # 🔴 non-null 634행 전량 0
     answerable_n: 0
     answer_policy: '"데이터가 제공되지 않았습니다." 이 컬럼 기반 질의는 전부 답변 불가.'
-    unit: percent
-    note: 결측률만 보면 다른 수익률 컬럼과 같아 보이지만 값이 전부 0 — IS NULL 로 안 잡힘 (노트 §D.3).
-  DEPO_EQUIV_YIELD_154:
+    note: 2차에도 전량 0 — IS NULL 로 안 잡힘.
+  depo_equiv_yield_154:
     korean_name: 예금환산수익률(세율 15.4%)
     missing_reason: not_applicable
-    answerable_n: 881
+    answerable_n: 634
     unit: percent
-    answer_policy: '"이 채권 = 연 몇 % 예금과 같나" — 일반인 대상 답변에 가장 친절한 눈금으로 우선 사용.'
-    note: ✅ ×0.846 = AFTER_TAX_YIELD (880/881). '154' = 세율 15.4%.
-  BUYABLE_QUANTITY:
+    answer_policy: '"이 채권 = 연 몇 % 예금과 같나" — 개인 대상 답변의 가장 친절한 눈금.'
+  depo_equiv_yield_495:
+    korean_name: 은행환산수익률(세율 49.5%)    # 🆕 2차
+    missing_reason: not_applicable
+    answerable_n: 634
+    unit: percent
+    answer_policy: 금융소득종합과세 최고세율(49.5%) 대상자 기준 — 사용자가 고소득/종합과세 언급 시에만. 1.26 ~ 9.48.
+    note: 154 보다 큰 행 598 — 비과세 매매차익 비중이 클수록 고세율 환산이 유리해지는 구조.
+  trade_price:
+    korean_name: 매매단가 (표준투입단가)        # 🆕 2차
+    missing_reason: not_applicable
+    answerable_n: 634
+    unit: krw
+    answer_policy: '"얼마에 살 수 있나" 는 eval_price(민평)가 아니라 이 컬럼 — 5,570 ~ 10,759. eval_price 와 정확 일치 0행(±50원 이내 497).'
+  buyable_quantity:
     korean_name: 매수가능수량
     missing_reason: not_applicable
-    missing_semantics:
-      0: not_applicable                    # 호가만 있고 수량 0 — 556건
-    answerable_n: 325
-    answer_policy: 실거래("살 수 있나") 질의는 수량>0 (325) + 만기 전 (254) 모수로.
-    note: BUY_YIELD 와 결측 엇갈림 0건 — 완벽 대응.
-
-  # ── 1.9 메타 (1) ──────────────────────────────────────────────────
-  PD_STD_INFO_UPDATE:
-    korean_name: 기준정보 갱신일
+    answer_policy: >
+      🔴 사용 금지 — 주최 공지(8/24) "값 무효, 신경 쓰지 말 것. 상폐/리스팅종료 제외 전부 구매가능 가정".
+      >0 296 · =0 338 이지만 어느 쪽도 판매 가능 여부의 근거가 아님.
+  bdbns_abl_chnl_nm:
+    korean_name: 채권매매가능채널구분명         # 🆕 2차
     missing_reason: not_applicable
-    answerable_n: 31823
-    note: >
-      최댓값 2026-02-24 — 기준일 논쟁(문서 2026-07-11)의 데이터 측 증거 (워크샵 #1).
-      ✅ 결측 10,571건 = 전부 만기 도래분(잔존>0 인 결측 0건) — "갱신 정지 = 죽은 종목" 신호 (노트 §D.16-⑥).
-      ✅ FRN SRFC_IRT 의 기준 시점 근사 규칙 — 단 84건은 스탬프-값 불일치 (§9.1-⑶).
+    value_semantics:
+      "온오프 겸용": 634행 (판매 LOT 전부, 코드 bdbns_abl_chnl_tcd = 0)
+    note: 상수 — "온라인으로 살 수 있나" 질의에 "판매 조건이 있는 634건은 전부 온·오프 겸용" 으로.
+  bdbns_abl_chnl_tcd:
+    korean_name: 채권매매가능채널구분코드       # 🆕 2차
+    missing_reason: not_applicable
+    note: 0 단일값(634행). 코드북 없음 — 명칭 컬럼 사용.
+  sale_yield_base_dt:
+    korean_name: 판매수익률 기준일             # 🆕 2차
+    missing_reason: not_applicable
+    note: 634행 전부 20260821.
+
+  # ── 1.9 메타·기타 (2) ──────────────────────────────────────────────
+  pd_std_info_update:
+    korean_name: 민평정보 기준일
+    missing_reason: none
+    note: 전 행 20260821. 1차 "최댓값 2026-02-24 · 결측 10,571 = 만기분" 논쟁 해소.
+  pd_pen_tr_yn:
+    korean_name: 퇴직연금 편입 가능 여부        # 🆕 2차
+    missing_reason: none
+    value_semantics:
+      "Y": 1,931행 — 국공채 1,522 · 회사채 314 · 특수채 95. 전부 공모. 등급 있는 건 A- 이상(무등급 1,524 = 국공채 위주)
+      "N": 19,951행 — 사모 2,007 전부 N
+    answer_policy: '"퇴직연금(DC/IRP)에 담을 수 있는 채권" 질의는 이 컬럼으로 직답. 개인연금 여부 컬럼은 없음 — 구분해 답변.'
 
 # ── 이름·코드 인코딩 — 파생 컬럼이 아니라 규칙으로 선언 (NEXT_STEPS 3원칙 ②) ──
 name_encoding:
-  isin_prefix:                             # PD_NO 앞 3자리 → 대분류 보완 (§5.2)
-    # 🔴 2026-08-20 실측 정정 — 1:1 이 아니라 다수 매핑. 라벨은 최빈 대분류이고 혼재분이 있어
-    #    BD_KND 결측 보완에 쓸 때 '추정' 표기 필수. (STD_PD_MCLS_NM 교차표 실측 기준)
-    KR6: 회사채                            # 31,321 + 외화채권-회사채 5 + 외화채권-금융채 1 혼재
-    KR3: 특수채                            # 8,755 + 🔴 회사채 57 혼재
-    KR2: 국공채                            # 1,631 (단일)
-    KR1: 국공채·개인투자용국채             # 국공채 284 + 개인투자용국채 49 — 이전 라벨 '국채'는 대분류에 없는 값
-    KRC: 국공채                            # 222 (단일)
-    KRB: 회사채                            # 49 (단일)
-    KRZ: 회사채                            # 19 (단일)
-    XS3: 회사채                            # 1건 — '외화(해외 발행)'는 ISIN 의미(XS=Euroclear)로는 맞지만 대분류 보완값으로는 부적합. 실제 대분류 '회사채'
-  govt_bond_name: "국고채권 SRFCX-YYMM(회차) — 숫자부 = 표면금리·만기 (SRFC_IRT·MAT_DT 와 일치 검증)"
-  special_structure_flags:                 # 🔴 판정은 전부 종목명 파싱 — 구분자 기준 정규식 필수
-    # ⚠️ 2026-08-18 감사 — 12종 중 8종은 pattern↔count 정확 재현. 4종은 불일치였으나
-    #    ✅ 2026-08-20 후속 규명으로 3종 해소(convertible·coco·private — 각 항목 주석),
-    #    is_perpetual(473 vs 450)만 미규명 잔존 → 워크샵 C-1. (감사 문서 §6 참조)
-    is_callable:    { pattern: "[(/]콜[)/]",   count: 12119 }
-    is_private:     { pattern: "[(/][^()]*사모", count: 15261 }
-    # ✅ 2026-08-20 정밀화 — 괄호 내부 부분일치 15,261건 = '사모' 부분일치 전체와 정확 일치
-    #    ('사모'는 전부 괄호 안에만 등장 — '(PCBO사모/콜)' 같은 접두 결합 포함). 이전 count 10,067 은
-    #    어떤 패턴으로도 재현 불가한 수치(출처 미상)라 폐기. 실측 보강: '사모' 전건이 장외(15,261/15,261).
-    #    🔴 도메인 문서(domestic_bonds.md §6.4)는 사모를 "구조가 아니라 발행 방식"으로 분리 —
-    #    특수구조 합집합 15,306 에 사모 비포함 (실측: 포함하면 18,768+). query_rules.특수구조제외
-    #    셋에 is_private 을 넣을지는 별도 결정 필요 — 넣으면 추천 모수가 궤멸 (검토 요청 문서 2026-08-20).
-    is_puttable:    { pattern: "[(/]풋[)/]",   count: 2150 }   # 2026-08-16 신규 (노트 §D.14-②)
-    is_convertible: { pattern: "\\d+CB|[(/]전환[)/]", count: 2337 }
-    # ✅ 2026-08-20 규명 — 이전 패턴 '전환?' 의 '?' 가 '전'을 단독 허용해 '(전)' 표기 18건을 오탐(2,355).
-    #    '?' 제거로 주장 count 2,337 정확 재현 — 감사 '차이 18건 미규명' 해소.
-    is_subordinated: { pattern: "[(/]후[)/]",  count: 1210 }   # 🔴 '(후)'만 찾으면 218건 — 992건 누락
-    is_frn:         { pattern: "변 계열 4종 — '천변' 오탐 1건 제외", count: 643 }
-    is_perpetual:   { pattern: "신종|영구", count: 450 }
-    # ⚠️ is_perpetual — 주장 450 미재현 잔존 (워크샵). 후보 실측 (2026-08-20): 현행 '신종|영구' 473 ·
-    #    도메인 문서 원패턴 '신종자본|[(/]신종[)/]' 467 · '신종자본' 단독 296 (겹침 매트릭스의 296과 일치).
-    #    450 은 어느 패턴으로도 안 나옴 — 원 산출 방식 확인 필요.
-    is_exchangeable: { pattern: "\\d+EB", count: 391 }
-    is_stripped:    { pattern: "분리채권", count: 221 }         # 🔴 BD_KND 로는 식별 불가 — 유일 수단
-    is_bw:          { pattern: "\\d+BW", count: 133 }           # 2026-08-16 신규
-    is_coco:        { pattern: "코코(?!리아)|조건부자본", count: 96 }   # 🔴 전부 AA급 — 원금 소각 가능인데 등급 필터 통과
-    # ✅ 2026-08-20 반영 — 감사 지적 '아세코코리아'(회사명) 오탐 2건을 lookahead 로 제외. 실측 96 정확 재현.
-    is_inflation_linked: { pattern: "물가", count: 6 }
-    unresolved_PB:  { pattern: "\\d+PB", count: 50 }            # 🔴 의미 미해독 (§9.7 TODO-8)
-  coupon_form: "이표 437 / 할인 172 / 복리 8 — 종목명 명시분만"
+  isin_prefix:                             # pd_no 앞 3자리 → 대분류 보완 (§5.2) — 2026-08-25 2차 실측
+    KR6: 회사채                            # 12,834 (단일)
+    KR3: 특수채                            # 6,177 + 회사채 3 (✅ 검수 C — 국민은행 일반은행채 1·산금채 2 — 금융채라 접두 KR3 이 맞고 대분류가 예외. 접두→대분류 보완 시 이 3행은 std_pd_mcls_nm 우선)
+    KR2: 국공채                            # 2,239 (단일)
+    KR1: 국공채                            # 392 (단일) — 1차의 개인투자용국채 49 소멸
+    KRC: 국공채                            # 209 (단일)
+    KRB: 회사채                            # 27 (단일)
+    XS3: 회사채                            # 1행 — XS=Euroclear. 대분류 보완값은 '회사채'
+  govt_bond_name: "국고채권 SRFCX-YYMM(회차) — 숫자부 = 표면금리·만기 (srfc_irt·mat_dt 와 일치)"
+  special_structure_flags:                 # 🔴 판정은 종목명 파싱 — 구분자 기준 정규식. count = 2차 실측 (2026-08-25)
+    is_callable:    { pattern: "[(/]콜[)/]",   count: 2673 }
+    is_puttable:    { pattern: "[(/]풋[)/]",   count: 529 }
+    is_convertible: { pattern: "\\d+CB|[(/]전환[)/]", count: 389 }
+    is_subordinated: { pattern: "[(/]후[)/]",  count: 530 }
+    is_perpetual:   { pattern: "신종|영구", count: 266, count_pd_no: 237 }   # ✅ 재검증 2026-08-25: 행 266 / 종목(pd_no) 237. 1차 450 은 재현 불가 → 종결. 차집합 41건 전부 조건부자본증권(AT1)=영구
+    is_exchangeable: { pattern: "\\d+EB", count: 137 }
+    is_stripped:    { pattern: "분리채권", count: 209 }         # 🔴 bd_knd 로는 식별 불가 — 유일 수단. 전부 bd_intp_tcd='할인채'
+    is_bw:          { pattern: "\\d+BW", count: 32 }
+    is_coco:        { pattern: "코코(?!리아)|조건부자본", count: 187 }   # 🔴 원금 소각 가능 — 등급 필터 통과 주의
+    is_inflation_linked: { pattern: "물가", count: 6 }          # = std_pd_scls_nm '물가채' 6
+    unresolved_PB:  { pattern: "\\d+PB", count: 0 }             # 2차 소멸
+  # ✅ 2차부터 전용 컬럼으로 대체된 플래그 (이름 파싱 회귀 금지):
+  #    is_private → bd_ofr_tcd='사모' (2,007) · is_frn → bd_inrt_tcd IN ('변동금리','고정+변동금리') (978) ·
+  #    coupon_form(이표/할인/복리) → bd_intp_tcd
   note: >
-    특수구조 15,306건(36.1%) — 3건 중 1건. 플래그는 겹침(영구채 296 중 콜 295·후순위 250)이라
-    단일 '종류' 컬럼 불가 — O/X 플래그 방식 (§3.1). is_bw·is_puttable 반영 시 합집합 증가 예정 (§9.7 TODO-9).
+    특수구조 합집합은 2차 재산출 필요(1차 15,306/36.1%). 플래그는 겹침(영구채에 콜·후순위 동반)이라 단일 '종류' 컬럼 불가 — O/X 플래그 (§3.1).
 
 # ── 정규화 (문자열 비교 시 TRIM 전면) ──
 normalization:
   trim_columns:
-  - PD_NM
-  - PD_ABRV_NM
-  - PD_ENG_NM
-  - PD_ABRV_ENG_NM
-  - STD_PD_MCLS_NM
-  - STD_PD_SCLS_NM
-  - BD_KND
-  - PD_PBCM
-  - PD_EXG_MKT
-  - CURR_CD
-  - PD_CTRY_CD
-  - CRD_GRD
-  - PD_EVCO_CRD_GRD
-  grade_suffix: "사용자 'AA' → 'AA0' (한국식 중간값 0 표기). PD_EVCO 쪽은 'AA' — 컬럼 간 규칙이 다름 (§3.3)"
-  issuer: "'(주)' 위치 앞뒤 제각각 — 정규화 매핑은 워크샵 후 kg_organization (§5.1-①)"
-  bd_knd_alias: "'통화안정증권'(통칭) → '통화안정채권'(실값) (§5.1-⑧)"
+  - pd_nm
+  - pd_abrv_nm
+  - pd_eng_nm
+  - pd_abrv_eng_nm
+  - std_pd_mcls_nm
+  - std_pd_scls_nm
+  - bd_knd
+  - pd_pbcm
+  - pd_exg_mkt
+  - curr_cd
+  - pd_ctry_cd
+  - crd_grd
+  - exg_close_price_base_dt
+  grade_suffix: "사용자 'AA' → 'AA0' (한국식 중간값 0 표기). 'AA'·'A'·'BBB' 단독 표기는 DB 에 0건"
+  issuer: "'(주)' 위치 앞뒤 제각각 — 정규화 매핑은 kg_organization (§5.1-①)"
+  bd_knd_alias: "'통화안정증권'(통칭) → '통화안정채권'(실값 33행) (§5.1-⑧)"
+  zero_as_missing:                         # 주최 공지(8/24): 0/결측은 의도된 값 → 정렬·필터에서 빼고, 조회 시 "없음" 응답
+    기본: "수치 컬럼 정렬·필터는 IS NOT NULL AND <> 0 기본 — 아래 zero_is_value 컬럼만 예외"
+    zero_is_value:
+    - srfc_irt                             # 0 = 이자 없는 구조(CB·EB 등) — 값이다. 정렬에선 유형 분리
+    - exrt_grte_ern_r                      # 0 = 만기보장 없음(정상)
+    - bdbns_abl_chnl_tcd                   # 코드 0 = '온오프 겸용'
+    zero_as_missing_columns:
+    - exg_close_price                      # 0 = 거래 없음(종가 없음) 16,476
+    - exg_close_yield
+    - applied_yield                        # 0 = YTM 산출 대상 아님 201
+    - isu_dt                               # 0 = 미수록 25
+    - mat_dt                               # 0 = 미수록 4
+    - isu_bal_amt                          # 0 = 잔액 없음/미기입 325
+    - bd_tisu_a
+    - dur                                  # 0(잔존>0) = 산출 불능
+    - ndy_eval_price
+    - ndy_applied_yield
+    - avg_annual_tax_yield                 # 전량 0
 
 # ── 쿼리 가드레일 ──
 query_rules:
-  문자열비교:     "범주형·이름 컬럼은 항상 TRIM 후 비교 (패딩 96~98%)"
-  등급정규화:     "CRD_GRD 조회 시 'AA'→'AA0' 등 접미사 변환 후 비교"
-  등급병합:       "등급 조건은 COALESCE(CRD_GRD, PD_EVCO_CRD_GRD 정규화) — 병합 안 하면 1,600건 누락"
-  수익률정상:     "APPLIED_YIELD > 0                     -- =0 은 위장결측 1,289건 (만기도래 550건 포함, 7-11 기준). 수익률 0인 투자는 성립 불가(10,024원에 사서 이익 0) — 값이 아니라 미기입"
-  매수가능:       "BUYABLE_QUANTITY > 0 AND 만기 전       -- 실거래 모수 254"
-  듀레이션정상:   "DUR IS NOT NULL AND DUR != 99 AND NOT (DUR = 0 AND REMAINING_DAYS > 0)  -- 신종자본 500건 제외"
-  익일값금지:     "NDY_EVAL_PRICE · NDY_DIRTY · NDY_APPLIED_YIELD 사용 금지 (NDY_DUR·NDY_COV 는 주의)"
-  과세수익률금지: "AVG_ANNUAL_TAX_YIELD 사용 금지 (전량 0)"
-  더티보류:       "DIRTY 사용 보류 — 워크샵 #7 결정 전 '실제 결제금액' 답변 금지"
-  특수구조제외:   "추천·랭킹 질의는 name_encoding 구조 플래그 기본 제외 + 제외 사실 명시. 🔴 is_private(발행 방식, 15,261건)은 구조 아님 — 합집합 15,306 에 비포함(도메인 문서 §6.4). 제외셋 포함 여부는 별도 결정 (2026-08-20 검토 요청)"
-  만기상태:       "추천은 상태 ①(254건)만 · 조회는 전 상태 + 상태 표시 — 경계(기준일)는 워크샵 #1 미확정"
-  시장집계금지:   "PD_EXG_MKT 단독 group-by 금지 — 구성 효과 교란 (§9.5). 장내/장외 수익률 비교는 원시 평균 금지 — 종류(대분류·등급·잔존만기) 통제 시 차이 소멸을 병기"
-  장외등급해석:   "장외 등급 결측 83.3%(14,696/17,645)는 not_evaluated(미평가) — 저품질·고위험으로 해석 금지 (장내는 11.9%). 장외 필터와 특수구조 필터는 독립 아님(장외에 사모·특수구조 몰림) — 겹쳐 걸 때 모수 명시"   # 2026-08-20 신설
-  유동화위험금지: "BD_KND IN ('MBS','유동화회사채') 4,957건은 발행사명(PD_PBCM)으로 위험 판단 금지 — 발행자가 회사가 아니라 SPC(자산)라 등급이 원 회사보다 높을 수 있음 (columns.PD_PBCM.trap ③. 이전 '7,749건'은 재현 불가 폐기)"   # 2026-08-20 신설 — trap 을 실행 규칙으로 승격
+  대표행:         "종목 단위 질의(개수·속성·Top-N)는 GROUP BY pd_no 또는 pd_exg_mkt='장내' 우선 — 1,078종목이 2~4행 (row_grain). COUNT(*) 를 종목 수로 쓰지 말 것"
+  판매행:         "판매 조건(매수수익률·매매단가·세후수익률) 질의는 buy_yield IS NOT NULL (634행, 전부 장외 LOT) — LOT 2개 종목 307은 조건 N건으로 병기"
+  구매가능:       "🔴 주최 공지(8/24): buyable_quantity 무효 — 사용 금지. '살 수 있나' = mat_dt >= 20260822 (21,828행) 면 전부 구매가능. 판매 조건(수익률·단가)이 수록된 것은 그중 634행 — 조건 없는 종목은 '구매 가능하나 당사 판매 조건은 미수록'"
+  문자열비교:     "범주형·이름 컬럼은 항상 TRIM 후 비교 (bd_knd·pd_pbcm·영문명 고정폭 패딩 잔존)"
+  등급정규화:     "crd_grd 조회 시 'AA'→'AA0' 등 접미사 변환 후 비교. 국공채는 등급 없음 = 정상"
+  영값배제:       "수치 정렬·필터 기본 IS NOT NULL AND <> 0 (normalization.zero_as_missing). 예외 컬럼은 zero_is_value. 0 인 행은 '해당 값이 수록되어 있지 않습니다'로 응답 (주최 공지)"
+  수익률정상:     "applied_yield > 0 — =0 201행은 주식연계채 등 YTM 산출 대상 아님"
+  듀레이션정상:   "dur IS NOT NULL AND dur != 99 AND NOT (dur = 0 AND remaining_days > 0)"
+  익일값:         "ndy_* 는 '익일' 질의에만. 일반 질의는 당일 컬럼 (1차 '사용 금지' → 2차 위장결측 15~20행으로 완화)"
+  과세수익률금지: "avg_annual_tax_yield 사용 금지 (전량 0)"
+  더티금지:       "dirty·ndy_dirty 사용 금지 — 99.0%가 eval_price 동일값(정보량 0). '실제 결제금액' 답변 금지"
+  등급일사용금지: "crd_grd_dt 로 등급 최신성·신선도 판단 금지 — 스키마: '등급 미변경 시 과거 일자로 유지될 수 있음'"
+  이자유형분리:   "표면금리 정렬은 bd_intp_tcd·bd_inrt_tcd 로 유형 분리 — 할인채(발행 할인율)·변동금리(스냅샷)·srfc_irt=0(구조) 을 고정 이표채와 한 축에 놓지 말 것"
+  장내종가:       "exg_close_price/yield 는 장내 1,270행만 유효 — 기준일(exg_close_price_base_dt) 필수 병기. 장외는 NULL(해당없음)"
+  특수구조제외:   "추천·랭킹 질의는 name_encoding 구조 플래그 + bd_ofr_tcd='사모' 기본 제외 + 제외 사실 명시 (제외셋 확정은 워크샵)"
+  시장집계금지:   "pd_exg_mkt 단독 group-by 금지 — 구성 효과 교란 (§9.5). 같은 종목이 양 시장에 있을 수 있음"
+  장외등급해석:   "장외 등급 결측 48.9%(2,023/4,136)는 미평가 — 저품질·고위험으로 해석 금지 (장내는 11.3%)"
+  유동화위험금지: "유동화 = TRIM(bd_knd) IN ('MBS','유동화회사채') 2,924 + 코드 밖 SPC 112(발행사명 유동화/신용보증/기술보증 SPC·Conduit 회사채) = 3,036행 (✅ 재검증 2026-08-25). 발행사명으로 위험 판단 금지 — 발행자 = SPC. 조건식: TRIM(bd_knd) IN ('MBS','유동화회사채') OR pd_pbcm LIKE '%유동화%' OR pd_pbcm LIKE '%신용보증%' OR pd_pbcm LIKE '%기술보증%' OR pd_nm LIKE '%유동화%'"
+  외화채없음:     "curr_cd = KRW 뿐 — '외화채권' 질의는 '수록 없음' (해외ETF 로 유도 금지)"
+  기준일:         "답변의 데이터 기준일 = info_base_dt 20260821 (영업일) / 대회 기준 2026-08-22"
 
-# ── 역질문 분기 — 되묻기는 유효한 답변 (노트 §I) ──
+# ── 역질문 분기 — 되묻기는 답변불가 문항의 정답 형태 중 하나 (주최 확인 8/25) · 모호 질의는 최소 출제 ──
 clarify:
   다의어:                                  # (B) 용어 자체가 다의적 — 동반 신호 없으면 되묻기
-    수익률: "표면금리 / YTM / 세후 / 예금환산 — 같은 채권이 1.875%~4.2%로 갈림. 기본값: 개인 세후 + 명시. 투자 주체 미상이면 역질문: 개인(15.4% 원천징수)/법인(법인세)/세금우대 계좌 — 수익률 7컬럼 = '누가 사느냐'의 경우의 수 (§9.4)"
+    수익률: "표면금리 / 민평 YTM / 매수수익률 / 세후 / 예금환산 — 기본값: 개인 세후(after_tax_yield) + 명시. 투자 주체 미상이면 역질문: 개인(15.4%)/법인/종합과세(49.5%)/세금우대"
     위험:   "부도위험(국공채 최저) / 금리위험(국공채 최고) — 정반대 (§9.3)"
-    등급:   "신용등급 / 위험등급 / 평가사별·최저·다수결 — 258건에서 갈림"
-    만기:   "만기일 / 잔존만기 / 듀레이션 — 영구채 450건이 57년으로 잡힘"
-    싸다:   "🔴 가격 낮음 / 수익률 높음 — 정반대라 기본값 금지, 무조건 되묻기 (노트 §I.3-1)"
+    등급:   "신용등급(crd_grd) / 위험등급(pd_risk_nm) — 별개 축"
+    만기:   "만기일 / 잔존만기 / 듀레이션 — 영구채 266행은 mat_dt 가 콜 개시일"
+    싸다:   "🔴 가격 낮음 / 수익률 높음 — 정반대라 기본값 금지, 되묻기"
+    가격:   "민평 평가단가(eval_price) / 매매단가(trade_price, 634행) / 장내 종가(exg_close_price, 1,270행) — 셋이 다름"
   사람의_선택:                             # (A) 사용자가 정해야 답이 정해짐
     보유기간: "만기 보유 → 신용위험만 / 중도 매도 → 듀레이션 1순위"
     안전의_정의: "부도위험 → 국공채 / 금리위험 → 단기 회사채"
-    투자기간: "기간에 맞는 만기·듀레이션 선택 — '안전한 채권' 질의의 3번째 미지수 (안전의_정의·보유기간과 세트, §9.3)"   # 2026-08-20 신설
-    답변모수: "시장 전체(16,349) / 지금 살 수 있는 것(254)"
-  조건부_계산:                             # (C) 사용자 답을 받아 계산 후 답하는 유형 — 2026-08-20 신설
+    투자기간: "기간에 맞는 만기·듀레이션 선택"
+    답변모수: "시장 전체(20,497종목) / 당사 판매 조건 있는 것(634 LOT)"
+  조건부_계산:
     FRN_금리비교: >-
-      FRN 643건의 SRFC_IRT 는 '기준일 현재 적용 금리 스냅샷'(다음 재설정일에 바뀜) — 고정금리와의
-      유불리 질의는 "현재 기준금리 수준"을 역질문한 뒤 "기준금리가 X%보다 높으면 FRN 유리, 낮으면
-      고정금리 유리" 형태의 조건부 비교로 답변. 구형 84건(스탬프-값 불일치)은 사용 금지 (§9.1-⑶).
+      bd_inrt_tcd='변동금리' 830행의 srfc_irt 는 기준일 현재 적용 금리 스냅샷 — 고정금리와의 유불리 질의는
+      "현재 기준금리 수준"을 역질문한 뒤 조건부 비교로 답변.
 
-# ── 축 유도 규칙 — 🔴 샘플 100건 채점 전 (§7) ──
+# ── 축 유도 규칙 ──
 axis_derivation:
-  confirmed: {}                            # 아직 채점 전 — 채점 후 이동
+  confirmed:
+    couponType:
+      rule: "bd_intp_tcd 직접 매핑 — 이표채→Coupon · 할인채→ZeroCoupon · 복리채→Compound · 단리채→Simple. 고정/변동은 bd_inrt_tcd 직교 축"
+      evidence: "✅ 2차 전용 컬럼 (2026-08-25). 1차 종목명·가격구조 추정 폐기"
+    offeringType:
+      rule: "bd_ofr_tcd 직접 매핑 — 공모/사모"
+      evidence: "✅ 2차 전용 컬럼"
+    riskGrade:
+      rule: "pd_risk_gcd '11'~'16' → RiskGrade_1~6 · '00' → RiskGrade_0 (shared/risk_grade.yaml)"
+      evidence: "✅ 국공채 2,839/2,840 = '16'"
   pending_workshop:
     issuerType:
-      rule: "STD_PD_MCLS_NM 단독 매핑 (회사채→CorporateBond 등) + PD_NO 앞 3자리 보완"
-      issue: "🔴 소분류·채권종류 경유 역추적 금지 — 계층이 트리가 아님, 842건 오류 (§7.1)"
-    couponType:
-      rule: >-
-        종목명(이표/할인/복리/변) + 가격 구조. ZeroCoupon = 종목명('할인'·'분리채권') + DUR≈잔존만기 + 무이표 가격식 재현.
-        ✅ 통안(101건)은 종목명 'DC' 접두로 100% 분리 (2026-08-20 전수 실측) — DC 67건 = 91일물 할인형 전건 /
-        비DC 34건 = 이표형 전건 (접미 -01/-02/-03 = 1/2/3년물. 생존분 액면 초과 평가가·DUR<잔존).
-      issue: "🔴 SRFC_IRT=0 → ZeroCoupon 규칙은 양방향으로 깨짐(0의 53.2%가 CB, 진짜 할인채는 0 아님). 고정/변동은 별개 직교 축 (노트 §D.15·§D.8). 🔴 '통안=할인채' 단정 금지 — 이표형 34/101(33.7%)"
+      rule: "std_pd_mcls_nm 단독 매핑 (회사채→CorporateBond 등) + pd_no 앞 3자리 보완"
+      issue: "소분류 경유 역추적 금지 — 일반사채·특수은행채가 두 대분류에 걸침"
     maturityClass:
-      rule: "경계값 미정 — 샘플 100건에서 역산 (§H-7)"
-      issue: "영구채 450건·MAT_DT=99991231 4건의 처리 미정 (§H-10ⓒ)"
+      rule: "경계값 미정 — remaining_days 기준 (단기 <1y / 중기 1~5y / 장기 >5y 후보)"
+      issue: "영구채 266행(mat_dt=콜 개시일)의 처리"
     collateralType:
-      rule: >-
-        ✅ 코드북 초안 확보 (2026-08-20 — data/external/lookups/collateral_type_map.csv):
-        BD_KND 구조 매핑 — SPC 4종(MBS·SLBS·유동화·Conduit) 7,783건 = 자산담보부(A) /
-        국공채 계열 2,019건 = 정부·공공신용(A) / 잔여 32,592건 = 무보증·무담보(B — 외환위기 이후
-        무보증 일반화 관행, 은행연합회 근거 별첨). Subordinated 는 is_subordinated 플래그(직교 축).
-      issue: >-
-        🔴 이름 유도 불가 확정 — 종목명 '담보' 0건, '보증' 5건도 전부 발행사명 오탐(주택도시보증공사·교보증권).
-        종목 단위 보증부/담보부 개별 식별은 이 데이터로 불가 — 무보증 B급 기본값의 한계를 답변에 명시.
+      rule: "bd_knd 구조 매핑 (data/external/lookups/collateral_type_map.csv — 1차 기준, 2차 32종으로 재검수 필요)"
+      issue: "종목 단위 보증부/담보부 식별 불가 — 무보증 기본값 한계 명시"
     issuerCategory:
-      rule: >-
-        ✅ 코드북 초안 확보 (2026-08-20 — data/external/lookups/issuer_industry_map.csv + top200 검수표):
-        BD_KND 1차 매핑(금융 15종 13,106건 · SPC 7,783 · 공기업 3,019 · 정부공공 2,019 — A급 61.3%)
-        + 발행사명 키워드 2차(금융 97 · 잔여 비금융 15,169 — B급). BD_KND 결측 922건 = C급 미분류.
-      issue: "🔶 일반회사채 잔여 15,169건이 키워드 기본값 B급 — 발행잔액 상위 200 검수표(issuer_industry_top200.csv)로 보정 후 승격. SPC 는 업종 판정 부적합(발행자=자산)"
+      rule: "bd_knd 1차 + 발행사명 키워드 2차 (issuer_industry_map.csv — 1차 8,018사 기준, 2차 1,818사로 축소)"
+      issue: "일반회사채 잔여분 키워드 기본값 B급"
 
-# ── 워크샵(8/17~18) 미확정 — 이 파일에서 바뀔 수 있는 곳 ──
+# ── 미확정 — 이 파일에서 바뀔 수 있는 곳 (검수 C 2026-08-25 정리: 6건 → 열림 3 · 닫힘 3) ──
 workshop:
-  - "기준일 2026-07-11 vs 2026-02-24 → query_rules.만기상태 경계 (만기 종료 16,180 vs 11,940)"
-  - "PD_RISK_GCD 0등급 58건 → value_semantics 확정"
-  - "평가사 의견 갈린 258건 — 최저 vs 다수결 → 등급병합 규칙"
-  - "DIRTY·NDY_* 사용 가부 → query_rules.더티보류·익일값금지"
-  - "특수구조 15,306건 기본 제외 목록 → query_rules.특수구조제외"
-  - "등급 신선도 — CRD_GRD_DT 정의(평가일 vs 변경일) 확인 후 경고 임계(후보: 전이행렬 기준 5년) (노트 §H-3c)"
-  - "couponRate 속성 분리 — 지급 이자율(일반·FRN) vs 명목·할인율(분리채권·할인채) (.ttl 설계, §9.1-⑷)"
-  - "🆕 2026-08-18 감사: 플래그 패턴 정밀화 — is_private(패턴 7,766 vs 주장 10,067, 어느 쪽도 재현 안 됨) · is_perpetual(473 vs 450) · is_convertible(2,355 vs 2,337) · is_coco 오탐 2건('아세코코리아')"
-  - "🆕 2026-08-18 감사: 만기 전 EVAL_PRICE 정확히 10000.0 인 1,813건 — 액면 파킹(미평가)인지 실평가인지 판정 (columns.EVAL_PRICE.trap)"
+  - "특수구조 제외셋 확정 (사모 2,007 포함 여부 — 포함 시 추천 모수 축소 폭 2차 재산출) — 팀 결정 필요"
+  - "maturityClass 경계값 — 결정 전 기본값: 잔존 <1y 단기 / 1~5y 중기 / >5y 장기, 답변에 경계 명시 (영구채 266행은 콜 개시일 기준 병기)"
+  - "1차 외부 코드북(collateral_type_map·issuer_industry_map)의 2차 재검수 — bd_knd 39→32종, 발행사 8,018→1,818 (KG 발행사 노드는 생성됨, 업종·담보 edge 는 재검수 후)"
+_closed_2026-08-25:
+  - "srfc_irt=0 255행 → 165행 주식연계(EB·BW·교환·신주) 실측, 잔여 90행 변동금리 특수법인채·사모 콜 구조 (columns.srfc_irt)"
+  - "exrt_grte_ern_r_tcd 01~05 → 544행 중 538행 주식연계 실측. 코드 의미는 미제공 확정 → 답변 배제 (columns.exrt_grte_ern_r_tcd)"
+  - "dur 이론 위반 200행 → 일반사채 125(신종·영구 56, 주식연계 8)·특수은행채 40(신종 27)·은행채 31(신종 21): 절반이 영구채(mat_dt=콜 개시일이라 잔존이 짧게 잡힘) — 구조적, 규명 종료. dur 정렬 시 영구채 제외 규칙으로 흡수"

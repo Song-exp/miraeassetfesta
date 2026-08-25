@@ -17,30 +17,35 @@ nodes:
     label_ko: 주식
     label_en: Equity
     aliases:
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Equity", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
       - {table: domestic_etfs, column: wu_inv_ast_type, raw: "주식",   source: manual, evidence: "1,069건"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Equity", source: manual, evidence: "2,500건"}
   AssetClass_Bond:
     label_ko: 채권
     label_en: Bond
     aliases:
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Bond", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
       - {table: domestic_etfs, column: wu_inv_ast_type, raw: "채권", source: manual, evidence: "261건"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Bond", source: manual, evidence: "1,084건"}
   AssetClass_Commodity:
     label_ko: 원자재
     label_en: Commodity
     aliases:
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Commodity", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
       - {table: domestic_etfs, column: wu_inv_ast_type, raw: "원자재",   source: manual, evidence: "207건"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Commodity", source: manual, evidence: "107건"}
   AssetClass_Mixed:
     label_ko: 혼합자산
     label_en: Mixed Assets
     aliases:
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Mixed Assets", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
       - {table: domestic_etfs, column: wu_inv_ast_type, raw: "혼합자산",     source: manual, evidence: "78건"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Mixed Assets", source: manual, evidence: "138건"}
   AssetClass_MoneyMarket:
     label_ko: 단기자금
     label_en: Money Market
     aliases:
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Money Market", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
       - {table: domestic_etfs, column: wu_inv_ast_type, raw: "단기자금",     source: manual, evidence: "42건"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Money Market", source: manual, evidence: "9건"}
   AssetClass_Currency:
@@ -58,9 +63,20 @@ nodes:
     label_en: Alternatives
     note: "🔴 해외 1,800건 — 국내 대응 분류 없음(명시). 국내 '기타' 18건과의 동치는 워크샵 안건"
     aliases:
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "대체투자", source: rule, evidence: "2차 국내ETF 132행 — ref_ast_type Alternatives 와 동일 행 (2026-08-25)"}
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Alternatives", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Alternatives", source: manual, evidence: "1,800건 — 레버리지·인버스 등 포함 추정"}
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "기타", source: manual, evidence: "18건 — Alternatives 동치 미확정", status: pending}
+
+  AssetClass_Other:
+    label_ko: 기타
+    label_en: Other
+    note: "분류 불능·미분류 바구니 (국내ETF '기타' 37 · ref_ast_type 'Other' 19 · 펀드 zrin '기타' 439·'해외기타' 881). 자산군 조건 질의에서는 모수 제외 + '미분류' 명시"
+    aliases:
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Other", source: rule, evidence: "2차 19행 (2026-08-25)"}
+      - {table: public_funds, column: zrin_btyp_nm, raw: "기타", source: rule, evidence: "2차 439행 (2026-08-25)"}
+      - {table: public_funds, column: zrin_btyp_nm, raw: "해외기타", source: rule, evidence: "2차 881행 (2026-08-25)"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "기타", source: rule, evidence: "2차 37행 — 대체투자(132)와 별개 표기 (2026-08-25)"}
 
 absent_in:
   domestic_bonds: "자산군 컬럼 없음 — 상품 자체가 채권. 클래스 계층(DomesticBond ⊂ Bond)으로 처리"
-  public_funds: "직접 자산군 컬럼 없음 — kofia_fd_ccd 20자리 파싱 또는 or_attr_desc 유도 필요 (enums §or_attr_desc: 3축 압축 — 단순 매핑 금지). 워크샵 안건"
+  # public_funds: 2026-08-25 해제 — 2차 zrin_btyp_nm(18종) 이 AssetClass 에 전량 매핑됨. absent 선언은 게이트가 "펀드 자산군" 질의를 기각하게 하므로 제거

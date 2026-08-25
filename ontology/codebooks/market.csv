@@ -1,7 +1,7 @@
 code,name,short_name,source,as_of,note
-EXG_MKT_NO_001,한국거래소 유가증권시장,KRX,한국거래소,2026-07-11,국내ETF 1733종 전부
-AMX,NYSE Arca,NYSE Arca,거래소 코드(해외ETF),2026-07-11,✅검증 VOO·SPY·IVV·VTI 전부 AMX (해외 4241 최다)
-NAS,NASDAQ,NASDAQ,거래소 코드(해외ETF),2026-07-11,✅검증 QQQ=NAS (해외 1296)
-NYS,New York Stock Exchange,NYSE,거래소 코드(해외ETF),2026-07-11,🟡미검증 추정 (해외 78)
-102,기타 미국거래소 미확정,,거래소 코드(해외ETF),2026-07-11,🔴미확정 22건 (샘플이 일반 US ETF)
-101,기타 미국거래소 미확정,,거래소 코드(해외ETF),2026-07-11,🔴미확정 9건 (샘플이 일반 US ETF)
+EXG_MKT_NO_001,한국거래소 유가증권시장,KRX,한국거래소,2026-08-22,국내ETF·ETN 1,776종 전부(2차, NULL 4)
+AMX,NYSE Arca,NYSE Arca,거래소 코드(해외ETF),2026-08-22,✅검증 VOO·SPY·IVV·VTI 전부 AMX (2차 4,569 최다)
+NAS,NASDAQ,NASDAQ,거래소 코드(해외ETF),2026-08-22,✅검증 QQQ=NAS (2차 1,359)
+NYS,New York Stock Exchange,NYSE,거래소 코드(해외ETF),2026-08-22,🟡미검증 추정 (2차 78)
+102,미국 거래소(NYSE 계열 추정),,거래소 코드(해외ETF),2026-08-22,🟡미확정 22건(2차) — 티커 접미 .K 20건(RIC 규약: .K=NYSE/Arca) · 무접미 2건. 코드북 제공 불가 확정(8/24 공지)이라 접미로만 추정
+101,미국 거래소(NASDAQ 계열 추정),,거래소 코드(해외ETF),2026-08-22,🟡미확정 9건(2차) — 티커 접미 .O 9건 전부(RIC 규약: .O=NASDAQ). 코드북 제공 불가 확정이라 접미로만 추정

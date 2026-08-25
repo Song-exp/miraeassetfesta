@@ -39,7 +39,7 @@ TTL_PATH = os.path.join(PROJECT_ROOT, "ontology", "ontology.ttl")
 DB_PATH = os.path.join(PROJECT_ROOT, "data", "financial_products.db")
 REPORT_PATH = os.path.join(PROJECT_ROOT, "data", "kg_coverage_report.md")
 
-DATA_CUTOFF = "2026-07-11"  # 대회 규정 — 이후 시점 외부 데이터 반입 금지
+DATA_CUTOFF = "2026-08-24"  # 대회 규정(8/24 공지) — 이후 발행 외부 데이터 반입 금지
 
 # 테이블 ↔ 온톨로지 클래스 (masters 4종 고정)
 TABLE_CLASS = {
@@ -48,6 +48,15 @@ TABLE_CLASS = {
     "overseas_etfs": "OverseasETF",
     "public_funds": "PublicFund",
 }
+# 외부 수집 보조 테이블 — Security(종목) alias 의 원천. 마스터가 아니므로 상품 클래스가 아닌 보조 클래스로 ttl 에 표기.
+# (상품→종목 관계 자체는 행 수 100만 규모라 kg_edge 가 아니라 이 테이블을 edge 테이블로 간주한다 — security_auto.yaml 주석)
+EXT_CLASS = {
+    "ext_etf_holdings": "ExternalHoldings",
+    "ext_ovs_etf_holdings": "ExternalHoldings",
+    "ext_fund_holdings": "ExternalHoldings",
+    "ext_fund_page": "ExternalFundPage",
+}
+ALIAS_TABLE_CLASS = {**TABLE_CLASS, **EXT_CLASS}
 
 
 def norm(v):
@@ -100,6 +109,27 @@ def load_codebooks(path):
     return out
 
 
+def apply_alias_extensions(shared):
+    """`alias_extensions: {node_id: [alias…]}` — 다른 파일(주로 자동 생성분)이 기존 노드에 alias 만 덧붙인다.
+    대상 노드가 어느 파일에도 없으면 오류 목록으로 반환. 적용 후엔 일반 alias 와 동일하게 검증·생성·리포트된다."""
+    owner = {}
+    for fname, doc in shared.items():
+        for nid in (doc.get("nodes") or {}):
+            owner[nid] = fname
+    errors, n = [], 0
+    for fname, doc in shared.items():
+        for nid, als in (doc.get("alias_extensions") or {}).items():
+            if nid not in owner:
+                errors.append(f"[V7] alias_extensions 대상 노드 없음: {fname} → {nid}")
+                continue
+            node = shared[owner[nid]]["nodes"][nid]
+            node.setdefault("aliases", [])
+            for al in als or []:
+                al = dict(al); al.setdefault("source", "extension")
+                node["aliases"].append(al); n += 1
+    return errors, n
+
+
 def iter_aliases(shared):
     """모든 shared 파일의 alias 를 (파일, entity, node_id, alias dict) 로 평탄화"""
     for fname, doc in shared.items():
@@ -113,7 +143,9 @@ def iter_aliases(shared):
 # ──────────────────────────────────────────────
 
 def db_columns(con, table):
-    return [c[1] for c in con.execute(f"pragma table_info({table})")]
+    # 소문자 정규화 — SQLite 컬럼명은 대소문자를 구분하지 않으며,
+    # 1차 채권은 대문자·2차 배포본(2026-08-24)은 전부 소문자라 yaml 표기가 섞여 있다.
+    return [c[1].lower() for c in con.execute(f"pragma table_info({table})")]
 
 
 def db_distinct(con, table, column):
@@ -148,10 +180,10 @@ def validate(con, enums, shared, codebooks):
         t, c, raw = al.get("table"), al.get("column"), al.get("raw")
         status = al.get("status", "confirmed")
         where = f"{fname} {node_id} ({t}.{c} = {raw!r})"
-        if t not in TABLE_CLASS:
+        if t not in ALIAS_TABLE_CLASS:
             errors.append(f"[V5] 미지의 테이블: {where}")
             continue
-        if c not in db_columns(con, t):
+        if (c or "").lower() not in db_columns(con, t):
             errors.append(f"[V5] 컬럼 없음: {where}")
             continue
         nraw = norm(raw)
@@ -287,6 +319,10 @@ def emit_ttl(shared, con=None):
     L.append(":FinancialProduct a owl:Class .")
     for t, cls in TABLE_CLASS.items():
         L.append(f":{cls} rdfs:subClassOf :FinancialProduct ; rdfs:comment \"SQLite 테이블 {t}\"@ko .")
+    L.append("# ── 외부 수집 보조 테이블 (마스터 아님 — Security alias 원천, 상품→종목 관계는 이 테이블이 edge 역할) ──")
+    for cls in dict.fromkeys(EXT_CLASS.values()):
+        tables = ", ".join(t for t, c in EXT_CLASS.items() if c == cls)
+        L.append(f":{cls} a owl:Class ; rdfs:comment \"외부 수집 테이블 {tables} (발행일 ≤ 2026-08-24)\"@ko .")
     L.append("")
     L.append("# 상품종류 — 2026-08-22 고립 해소: 이전에는 :ETF·:ETN 이 계층 어디에도 안 걸린 채 떠 있었다")
     L.append(":ETF rdfs:subClassOf :FinancialProduct ; rdfs:comment \"상장지수펀드 — 운용사가 설정한 펀드\"@ko .")
@@ -301,15 +337,21 @@ def emit_ttl(shared, con=None):
             L.append(f"# 판별자: {t}.pd_grp_no → {detail} (실측). :ETF 질의는 pd_grp_no='ETF' 필터 필수")
     L.append("")
 
+    declared_cls, declared_prop = set(), set()
     for fname, doc in shared.items():
         entity, prop = doc.get("entity"), doc.get("property")
         absent = doc.get("absent_in") or {}
         have_tables = sorted({al["table"] for _, _, _, al in iter_aliases({fname: doc})
                               if al.get("status", "confirmed") == "confirmed"})
         L.append(f"# ── {entity} (shared/{fname}) ──")
-        L.append(f":{entity} a owl:Class .")
+        if entity not in declared_cls:   # 같은 entity 를 여러 파일(수동 + 자동 생성)이 선언할 수 있다 — 한 번만
+            L.append(f":{entity} a owl:Class .")
+            declared_cls.add(entity)
+        if prop and prop in declared_prop:
+            prop = None
         if prop:
-            domains = " ".join(f":{TABLE_CLASS[t]}" for t in have_tables)
+            declared_prop.add(prop)
+            domains = " ".join(f":{c}" for c in dict.fromkeys(ALIAS_TABLE_CLASS[t] for t in have_tables))
             L.append(f":{prop} a owl:ObjectProperty ;")
             L.append(f"    rdfs:domain [ owl:unionOf ( {domains} ) ] ;")
             L.append(f"    rdfs:range :{entity} ;")
@@ -329,6 +371,8 @@ def emit_ttl(shared, con=None):
             L.append(f":{node_id} a :{entity}{lab} .")
             if node.get("parent"):
                 L.append(f":{node_id} skos:broader :{node['parent']} .")
+        for e in doc.get("edges") or []:
+            L.append(f":{e['src']} :{e['predicate']} :{e['dst']} .")
         L.append("")
 
     with open(TTL_PATH, "w", encoding="utf-8", newline="\n") as f:  # 커밋 대상 — LF 고정 (CRLF 상태 노이즈 방지)
@@ -351,20 +395,28 @@ def report(con, enums, shared, distinct_cache, warnings):
             ke = (spec or {}).get("kg_entity")
             if ke and t in TABLE_CLASS:
                 pointer_cols.setdefault(ke, set()).add((t, col))
+    # entity 단위로 집계 — 수동 파일(index.yaml)과 자동 파일(index_auto.yaml)이 같은 entity·컬럼을 나눠 가지므로
+    # 파일별로 찍으면 "1/905" 같은 오해를 낳는다 (2026-08-25). 매핑 집합은 entity 안에서 합산하고 파일 목록만 병기.
+    by_entity = {}   # entity → {"files": [...], "cols": {(t,c): set(raw)}, "absent": {t: why}, "alias_ext": int}
     for fname, doc in shared.items():
         entity = doc.get("entity")
-        lines.append(f"## {entity}  (shared/{fname})")
-        # entity 가 매달린 (table, column) 별로 매핑률 계산
-        cols = {key: set() for key in pointer_cols.get(entity, set())}
+        e = by_entity.setdefault(entity, {"files": [], "cols": {}, "absent": {}})
+        e["files"].append(fname)
+        for key in pointer_cols.get(entity, set()):
+            e["cols"].setdefault(key, set())
         for _, _, node_id, al in iter_aliases({fname: doc}):
             key = (al["table"], al["column"])
             status = al.get("status", "confirmed")
-            cols.setdefault(key, set())
+            e["cols"].setdefault(key, set())
             if status == "confirmed":
-                cols[key].add(norm(al["raw"]))
+                e["cols"][key].add(norm(al["raw"]))
             else:
                 pendings.append((entity, node_id, al))
-        for (t, c), mapped in sorted(cols.items()):
+        for t, why in (doc.get("absent_in") or {}).items():
+            e["absent"][t] = why
+    for entity, e in by_entity.items():
+        lines.append(f"## {entity}  (shared/{' + '.join(e['files'])})")
+        for (t, c), mapped in sorted(e["cols"].items()):
             dist = distinct_cache.get((t, c))
             if dist is None:
                 dist = db_distinct(con, t, c)
@@ -375,7 +427,7 @@ def report(con, enums, shared, distinct_cache, warnings):
                 lines.append(f"    - 미매핑 {v!r}  ({n:,}행)")
             if len(unmapped) > 5:
                 lines.append(f"    - … 외 {len(unmapped)-5}종")
-        for t, why in (doc.get("absent_in") or {}).items():
+        for t, why in e["absent"].items():
             lines.append(f"- {t} : absent ({why})")
         lines.append("")
     if pendings:
@@ -414,8 +466,12 @@ def main():
         print("⚠️  shared/*.yaml 이 없습니다 — 만들 KG 가 없습니다")
         sys.exit(1)
 
+    ext_errors, n_ext = apply_alias_extensions(shared)
+    if n_ext:
+        print(f"           alias_extensions 적용 {n_ext}건")
     con = sqlite3.connect(args.db)
     errors, warnings, distinct_cache = validate(con, enums, shared, codebooks)
+    errors = ext_errors + errors
     print(f"🔍 [2 Validate] 오류 {len(errors)} · 경고 {len(warnings)}")
     for e in errors:
         print(f"   ❌ {e}")

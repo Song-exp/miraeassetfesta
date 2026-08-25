@@ -138,5 +138,265 @@ nodes:
       - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "중동/아프리카", source: manual, evidence: "99건"}
       - {table: overseas_etfs, column: wu_inv_rgn,       raw: "Africa",       source: manual, evidence: "1건"}
 
+  # ── 2026-08-25 해외ETF wu_inv_rgn 45종 국가/권역 노드 (graph_sources_review §3) — parent 로 기존 권역 계층에 연결 ──
+  Region_Brazil:
+    label_ko: 브라질
+    label_en: Brazil
+    parent: Region_LatinAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Brazil", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Mexico:
+    label_ko: 멕시코
+    label_en: Mexico
+    parent: Region_LatinAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Mexico", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Chile:
+    label_ko: 칠레
+    label_en: Chile
+    parent: Region_LatinAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Chile", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Peru:
+    label_ko: 페루
+    label_en: Peru
+    parent: Region_LatinAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Peru", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Colombia:
+    label_ko: 콜롬비아
+    label_en: Colombia
+    parent: Region_LatinAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Colombia", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Argentina:
+    label_ko: 아르헨티나
+    label_en: Argentina
+    parent: Region_LatinAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Argentina", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Canada:
+    label_ko: 캐나다
+    label_en: Canada
+    parent: Region_NorthAmerica
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Canada", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_UK:
+    label_ko: 영국
+    label_en: United Kingdom
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "United Kingdom", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Switzerland:
+    label_ko: 스위스
+    label_en: Switzerland
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Switzerland", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Germany:
+    label_ko: 독일
+    label_en: Germany
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Germany", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Norway:
+    label_ko: 노르웨이
+    label_en: Norway
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Norway", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Sweden:
+    label_ko: 스웨덴
+    label_en: Sweden
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Sweden", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Spain:
+    label_ko: 스페인
+    label_en: Spain
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Spain", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Netherlands:
+    label_ko: 네덜란드
+    label_en: Netherlands
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Netherlands", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Italy:
+    label_ko: 이탈리아
+    label_en: Italy
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Italy", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Ireland:
+    label_ko: 아일랜드
+    label_en: Ireland
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Ireland", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Iceland:
+    label_ko: 아이슬란드
+    label_en: Iceland
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Iceland", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Greece:
+    label_ko: 그리스
+    label_en: Greece
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Greece", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_France:
+    label_ko: 프랑스
+    label_en: France
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "France", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Finland:
+    label_ko: 핀란드
+    label_en: Finland
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Finland", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Denmark:
+    label_ko: 덴마크
+    label_en: Denmark
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Denmark", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Belgium:
+    label_ko: 벨기에
+    label_en: Belgium
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Belgium", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Austria:
+    label_ko: 오스트리아
+    label_en: Austria
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Austria", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Poland:
+    label_ko: 폴란드
+    label_en: Poland
+    parent: Region_Europe
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Poland", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Israel:
+    label_ko: 이스라엘
+    label_en: Israel
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Israel", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_SaudiArabia:
+    label_ko: 사우디아라비아
+    label_en: Saudi Arabia
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Saudi Arabia", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_UAE:
+    label_ko: 아랍에미리트
+    label_en: United Arab Emirates
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "United Arab Emirates", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Turkey:
+    label_ko: 튀르키예
+    label_en: Turkey
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Turkey", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_SouthAfrica:
+    label_ko: 남아프리카공화국
+    label_en: South Africa
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "South Africa", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Qatar:
+    label_ko: 카타르
+    label_en: Qatar
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Qatar", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Kuwait:
+    label_ko: 쿠웨이트
+    label_en: Kuwait
+    parent: Region_MEA
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Kuwait", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Taiwan:
+    label_ko: 대만
+    label_en: Taiwan
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Taiwan", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Indonesia:
+    label_ko: 인도네시아
+    label_en: Indonesia
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Indonesia", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Thailand:
+    label_ko: 태국
+    label_en: Thailand
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Thailand", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Singapore:
+    label_ko: 싱가포르
+    label_en: Singapore
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Singapore", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Philippines:
+    label_ko: 필리핀
+    label_en: Philippines
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Philippines", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Malaysia:
+    label_ko: 말레이시아
+    label_en: Malaysia
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Malaysia", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_HongKong:
+    label_ko: 홍콩
+    label_en: Hong Kong
+    parent: Region_China
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Hong Kong", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_ASEAN:
+    label_ko: 아세안(동남아)
+    label_en: ASEAN
+    parent: Region_Asia
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "ASEAN", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_AsiaPacific:
+    label_ko: 아시아태평양
+    label_en: Asia Pacific
+    parent: Region_Global
+    note: "'Asia Pacific' raw 는 기존 Region_Asia alias(pending) 가 선점 — 이 노드는 호주·NZ·ex Japan 의 상위 권역 용도"
+    aliases: []
+  Region_AsiaPacificExJapan:
+    label_ko: 아시아태평양(일본 제외)
+    label_en: Asia Pacific ex Japan
+    parent: Region_AsiaPacific
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Asia Pacific ex Japan", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_Australia:
+    label_ko: 호주
+    label_en: Australia
+    parent: Region_AsiaPacific
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Australia", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+  Region_NewZealand:
+    label_ko: 뉴질랜드
+    label_en: New Zealand
+    parent: Region_AsiaPacific
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "New Zealand", source: rule, evidence: "2차 해외ETF wu_inv_rgn (2026-08-25)"}
+
 absent_in:
   domestic_bonds: "투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)"

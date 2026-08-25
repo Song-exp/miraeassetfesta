@@ -366,20 +366,28 @@ def report(con, enums, shared, distinct_cache, warnings):
             ke = (spec or {}).get("kg_entity")
             if ke and t in TABLE_CLASS:
                 pointer_cols.setdefault(ke, set()).add((t, col))
+    # entity 단위로 집계 — 수동 파일(index.yaml)과 자동 파일(index_auto.yaml)이 같은 entity·컬럼을 나눠 가지므로
+    # 파일별로 찍으면 "1/905" 같은 오해를 낳는다 (2026-08-25). 매핑 집합은 entity 안에서 합산하고 파일 목록만 병기.
+    by_entity = {}   # entity → {"files": [...], "cols": {(t,c): set(raw)}, "absent": {t: why}, "alias_ext": int}
     for fname, doc in shared.items():
         entity = doc.get("entity")
-        lines.append(f"## {entity}  (shared/{fname})")
-        # entity 가 매달린 (table, column) 별로 매핑률 계산
-        cols = {key: set() for key in pointer_cols.get(entity, set())}
+        e = by_entity.setdefault(entity, {"files": [], "cols": {}, "absent": {}})
+        e["files"].append(fname)
+        for key in pointer_cols.get(entity, set()):
+            e["cols"].setdefault(key, set())
         for _, _, node_id, al in iter_aliases({fname: doc}):
             key = (al["table"], al["column"])
             status = al.get("status", "confirmed")
-            cols.setdefault(key, set())
+            e["cols"].setdefault(key, set())
             if status == "confirmed":
-                cols[key].add(norm(al["raw"]))
+                e["cols"][key].add(norm(al["raw"]))
             else:
                 pendings.append((entity, node_id, al))
-        for (t, c), mapped in sorted(cols.items()):
+        for t, why in (doc.get("absent_in") or {}).items():
+            e["absent"][t] = why
+    for entity, e in by_entity.items():
+        lines.append(f"## {entity}  (shared/{' + '.join(e['files'])})")
+        for (t, c), mapped in sorted(e["cols"].items()):
             dist = distinct_cache.get((t, c))
             if dist is None:
                 dist = db_distinct(con, t, c)
@@ -390,7 +398,7 @@ def report(con, enums, shared, distinct_cache, warnings):
                 lines.append(f"    - 미매핑 {v!r}  ({n:,}행)")
             if len(unmapped) > 5:
                 lines.append(f"    - … 외 {len(unmapped)-5}종")
-        for t, why in (doc.get("absent_in") or {}).items():
+        for t, why in e["absent"].items():
             lines.append(f"- {t} : absent ({why})")
         lines.append("")
     if pendings:

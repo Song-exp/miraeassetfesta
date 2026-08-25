@@ -55,7 +55,7 @@ def test_risk_grade_6_valid(ctx):
 
 def test_cutoff_future(ctx):
     r = answer_question("T-07", "2027년 만기 예정 수익률 전망 알려줘", ctx=ctx)
-    assert "[Gate] 기각" in r.think_trace and "2026-07-11" in r.answer
+    assert "[Gate] 기각" in r.think_trace and "2026-08-22" in r.answer
 
 
 # ── KG Ground — 표기 매핑 ───────────────────────────────────────────────
@@ -94,4 +94,4 @@ class FakePlanner:
 def test_full_path_with_planner(ctx):
     r = answer_question("T-10", "국내 ETF 몇 개야?", planner=FakePlanner(), ctx=ctx)
     assert "[Execute] 1행 조회" in r.think_trace
-    assert "1202" in r.retrieved_context   # ETF 1,202건 — 감사로 확정된 수치
+    assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측

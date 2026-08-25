@@ -6,7 +6,7 @@
 세 게이트:
   ① absent  — 온톨로지 속성 부재 ("위험등급 낮은 해외ETF")
   ② enum    — 화이트리스트 밖 값 ("신용등급 AAAA" · "위험등급 9등급")
-  ③ cutoff  — 데이터 기준일(2026-07-11) 이후 시점 질의
+  ③ cutoff  — 데이터 기준일(2026-08-22) 이후 시점 질의
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from .loader import RuntimeContext
 
-DATA_CUTOFF = "2026-07-11"
+DATA_CUTOFF = "2026-08-22"
 
 # 질의 문구 → 대상 테이블 후보. 🔴 '해외ETF' 가 'ETF' 보다 먼저 (부분 문자열)
 _TABLE_HINTS: list[tuple[str, str]] = [

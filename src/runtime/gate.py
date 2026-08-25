@@ -33,6 +33,14 @@ _TABLE_HINTS: list[tuple[str, str]] = [
     ("펀드", "public_funds"),
 ]
 
+# 교차질의 힌트 — 구성종목 보유 조건은 외부 Holdings 테이블(ext_*)을 함께 본다는 신호.
+# 테이블을 "하나 고르기"가 아니라 "해당하는 전부"로 라우팅한다 (주최 8/24: 교차질의는 한 호출에서 복수 상품군).
+_CROSS_HINTS = ("보유한", "보유중", "편입", "구성종목", "담고 있는", "포함된", "들어있는")
+
+
+def is_cross_query(question: str) -> bool:
+    return any(h in question for h in _CROSS_HINTS) or len(detect_tables(question)) >= 2
+
 # 질의 문구 → shared 개체 축. absent 검사의 좌변
 _ENTITY_HINTS: list[tuple[str, str]] = [
     ("위험등급", "RiskGrade"),
@@ -46,7 +54,8 @@ _ENTITY_HINTS: list[tuple[str, str]] = [
 # 신용등급 토큰 — 한글 사이의 대문자 시퀀스 (AAAA·AA+ 등)
 _CRD_TOKEN = re.compile(r"\b([A-D]{1,4}[+\-0]?)\b")
 _RISK_GRADE = re.compile(r"(?:위험\s*등급|위험등급)\s*(\d+)\s*등급|(\d+)\s*등급")
-_FUTURE = re.compile(r"(202[7-9]|20[3-9]\d)\s*년|2026\s*년\s*(?:8|9|10|11|12)\s*월")
+# 기준일 2026-08-22 — 2026년 8월은 기준일 포함 월이라 허용, 9월 이후만 미래 (2차 데이터 전환 2026-08-25)
+_FUTURE = re.compile(r"(202[7-9]|20[3-9]\d)\s*년|2026\s*년\s*(?:9|10|11|12)\s*월")
 
 
 @dataclass

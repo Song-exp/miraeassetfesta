@@ -14,7 +14,7 @@
 #     00040084 도이치→디더블유에스자산운용. 병합·개명은 담당(Song-exp) 확인 후 진행.
 # 🔴 미해결: former_names(동양→우리 등 구상호) 는 DB 값이 아니라 질의 표기라 kg_alias 에 못 넣음.
 #           질의측 동의어 테이블(kg_synonym)이 별도로 필요 — 후속 작업.
-# 🔴 미해결: domestic_bonds.PD_PBCM 발행사 8,018종은 규칙 정규화 트랙 별도 (§4.1).
+# 🔴 미해결: domestic_bonds.pd_pbcm 발행사 8,018종은 규칙 정규화 트랙 별도 (§4.1).
 
 entity: Organization
 description: 운용사·발행사 (자산운용사 브랜드 기준. 정식 법인명 아님 — 코드북 주석 참조)
@@ -366,4 +366,4 @@ nodes:
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080359", source: miraeasset_web, evidence: "ADMICN='더제이자산운용' 6종목 전건"}
 
-absent_in: {}   # 4테이블 모두 운용사/발행사 컬럼 존재 (해외ETF cu_fund_mgmt_co · 채권 PD_PBCM 은 미매핑 상태로 추적)
+absent_in: {}   # 4테이블 모두 운용사/발행사 컬럼 존재 (해외ETF cu_fund_mgmt_co · 채권 pd_pbcm 은 미매핑 상태로 추적)

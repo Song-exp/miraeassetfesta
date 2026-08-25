@@ -95,3 +95,33 @@ def test_full_path_with_planner(ctx):
     r = answer_question("T-10", "국내 ETF 몇 개야?", planner=FakePlanner(), ctx=ctx)
     assert "[Execute] 1행 조회" in r.think_trace
     assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측
+
+
+def test_cutoff_august_allowed(ctx):
+    # 기준일 2026-08-22 — 8월은 기준일 포함 월이라 게이트를 통과해야 한다 (2차 데이터 전환 회귀 테스트)
+    r = answer_question("T-11", "2026년 8월 상장한 국내 ETF 알려줘", ctx=ctx)
+    assert "[Gate] 기각" not in r.think_trace
+
+
+def test_cutoff_october_rejected(ctx):
+    r = answer_question("T-12", "2026년 10월에 상장 예정인 국내 ETF 알려줘", ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "2026-08-22" in r.answer
+
+
+def test_planner_context_has_rules(ctx):
+    txt = ctx.planner_context(["domestic_etfs", "public_funds"])
+    assert "## domestic_etfs" in txt and "구매가능" in txt
+
+
+def test_cross_query_guard_allows_ext_join():
+    from src.runtime.pipeline import validate_sql
+    ok = "SELECT e.pd_abrv_nm FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent LIKE '%삼성전자%' LIMIT 10"
+    assert validate_sql(ok) is None
+    assert validate_sql("SELECT * FROM ext_etf_holdings LIMIT 5") is not None      # 마스터 없이 ext 단독 금지
+    assert validate_sql("SELECT * FROM domestic_etfs JOIN sqlite_master LIMIT 5") is not None
+
+
+def test_cross_query_detected(ctx):
+    from src.runtime import gate
+    assert gate.is_cross_query("삼성전자를 보유한 국내/해외 ETF와 공모펀드를 연 수익률 기준 TOP10 알려줘")
+    assert not gate.is_cross_query("KODEX 200 총보수 알려줘")

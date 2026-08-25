@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from . import gate
-from .loader import TABLES, RuntimeContext, connect_readonly, load_context
+from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly, load_context
 
 MAX_ROWS = 30            # retrieved_context 폭주 방지 — 근거는 표본이면 충분하다
 SQL_TIMEOUT_S = 10.0
@@ -54,6 +54,10 @@ def validate_sql(sql: str) -> str | None:
     if not used:
         m = re.search(r"\bfrom\s+([\w.]+)", s, re.I)
         return f"허용 테이블 밖: {m.group(1) if m else '?'}"
+    # FROM/JOIN 에 등장하는 모든 테이블이 마스터 4 + 외부 ext_* 안에 있어야 한다 (교차질의 조인 허용, 그 외 차단)
+    for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", s, re.I):
+        if t.lower() not in TABLES and t.lower() not in EXT_TABLES:
+            return f"허용 테이블 밖: {t}"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
     return None
@@ -122,7 +126,9 @@ def answer_question(
         result.answer = g.answer
         return result
     tables = gate.detect_tables(q)
-    step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}")
+    cross = gate.is_cross_query(q)
+    step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}"
+         + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else ""))
 
     if planner is None:
         step("[Plan] SQL 생성기 미연결 — 답변 보류 (Ground·Gate 결과는 유효)")

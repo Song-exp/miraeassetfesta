@@ -4,172 +4,393 @@
 #
 # 범위: 2단계(결측 판정 · 컬럼 판단 · 쿼리 규칙 · 검증된 축 유도).
 #   개체·관계 매핑(entities/class_hierarchy)은 4단계(워크샵 후). → docs/eda/domestic_etfs_notes.md §F 참조.
+#
+# 이력:
+#   2026-08-18 감사 (1차 데이터 7/11) — docs/eda/etf_audit_2026-08-18.md
+#   🔴 2026-08-25 **2차 데이터(8/24 배포 · 기준일 2026-08-22) 기준 재작성** — docs/DATA_V2_2026-08-24_impact.md §2.2·§6
+#      · 행 1,734 → 1,780 (신규 46 = ETF 33 + ETN 13 · 소멸 0 · 신규 중 28건이 7/11 이후 상장)
+#      · 컬럼 73 → 98 (+33 신규 / −8 삭제)
+#      · 1차에서 "데이터 미제공"으로 판정했던 배당·추적오차·괴리율·현재가·전일NAV 가 2차에서 채워짐 → 판정 전면 갱신
+#      · 🔴 회귀 1건: cu_lev_fector 부호 소실 (아래 trap)
+#      · 삭제 8종(pd_sect_nm · pd_nav_pshr · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · nru_mkt_inav · nru_mkt_diff_rt · pd_lst_price) 항목 제거
+#   수치는 전부 2차 DB 실측(2026-08-25). "추정"이라 적은 것만 추정.
 
 domain: domestic_etfs
 
-# ── 행의 낟알 (2026-08-18 감사 확정) ──
+# ── 행의 낟알 (2026-08-25 2차 재확인) ──
 row_grain:
-  구조: 행 = 상품 (pd_itm_no 완전 유일 — 1,734행 = 1,734 distinct)
+  구조: 행 = 상품 (pd_itm_no 완전 유일 — 1,780행 = 1,780 distinct)
   evidence_grade: A
-  note: 공모펀드(행=종목×속성태그 8.6배 중복)와 달리 이 테이블은 행이 곧 상품이다. COUNT(*) 를 그대로 쓸 수 있다.
+  note: >-
+    이 테이블은 행이 곧 상품이다. COUNT(*) 를 그대로 쓸 수 있다.
+    (공모펀드도 2차에서 itm_no 유일로 정상화됐으므로 "펀드와 달리" 서술은 폐기.)
+    ETF 1,235 · ETN 545 (30.6%) 혼입 — 상품군 분리는 pd_grp_no (product_group 참조).
 
 columns:
+  # ── 식별자 (2차 신규 — 외부 조인 키) ──
+  pd_ticker:
+    korean_name: 티커(6자리)
+    missing_reason: mixed
+    answer_policy: "외부 Holdings·시세 데이터 조인 키. ETN 545건은 전부 NULL(구조상 정상), ETF 27건 NULL."
+    note: >-
+      2차 신규. 1,208건 유효 = pd_itm_no_ma 의 앞 'A' 를 뗀 값과 1,208/1,208 일치.
+      build_db.py CODE_COLUMNS 로 문자열 고정 — 선행 0 (예: '0000Z0') 보존됨. 정수 비교 금지.
+  pd_isin_cd:
+    korean_name: ISIN
+    missing_reason: mixed
+    note: 2차 신규. 유효 1,208건 = pd_itm_no 와 1,208/1,208 동일 → 중복 정보. 조인 키는 pd_itm_no 를 쓴다. ETN 545 NULL.
+  pd_ric:
+    korean_name: RIC(로이터 코드)
+    missing_reason: mixed
+    note: 2차 신규. 유효 1,208건 ('0000Z0.KS' 형태 = pd_ticker + '.KS'). ETN 545 NULL.
+
   # ── 규모 (단위 주의) ──
   du_last_aum:
     korean_name: 최종AUM(순자산총액)
-    missing_reason: missing
-    answer_policy: "AUM 질의 답변 가능(결측 16.2%). 단위 KRW(원). 해외ETF(USD)와 통합 정렬 금지 — 상품군별 분리 제시."
-    note: "단위 KRW 확정 (KODEX200 = 28.4조원, 실제값 일치). 해외ETF du_last_aum은 USD라 숫자 직접 비교 시 순위 역전(함정②). 0값 411건은 미거래/신규."
+    missing_reason: mixed
+    answer_policy: "AUM 질의 답변 가능 — ETF 기준 결측 4.8%(59건)·0값 6건. 단위 KRW(원). 해외ETF(USD)와 통합 정렬 금지 — 상품군별 분리 제시."
+    note: >-
+      단위 KRW 확정 (1차 KODEX200 = 28.4조원 실제값 일치). 해외ETF du_last_aum은 USD라 숫자 직접 비교 시 순위 역전(함정②).
+      🔴 2026-08-25 2차 — 결측·0값이 **ETN 에 몰려 있다**: ETN NULL 123 + 0값 422 (= cu_strtegy 'C' 422건과 동일 집단, 추정).
+      ETF 는 NULL 59 · 0값 6 뿐. 1차의 "결측 16.2%·0값 411" 은 ETN 몫이었다.
     unit: krw
     layer:
       scale: KRW (원)
-      cross_sort: "해외ETF du_last_aum(USD)와 나란히 정렬 불가. 7/11 환율(코드북⑤) 확정 후에만 통합 가능."
+      cross_sort: "해외ETF du_last_aum(USD)와 나란히 정렬 불가. 8/21 환율(코드북⑤ 갱신 후)로만 통합 가능."
 
-  # ── 보수 ──
+  # ── 보수 (2차에서도 개선 없음) ──
   cu_charge_rt:
     korean_name: 총보수요율
     missing_reason: missing
-    answer_policy: "'보수 낮은 ETF' 질의는 `cu_charge_rt > 0 AND pd_grp_no='ETF'` 로 한정하고 **유효 모수 67건** 명시. 0값은 미입력이므로 정렬에서 제외."
-    note: 결측 87.5%. non-null 217건 중 150건이 0(미입력). 실질 유효 67건(3.9%). 배당형 상품명 113건도 보수 0 → 0=미입력 확증. ETN 532건은 전부 NULL(ETN은 보수 개념 다름).
+    answer_policy: "'보수 낮은 ETF' 질의는 `cu_charge_rt > 0 AND pd_grp_no='ETF'` 로 한정하고 **유효 모수 67건** 명시. 0값은 미입력이므로 정렬에서 제외. 외부 보완(운용사 공시) 필요."
+    note: >-
+      2차 실측 동일 — ETF: NULL 1,018 · 0값 150 · 유효 67 (5.4%). ETN 545건 전부 NULL(ETN은 보수 개념 다름).
+      2차 데이터로도 개선되지 않은 몇 안 되는 컬럼.
     unit: percent
   cu_charge_etc_rt:
     korean_name: 기타비용요율
     missing_reason: missing
     answer_policy: "'데이터 미제공'. 기타비용 질의 불가."
-    note: non-null 1,553건이 전부 0. 통째 미입력.
+    note: 2차도 non-null 217건 전부 0. 통째 미입력.
     unit: percent
 
-  # ── 배당 (전부 0 = 미입력) ──
+  # ── 배당/분배 (🟢 2차에서 채워짐 — 1차 "전부 0 = 미입력" 판정 폐기) ──
   pd_divd_amt_pshr:
-    korean_name: 주당배당금
-    missing_reason: missing
-    answer_policy: "'배당 많이 주는 ETF' 질의 → 정확한 배당액은 '데이터 미제공' 명시. 단 상품명에 '배당'/'커버드콜'/'고배당' 포함 ETF 113건은 '배당형 상품 목록'으로 조건부 안내 가능."
-    note: non-null 1,551건 전부 0. 배당형 상품명 113건도 전부 0 → 무배당이 아니라 미입력.
-  pd_dvid_yield:
-    korean_name: 배당수익률
-    missing_reason: missing
-    answer_policy: "'데이터 미제공'. 배당수익률 순위 질의 불가."
-    note: non-null 1,551건 전부 0. 미입력.
-  pd_dvid_cycl:
-    korean_name: 배당주기
-    missing_reason: missing
-    answer_policy: "월배당/분기배당 질의 → '데이터 미제공'. 상품명 '위클리'/'월배당' 등으로만 부분 유추."
+    korean_name: 주당분배금
+    missing_reason: mixed
+    answer_policy: >-
+      '분배금 많이 주는 ETF' Top-N 답변 가능 — `pd_grp_no='ETF' AND pd_divd_amt_pshr > 0` (유효 967건 = ETF 78.3%).
+      0값 241건은 무분배(추정)로 취급해 정렬에서 제외하되 "분배 실적 없음"으로 응답. ETN 545건 NULL = '데이터 미제공'.
     note: >-
-      🔴 2026-08-18 감사 정정 — **유효 0건이다.** 현행 DB 전 행이 공백('  ') 또는 NULL, distinct 1.
-      이전 "유효 183건" 은 재현되지 않는다 (구 빌드 관측이거나 오독). 100% 결측 컬럼으로 취급할 것.
+      🟢 2026-08-25 2차 — ETF: 유효 967 · 0값 241 · NULL 27. 상품명 '배당'/'커버드콜' 119건 중 0값은 3건뿐
+      → 1차의 "배당형도 전부 0 = 미입력" 근거가 사라졌으므로 0 = 무분배(추정)로 판정 전환.
+      기준일 pd_dvid_base_dt = 2026-08-22, 가격 기준 pd_dvid_prc_base_dt = 2026-08-20 (1,161건).
+    unit: krw
+    zero_is_value: true   # 0 = 무분배(추정). 정렬에서는 제외하되 "없음"으로 답한다
+  pd_divd_amt_ann:
+    korean_name: 연간분배금(주당)
+    missing_reason: mixed
+    answer_policy: "연간 분배금 질의 가능 — 유효 588건. NULL 951건(ETN 545 + ETF 406)은 '데이터 미제공'."
+    note: 2차 신규. 유효 588 · 0값 241 · NULL 951. pd_divd_amt_pshr(최근 1회분)와 별개 — 연간 합산 개념(추정).
+    unit: krw
+    zero_is_value: true
+  pd_dvid_yield:
+    korean_name: 분배수익률
+    missing_reason: mixed
+    answer_policy: "분배수익률 순위 질의 가능 — `pd_dvid_yield > 0` (ETF 967건). 0값 241 = 무분배(추정), ETN NULL."
+    note: 🟢 2차 — ETF 유효 967 · 0값 241 · NULL 27. pd_divd_amt_pshr 와 유효/0 집합이 동일.
+    unit: percent
+    zero_is_value: true
+  pd_dvid_cycl:
+    korean_name: 분배주기
+    missing_reason: mixed
+    answer_policy: >-
+      🟢 월배당/분기배당 질의 **직답 가능** — ETF 1,208건 전건 유효. 'M' = 월분배 196건.
+      ETN 은 공백('  ') 422 + NULL 123 = 전부 결측(구조상 정상) → 분배 질의에서 ETN 제외.
+    note: >-
+      🟢 2026-08-25 2차 정정 — 1차 "유효 0건·100% 결측" 판정 폐기. ETF: Q 698 · A 306 · M 196 · S 8 (+ NULL 27).
+      pd_dvid_pay_cnt(연 지급 횟수 4/1/12/2)와 1:1 대응. ETN 의 '  ' 공백문자열은 TRIM 후 빈값 → 결측 처리.
+    value_semantics:
+      "M": 월분배 (연 12회)
+      "Q": 분기분배 (연 4회)
+      "S": 반기분배 (연 2회)
+      "A": 연분배 (연 1회)
+      "  ": missing   # ETN 422건 — 공백 패딩
+  pd_dvid_pay_cnt:
+    korean_name: 연간분배횟수
+    missing_reason: mixed
+    note: 2차 신규. 12/4/2/1 = pd_dvid_cycl M/Q/S/A 와 완전 대응. NULL 572 (ETN 545 + ETF 27).
+  pd_dvid_pay_months:
+    korean_name: 분배지급월
+    missing_reason: mixed
+    answer_policy: "'N월에 분배하는 ETF' 질의 직답 가능 — 영문 월명 콤마 구분('January,April,July,October' 675건). LIKE '%April%' 로 검색."
+    note: 2차 신규. 15종 패턴. 12개월 전부 = 월분배 196건. NULL 572.
+  pd_dvid_nav:
+    korean_name: 분배기준NAV
+    missing_reason: mixed
+    note: 2차 신규. 유효 1,208 (ETF). 분배수익률 산출 분모(추정).
+  pd_dvid_tax_basis:
+    korean_name: 분배금과세기준
+    missing_reason: mixed
+    note: 2차 신규. 유효값이 'Gross' 1종뿐(1,208건) → 판별 정보 없음. 질의 대상 아님.
+  pd_dvid_base_dt:
+    korean_name: 분배정보기준일
+    missing_reason: mixed
+    note: 2차 신규. 단일값 20260822 (1,208건). 답변 시 "2026-08-22 기준" 병기.
+  pd_dvid_prc_base_dt:
+    korean_name: 분배가격기준일
+    missing_reason: mixed
+    note: 2차 신규. 20260820 이 1,161건, 나머지 31종 소수. 기준일 이질 시 답변에 병기.
+  pd_dvid_inc_dist:
+    korean_name: 분배소득구분
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'."
+    note: 2차 신규이지만 100% 결측.
 
-  # ── 전부 0 (미입력) ──
+  # ── 추적오차 · 괴리율 (🟢 2차에서 채워짐) ──
   du_chas_errt:
     korean_name: 추적오차율
-    missing_reason: missing
-    answer_policy: "'데이터 미제공'. 추적오차 질의 불가."
-    note: non-null 1,551건 전부 0.
+    missing_reason: mixed
+    answer_policy: "🟢 추적오차 질의 가능 — ETF 유효 1,160건(93.9%). `pd_grp_no='ETF' AND du_chas_errt > 0`. ETN 은 0값 422 + NULL 123 = 전부 무의미(구조상 정상)."
+    note: "🟢 2026-08-25 2차 정정 — 1차 \"전부 0\" 폐기. ETF: 유효 1,160 · 0값 16 · NULL 59. 기준일 du_chas_errt_base_dt = 20260821."
+    unit: percent
   du_diff_rt:
     korean_name: 괴리율
-    missing_reason: missing
-    answer_policy: "'데이터 미제공'. 괴리율 질의 불가."
-    note: non-null 1,517건 전부 0.
+    missing_reason: mixed
+    answer_policy: "🟢 괴리율 질의 가능 — ETF 유효 1,131건(91.6%). 음수 정상(시장가 < NAV). 0값 45건은 '괴리 없음'인지 미입력인지 구분 불가 → 정렬에서 제외."
+    note: "🟢 2차 정정 — ETF: 유효 1,131 · 0값 45 · NULL 59. ETN 도 360건 유효. 기준일 du_diff_rt_base_dt = 20260821."
+    unit: percent
+  du_chas_errt_base_dt:
+    korean_name: 추적오차기준일
+    missing_reason: mixed
+    note: 2차 신규. 20260821 대다수, 22종 소수 기준일. NULL 182.
+  du_diff_rt_base_dt:
+    korean_name: 괴리율기준일
+    missing_reason: mixed
+    note: 2차 신규. du_chas_errt_base_dt 와 동일 분포.
+  du_nav_base_dt:
+    korean_name: NAV기준일
+    missing_reason: mixed
+    note: 2차 신규. 20260821 이 1,534건, 20260723 10 · 20260521 8 등 구식 기준일 소수 → NAV 답변 시 기준일 병기.
 
-  # ── 기초지수 ──
+  # ── 변동성 (2차 신규 — "변동성 낮은 ETF" 질의 신규 가능) ──
+  du_vlty_1y:
+    korean_name: 1년변동성
+    missing_reason: mixed
+    answer_policy: "'변동성 낮은/높은 ETF' 질의 가능 — 유효 1,289건(72.4%). `du_vlty_1y > 0` (0값 20건은 미산출 추정). 상장 1년 미만은 NULL."
+    note: 2차 신규. NULL 471 · 0값 20 · 범위 0~128. 기준일 du_vlty_base_dt = 20260821 (1,584건).
+    unit: percent
+  du_vlty_6m:
+    korean_name: 6개월변동성
+    missing_reason: mixed
+    note: 2차 신규. 결측 16.5%.
+    unit: percent
+  du_vlty_3m:
+    korean_name: 3개월변동성
+    missing_reason: mixed
+    note: 2차 신규. 결측 10.4%.
+    unit: percent
+  du_vlty_1m:
+    korean_name: 1개월변동성
+    missing_reason: mixed
+    note: 2차 신규. 결측 5.8%.
+    unit: percent
+  du_vlty_base_dt:
+    korean_name: 변동성기준일
+    missing_reason: mixed
+    note: 2차 신규. 20260821 1,584건 · 49종 소수 기준일.
+
+  # ── 채권형 ETF 지표 (fn_* · 2차 신규 · 채권/혼합 ETF 에만) ──
+  fn_average_coupon:
+    korean_name: 평균쿠폰
+    missing_reason: not_applicable
+    answer_policy: "채권 ETF 질의에만 사용 — 유효 199건(채권 122 · 혼합자산 63 · 기타 14). 주식형 ETF 는 개념 자체가 없으므로 '해당 없음'."
+    note: "2차 신규. 결측 88.8% 는 자산군상 해당 없음. fn_base_dt = 20260822."
+    unit: percent
+  fn_effective_maturity:
+    korean_name: 실효만기(년)
+    missing_reason: not_applicable
+    answer_policy: "채권 ETF 만기 질의 가능 — 유효 215건. 'fn_nominal_maturity' 와 값 동일(212종)."
+    note: 2차 신규.
+  fn_nominal_maturity:
+    korean_name: 명목만기(년)
+    missing_reason: not_applicable
+    note: 2차 신규. fn_effective_maturity 와 동일값 — 중복.
+  fn_average_quality:
+    korean_name: 평균신용등급(수치)
+    missing_reason: not_applicable
+    answer_policy: "유효 75건뿐. 값이 등급 서열 수치(1.0~5.6, 2.0 이 45건)로 보이나 스케일 정의 없음 → 답변 시 '수치형 평균 등급(스케일 미공개)' 단서. 추정."
+    note: 2차 신규. 스케일 미확정(추정 — 낮을수록 우량).
+  fn_portfolio_dt:
+    korean_name: 포트폴리오기준일
+    missing_reason: mixed
+    note: 2차 신규. 20260630 683 · 20260331 217 · 20250831 91 등 17종 — ETF 별로 이질. fn_* 답변 시 병기.
+  fn_base_dt:
+    korean_name: fn지표기준일
+    missing_reason: mixed
+    note: 2차 신규. 단일값 20260822 (1,155건).
+  fn_average_maturity:
+    korean_name: 평균만기
+    missing_reason: missing
+    answer_policy: "'데이터 미제공' — fn_effective_maturity 로 대체 안내."
+    note: 2차 신규이지만 100% 결측.
+  fn_effective_duration:
+    korean_name: 실효듀레이션
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'. 채권 ETF 듀레이션 질의는 답변 불가."
+    note: 2차 신규이지만 100% 결측.
+  fn_modified_duration:
+    korean_name: 수정듀레이션
+    missing_reason: missing
+    answer_policy: "'데이터 미제공'."
+    note: 2차 신규이지만 100% 결측.
+
+  # ── 기초지수 (🟢 2차 ref_base_index 로 해결 — cu_base_index 는 보조로 강등) ──
+  ref_base_index:
+    korean_name: 기초지수(참조 데이터)
+    missing_reason: mixed
+    answer_policy: >-
+      🟢 **기초지수 질의 1순위 컬럼**. ETF 1,208/1,235 (97.8%) 수록 · 905종. '같은 지수 추종 ETF' 검색은 이 컬럼으로.
+      ETN 545건 NULL = 구조상 정상(ETN 은 지수 아닌 발행사 지표 추종) → '데이터 미제공'이 아니라 '해당 없음'.
+    note: >-
+      2차 신규. 영문 정식 지수명('KRX Bio TOP 10 KRW', 'S&P 500 Daily JPY Hedged CR'). 한글 질의 매칭은
+      코드북(index_master — ref_base_index 기준으로 재작성 예정) 경유. 기준일 ref_base_dt = 20260822.
   cu_base_index:
-    korean_name: 기초지수
+    korean_name: 기초지수(원본 컬럼)
     missing_reason: missing
-    answer_policy: 기초지수 질의는 유효 58건 한정 + 모수 명시. 결측 대부분 공백문자열.
-    note: 결측 89.4%(유효 19종/58건). NULL 125 + 공백문자열 1,551. 상품명으로 부분 유추 가능.
+    answer_policy: "🔻 보조 컬럼으로 강등 — ref_base_index 를 먼저 쓰고, ref 가 NULL 인 ETF 27건에서만 참조."
+    note: 2차도 유효 56건/19종 (ETF). NULL 126 + 공백문자열 1,472. 1차와 동일하게 사실상 결측.
+  ref_base_dt:
+    korean_name: 참조데이터기준일
+    missing_reason: mixed
+    note: 2차 신규. 단일값 20260822 (1,208건).
 
-  # ── 수익률 (센티넬 + 이상치) ──
+  # ── 참조 분류 (2차 신규 · 정규화 정답지) ──
+  ref_fund_mgmt_co:
+    korean_name: 운용사(영문 정규 법인명)
+    missing_reason: mixed
+    answer_policy: >-
+      🟢 **운용사 정규화의 정답지** — 29종 영문 정식 법인명('Mirae Asset Global Investments Co Ltd').
+      cu_fund_mgmt_co(약칭·오염 혼재 100종)를 이 컬럼과 조인해 정규화. ETN 545 NULL(발행 증권사는 cu_fund_mgmt_co 로).
+    note: 2차 신규. 삼성 243 · 미래에셋 235 · KB 144 · 한국투자 118 … 'Samsung Active Asset Management' 25건은 삼성액티브자산운용(별도 법인).
+  ref_ast_type:
+    korean_name: 자산유형(참조)
+    missing_reason: mixed
+    answer_policy: "자산군 질의 교차검증용 — Equity 790 · Bond 135 · Alternatives 132 · Mixed Assets 83 · Money Market 30 · Commodity 19 · Other 19. wu_inv_ast_type(9종 한글)과 병행."
+    note: 2차 신규. ETN NULL. shared/asset_class.yaml 매핑 대상 (미매핑 '대체투자'·'기타' 판정에 참고).
+  ref_geo_focus:
+    korean_name: 투자지역(참조)
+    missing_reason: mixed
+    answer_policy: "지역 질의 교차검증용 — 23개국/권역. Korea 665 · USA 273 · Global 157 · China 56. wu_inv_rgn(11종 한글)보다 세분('Vietnam','Taiwan' 등 1건씩)."
+    note: 2차 신규. ETN NULL. 코드북 region_map.csv 와 대조.
+
+  # ── 수익률 (센티넬 유지 · 이상치 서술 완화) ──
   du_er_1y:
     korean_name: 1년수익률
     missing_reason: missing
-    answer_policy: "Top-N 질의 시 `du_er_1y > -100 AND du_er_1y IS NOT NULL` 로 센티넬 제외. 2,000% 초과 이상치는 단서 부기."
-    trap: "-100.0 이 98건 — 실제 -100%가 아니라 수치형 센티넬(상장폐지/미산출). max 2,738.95%(TIGER 200IT레버리지) 이상치."
-    note: 결측 20.6%. -100 센티넬 + 레버리지 이상치 동시 존재.
+    answer_policy: "Top-N 질의 시 `du_er_1y > -100 AND du_er_1y IS NOT NULL` 로 센티넬 제외. 상장 1년 미만 NULL 은 '산출 기간 미달'로 응답."
+    trap: "-100.0 이 110건(ETF 35 · ETN 75) — 실제 -100%가 아니라 수치형 센티넬(거래중단·상폐). 110건 전부 du_clpr=0 동반."
+    note: >-
+      2차 실측 — 결측 20.4%(364건). max 926.89% (1차 2,738% 이상치는 소멸 — 2,000% 초과 0건). 센티넬 규칙은 유지.
     unit: percent
 
-  # ── 100% 결측 (스냅샷 · 미수록) ──
+  # ── 현재가·거래량 (🟢 2차에서 채워짐 — 단 '실시간' 아님) ──
   ru_mkt_price:
-    korean_name: 현재가
-    missing_reason: not_applicable
-    answer_policy: "현재가 질의 → '데이터 미제공'. 대신 종가(du_clpr)로 안내. 7/11 마감 스냅샷이라 실시간가 없음."
-    note: 100% 결측. ru_(실시간) 접두사 — EOD 스냅샷이라 구조적으로 부재.
+    korean_name: 현재가(=종가 복사)
+    missing_reason: mixed
+    answer_policy: >-
+      🟢 현재가 질의 답변 가능 — 단 **실시간이 아니라 8/21 종가**(du_clpr 와 1,774/1,780 동일). 답변에 "2026-08-21 종가 기준" 명시.
+      0값 190건(ETF 56 · ETN 134)은 미거래 → 제외.
+    note: 🟢 2026-08-25 2차 정정 — 1차 "100% 결측·구조적 부재" 폐기. 유효 1,586. 해외ETF 와 같은 방식(종가 백필)으로 바뀜.
   ru_mkt_volume:
-    korean_name: 실시간거래량
-    missing_reason: not_applicable
-    answer_policy: "실시간 거래량 → '데이터 미제공'. 대신 du_vol_1d(일거래량)로 안내."
-    note: 100% 결측. ru_ 실시간 접두사.
-  nru_mkt_inav:
-    korean_name: 장중iNAV
-    missing_reason: not_applicable
-    answer_policy: "장중 iNAV → '데이터 미제공'. 대신 du_last_nav(최종NAV)로 안내."
-    note: 100% 결측. nru_ 장중실시간 접두사.
-  nru_mkt_diff_rt:
-    korean_name: 장중괴리율
-    missing_reason: not_applicable
-    answer_policy: "'데이터 미제공'."
-    note: 100% 결측. nru_ 장중실시간 접두사.
-  pd_sect_nm:
-    korean_name: ETF섹터명
-    missing_reason: missing
-    answer_policy: "섹터명 질의 → '데이터 미제공'. pd_sect_cd는 섹터가 아니라 상품유형 구분임(아래)."
-    note: 100% 결측. 🔴 섹터명이 없는 게 아니라 pd_sect_cd 자체가 섹터가 아님(상품구조 코드).
+    korean_name: 거래량(=일거래량 복사)
+    missing_reason: mixed
+    answer_policy: "🟢 답변 가능 — du_vol_1d 와 1,776/1,780 동일. '실시간' 표현 금지, '8/21 일거래량'으로."
+    note: 🟢 2차 정정. 0값 313 = 당일 미거래.
+
+  # ── 상품유형 코드 (섹터 아님) ──
   pd_sect_cd:
     korean_name: ETF섹터코드(실제=상품유형구분)
     missing_reason: present
-    answer_policy: "'섹터' 질의에 이 코드로 답하지 말 것 — 섹터가 아니라 상품유형 구분임."
-    note: "🔴 교차대조로 해독: 섹터 아님. 2=일반ETF(1,126) / 3=일반ETN(406) / 8=단일종목ETF(16, 삼성전자·SK하이닉스) / 4·9=ETN소수 / NULL=ETF60+ETN123. pd_grp_no와 거의 대응."
+    answer_policy: "'섹터' 질의에 이 코드로 답하지 말 것 — 섹터가 아니라 상품유형 구분임. 섹터·테마는 ref_base_index·상품명·외부 Holdings 로."
+    note: >-
+      🔴 교차대조로 해독: 섹터 아님. 2차 실측 — 2=일반ETF(1,160) / 3=일반ETN(419) / 8=단일종목ETF(16) / 4=특수구조ETN(1) / 9=단일종목ETN(2) / NULL=ETF59+ETN123.
+      1차의 pd_sect_nm(섹터명, 100% 결측)은 2차에서 컬럼 자체가 삭제됨.
     value_semantics:
       "2.0": 일반 ETF
       "3.0": 일반 ETN
-      "4.0": 특수구조 ETN — KRX금현물 Auto-KO(조기종료형) 1건   # 2026-08-20 코드북 etf_sector.csv 와 일치시킴 (실측 재확인)
+      "4.0": 특수구조 ETN — KRX금현물 Auto-KO(조기종료형) 1건
       "8.0": 단일종목ETF(상품명에 '단일종목')  # ⚠️ underlyingScope=SingleStock 과는 불일치(아래)
-      "9.0": 단일종목(레버리지) ETN 2건 — 삼성전자·SK하이닉스   # 2026-08-20 코드북과 일치시킴 (실측 재확인)
-    cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. 코드8인데 정답 SectorTheme(예: KODEX SK하이닉스단일종목레버리지), 코드2인데 정답 SingleStock(예: 테슬라밸류체인)이 다수. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
+      "9.0": 단일종목(레버리지) ETN 2건 — 삼성전자·SK하이닉스
+    cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점, 1차): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
 
-  # ── 운용사 (약칭 함정 + 상품명 오염) ──
+  # ── 운용사 (약칭 함정 + 상품명 오염 — 2차도 동일, 정답지 등장) ──
   cu_fund_mgmt_co:
-    korean_name: 운용사
+    korean_name: 운용사(원본)
     missing_reason: present
-    trap: "① 약칭 표기 — '미래에셋자산운용' 조회 시 0건(실제 '미래에셋'). ② 상품명 오염 54건 — '삼성KODEX철강증권상장지수투자신탁[주식]'이 운용사 자리에. ③ 정식명(메리츠증권 주식회사)·'.' 1건 혼재."
-    answer_policy: "운용사 질의는 약칭 기준. 목록/집계 시 상품명 오염 행 제외(cu_fund_mgmt_co NOT LIKE '%상장지수%'). 정규화 매핑은 워크샵 §F-4."
-    note: "정상 약칭 32종(삼성·미래에셋·KB) + 상품명 오염 54건 = DISTINCT 97종으로 부풀려짐. ETN 발행 증권사와 ETF 운용사 혼재."
+    trap: "① 약칭 표기 — '미래에셋자산운용' 조회 시 0건(실제 '미래에셋'). ② 상품명 오염 54건 — '삼성KODEX철강증권상장지수투자신탁[주식]'이 운용사 자리에. ③ 정식명(메리츠증권 주식회사)·'한국투자증권(주)' 혼재."
+    answer_policy: "운용사 질의는 ref_fund_mgmt_co(영문 정규 29종) ↔ 한글 약칭 매핑으로 정규화. 집계 시 상품명 오염 행 제외(cu_fund_mgmt_co NOT LIKE '%상장지수%'). ETN 발행 증권사는 이 컬럼만 있음(코드북 etn_issuers.csv)."
+    note: "2차도 distinct 100종(오염 54건 포함). ETF 운용사와 ETN 발행 증권사 혼재. 정규화 정답지 = ref_fund_mgmt_co (2차 신규)."
 
-  # ── 전일NAV·등락금액 (🔴 ETF만 깨짐 — ETN은 정상. 2026-08-18 감사 정정) ──
+  # ── 전일NAV·등락금액 (🟢 2차에서 ETF 도 정상화 — 1차 broken_etf_only 판정 폐기) ──
   du_nav_yday:
     korean_name: 전일NAV
-    missing_reason: broken_etf_only
-    answer_policy: >-
-      🔴 그룹별로 판정이 갈린다 (2026-08-18 감사) —
-      ETF: 사용 금지 (전일값 아닌 오늘 NAV 복사). 일간 등락은 du_er_1d 사용.
-      ETN: 사용 가능 (정상 전일 NAV).
+    missing_reason: present
+    answer_policy: "🟢 ETF·ETN 모두 사용 가능. 일간 등락은 du_nav_rnf_amt 또는 du_er_1d."
     note: >-
-      2026-08-18 전수 분해 — 비교가능 1,517건 중 ETF 1,137건은 전부 du_last_nav(오늘NAV) 복사(깨짐),
-      **ETN 379건은 전일값 ≠ 오늘값이며 du_nav_rnf_amt = (오늘−전일) 등락이 380건 정확히 성립 → 정상**.
-      이전 판정 "1,137건 전부 복사"는 ETF 몫만 본 것이었다. D.6 정정.
+      🟢 2026-08-25 2차 정정 — 1차에서 ETF 1,137건이 오늘 NAV 복사(깨짐)였으나, 2차는 ETF 1,176건 중
+      du_nav_yday = du_last_nav 인 행이 16건뿐이고 du_nav_rnf_amt = (du_last_nav − du_nav_yday) 가 ETF 1,176 · ETN 422 전건 성립.
+      주최가 말한 "정합성 이슈" 정정 사례. 판정 broken_etf_only → present.
   du_nav_rnf_amt:
     korean_name: 전일NAV등락금액
-    missing_reason: broken_etf_only
-    answer_policy: >-
-      🔴 ETF: 사용 금지 (실제 등락이 아니라 -전일NAV). ETN: 사용 가능 (실제 등락 = 오늘−전일 NAV).
-    note: >-
-      2026-08-18 정정 — ETF 1,137건은 = -du_nav_yday (깨짐). ETN 380건은 du_last_nav - du_nav_yday
-      와 오차 0.01 미만으로 일치(정상). "실제등락인 종목 0건"은 ETF 한정에서만 참이었다.
+    missing_reason: present
+    answer_policy: "🟢 사용 가능 (= 오늘 NAV − 전일 NAV, ETF·ETN 전건 성립)."
+    note: 2차 정정 — 1차 "ETF = -du_nav_yday (깨짐)" 는 2차에서 0건.
 
   # ── 종가 (0값 = 미거래) ──
   du_clpr:
     korean_name: 종가
     missing_reason: present
-    answer_policy: "가격 기반 Top-N/조회 시 du_clpr > 0 필터. 0값은 만기채권ETF·신규상장 미거래."
-    note: >-
-      🔴 2026-08-18 감사 정정 — 0값은 50건이 아니라 **167건 = ETF 50 + ETN 117**이다
-      (이전 수치는 ETF만 센 것). du_clpr > 0 필터의 영향 범위가 3.3배다. AUM은 있으나 종가 0인 종목 존재.
+    answer_policy: "가격 기반 Top-N/조회 시 du_clpr > 0 필터. 0값은 만기채권ETF·신규상장·거래중단 미거래."
+    note: 2차 실측 — 0값 192건 = ETF 58 + ETN 134. -100 센티넬 110건 전부 이 집합에 포함.
+
+  # ── 레버리지 배수 (🔴 2차 회귀 — 부호 소실) ──
+  cu_lev_fector:
+    korean_name: 레버리지배수
+    missing_reason: mixed
+    trap: >-
+      🔴 2026-08-25 2차 **회귀** — 인버스 상품의 음수 부호가 대부분 사라졌다.
+      1차: -2.0 105건 · -1.0 65건 → 2차: -2.0 16건 · -1.0 7건 (전부 ETN 이거나 ETF 1건).
+      'KODEX 인버스'·'ACE 인버스'·'RISE 국고채3년선물인버스' 가 **1.0**, 'KIWOOM 200선물인버스2X'·'TIGER 미국달러선물인버스2X' 가 **2.0** 으로 수록.
+      상품명에 '인버스' 225건(ETF 46 · ETN 179) 중 음수는 22건뿐. 반대로 음수인데 이름에 '인버스' 없는 행은 1건.
+      → 이 컬럼의 **부호는 신뢰 불가, 절댓값(배수)만 신뢰**.
+    answer_policy: >-
+      방향(인버스 여부)은 derivation_rules.inverse_direction(상품명 '인버스' 키워드)으로, 배수는 ABS(cu_lev_fector)로 판정.
+      답변에는 "상품명 기준 인버스 · 배수 2X" 처럼 이름 근거를 병기한다. 주최 우선 원칙과 충돌 아님 — 값이 틀린 게 아니라 부호 정보가 빠진 것.
+    note: 유효 1,598 (ETF 1,176 · ETN 422). NULL 182. 1.0 = 레버리지 없음(실제값). 소수 배수 0.5·1.5 는 ETN 6건.
+    zero_is_value: true   # 해당 없음 — 1.0 이 기본값이며 0 은 존재하지 않는다. 정렬·필터에서 배제 규칙 적용 금지
+
+  # ── 복제 전략 ('C' 미분류) ──
+  cu_strtegy:
+    korean_name: 복제방식/운용전략
+    missing_reason: mixed
+    answer_policy: >-
+      복제방식 질의는 ETF 한정 — 실물복제 763 · 합성복제 82 · 액티브 358 (+ ETF NULL 32).
+      'C' 422건은 **전부 ETN** 이며 코드북 미제공(주최 확정)이라 의미 불명 → **미분류(추정)** 로 두고 복제방식 질의 모수에서 제외·명시.
+    note: 2차 실측 — C 422(ETN) · NULL 155(ETF 32 + ETN 123). 'C' 는 cu_strtegy 외 du_last_aum=0·du_chas_errt=0 인 ETN 422건 집단과 일치(추정 — ETN 공통 더미값).
+    value_semantics:
+      "실물복제": Physical
+      "합성복제": Synthetic
+      "액티브": Active
+      "C": 미분류 (ETN 전용 코드 · 의미 미확인 · 추정)
 
 # ── ETF/ETN 구분 (핵심) ──
 product_group:
   column: pd_grp_no
   values:
-    ETF: 1202
-    ETN: 532
-  note: "'국내ETF마스터'에 ETN 30.7% 혼입. ETF 전용 질의는 pd_grp_no='ETF' 필수. 보조신호: cu_strtegy='C'(409건 전부 ETN), ETN은 cu_charge_rt 전부 NULL."
+    ETF: 1235
+    ETN: 545
+  note: "'국내ETF마스터'에 ETN 30.6% 혼입 (2차). ETF 전용 질의는 pd_grp_no='ETF' 필수. 보조신호: cu_strtegy='C'(422건 전부 ETN), ETN은 cu_charge_rt·ref_*·pd_ticker·분배정보 전부 NULL."
   workshop: ETF/ETN 별도 클래스 vs 공통상위 → §F-1
 
 # ── 정규화 (문자열 비교 시 TRIM) ──
@@ -183,53 +404,80 @@ normalization:
   - wu_inv_rgn
   - pd_exg_mkt_nm
   - pd_mkt_nm
+  - pd_dvid_cycl       # ETN 422건 '  ' 공백 패딩
+  # 수치 정렬·필터 기본값: <컬럼> IS NOT NULL AND <컬럼> <> 0 (주최 공지 "0/결측은 의도된 값 — 빼고 보여주거나 없다고 응답").
+  # 0 이 실제값인 컬럼은 columns.<col>.zero_is_value: true 로 예외 선언 (cu_lev_fector · 분배금 3종).
+  zero_as_missing_default: true
+  zero_is_value_columns:
+  - cu_lev_fector      # 배수 없음 = 1.0 (0 은 부재)
+  - pd_divd_amt_pshr   # 0 = 무분배 (추정) — 정렬 제외하되 "없음"으로 응답
+  - pd_divd_amt_ann
+  - pd_dvid_yield
 
 # ── 쿼리 가드레일 ──
 query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
-  보수유효: cu_charge_rt > 0            # 0은 미입력 (유효 67건)
-  수익률정상: <질의 대상 기간 컬럼> > -100 AND <동일 컬럼> IS NOT NULL   # 🔴 2026-08-18 개정
-  수익률정상_개정근거: >-
-    🔴 -100 센티넬은 du_er_1y 만이 아니라 **전 기간에 있다** (2026-08-18 전수) —
-    1m 20 · 3m 37 · 6m 53 · ytd 44 · 1y 98건. 전건이 du_clpr=0 동반(거래중단·상폐 확인).
-    이전 규칙은 1y 고정이라 다른 기간 Top-N 이 무방비였다. 정렬·필터에 쓰는 바로 그 기간
-    컬럼에 건다 — public_funds.query_rules.수익률정상과 동일 형태 (도메인 간 통일).
-  종가정상: du_clpr > 0                 # 🔴 =0 은 167건 = ETF 50 + ETN 117 (2026-08-18 정정 — 이전 '50건' 은 ETF만 센 것)
-  NAV등락금지_ETF만: "ETF 는 du_nav_yday / du_nav_rnf_amt 사용 금지 · 🔴 ETN 은 정상이므로 사용 가능"   # 2026-08-18 정정 — ETN 379건은 전일값·등락이 정확 (columns.du_nav_yday)
-  전부0컬럼금지: "pd_divd_amt_pshr · pd_dvid_yield · du_chas_errt · du_diff_rt · cu_charge_etc_rt · pd_net_ast_pshr · pd_net_prft_pshr · pd_net_rt_ast_pshr · pd_lst_price 사용 금지"  # 9종 non-null 전부 0 = 미제공
-  판매중만: pd_sale_yn = '1'
-  거래정상: pd_tr_yn = '0'
-  레버리지: cu_lev_fector > 1             # 🔴 2026-08-20 정정 — 이전 '>= 2' 는 +1.5X ETN 2건(미래에셋 1.5X 천연가스·1.5X S&P500 VIX)을 놓침. 감사 ⑤에서 ±1.5 를 값매핑에 받고 규칙은 미개정이었던 것
-  인버스: cu_lev_fector < 0
+  구매가능: pd_lste_dt = 99991231 AND pd_sale_yn = 1        # 🔴 2026-08-25 신설 — 주최 공지: 상장폐지/리스팅 종료 제외 전부 "구매가능". ETF 1,160 · ETN 374. (pd_lste_dt<99991231 242건은 전부 pd_sale_yn=0)
+  보수유효: cu_charge_rt > 0            # 0은 미입력 (유효 67건 — 2차도 동일)
+  수익률정상: <질의 대상 기간 컬럼> > -100 AND <동일 컬럼> IS NOT NULL
+  수익률정상_근거: >-
+    -100 센티넬은 전 기간에 있다 (2차 실측 2026-08-25) — 1d 1 · 1m 16 · 3m 45 · 6m 66 · ytd 69 · 1y 110건.
+    1y 110건 전건이 du_clpr=0 동반(거래중단·상폐). 정렬·필터에 쓰는 바로 그 기간 컬럼에 건다 — public_funds 와 동일 형태.
+  종가정상: du_clpr > 0                 # =0 은 192건 = ETF 58 + ETN 134 (2차)
+  수치기본배제: "<수치 컬럼> IS NOT NULL AND <수치 컬럼> <> 0 — normalization.zero_is_value_columns 는 예외"   # 🔴 2026-08-25 신설 (주최 공지)
+  전부0컬럼금지: "cu_charge_etc_rt · pd_dvid_inc_dist · fn_average_maturity · fn_effective_duration · fn_modified_duration 사용 금지"  # 2차: 100% 결측/전부 0 — 5종 (1차 9종 중 배당·추적오차·괴리율은 채워졌고 pd_net_*·pd_lst_price 는 삭제)
+  분배질의_ETF만: pd_grp_no = 'ETF' AND pd_divd_amt_pshr > 0     # 🟢 2026-08-25 신설 — ETN 은 분배정보 구조상 없음
+  월분배: pd_dvid_cycl = 'M'                                     # 🟢 신설 — 196건
+  기초지수: "COALESCE(NULLIF(TRIM(ref_base_index),''), NULLIF(TRIM(cu_base_index),''))"   # 🟢 신설 — ref 1순위, cu 보조
+  복제방식_모수: pd_grp_no = 'ETF' AND cu_strtegy IN ('실물복제','합성복제','액티브')     # 'C' 422건(ETN) 미분류 제외
+  판매중만: pd_sale_yn = 1
+  거래정상: pd_tr_yn = 0
+  레버리지: ABS(cu_lev_fector) > 1       # 🔴 2026-08-25 개정 — 부호 소실로 ABS 필수. '>1' 은 2026-08-20 개정(+1.5X ETN 포함) 유지
+  인버스: "pd_abrv_nm LIKE '%인버스%'"    # 🔴 2026-08-25 개정 — 'cu_lev_fector < 0' 은 2차에서 22건만 잡음(실제 225건). derivation_rules.inverse_direction 참조
+  운용사정규화: "ref_fund_mgmt_co (영문 정규) ↔ 코드북 asset_manager.csv 한글 약칭 — cu_fund_mgmt_co 직접 비교 금지"
 
-# ── 축 유도 규칙 (샘플 100건 검증, docs/eda/domestic_etfs_notes.md §B) ──
+# ── 파생 규칙 (DB 컬럼으로 만들지 않고 규칙으로 선언 — NEXT_STEPS 원칙 2) ──
+derivation_rules:
+  inverse_direction:
+    규칙: "CASE WHEN pd_abrv_nm LIKE '%인버스%' THEN 'Inverse' ELSE 'Long' END"
+    근거: >-
+      🔴 2026-08-25 — cu_lev_fector 부호 소실(columns.cu_lev_fector.trap). 상품명 '인버스' 225건 vs 음수 22건.
+      음수인데 이름에 '인버스' 없는 행 1건(ETN)은 이름 규칙이 놓치나, 부호 있는 22건은 OR 조건으로 추가 포착 가능:
+      `pd_abrv_nm LIKE '%인버스%' OR cu_lev_fector < 0`.
+    축: leverageType 의 방향 성분
+  leverage_multiple:
+    규칙: "ABS(cu_lev_fector) — 1.0 Standard · 2.0 2X · 3.0 3X · 0.5/1.5 소수배수(ETN 6건)"
+    근거: 부호와 무관하게 절댓값은 2차에서도 신뢰 가능 (상품명 '2X'/'레버리지' 314건 중 |값|=2 가 305건, 3 이 9건).
+    축: leverageType 의 배수 성분
+
+# ── 축 유도 규칙 (샘플 100건 검증은 1차 데이터 기준 — docs/eda/domestic_etfs_notes.md §B. 2차 재검증 필요 항목 표시) ──
 axis_derivation:
   confirmed:            # 검증 완료 — 바로 사용 가능
     strategy:
       accuracy: 100/100
-      rule: cu_strtegy='액티브' → Active, else Passive
+      rule: cu_strtegy='액티브' → Active, else Passive   # 'C'(ETN) 는 Passive 로 흡수되나 ETN 은 원래 지수형
     leverageType:
-      accuracy: 100/100
-      rule: cu_lev_fector 값매핑 (1→Standard, 2→Leveraged2X, -1→Inverse1X, -2→Inverse2X, ±3→Lev/Inv3X, ±0.5/±1.5→Lev/Inv 소수배수)
+      accuracy: 100/100 (1차 기준 — 🔴 2차 재검증 필요)
+      rule: >-
+        🔴 2026-08-25 개정 — 방향은 derivation_rules.inverse_direction, 배수는 derivation_rules.leverage_multiple 의 조합.
+        (구 규칙 "cu_lev_fector 값매핑 1→Standard, -1→Inverse1X …" 는 부호 소실로 인버스를 전부 Standard/Leveraged 로 오분류한다.)
       rule_보강: >-
-        🔴 2026-08-18 감사 — 매핑에 없던 소수 배수가 실재한다: -0.5(3건)·+1.5(2건)·-1.5(1건) 총 6건
-        (2026-08-20 실측 재확인 — 이전 표기 '±0.5 4건·±1.5 2건'은 내역 오기, 총 6건은 동일). 전부 ETN
-        (인버스0.5X VIX · 1.5X 천연가스 등). 샘플 100건에 없어 정확도 100/100 이 유지됐던 것.
-        소수 배수도 매핑에 받을 것 — 안 받으면 6건이 leverageType 미분류로 남는다.
+        소수 배수 -0.5(3건)·+1.5(3건) 실재 — 전부 ETN. 매핑에 받을 것.
+        2차 실측 부호 분포: ETF -1.0 1건 / ETN -2.0 16 · -1.0 6 — 나머지 인버스는 양수.
     distributionType:
       accuracy: 100/100
-      rule: 상품명에 'TR'/'Total Return' → TotalReturn, else Distributing
+      rule: 상품명에 'TR'/'Total Return' → TotalReturn, else Distributing   # 🟢 2차 pd_dvid_cycl 로 교차검증 가능(TR 이면 분배주기 무관)
     replicationMethod:
       accuracy: 99/100
-      rule: cu_strtegy 실물복제→Physical / 합성복제→Synthetic
+      rule: cu_strtegy 실물복제→Physical / 합성복제→Synthetic / 'C'·NULL → 미분류
     region:
       accuracy: 94/100
-      rule: wu_inv_rgn='국내'→Domestic, else Overseas (+ '미국달러/엔선물' 통화는 Overseas 보정)
+      rule: wu_inv_rgn='국내'→Domestic, else Overseas (+ '미국달러/엔선물' 통화는 Overseas 보정)   # 🟢 2차 ref_geo_focus 로 교차검증 가능
   pending_workshop:     # 주최 기준이 특이 — 워크샵 확정 필요
     assetType:
       accuracy: 92/100
-      issue: 주최 정답이 wu_inv_ast_type·legacy_leaf 와 상충 (국고채→Equity, MMF/통화 별도). §F-2
+      issue: 주최 정답이 wu_inv_ast_type·legacy_leaf 와 상충 (국고채→Equity, MMF/통화 별도). §F-2. 🟢 2차 ref_ast_type(Equity/Bond/Alternatives…)이 제3의 근거 — 셋을 대조해 확정
     underlyingScope:
       accuracy: 87/100
-      issue: 독립축. 상품명 기초자산(대표지수/단일종목/섹터)으로 결정. legacy_leaf 계층으로는 안 나옴. §F-3
+      issue: 독립축. 상품명 기초자산(대표지수/단일종목/섹터)으로 결정. legacy_leaf 계층으로는 안 나옴. §F-3. 🟢 2차 ref_base_index(905종)로 지수 기반 판정 가능성 재검토

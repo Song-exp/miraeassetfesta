@@ -198,6 +198,5 @@
 :RiskGrade_4 a :RiskGrade ; skos:prefLabel "보통 위험"@ko .
 :RiskGrade_5 a :RiskGrade ; skos:prefLabel "낮은 위험"@ko .
 :RiskGrade_6 a :RiskGrade ; skos:prefLabel "매우 낮은 위험"@ko .
-:RiskGrade_6_variant a :RiskGrade ; skos:prefLabel "매우 낮은 위험 (오염 표기)"@ko .
 :RiskGrade_0 a :RiskGrade ; skos:prefLabel "미분류"@ko .
 

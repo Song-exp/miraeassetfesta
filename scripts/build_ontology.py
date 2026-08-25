@@ -39,7 +39,7 @@ TTL_PATH = os.path.join(PROJECT_ROOT, "ontology", "ontology.ttl")
 DB_PATH = os.path.join(PROJECT_ROOT, "data", "financial_products.db")
 REPORT_PATH = os.path.join(PROJECT_ROOT, "data", "kg_coverage_report.md")
 
-DATA_CUTOFF = "2026-07-11"  # 대회 규정 — 이후 시점 외부 데이터 반입 금지
+DATA_CUTOFF = "2026-08-24"  # 대회 규정(8/24 공지) — 이후 발행 외부 데이터 반입 금지
 
 # 테이블 ↔ 온톨로지 클래스 (masters 4종 고정)
 TABLE_CLASS = {
@@ -113,7 +113,9 @@ def iter_aliases(shared):
 # ──────────────────────────────────────────────
 
 def db_columns(con, table):
-    return [c[1] for c in con.execute(f"pragma table_info({table})")]
+    # 소문자 정규화 — SQLite 컬럼명은 대소문자를 구분하지 않으며,
+    # 1차 채권은 대문자·2차 배포본(2026-08-24)은 전부 소문자라 yaml 표기가 섞여 있다.
+    return [c[1].lower() for c in con.execute(f"pragma table_info({table})")]
 
 
 def db_distinct(con, table, column):
@@ -151,7 +153,7 @@ def validate(con, enums, shared, codebooks):
         if t not in TABLE_CLASS:
             errors.append(f"[V5] 미지의 테이블: {where}")
             continue
-        if c not in db_columns(con, t):
+        if (c or "").lower() not in db_columns(con, t):
             errors.append(f"[V5] 컬럼 없음: {where}")
             continue
         nraw = norm(raw)

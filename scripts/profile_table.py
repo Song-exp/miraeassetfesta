@@ -828,13 +828,18 @@ def profile_table(conn, table):
     all_findings.extend(table_findings)
     group_findings = analyze_groups(contexts, findings_by_col)
 
+    # 데이터 기준일 — build_db.py 가 기록한 build_info 에서 읽는다 (없으면 2차 기준일)
+    try:
+        data_asof = conn.execute("select as_of from build_info where table_name=?", (table,)).fetchone()[0]
+    except Exception:
+        data_asof = "2026-08-22"
     doc = {
         "meta": {
             "domain": table,
             "table": table,
             "row_count": total,
             "column_count": len(columns),
-            "data_asof": "2026-07-11",
+            "data_asof": data_asof,
             "generator": "scripts/profile_table.py",
             "db_access": "read-only (mode=ro)",
             "note": "자동 생성 파일입니다. 직접 편집하지 마세요 — 언제든 재생성됩니다. "

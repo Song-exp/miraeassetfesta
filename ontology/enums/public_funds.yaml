@@ -259,7 +259,7 @@ columns:
       🔴 zrin_attr_nms(명칭 목록)와 **위치 대응이 아니다** — 개수 같은 11,253행 중 위치 일치 22행뿐, 개수 불일치 27행.
       "같은 순서" 로 코드↔명칭 코드북을 뽑으면 틀린다. 행별 (코드집합, 명칭집합) 교집합의 반복 소거로 도출해야 하며,
       단순 교집합만으로는 20/227 만 유일 확정(C103=개방 · V101=국내 · M109=자펀드 · S117=레버리지 · USA=미국 …).
-      prfd_attr_search_text('코드 명칭 코드 명칭…' 형식) 이 코드-명칭 쌍을 **인접 표기**하므로 이 컬럼이 코드북 도출의 정답지다 — 후속 스크립트 대상.
+      prfd_attr_search_text('코드 명칭 코드 명칭…' 형식) 이 코드-명칭 쌍을 **인접 표기**하므로 이 컬럼이 코드북 도출의 정답지다 — ✅ `scripts/gen_fund_attr_codebook.py` → `ontology/codebooks/fund_attr_code.csv`(속성코드 210종, 축 = 첫 글자) + `fund_country_tag.csv`(ISO3 국가 태그) 생성 완료 (2026-08-25). 명칭은 zrin_attr_nms 등장 여부로 행 단위 검증.
     answer_policy: >-
       태그 필터는 ',' 경계 포함 LIKE ('%,'||tag||',%' 로 양끝 ',' 보강) 또는 zrin_attr_nms 의 명칭 LIKE 로.
       🔴 코드 자체를 답변에 노출하지 말 것 — zrin_attr_nms 의 명칭으로 말한다.
@@ -720,7 +720,7 @@ entities:
       (단 순서 불일치 — columns.prfd_attr_cds.trap). 축별 값 수는 1차와 동일: C4 D5 E3 F7 G15 M16 N60 O10 P10 Q5 R10 S16 T11 V3 W35.
       교집합만으로 유일 확정된 20종: C102=단위 C103=개방 D102=국내위탁판매 D106=온라인전용 M101=목표달성전환 M109=자펀드
       M111=종류형 클래스펀드 M112=FoFs P104=중소형주 R107=하이일드 S108=롱/숏 S117=레버리지 V101=국내 V102=국외 V103=국내외
-      W101=글로벌 W104=북미 W106=아태 (+USA=미국 VNM=베트남). 나머지는 prfd_attr_search_text 인접쌍으로 도출(후속).
+      W101=글로벌 W104=북미 W106=아태 (+USA=미국 VNM=베트남). 전량 `ontology/codebooks/fund_attr_code.csv` 로 도출 완료 (2026-08-25).
     decode_status: 1차 15축 중 대응 확정 4(V·S·N·G)·부분 8·없음 3 → 2차 명칭 컬럼으로 전면 재해독 가능(미실시)
 
 class_hierarchy:

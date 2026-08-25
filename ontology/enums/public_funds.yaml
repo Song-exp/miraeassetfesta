@@ -218,6 +218,7 @@ columns:
   # ── 제로인 유형·속성 (🆕 2차 신규) ───────────────────────────────────
   zrin_btyp_nm:
     korean_name: 제로인대유형명
+    kg_entity: AssetClass                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/asset_class.yaml)
     missing_reason: missing
     evidence_grade: A
     answerable_n: 11281
@@ -353,6 +354,7 @@ columns:
   # ── 평가 데이터 (위험등급·수익률·순자산·벤치마크) ─────────────────────
   zrin_fd_ivst_risk_gcd:
     korean_name: 제로인펀드투자위험등급코드
+    kg_entity: RiskGrade                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/riskgrade.yaml)
     missing_reason: missing
     answerable_n: 8547          # 판매중 10,962 중 결측 2,415 (22.0%) · 전체 8,689
     unit: grade
@@ -374,6 +376,7 @@ columns:
     note: 값 6종(1.0~6.0) 정상. 1차의 오염값 '20054.0' 은 2차에 없다.
   zrin_fd_ivst_risk_grd_nm:
     korean_name: 제로인펀드투자위험등급명
+    kg_entity: RiskGrade                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/riskgrade.yaml)
     missing_reason: missing
     evidence_grade: A
     answer_policy: 공백 변형('높은위험' 20행 · '보통위험' 8행) 때문에 등급명 조회 시 누락 — normalization.value_variants. 코드로 필터하는 편이 안전.
@@ -429,6 +432,7 @@ columns:
       결측은 판매완료 11,642/12,714 · 판매중 2,621/10,962 · 판매중·공모 629/8,969(7.0%).
   bmrk_nm:
     korean_name: 벤치마크명
+    kg_entity: Index                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/index.yaml)
     missing_reason: missing
     note: 결측 12,395(판매중 2,411 · 판매중·공모 418). 판매중 distinct 255. 복합식('KOSPI200 25% + 종합채권01Y 75%')이 다수 — 파싱 전제.
     answer_policy: "'같은 지수를 추종하는 펀드' 질의는 정확일치가 아니라 지수명 부분일치로. 국내ETF ref_base_index 와의 교차는 표기 체계가 달라 별도 매핑 필요."
@@ -465,6 +469,7 @@ columns:
     note: 1 = 413행 — curr_cd 가 KRW 가 아닌 529행과 근접하나 동일하진 않음(미대조). 기준가 통화 판단은 curr_cd 우선.
   curr_cd:
     korean_name: 통화코드
+    kg_entity: Currency                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/currency.yaml)
     missing_reason: none
     note: KRW 23,147 · USD 453 · EUR 56 · JPY 15 · AUD 2 · GBP 2 · SEK 1. 순자산·기준가 정렬 시 KRW 외 529행은 환산 없이 섞지 말 것.
   fd_set_pcd:
@@ -475,6 +480,23 @@ columns:
     korean_name: 펀드설정국가코드
     missing_reason: none
     note: "'000' 23,055 (정상값 — 국내 설정 추정) · 410(한국) 505 · 442(룩셈부르크) 96 · 840(미국) 11 · 136·826·372 소수. 🔴 '000' 을 결측으로 정규화하지 말 것."
+
+  # ── 2026-08-25 kg_entity 포인터용 stub (재작성 때 누락된 축 컬럼) ──
+  or_co_xtn_itt_cd:
+    korean_name: 운용사 대외기관코드
+    kg_entity: Organization                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "275종 0패딩 코드 — codebooks/asset_manager.csv (법인명 90 · derived 나머지). 이름 컬럼 없음"
+  trusc_xtn_itt_cd:
+    korean_name: 수탁사 대외기관코드
+    kg_entity: Organization                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정"
+  fd_ivst_rgn_desc:
+    korean_name: 투자지역 설명
+    kg_entity: Region                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "9종 — 7/9 매핑"
 
 missing_profile:
   _note: >-

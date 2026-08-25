@@ -109,6 +109,7 @@ columns:
   # ── 기초지수 (센티넬) ──
   cu_base_index:
     korean_name: 기초지수
+    kg_entity: Index                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/index.yaml)
     missing_reason: missing
     answer_policy: "기초지수 질의는 센티넬 제외 후 유효 3,106건(51.4%) 한정 + 모수 명시."
     trap: "센티넬 문자열 — 'Index is not provided by Management Company' 2,285건 + 'Index is not available on Lipper Database' 635건 = 2,920건 (1차 2,705 → 약간 악화). IS NULL 로는 안 잡힘 (NULL 은 11건뿐)."
@@ -216,6 +217,7 @@ columns:
   # ── 운용사 (영문) ──
   cu_fund_mgmt_co:
     korean_name: 운용사
+    kg_entity: Organization                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/organization.yaml)
     missing_reason: present
     trap: "영문 382종(BlackRock Fund Advisors 등). 국내ETF(한글 약칭)와 표기 체계 완전히 다름 → 교차질의 매핑 필요. 2차에서 국내ETF 에 ref_fund_mgmt_co(영문 정규 법인명) 가 생겨 영문↔영문 매핑 경로 가능."
     answer_policy: 운용사 질의는 영문 기준. 국내 운용사명과 매핑은 워크샵 결정(§F-2).

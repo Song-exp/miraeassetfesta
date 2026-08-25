@@ -248,6 +248,7 @@ columns:
   # ── 기초지수 (🟢 2차 ref_base_index 로 해결 — cu_base_index 는 보조로 강등) ──
   ref_base_index:
     korean_name: 기초지수(참조 데이터)
+    kg_entity: Index                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/index.yaml)
     missing_reason: mixed
     answer_policy: >-
       🟢 **기초지수 질의 1순위 컬럼**. ETF 1,208/1,235 (97.8%) 수록 · 905종. '같은 지수 추종 ETF' 검색은 이 컬럼으로.
@@ -257,6 +258,7 @@ columns:
       코드북(index_master — ref_base_index 기준으로 재작성 예정) 경유. 기준일 ref_base_dt = 20260822.
   cu_base_index:
     korean_name: 기초지수(원본 컬럼)
+    kg_entity: Index                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/index.yaml)
     missing_reason: missing
     answer_policy: "🔻 보조 컬럼으로 강등 — ref_base_index 를 먼저 쓰고, ref 가 NULL 인 ETF 27건에서만 참조."
     note: 2차도 유효 56건/19종 (ETF). NULL 126 + 공백문자열 1,472. 1차와 동일하게 사실상 결측.
@@ -268,6 +270,7 @@ columns:
   # ── 참조 분류 (2차 신규 · 정규화 정답지) ──
   ref_fund_mgmt_co:
     korean_name: 운용사(영문 정규 법인명)
+    kg_entity: Organization                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/organization.yaml)
     missing_reason: mixed
     answer_policy: >-
       🟢 **운용사 정규화의 정답지** — 29종 영문 정식 법인명('Mirae Asset Global Investments Co Ltd').
@@ -275,11 +278,13 @@ columns:
     note: 2차 신규. 삼성 243 · 미래에셋 235 · KB 144 · 한국투자 118 … 'Samsung Active Asset Management' 25건은 삼성액티브자산운용(별도 법인).
   ref_ast_type:
     korean_name: 자산유형(참조)
+    kg_entity: AssetClass                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/asset_class.yaml)
     missing_reason: mixed
     answer_policy: "자산군 질의 교차검증용 — Equity 790 · Bond 135 · Alternatives 132 · Mixed Assets 83 · Money Market 30 · Commodity 19 · Other 19. wu_inv_ast_type(9종 한글)과 병행."
     note: 2차 신규. ETN NULL. shared/asset_class.yaml 매핑 대상 (미매핑 '대체투자'·'기타' 판정에 참고).
   ref_geo_focus:
     korean_name: 투자지역(참조)
+    kg_entity: Region                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/region.yaml)
     missing_reason: mixed
     answer_policy: "지역 질의 교차검증용 — 23개국/권역. Korea 665 · USA 273 · Global 157 · China 56. wu_inv_rgn(11종 한글)보다 세분('Vietnam','Taiwan' 등 1건씩)."
     note: 2차 신규. ETN NULL. 코드북 region_map.csv 와 대조.
@@ -327,6 +332,7 @@ columns:
   # ── 운용사 (약칭 함정 + 상품명 오염 — 2차도 동일, 정답지 등장) ──
   cu_fund_mgmt_co:
     korean_name: 운용사(원본)
+    kg_entity: Organization                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/organization.yaml)
     missing_reason: present
     trap: "① 약칭 표기 — '미래에셋자산운용' 조회 시 0건(실제 '미래에셋'). ② 상품명 오염 54건 — '삼성KODEX철강증권상장지수투자신탁[주식]'이 운용사 자리에. ③ 정식명(메리츠증권 주식회사)·'한국투자증권(주)' 혼재."
     answer_policy: "운용사 질의는 ref_fund_mgmt_co(영문 정규 29종) ↔ 한글 약칭 매핑으로 정규화. 집계 시 상품명 오염 행 제외(cu_fund_mgmt_co NOT LIKE '%상장지수%'). ETN 발행 증권사는 이 컬럼만 있음(코드북 etn_issuers.csv)."
@@ -385,6 +391,33 @@ columns:
       "C": 미분류 (ETN 전용 코드 · 의미 미확인 · 추정)
 
 # ── ETF/ETN 구분 (핵심) ──
+  # ── 2026-08-25 kg_entity 포인터용 stub (재작성 때 누락된 축 컬럼) ──
+  pd_risk_cd:
+    korean_name: 상품위험등급코드
+    kg_entity: RiskGrade                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "'PD_RISK_GCD_11'~'_16' 문자열 — 뒤 2자리-10 = 등급 (shared/risk_grade.yaml alias 6/6)"
+  pd_risk_nm:
+    korean_name: 상품위험등급명
+    kg_entity: RiskGrade                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "'매우높은위험(1등급)' 등 6종"
+  wu_inv_rgn:
+    korean_name: 투자지역
+    kg_entity: Region                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "11종 (국내 1,069 · 미국 466 · 글로벌 76 …) — shared/region.yaml 11/11"
+  wu_inv_ast_type:
+    korean_name: 투자자산유형
+    kg_entity: AssetClass                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "9종 — 7/9 매핑 ('대체투자' 132·'기타' 37 미매핑)"
+  pd_curr_cd:
+    korean_name: 통화코드
+    kg_entity: Currency                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
+    missing_reason: none
+    note: "'CURR_CD_KRW' 1,775 · 'CURR_CD_000' 1 (센티넬)"
+
 product_group:
   column: pd_grp_no
   values:

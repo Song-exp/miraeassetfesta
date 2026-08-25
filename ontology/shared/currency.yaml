@@ -37,14 +37,31 @@ nodes:
     label_ko: 일본 엔
     label_en: JPY
     aliases:
+      - {table: public_funds, column: curr_cd, raw: "JPY", source: rule, evidence: "2차 펀드 15행 (2026-08-25)"}
       - {table: domestic_bonds, column: curr_cd, raw: "JPY", source: manual, evidence: "1건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
 
   Curr_EUR:
     label_ko: 유로
     label_en: EUR
     aliases:
+      - {table: public_funds, column: curr_cd, raw: "EUR", source: rule, evidence: "2차 펀드 56행 (2026-08-25)"}
       - {table: domestic_bonds, column: curr_cd, raw: "EUR", source: manual, evidence: "1건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
 
+  Curr_AUD:
+    label_ko: 호주 달러
+    label_en: AUD
+    aliases:
+      - {table: public_funds, column: curr_cd, raw: "AUD", source: rule, evidence: "2차 펀드 2행 (2026-08-25)"}
+  Curr_GBP:
+    label_ko: 영국 파운드
+    label_en: GBP
+    aliases:
+      - {table: public_funds, column: curr_cd, raw: "GBP", source: rule, evidence: "2차 펀드 2행 (2026-08-25)"}
+  Curr_SEK:
+    label_ko: 스웨덴 크로나
+    label_en: SEK
+    aliases:
+      - {table: public_funds, column: curr_cd, raw: "SEK", source: rule, evidence: "2차 펀드 1행 (2026-08-25)"}
   Curr_Unknown:
     label_ko: 통화 미상
     note: "🔴 '000' 계열은 통화가 아니라 미입력 센티넬로 의심 — 워크샵 확정 필요"

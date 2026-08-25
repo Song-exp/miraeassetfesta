@@ -1,0 +1,30 @@
+﻿code,name_ko,name_en,brand_ko,node_id,n_rows,source,as_of
+00040010,삼성자산운용,Samsung Asset Management Co Ltd,삼성,Org_00040010,243,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080008,미래에셋자산운용,Mirae Asset Global Investments Co Ltd,미래에셋,Org_00080008,235,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040035,KB자산운용,KB Asset Ltd,KB,Org_00040035,144,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040024,한국투자신탁운용,Korea Investment Management Co Ltd,한국투자,Org_00040024,118,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040027,한화자산운용,Hanwha Asset Management,한화,Org_00040027,89,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040067,신한자산운용,Shinhan Asset Management Co Ltd,신한,Org_00040067,80,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080052,키움투자자산운용,"Kiwoom Asset Management Co.,Ltd",키움,Org_00080052,76,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040040,NH-Amundi자산운용,NH-Amundi Asset Management Co Ltd,NH-Amundi,Org_00040040,57,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040005,하나자산운용,Hana Asset Management Co Ltd,하나,Org_00040005,29,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080135,삼성액티브자산운용,Samsung Active Asset Management,삼성액티브,Org_SamsungActive,25,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080248,타임폴리오자산운용,Time Folio Asset Management Co Ltd,타임폴리오,Org_00080248,19,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040007,우리자산운용,Woori Asset Management Corp,우리,Org_00040007,18,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080086,에셋플러스자산운용,Asset Plus Investment Management Co Ltd,에셋플러스,Org_00080086,9,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080033,BNK자산운용,BNK Asset Management Co Ltd,BNK,Org_00080033,8,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040006,DB자산운용,DB Asset Management Co Ltd,DB,Org_00040006,7,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080022,아이비케이자산운용,IBK Asset Management Co Ltd,IBK,Org_00080022,7,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040018,브이아이자산운용,VI Asset Management Korea Co Ltd,브이아이,Org_00040018,7,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040021,흥국자산운용,"Heungkuk Investment Trust Management Co., Ltd",흥국,Org_00040021,6,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080041,현대자산운용,Hyundai Asset Management Co Ltd,현대,Org_00080041,5,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040001,교보악사자산운용,Kyobo AXA Investment Managers Co Ltd,교보악사,Org_00040001,5,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080005,마이다스에셋자산운용,Midas Asset Management Co Ltd,마이다스,Org_00080005,5,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040004,대신자산운용,Daishin Investment Trust Management,대신,Org_00040004,4,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00040087,케이씨지아이자산운용,KCGI Asset Management Co Ltd,KCGI,Org_00040087,3,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080021,한국투자밸류자산운용,Korea Investment Value Asset Management Co Ltd,한국밸류10년투자,Org_00080021,2,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080043,트러스톤자산운용,Truston Asset Management Co Ltd,트러스톤,Org_00080043,2,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080010,유리자산운용,Yurie asset Management Inc,유리,Org_00080010,2,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080162,디에스자산운용,DS Asset Management Co Ltd,디에스,Org_00080162,1,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080035,iM에셋자산운용,IM Asset Investment & Management Co Ltd,iM에셋,Org_00080035,1,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+00080359,더제이자산운용,The J Investment Co Ltd,더제이,Org_00080359,1,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22

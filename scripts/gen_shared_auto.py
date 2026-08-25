@@ -29,6 +29,9 @@ DB = os.path.join(ROOT, "data", "financial_products.db")
 SHARED = os.path.join(ROOT, "ontology", "shared")
 OUT_IDX = os.path.join(SHARED, "index_auto.yaml")
 OUT_ISS = os.path.join(SHARED, "organization_issuer_auto.yaml")
+OUT_MGR = os.path.join(SHARED, "organization_manager_auto.yaml")
+CODEBOOKS = os.path.join(ROOT, "ontology", "codebooks")
+LOOKUPS = os.path.join(ROOT, "data", "external", "lookups")
 AS_OF = "2026-08-22"
 SOURCE = "scripts/gen_shared_auto.py — 2차 DB distinct 자동 등록 (2026-08-25)"
 
@@ -308,6 +311,183 @@ def build_issuers(con):
     return {"nodes": len(nodes), "merged": merged, "distinct": len(rows)}
 
 
+# ── 운용사·수탁사·ETN 발행사 (국내ETF·해외ETF·펀드 통합) ─────────────────
+_LEGAL_EN = re.compile(
+    r"\b(co\.?,?\s*ltd\.?|company|corporation|corp\.?|incorporated|inc\.?|l\.?l\.?c\.?|l\.?p\.?|limited|ltd\.?|plc|ag|sa|nv|gmbh|holdings?|group)\b",
+    re.I)
+_LEGAL_KO = re.compile(r"\(주\)|주식회사|㈜|자산운용|투자운용|투자자문|투자신탁운용|증권")
+
+
+def manager_key(name):
+    """운용사 그룹 키 — 법인 접미·구두점·공백·대소문자 제거. 한글은 자산운용/증권 접미 제거."""
+    s = norm(name).lower()
+    s = re.sub(r"[.,&'\u2019\"()\[\]/-]", " ", s)
+    s = _LEGAL_EN.sub(" ", s)
+    s = _LEGAL_KO.sub("", s)
+    return re.sub(r"\s+", "", s)
+
+
+def read_csv(path):
+    import csv
+    with open(path, encoding="utf-8-sig") as f:
+        return [r for r in csv.DictReader(l for l in f if not l.startswith("#"))]
+
+
+def write_manager_en_codebook(rows):
+    """asset_manager_en.csv — 국내 운용사 한↔영 대응표 (근거: domestic_etfs 동일 행 ref_fund_mgmt_co ↔ cu_fund_mgmt_co 공기 + asset_manager.csv 법인명)"""
+    import csv
+    path = os.path.join(CODEBOOKS, "asset_manager_en.csv")
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["code", "name_ko", "name_en", "brand_ko", "node_id", "n_rows", "source", "as_of"])
+        w.writeheader(); w.writerows(rows)
+    return path
+
+
+def build_managers(con):
+    manual = load_manual("organization.yaml")
+    by_key, _ = manual_alias_index(manual)
+    mnodes = manual.get("nodes") or {}
+    brand2node = {}   # domestic_etfs.cu_fund_mgmt_co raw -> manual node
+    code2node = {}    # public_funds code -> manual node
+    for nid, node in mnodes.items():
+        for al in node.get("aliases") or []:
+            if al["table"] == "domestic_etfs":
+                brand2node[norm(al["raw"])] = nid
+            elif al["table"] == "public_funds" and al["column"] == "or_co_xtn_itt_cd":
+                code2node[norm(al["raw"])] = nid
+    am = {r["code"]: r for r in read_csv(os.path.join(CODEBOOKS, "asset_manager.csv"))}
+    ext = collections.defaultdict(list)
+    nodes, stats = {}, collections.Counter()
+    used = set(by_key)   # (table, column, raw) 이미 수동에 있음 -> 재등록 금지
+
+    def add_alias(nid, table, col, raw, evidence, into_ext):
+        key = (table, col, norm(raw))
+        if key in used:
+            return False
+        used.add(key)
+        al = {"table": table, "column": col, "raw": norm(raw), "source": "rule", "evidence": evidence}
+        (ext[nid] if into_ext else nodes[nid]["aliases"]).append(al)
+        return True
+
+    # 1) 국내ETF: ref_fund_mgmt_co(영문 정규) <-> cu_fund_mgmt_co(브랜드/오염) 공기 -> 수동 노드에 alias 확장
+    co = con.execute("""select trim(ref_fund_mgmt_co), trim(cu_fund_mgmt_co), count(*) from domestic_etfs
+                        where pd_grp_no='ETF' and cu_fund_mgmt_co is not null group by 1,2""").fetchall()
+    en_rows, unmapped_cu = [], collections.Counter()
+    ref2node = {}
+    label2node = {norm(nd.get("label_ko", "")): nid for nid, nd in mnodes.items()}
+    for ref, cu, n in co:
+        node = brand2node.get(norm(cu))
+        if node is None:   # 수동 노드에 ETF alias 가 없어도 라벨(브랜드)이 같으면 같은 운용사 (예: 현대·디에스·더제이·한국밸류10년투자)
+            node = label2node.get(norm(cu)) or next((nid for lb, nid in label2node.items() if lb and lb.startswith(norm(cu)) and len(norm(cu)) >= 2), None)
+        if node is None and ref:
+            for r2, c2, _ in co:
+                if r2 == ref and norm(c2) in brand2node:
+                    node = brand2node[norm(c2)]; break
+        if node is None and ref is None:
+            node = {"ACE": brand2node.get("한국투자"), "TIGER": brand2node.get("미래에셋")}.get(norm(cu))
+        if node is None:
+            unmapped_cu[cu] += n; continue
+        if ref:
+            ref2node.setdefault(ref, node)
+            add_alias(node, "domestic_etfs", "ref_fund_mgmt_co", ref, "국내ETF 동일 행 공기 ref<->cu · %d행" % n, True)
+        add_alias(node, "domestic_etfs", "cu_fund_mgmt_co", cu, "브랜드/오염 표기 -> %s · %d행" % (mnodes[node].get('label_ko'), n), True)
+    for ref, nid in ref2node.items():
+        code = next((c for c, nd in code2node.items() if nd == nid), "")
+        en_rows.append({"code": code, "name_ko": am.get(code, {}).get("name", mnodes[nid].get("label_ko")),
+                        "name_en": ref, "brand_ko": mnodes[nid].get("label_ko"), "node_id": nid,
+                        "n_rows": sum(n for r, _, n in co if r == ref),
+                        "source": "domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명",
+                        "as_of": AS_OF})
+    write_manager_en_codebook(sorted(en_rows, key=lambda r: -r["n_rows"]))
+    stats["etf_ext"] = sum(len(v) for v in ext.values())
+
+    # 2) 해외ETF 운용사 -> 그룹 키로 자동 노드 (국내 ref 와 키가 같으면 수동 노드에 확장)
+    ref_key = {manager_key(r): nid for r, nid in ref2node.items()}
+    ovs = con.execute("""select trim(cu_fund_mgmt_co), count(*), group_concat(distinct pd_us_cik) from overseas_etfs
+                         where cu_fund_mgmt_co is not null and trim(cu_fund_mgmt_co)<>'' group by 1 order by 2 desc""").fetchall()
+    groups = collections.defaultdict(list)
+    for raw, n, ciks in ovs:
+        groups[manager_key(raw)].append((norm(raw), n, ciks))
+    merged_kr = []
+    for key, vs in groups.items():
+        vs.sort(key=lambda x: -x[1])
+        if key in ref_key:
+            nid = ref_key[key]; merged_kr.append((mnodes[nid].get("label_ko"), vs[0][0]))
+            for raw, n, _ in vs:
+                add_alias(nid, "overseas_etfs", "cu_fund_mgmt_co", raw, "국내 ref_fund_mgmt_co 와 그룹 키 일치 · %d행" % n, True)
+            continue
+        nid = hid("Org_mgr_", key)
+        nodes[nid] = {"label_en": vs[0][0], "label_ko": vs[0][0], "role": "manager", "auto": True,
+                      "note": "SEC CIK(pd_us_cik, 운용사 단위 아닐 수 있음): %s" % vs[0][2], "aliases": []}
+        for raw, n, _ in vs:
+            add_alias(nid, "overseas_etfs", "cu_fund_mgmt_co", raw, "해외 운용사 표기 정규화 · %d행" % n, False)
+        stats["ovs_nodes"] += 1; stats["ovs_merged_variants"] += len(vs) - 1
+
+    # 3) ETN 발행 증권사
+    etn = con.execute("""select trim(cu_fund_mgmt_co), count(*) from domestic_etfs where pd_grp_no='ETN'
+                         and cu_fund_mgmt_co is not null group by 1""").fetchall()
+    issuers = {}
+    lp = os.path.join(LOOKUPS, "etn_issuers.csv")
+    if os.path.exists(lp):
+        for r in read_csv(lp):
+            issuers[manager_key(r["legal_name"])] = (r["legal_name"], r["issuer_name"])
+    for raw, n in etn:
+        k = manager_key(re.sub(r"글로벌.*\(ETN\)$", "", raw))
+        legal, short = issuers.get(k, (raw, raw))
+        nid = hid("Org_etn_", k)
+        if nid not in nodes:
+            nodes[nid] = {"label_ko": legal, "short_name": short, "role": "etn_issuer", "auto": True,
+                          "note": "ETN 발행 증권사 — 자산운용사 노드(Org_000…)와 별개 법인. lookups/etn_issuers.csv", "aliases": []}
+            stats["etn_nodes"] += 1
+        add_alias(nid, "domestic_etfs", "cu_fund_mgmt_co", raw, "ETN 발행사 표기 · %d행" % n, False)
+
+    # 4) 펀드 운용사 코드 — 수동 노드 없는 코드는 asset_manager.csv 로 노드 생성
+    codes = con.execute("select or_co_xtn_itt_cd, count(*) from public_funds where or_co_xtn_itt_cd is not null group by 1").fetchall()
+    for code, n in codes:
+        code = norm(code)
+        if code in code2node:
+            continue
+        r = am.get(code, {})
+        st = r.get("status", "unknown")
+        label = r.get("name") or r.get("short_name") or code
+        nid = "Org_fund_" + code
+        nodes[nid] = {"label_ko": label, "role": "manager", "auto": True,
+                      "note": "asset_manager.csv status=" + st + ("" if r.get("name") else " — 법인명 미확정(브랜드/코드 라벨)"),
+                      "aliases": []}
+        add_alias(nid, "public_funds", "or_co_xtn_itt_cd", code, "asset_manager.csv %s · %d행" % (st, n), False)
+        stats["fund_" + st] += 1
+
+    # 5) 수탁사 코드 — trustee.csv 는 법인명, 나머지 코드 라벨
+    tr = {norm(r["code"]): r for r in read_csv(os.path.join(CODEBOOKS, "trustee.csv"))}
+    tcodes = con.execute("select trusc_xtn_itt_cd, count(*) from public_funds where trusc_xtn_itt_cd is not null group by 1").fetchall()
+    for code, n in tcodes:
+        key = norm(code)
+        r = tr.get(key) or tr.get(key.rjust(8, "0"))
+        nid = "Org_trustee_" + key
+        sentinel = key in ("99999999", "00000000")
+        nodes[nid] = {"label_ko": (r["name"] if r else key), "role": "trustee", "auto": True,
+                      "note": ("trustee.csv 관측 법인명" if r else ("센티넬 코드 — 수탁사 미지정/미상" if sentinel else "코드북 미확정 — 라벨=코드")),
+                      "aliases": []}
+        add_alias(nid, "public_funds", "trusc_xtn_itt_cd", code, "수탁사 코드 · %d행" % n, False)
+        stats["trustee_named" if r else "trustee_code_only"] += 1
+
+    header = (
+        "# GENERATED — 편집 금지. 재생성: python scripts/gen_shared_auto.py\n"
+        "# source=" + SOURCE + "\n# as_of=" + AS_OF + "\n"
+        "# 운용사 통합: 국내ETF ref_fund_mgmt_co(영문 정규)<->cu_fund_mgmt_co(브랜드) 공기 -> 수동 organization.yaml 노드에 alias_extensions\n"
+        "#   · 해외ETF cu_fund_mgmt_co -> 법인 접미 제거 그룹 키로 자동 노드(Org_mgr_) · ETN 발행 증권사(Org_etn_)\n"
+        "#   · 펀드 운용사 코드(수동 노드 없는 것, Org_fund_<code>) · 수탁사 코드(Org_trustee_<code>)\n"
+        "# 판단: Global X 는 미래에셋 계열이나 별개 법인 -> 병합 안 함. 국내<->해외 그룹 키 완전일치만 병합.\n"
+    )
+    doc = {"entity": "Organization", "description": "운용사·ETN발행사·수탁사 (자동 등록분)", "property": "hasManager",
+           "generated": True, "source": SOURCE, "as_of": AS_OF, "nodes": nodes, "alias_extensions": dict(ext)}
+    with open(OUT_MGR, "w", encoding="utf-8", newline="\n") as f:
+        f.write(header + yaml_dump(doc))
+    stats["unmapped_cu"] = dict(unmapped_cu); stats["merged_kr"] = merged_kr; stats["en_rows"] = len(en_rows)
+    stats["nodes"] = len(nodes)
+    return stats
+
+
 def main():
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     ix = build_index(con)
@@ -324,6 +504,11 @@ def main():
           f"수동확장 {ix['ext']} · edge {ix['edges']} · coversRegion 미적중 {ix['miss_region']} · Equity 기본값 {ix['asset_default']} · zrin_btyp 확장 {ix['btyp_ext']}")
     print("패밀리 예시:", ix["family_examples"][:6])
     print(f"organization_issuer_auto.yaml: 노드 {iss['nodes']} · 표기 변형 병합 {iss['merged']} · 원 distinct {iss['distinct']}")
+    mg = build_managers(con)
+    print("organization_manager_auto.yaml: 노드 %d · 국내ETF 확장 alias %d · 한영표 %d · 해외 노드 %d(변형 병합 %d) · ETN %d · 펀드코드 노드 %d · 수탁사 %d+%d" % (
+        mg['nodes'], mg['etf_ext'], mg['en_rows'], mg['ovs_nodes'], mg['ovs_merged_variants'], mg['etn_nodes'],
+        sum(v for k, v in mg.items() if str(k).startswith('fund_')), mg['trustee_named'], mg['trustee_code_only']))
+    print("국내<->해외 병합:", mg["merged_kr"], "| 국내ETF 미매핑 cu:", mg["unmapped_cu"])
 
 
 if __name__ == "__main__":

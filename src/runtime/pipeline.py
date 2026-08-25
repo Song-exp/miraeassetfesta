@@ -67,11 +67,14 @@ def _ground(question: str, ctx: RuntimeContext) -> tuple[list, list[str]]:
     """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다 (긴 레이블 우선)."""
     hits, lines = [], []
     # 자동 생성 노드(Idx_a_/Idx_v_/Org_issuer_)는 수천 개라 짧은 라벨의 오매칭을 막기 위해 길이 하한을 높인다
-    def _min_len(node):
+    def _min_len(node, label):
+        if node.node_id.startswith("Sec_"):
+            # Security(종목) 자동 노드 수만 개 — 영문 라벨은 6자 이상만 (AAPL·NVDA 류 짧은 토큰 오탐 방지), 한글은 4자
+            return 6 if not re.search(r"[가-힣]", label) else 4
         return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
 
     candidates = sorted(
-        ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node)),
+        ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node, label)),
         key=lambda x: -len(x[0]),
     )
     consumed = question

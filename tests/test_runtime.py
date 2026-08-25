@@ -125,3 +125,13 @@ def test_cross_query_detected(ctx):
     from src.runtime import gate
     assert gate.is_cross_query("삼성전자를 보유한 국내/해외 ETF와 공모펀드를 연 수익률 기준 TOP10 알려줘")
     assert not gate.is_cross_query("KODEX 200 총보수 알려줘")
+
+
+def test_security_grounding_no_false_positive(ctx):
+    """삼성전자 ≠ 삼성전기 — Security 노드가 KG 에 있을 때만 검사 (security_auto.yaml 빌드 전이면 skip)."""
+    sec = [n for n in ctx.kg_nodes if n.node_type == "Security"]
+    if not sec:
+        pytest.skip("Security 노드 미빌드 — build_ontology.py 선행 필요")
+    r = answer_question("T-20", "삼성전자를 보유한 ETF 알려줘", ctx=ctx)
+    assert "'삼성전자'" in r.think_trace and "(Security)" in r.think_trace
+    assert "삼성전기" not in r.think_trace

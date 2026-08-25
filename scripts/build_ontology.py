@@ -48,6 +48,15 @@ TABLE_CLASS = {
     "overseas_etfs": "OverseasETF",
     "public_funds": "PublicFund",
 }
+# 외부 수집 보조 테이블 — Security(종목) alias 의 원천. 마스터가 아니므로 상품 클래스가 아닌 보조 클래스로 ttl 에 표기.
+# (상품→종목 관계 자체는 행 수 100만 규모라 kg_edge 가 아니라 이 테이블을 edge 테이블로 간주한다 — security_auto.yaml 주석)
+EXT_CLASS = {
+    "ext_etf_holdings": "ExternalHoldings",
+    "ext_ovs_etf_holdings": "ExternalHoldings",
+    "ext_fund_holdings": "ExternalHoldings",
+    "ext_fund_page": "ExternalFundPage",
+}
+ALIAS_TABLE_CLASS = {**TABLE_CLASS, **EXT_CLASS}
 
 
 def norm(v):
@@ -171,7 +180,7 @@ def validate(con, enums, shared, codebooks):
         t, c, raw = al.get("table"), al.get("column"), al.get("raw")
         status = al.get("status", "confirmed")
         where = f"{fname} {node_id} ({t}.{c} = {raw!r})"
-        if t not in TABLE_CLASS:
+        if t not in ALIAS_TABLE_CLASS:
             errors.append(f"[V5] 미지의 테이블: {where}")
             continue
         if (c or "").lower() not in db_columns(con, t):
@@ -291,6 +300,10 @@ def emit_ttl(shared):
     L.append(":FinancialProduct a owl:Class .")
     for t, cls in TABLE_CLASS.items():
         L.append(f":{cls} rdfs:subClassOf :FinancialProduct ; rdfs:comment \"SQLite 테이블 {t}\"@ko .")
+    L.append("# ── 외부 수집 보조 테이블 (마스터 아님 — Security alias 원천, 상품→종목 관계는 이 테이블이 edge 역할) ──")
+    for cls in dict.fromkeys(EXT_CLASS.values()):
+        tables = ", ".join(t for t, c in EXT_CLASS.items() if c == cls)
+        L.append(f":{cls} a owl:Class ; rdfs:comment \"외부 수집 테이블 {tables} (발행일 ≤ 2026-08-24)\"@ko .")
     L.append(":ETF a owl:Class . :ETN a owl:Class .")
     L.append(":ETF owl:disjointWith :ETN .  # 규칙 §4 — 국내ETF마스터에 ETN 532건 혼입, 구분은 실제 필터")
     L.append("")
@@ -309,7 +322,7 @@ def emit_ttl(shared):
             prop = None
         if prop:
             declared_prop.add(prop)
-            domains = " ".join(f":{TABLE_CLASS[t]}" for t in have_tables)
+            domains = " ".join(f":{c}" for c in dict.fromkeys(ALIAS_TABLE_CLASS[t] for t in have_tables))
             L.append(f":{prop} a owl:ObjectProperty ;")
             L.append(f"    rdfs:domain [ owl:unionOf ( {domains} ) ] ;")
             L.append(f"    rdfs:range :{entity} ;")

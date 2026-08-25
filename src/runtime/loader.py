@@ -78,7 +78,23 @@ class RuntimeContext:
         return "\n".join(out)
 
 
-def _load_yaml(path: Path) -> dict:
+_BIG_YAML_BYTES = 1_000_000
+
+
+def _load_yaml(path: Path, header_only_if_big: bool = False) -> dict:
+    """yaml 로드. 생성물(수 MB, nodes 수만 개)은 런타임에 nodes 가 필요 없다 —
+    노드·alias 는 build_ontology 가 kg_* 테이블로 이미 풀어놓았다. `nodes:` 앞의 헤더(entity·property·absent_in)만 파싱해
+    load_context 를 24s → 1s 로 줄인다 (2026-08-25, security_auto.yaml 9.8MB 도입 후)."""
+    if header_only_if_big and path.stat().st_size > _BIG_YAML_BYTES:
+        with open(path, encoding="utf-8") as f:
+            head = []
+            for line in f:
+                if line.startswith(("nodes:", "alias_extensions:", "edges:")):
+                    break
+                head.append(line)
+        doc = yaml.safe_load("".join(head)) or {}
+        doc.setdefault("nodes", {})
+        return doc
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
@@ -93,7 +109,7 @@ def load_context() -> RuntimeContext:
             ctx.enums[doc["domain"]] = doc
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
-        doc = _load_yaml(p)
+        doc = _load_yaml(p, header_only_if_big=True)
         entity = doc.get("entity")
         if not entity:
             continue

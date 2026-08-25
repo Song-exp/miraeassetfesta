@@ -475,6 +475,7 @@ axis_derivation:
       accuracy: 94/100
       rule: wu_inv_rgn='국내'→Domestic, else Overseas (+ '미국달러/엔선물' 통화는 Overseas 보정)   # 🟢 2차 ref_geo_focus 로 교차검증 가능
   pending_workshop:     # 주최 기준이 특이 — 워크샵 확정 필요
+    _recheck_2026-08-25: "2차 재현(review_recheck §E7): 주최 정답 샘플 100건 중 2차 조인 91건 · ref_ast_type 과 주최 정답 일치 69%(국고채→Equity 는 ref 도 Bond) → 규칙 유도 불가 유지 · 인버스 10/10 양수 배수 = cu_lev_fector 부호 소실 확증 · 섹터코드 8→SingleStock recall 20% 사용 금지 유지"
     assetType:
       accuracy: 92/100
       issue: 주최 정답이 wu_inv_ast_type·legacy_leaf 와 상충 (국고채→Equity, MMF/통화 별도). §F-2. 🟢 2차 ref_ast_type(Equity/Bond/Alternatives…)이 제3의 근거 — 셋을 대조해 확정

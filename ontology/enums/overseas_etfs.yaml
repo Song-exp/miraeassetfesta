@@ -68,7 +68,7 @@ column_korean_names:
   du_nav_base_dt: NAV기준일            # 해외전용
   du_base_dt_match_yn: 기준일일치여부  # 해외전용
   ru_mkt_price: 현재가
-  pd_lst_price: 상품액면가
+  pd_lst_price: 상품액면가                # ⚠️ 전부 0 — constant_columns 참조
   # 규모·거래
   du_last_aum: 최종AUM(순자산총액)
   du_val_1d: 일거래대금
@@ -248,7 +248,8 @@ constant_columns:
   pd_tr_yn: "유효 6,023건 전부 0(거래정상) — '거래정상' 규칙도 no-op"
   pd_trd_ccy: "전부 USD"
   pd_mkt_id: "전부 US"
-  du_base_dt_match_yn: "유효분 전부 N"
+  du_base_dt_match_yn: "유효분 전부 N — 기준일 일치 정보 없음. 답변에 '기준일 일치 여부' 서술 금지 (✅ 재검증 2026-08-25)"
+  pd_lst_price: "6,022/6,037 이 0 — 액면가 정보 없음. '액면가' 질의는 '수록 없음' (✅ 재검증 2026-08-25)"
   du_clpr_src: "유효분 전부 pd65n101.tday_clpr (출처 상수)"
   cu_index_tracking_yn: "유효 2,407건 전부 Y — 추종/비추종 판별 정보 없음 (결측 60.1%)"
   cu_index_repl_mthd: "⚠️ 상수 아님(Optimized 1,826 · Swap 297 · Full 278 · Other 6) 이나 결측 60.1% — 복제방식 질의는 유효 2,407건 한정 + 모수 명시"

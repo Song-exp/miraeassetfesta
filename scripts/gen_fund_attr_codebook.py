@@ -9,8 +9,8 @@
 검증: 도출된 명칭이 zrin_attr_nms(콤마 구분 명칭 집합)에 실제로 등장하는지 행 단위로 대조 → `verified_rate`.
 
 출력:
-  ontology/codebooks/fund_attr_code.csv    code,name,axis,axis_name,n_rows,n_selling,verified_rate,alt_names,status,as_of
-  ontology/codebooks/fund_country_tag.csv  iso3,name_ko,n_rows,as_of
+  ontology/codebooks/fund_attr_code.csv    code,name,axis,axis_name,n_rows,n_selling,verified_rate,alt_names,status,source,as_of
+  ontology/codebooks/fund_country_tag.csv  iso3,name_ko,n_rows,source,as_of
 사용: python scripts/gen_fund_attr_codebook.py
 """
 import csv, os, re, sqlite3, sys, collections
@@ -20,6 +20,7 @@ DB = os.path.join(ROOT, "data", "financial_products.db")
 OUT_CODE = os.path.join(ROOT, "ontology", "codebooks", "fund_attr_code.csv")
 OUT_CTRY = os.path.join(ROOT, "ontology", "codebooks", "fund_country_tag.csv")
 AS_OF = "2026-08-22"
+SOURCE = "public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py"
 
 # 축 이름은 코드 첫 글자별 명칭 분포를 보고 붙인 **추정** (주최 코드북 제공 불가 확정 — 8/24 공지)
 AXIS_NAME = {
@@ -68,12 +69,12 @@ def main():
         status = "confirmed" if vr >= 0.95 and n >= 5 else ("confirmed_low_n" if vr >= 0.95 else "check")
         out.append(dict(code=code, name=top, axis=code[0], axis_name=AXIS_NAME.get(code[0], "(미정)"),
                         n_rows=seen[code], n_selling=sell[code], verified_rate=f"{vr:.3f}",
-                        alt_names="; ".join(alts), status=status, as_of=AS_OF))
+                        alt_names="; ".join(alts), status=status, source=SOURCE, as_of=AS_OF))
     with open(OUT_CODE, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(out[0].keys())); w.writeheader(); w.writerows(out)
     with open(OUT_CTRY, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.writer(f); w.writerow(["iso3", "name_ko", "n_rows", "as_of"])
-        for (iso, ko), n in sorted(ctry.items(), key=lambda x: -x[1]): w.writerow([iso, ko, n, AS_OF])
+        w = csv.writer(f); w.writerow(["iso3", "name_ko", "n_rows", "source", "as_of"])
+        for (iso, ko), n in sorted(ctry.items(), key=lambda x: -x[1]): w.writerow([iso, ko, n, SOURCE, AS_OF])
     st = collections.Counter(r["status"] for r in out)
     print(f"속성코드 {len(out)}종 → {dict(st)} · 축 {sorted({r['axis'] for r in out})}")
     print(f"국가 태그 {len(ctry)}종 (상위: {ctry.most_common(5)})")

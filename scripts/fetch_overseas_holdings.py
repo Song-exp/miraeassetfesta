@@ -11,7 +11,9 @@ import xml.etree.ElementTree as ET
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data" / "external" / "holdings_overseas"
+import os
+# 재수집·확장은 새 폴더에 쌓는다 (기존 186종 7/11 이전본 보존). 예) HOLD_OUT=holdings_overseas_20260824
+OUT = ROOT / "data" / "external" / os.environ.get("HOLD_OUT", "holdings_overseas")
 OUT.mkdir(parents=True, exist_ok=True)
 
 UA = {"User-Agent": "miraeasset-festa-research contact@miraeassetfesta.example"}

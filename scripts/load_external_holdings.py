@@ -17,7 +17,7 @@
 
 사용: python scripts/load_external_holdings.py
 """
-import os, sys, sqlite3
+import os, sys, glob, sqlite3
 import pandas as pd
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,7 +28,10 @@ AS_OF_LIMIT = "2026-08-24"
 def main():
     con = sqlite3.connect(DB)
     # 국내
-    p = os.path.join(EXT, "holdings", "domestic_holdings_20260710.csv")
+    # 최신 스냅샷 우선 (8/21 재수집본 → 없으면 7/10). 파일명의 날짜가 as_of.
+    cands = sorted(glob.glob(os.path.join(EXT, "holdings", "domestic_holdings_*.csv")))
+    p = cands[-1]
+    print(f"국내 원천: {os.path.basename(p)}")
     d = pd.read_csv(p, dtype={"ticker": str, "etf_code": str}, encoding="utf-8-sig")
     assert (d["as_of"].astype(str) <= AS_OF_LIMIT).all(), "국내 holdings 기준일이 허용 범위를 넘음"
     con.execute("drop table if exists ext_etf_holdings")
@@ -39,9 +42,22 @@ def main():
     n_etf = d["etf_code"].nunique()
     print(f"ext_etf_holdings      {len(d):>8,}행 · ETF {n_etf:,} · as_of {d['as_of'].min()}~{d['as_of'].max()}")
     # 해외
-    p = os.path.join(EXT, "holdings_overseas", "overseas_holdings.csv")
-    o = pd.read_csv(p, dtype={"cusip": str}, encoding="utf-8-sig")
-    m = pd.read_csv(os.path.join(EXT, "holdings_overseas", "ticker_series_map.csv"), encoding="utf-8-sig")
+    # 확장 재수집 폴더(holdings_overseas_YYYYMMDD) 가 있으면 그것을 쓰고, 거기 없는 티커는 기존 186종본으로 보충
+    dirs = sorted(glob.glob(os.path.join(EXT, "holdings_overseas_*"))) or []
+    base = os.path.join(EXT, "holdings_overseas")
+    frames, maps = [], []
+    for dd in ([dirs[-1]] if dirs else []) + [base]:
+        hp = os.path.join(dd, "overseas_holdings.csv")
+        if not os.path.exists(hp):
+            continue
+        f = pd.read_csv(hp, dtype={"cusip": str}, encoding="utf-8-sig")
+        mm = pd.read_csv(os.path.join(dd, "ticker_series_map.csv"), encoding="utf-8-sig")
+        if frames:
+            f = f[~f["etf_ticker"].isin(set(pd.concat(frames)["etf_ticker"]))]
+        print(f"해외 원천: {os.path.basename(dd)} — ETF {f['etf_ticker'].nunique():,} (신규분만)")
+        frames.append(f); maps.append(mm)
+    o = pd.concat(frames, ignore_index=True)
+    m = pd.concat(maps, ignore_index=True).drop_duplicates("ticker")
     o = o.merge(m[["ticker", "isin"]].rename(columns={"ticker": "etf_ticker"}), on="etf_ticker", how="left")
     assert (o["report_date"].astype(str) <= AS_OF_LIMIT).all(), "해외 holdings 보고기준일이 허용 범위를 넘음"
     con.execute("drop table if exists ext_ovs_etf_holdings")

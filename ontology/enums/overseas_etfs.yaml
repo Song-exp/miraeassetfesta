@@ -226,6 +226,99 @@ columns:
     answer_policy: 운용사 질의는 영문 기준. 국내 운용사명과 매핑은 워크샵 결정(§F-2).
     note: 2차 BlackRock 498·First Trust 327·Tidal 319. 결측 0.2%(12건).
 
+
+  # ── 2026-08-26 도메인 감사(정현 지시) — 한글명만 있고 결측판정 없던 컬럼 보강 ──
+  # 대상 선정: 33종(column_korean_names 는 있으나 columns 판정 없음) 중 분석상 의미있는 17종만 우선.
+  # 나머지(pd_itm_no·pd_nm 등 순수식별자, pd_grp_no·pd_sale_yn·pd_tr_yn 등 기제출 no-op 상수)는 제외.
+  cu_strtegy:
+    korean_name: 운용전략
+    missing_reason: mixed
+    trap: >-
+      🔴 국내ETF와 완전히 다른 자료형 — 같은 컬럼명이지만 국내는 짧은 코드값('실물복제'·'액티브'·'합성복제'·'C'=ETN),
+      해외는 영문 자유서술 문단(전략 설명 풀텍스트, distinct 5,943/6,026 사실상 전건 고유).
+      국내의 axis_derivation 규칙(cu_strtegy='액티브' → Active 등)을 해외에 그대로 적용하면 매칭 0건으로 조용히 실패한다.
+    answer_policy: "해외ETF 운용전략은 영문 문단 원문 그대로 인용/요약만 가능. 국내처럼 Active/Passive 값매핑 아직 없음(축 미구축) — 필요시 문단 키워드('actively managed' 등) 별도 유도 필요."
+    note: 결측 11건(0.2%). RAG/벡터검색 소스로 적합(자유서술).
+  cu_index_repl_mthd:
+    korean_name: 지수복제방법
+    missing_reason: mixed
+    answer_policy: "'복제방법' 질의는 Optimized/Swap/Full/Other 값 직답 가능(2026-08-21 E5 검토로 값 부합 확인됨). 결측 60.1%(3,630건)는 '데이터 미제공'."
+    note: cu_index_tracking_yn 과 결측 패턴 완전 동일(둘 다 채워지거나 둘 다 비거나, 0건 불일치) — 같은 원천 메타데이터 쌍.
+  cu_index_tracking_yn:
+    korean_name: 지수추종여부
+    missing_reason: mixed
+    answer_policy: "'Y'만 존재하는 희소인코딩 — NULL 은 'N/모름'이 아니라 '이 메타데이터 자체가 미제공'(cu_index_repl_mthd 와 동시 결측)."
+    note: 결측 60.1%.
+  cu_inverse_short_yn:
+    korean_name: 인버스숏여부
+    missing_reason: mixed
+    answer_policy: "희소인코딩 — 'Y'(183건)만 저장, NULL(97.0%)은 '아니오'로 해석. 인버스/숏 질의는 `cu_inverse_short_yn='Y' OR cu_lev_fector<0` 병용(레버리지 배수 컬럼이 더 결측 적음)."
+    note: cu_lev_fector 는 해외ETF 전체 100% 결측이므로(별도 확인됨) 인버스 판별의 유일 수단.
+  cu_etn_yn:
+    korean_name: ETN여부
+    missing_reason: mixed
+    answer_policy: "희소인코딩 — 'Y'(65건=해외ETN 전량)만 저장, NULL(98.9%)은 ETF. 상품군 판별은 pd_grp_no 가 정본, 이 컬럼은 보조신호."
+    note: pd_grp_no='ETN' 65건과 완전 일치(교차검증됨).
+  du_opr:
+    korean_name: 시가
+    missing_reason: mixed
+    answer_policy: "가격 질의 가능. 결측 0.2%(14건, ETN 계열 추정)는 '가격 미제공'."
+    note: "✅ 검수(08-21): [저가,고가] 구간 정합 99.77% — 명명 타당성 확인됨."
+  du_hpr:
+    korean_name: 고가
+    missing_reason: mixed
+    answer_policy: "가격 질의 가능. 결측 0.2%."
+  du_lpr:
+    korean_name: 저가
+    missing_reason: mixed
+    answer_policy: "가격 질의 가능. 결측 0.2%."
+  du_bpr:
+    korean_name: 기준가
+    missing_reason: mixed
+    answer_policy: "가격 질의 가능. 결측 0.2%."
+  du_clpr:
+    korean_name: 종가
+    missing_reason: mixed
+    answer_policy: "가격 질의 가능(du_clpr_base_dt 기준일 병기 권장). 결측 0.2%."
+  du_vol_1d:
+    korean_name: 거래량(1일)
+    missing_reason: mixed
+    trap: "🔴 ru_mkt_volume 과 100% 동일값(0/6,023 불일치) — 사실상 같은 값의 중복 컬럼. 둘 다 쓰면 이중집계 위험 없음(같은 값이라)이나, 어느 쪽이 정본인지 불명 — du_vol_1d 를 정본으로 채택 권장(명명이 스키마 설명과 일치)."
+    answer_policy: "거래량 질의 가능. 결측 0.2%."
+  pd_lst_price:
+    korean_name: 상장가격
+    missing_reason: missing
+    trap: "🔴 99.75%(6,022/6,037)가 0.0 — 사실상 전량 미입력 센티넬. 0 아닌 값은 단 1건(0.01)뿐."
+    answer_policy: "'상장가격' 질의는 데이터 미제공으로 응답. 0값을 실제 가격으로 서술 금지."
+  pd_isin_cd:
+    korean_name: ISIN코드
+    missing_reason: mixed
+    answer_policy: "식별 조회 가능. 결측 0.2%(ETN 계열)."
+  pd_us_cik:
+    korean_name: 미국SEC등록번호(CIK)
+    missing_reason: mixed
+    answer_policy: "구성종목 외부조회(SEC EDGAR) 키. 결측 0.3%."
+  pd_lipper_id:
+    korean_name: Lipper식별자
+    missing_reason: mixed
+    answer_policy: "글로벌 펀드평가사 식별자. 결측 0.2%. 질의 답변 용도보다 조인 키 성격."
+  pd_curr_cd:
+    korean_name: 상품통화코드
+    missing_reason: mixed
+    answer_policy: "USD 전량('INR' 등 극소수 예외 존재 — 재확인 필요). 결측 0.2%."
+  cu_upt_dt:
+    korean_name: 상품정보갱신일
+    missing_reason: present
+    note: 전건 20260822 상수 — 마스터 갱신 기준일. 신선도 지표.
+  du_upt_dt:
+    korean_name: 시세정보갱신일
+    missing_reason: present
+    note: distinct 108종 — 종목별 갱신일 이질. '최신 데이터인가' 질의 시 병기 권장(채권 도메인의 유사 신선도 함정과 동일 패턴).
+  du_clpr_base_dt:
+    korean_name: 종가기준일
+    missing_reason: mixed
+    answer_policy: "가격 답변 시 기준일 병기 필수. 결측 0.2%."
+
 # ── ETF/ETN 구분 ──
   # ── 2026-08-25 kg_entity 포인터용 stub ──
   wu_inv_rgn:

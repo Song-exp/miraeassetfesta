@@ -21142,6 +21142,7 @@ fp:Region_Australia a fp:Region ; skos:prefLabel "호주"@ko, "Australia"@en .
 fp:Region_Australia skos:broader fp:Region_AsiaPacific .
 fp:Region_NewZealand a fp:Region ; skos:prefLabel "뉴질랜드"@ko, "New Zealand"@en .
 fp:Region_NewZealand skos:broader fp:Region_AsiaPacific .
+fp:Region_Russia a fp:Region ; skos:prefLabel "러시아"@ko, "Russia"@en .
 
 # ── RiskGrade (shared/risk_grade.yaml) ──
 fp:RiskGrade a owl:Class .

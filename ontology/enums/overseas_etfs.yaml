@@ -224,6 +224,23 @@ columns:
     note: 2차 BlackRock 498·First Trust 327·Tidal 319. 결측 0.2%(12건).
 
 # ── ETF/ETN 구분 ──
+  # ── 2026-08-25 kg_entity 포인터용 stub ──
+  wu_inv_rgn:
+    korean_name: 투자지역
+    kg_entity: Region                # 2026-08-25 포인터 기입 (stub)
+    missing_reason: none
+    note: "59종 영문 — 14/59 매핑, 45종 계층 매핑 대기 (graph_sources_review §3)"
+  wu_inv_ast_type:
+    korean_name: 투자자산유형
+    kg_entity: AssetClass                # 2026-08-25 포인터 기입 (stub)
+    missing_reason: none
+    note: "6종 영문 (Equity/Bond/…) — 6/6 매핑"
+  pd_trd_ccy:
+    korean_name: 거래통화
+    kg_entity: Currency                # 2026-08-25 포인터 기입 (stub)
+    missing_reason: none
+    note: "전부 USD (constant_columns)"
+
 product_group:
   column: pd_grp_no
   values:

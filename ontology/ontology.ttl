@@ -54,6 +54,7 @@
 # ABSENT: :DomesticBond 에는 :tracksIndex 없음 — 기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각
 :DomesticBond rdfs:comment "tracksIndex 속성 없음: 기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각"@ko .
 :Idx_KOSPI200 a :Index ; skos:prefLabel "KOSPI200"@ko .
+:Idx_KOSPI200 skos:broader :Idx_a_fa21f0fb15 .
 :Idx_KRX300 a :Index ; skos:prefLabel "KRX 300"@ko .
 :Idx_KOSDAQ150_150 a :Index ; skos:prefLabel "코스닥150 150%"@ko .
 :Idx_MSCI_ACWI a :Index ; skos:prefLabel "MSCI ACWI"@ko .
@@ -73,6 +74,7 @@
 :Idx_iSelect_KREITs a :Index ; skos:prefLabel "iSelect K-REITs"@ko .
 :Idx_KRX_Media a :Index ; skos:prefLabel "KRX 미디어통신"@ko .
 :Idx_SP500TR a :Index ; skos:prefLabel "S&P 500 TR"@ko .
+:Idx_SP500TR skos:broader :Idx_a_25e8381c5f .
 :Idx_BbgUSAgg a :Index ; skos:prefLabel "Bloomberg U.S. Aggregate Bond TR"@ko .
 
 # ── Index (shared/index_auto.yaml) ──

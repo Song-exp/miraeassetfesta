@@ -13,8 +13,8 @@
 
 ```
                     ┌─────────────────┐
-                    │  AssetManager   │ 67   운용사 (or_co_xtn_itt_cd)
-                    │  Custodian      │ 18   수탁사 (trusc_xtn_itt_cd)
+                    │  AssetManager   │ 275  운용사 (or_co_xtn_itt_cd)
+                    │  Custodian      │ 50   수탁사 (trusc_xtn_itt_cd)
                     └────────▲────────┘
                              │ managedBy / custodiedBy
               ┌──────────────┴──────────────┐
@@ -23,20 +23,22 @@
               └──────────────▲──────────────┘
                              │ belongsToFund
               ┌──────────────┴──────────────┐
-              │        FundClass            │ 11,139   ★ 주 노드 = 판매 단위
-              │           itm_no            │          속성 44컬럼이 여기 붙음
+              │        FundClass            │ 23,676   ★ 주 노드 = 판매 단위 = 행 (itm_no PK)
+              │           itm_no            │          속성 74컬럼이 여기 붙음
               └───┬────────┬─────────┬──────┘
         hasShare  │        │         │  hasAttribute / investsIn / benchmarkedTo
           Class   ▼        ▼         ▼
       ┌───────────┐ ┌────────────┐ ┌──────────┐ ┌────────────┐
       │ShareClass │ │FundAttribute│ │ Country  │ │ Benchmark  │
-      │   112     │ │   210 (15축)│ │    17    │ │    391     │
-      │itm_nm 파싱│ │prfd_attr_cd │ │prfd_attr │ │  bmrk_nm   │
+      │    195    │ │   210 (15축)│ │    17    │ │     389    │
+      │itm_nm 파싱│ │prfd_attr_cds│ │prfd_attr │ │  bmrk_nm   │
       └───────────┘ └────────────┘ └──────────┘ └────────────┘
                                                   🔵 국내ETF와 17종 통용
 
-  ※ 행(95,619) = FundClass(11,139) × 그 종목의 태그 수(4~16, 평균 8.58)
-     45컬럼 중 itm_no 안에서 갈리는 것은 prfd_attr_cd 하나뿐 → 나머지는 전부 FundClass 속성
+  ※ 행(23,676) = FundClass(23,676) — 2차 데이터(기준일 2026-08-22)부터 itm_no 가 행 단위 PK.
+     속성태그는 prfd_attr_cds(쉼표 목록) 한 컬럼에 집약 → 75컬럼 전부 FundClass 속성.
+     std_itm_no 는 클래스 묶음 키가 아니다(2개 이상 itm_no 를 가리키는 값 37개뿐) — 펀드 단위 키는 (or_co, mtco) 합성키.
+  🔴 기본 모수 = 판매중 AND 공모 8,969행 — 사모 8,960행이 섞여 있다(prvo_pbff_desc). 개수·Top-N 질의는 모수를 밝힐 것.
   🔴 Fund 는 '모펀드' 가 아니다 — 클래스를 걷어낸 펀드 단위다. 모자형 모펀드는 이 테이블에 없다
      (모투자신탁·모투자회사 0건). mtco 단독 조인 금지 — 65종이 여러 운용사에 걸친다
 ```
@@ -46,14 +48,14 @@
 
 ```mermaid
 graph TD
-  FC["<b>FundClass</b><br/>★ 주 노드 11,139<br/>itm_no"]
+  FC["<b>FundClass</b><br/>★ 주 노드 23,676<br/>itm_no (행 PK)"]
   FD["Fund<br/>펀드 14,522 (모펀드 아님)<br/>(or_co, mtco) 합성키"]
-  SC["ShareClass<br/>112<br/>itm_nm 파싱"]
-  FA["FundAttribute<br/>210 · 15축<br/>prfd_attr_cd"]
-  CO["Country<br/>17 · 커버리지 13.9%"]
-  BM["Benchmark<br/>391<br/>국내ETF와 17종 통용"]
-  AM["AssetManager<br/>67 · 이름 컬럼 없음"]
-  CU["Custodian<br/>18 · 이름 컬럼 없음"]
+  SC["ShareClass<br/>195<br/>itm_nm 파싱 + han_clas_nm"]
+  FA["FundAttribute<br/>210 · 15축<br/>prfd_attr_cds"]
+  CO["Country<br/>17 · 태그 커버리지 25.6%"]
+  BM["Benchmark<br/>389<br/>국내ETF와 통용분 있음"]
+  AM["AssetManager<br/>275 · 이름 컬럼 없음(코드북)"]
+  CU["Custodian<br/>50 · 이름 컬럼 없음(코드북)"]
   FC -->|belongsToFund| FD
   FD -->|managedBy| AM
   FD -->|custodiedBy| CU
@@ -85,9 +87,9 @@ graph TD
 
 ---
 
-## 3. 컬럼 45개 전수 배정
+## 3. 컬럼 75개 전수 배정
 
-모든 컬럼이 **엔티티 출처 · 유도규칙 · 속성** 중 하나 이상에 배정돼 있습니다 (45/45).
+모든 컬럼이 **엔티티 출처 · 유도규칙 · 속성** 중 하나 이상에 배정돼 있습니다 (75/75).
 
 
 ### 3.0 엔티티·유도규칙에 직접 쓰이는 컬럼 (9)
@@ -234,7 +236,7 @@ graph TD
 >
 > 📌 **성과 9컬럼은 판정을 공유합니다** — `fd_yr1_ern_r` 의 `missing_patterns`(접미결측/전무/구멍)이 `applies_to` 로 9개 전체에 적용됩니다. 표에는 대표 컬럼에만 표시됩니다.
 >
-> ⚠️ **`itm_abrv_nm` distinct 11,119 < `itm_no` 11,139** — 약어명 13종이 종목 여럿에 대응합니다. **이름은 유일키가 아닙니다** (노트 §D.11).
+> ⚠️ **`itm_abrv_nm` distinct 23,588 < `itm_no` 23,676** — 약어명 88건이 종목 여럿에 대응합니다. **이름은 유일키가 아닙니다** (노트 §D.11).
 
 
 ---

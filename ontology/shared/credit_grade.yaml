@@ -1,0 +1,162 @@
+# shared/credit_grade — 채권 신용등급 개체 (서열·투자/투기 밴드)
+# 원천: data/external/lookups/credit_grade_scale.csv (한국기업평가 등급정의, 2026-08-20) → 2026-08-25 노드화.
+# 서열(rank)·밴드(parent) 를 closure 로 풀어 "AA- 이상" 같은 서열 질의를 SQL CASE 없이 답한다.
+# DB 표기: 중간값은 0 접미(AA0=AA) · C0 와 C 는 같은 표준등급 C (재검증 2026-08-25 DB distinct 15종 + 1차 표기 수용).
+# 🔴 게이트 enum 화이트리스트의 원천은 여전히 enums/domestic_bonds.yaml crd_grd.value_semantics (loader.py) — 이 파일은 KG 용.
+
+entity: CreditGrade
+description: 신용등급 (AAA 최상위 ~ C, BBB-/BB+ 경계가 투자/투기)
+property: hasCreditGrade
+scale: "rank 1(AAA) ~ 19(C)"
+direction: "rank 낮을수록 우량"
+
+nodes:
+  CG_Investment:
+    label_ko: 투자등급
+    label_en: Investment grade
+    note: AAA ~ BBB- (rank 1~10)
+    aliases: []
+  CG_Speculative:
+    label_ko: 투기등급
+    label_en: Speculative grade
+    note: BB+ 이하 (rank 11~19)
+    aliases: []
+  CG_AAA:
+    label_ko: AAA
+    label_en: AAA
+    rank: 1
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "AAA", source: codebook, evidence: "credit_grade_scale.csv rank 1"}
+  CG_AAp:
+    label_ko: AA+
+    label_en: AA+
+    rank: 2
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "AA+", source: codebook, evidence: "credit_grade_scale.csv rank 2"}
+  CG_AA:
+    label_ko: AA
+    label_en: AA
+    rank: 3
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "AA0", source: codebook, evidence: "credit_grade_scale.csv rank 3"}
+  CG_AAm:
+    label_ko: AA-
+    label_en: AA-
+    rank: 4
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "AA-", source: codebook, evidence: "credit_grade_scale.csv rank 4"}
+  CG_Ap:
+    label_ko: A+
+    label_en: A+
+    rank: 5
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "A+", source: codebook, evidence: "credit_grade_scale.csv rank 5"}
+  CG_A:
+    label_ko: A
+    label_en: A
+    rank: 6
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "A0", source: codebook, evidence: "credit_grade_scale.csv rank 6"}
+  CG_Am:
+    label_ko: A-
+    label_en: A-
+    rank: 7
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "A-", source: codebook, evidence: "credit_grade_scale.csv rank 7"}
+  CG_BBBp:
+    label_ko: BBB+
+    label_en: BBB+
+    rank: 8
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "BBB+", source: codebook, evidence: "credit_grade_scale.csv rank 8"}
+  CG_BBB:
+    label_ko: BBB
+    label_en: BBB
+    rank: 9
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "BBB0", source: codebook, evidence: "credit_grade_scale.csv rank 9"}
+  CG_BBBm:
+    label_ko: BBB-
+    label_en: BBB-
+    rank: 10
+    parent: CG_Investment
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "BBB-", source: codebook, evidence: "credit_grade_scale.csv rank 10"}
+  CG_BBp:
+    label_ko: BB+
+    label_en: BB+
+    rank: 11
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "BB+", source: codebook, evidence: "credit_grade_scale.csv rank 11", status: pending}
+  CG_BB:
+    label_ko: BB
+    label_en: BB
+    rank: 12
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "BB0", source: codebook, evidence: "credit_grade_scale.csv rank 12"}
+  CG_BBm:
+    label_ko: BB-
+    label_en: BB-
+    rank: 13
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "BB-", source: codebook, evidence: "credit_grade_scale.csv rank 13"}
+  CG_Bp:
+    label_ko: B+
+    label_en: B+
+    rank: 14
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "B+", source: codebook, evidence: "credit_grade_scale.csv rank 14"}
+  CG_B:
+    label_ko: B
+    label_en: B
+    rank: 15
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "B0", source: codebook, evidence: "credit_grade_scale.csv rank 15", status: pending}
+  CG_Bm:
+    label_ko: B-
+    label_en: B-
+    rank: 16
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "B-", source: codebook, evidence: "credit_grade_scale.csv rank 16"}
+  CG_CCC:
+    label_ko: CCC
+    label_en: CCC
+    rank: 17
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "CCC", source: codebook, evidence: "credit_grade_scale.csv rank 17", status: pending}
+  CG_CC:
+    label_ko: CC
+    label_en: CC
+    rank: 18
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "CC0", source: codebook, evidence: "credit_grade_scale.csv rank 18", status: pending}
+  CG_C:
+    label_ko: C
+    label_en: C
+    rank: 19
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "C0", source: codebook, evidence: "credit_grade_scale.csv rank 19"}
+      - {table: domestic_bonds, column: crd_grd, raw: "C", source: codebook, evidence: "credit_grade_scale.csv rank 19", status: pending}
+
+absent_in:
+  domestic_etfs: "신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음. 위험등급(RiskGrade)과 별개 축"
+  overseas_etfs: "신용등급 컬럼 없음"
+  public_funds: "신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)"

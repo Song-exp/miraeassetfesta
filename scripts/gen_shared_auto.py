@@ -20,6 +20,7 @@
 
 사용: python scripts/gen_shared_auto.py   →  python scripts/build_ontology.py
 """
+import csv
 import hashlib, os, re, sqlite3, sys, unicodedata, collections
 import yaml
 
@@ -55,7 +56,8 @@ _PAREN_HEDGE = re.compile(r"\((?:KRW|USD|JPY|EUR)?\s*(?:HEDGED|H|UH)\)", re.I)
 
 
 def is_composite(name):
-    return "+" in name and "%" in name
+    # "A 50% + B 50%" 또는 "60% A/40% B" — 두 형태 모두 합성 벤치마크
+    return "%" in name and ("+" in name or bool(re.search(r"\d+\s*%[^/]*/", name)))
 
 
 def family_label(name):
@@ -77,27 +79,61 @@ def family_label(name):
 
 
 # ── edge 규칙 ─────────────────────────────────────────────────────────
+# 2026-08-25 검수 B 정정: 부분문자열 오탐(MK→Mkt, SSE→Russell/Asset, CALL→Covered Call, YIELD→Dividend Yield,
+# JAPAN→"ex Japan", S&P→S&P/ASX·BSE·TSX) 를 단어 경계·가드로 막고 국가 노드(region.yaml 2026-08-25 추가분)로 세분화.
+# 규칙보다 codebooks/index_axis_override.csv 가 우선한다 (라벨 완전일치, 대소문자 무시).
 _REGION_RULES = [  # (정규식, Region 노드 id) — 앞쪽이 우선
-    (r"MSCI\s*(AC\s*)?WORLD\s*EX\s*USA|ACWI\s*EX\s*US|WORLD\s*EX\s*US", "Region_GlobalExUS"),
-    (r"MSCI\s*ACWI|MSCI\s*AC\s*WORLD|FTSE\s*ALL[- ]WORLD|MSCI\s*WORLD|글로벌|GLOBAL|WORLD", "Region_Global"),
-    (r"EMERGING|MSCI\s*EM\b|신흥|이머징|BRIC|브릭스|FRONTIER", "Region_Emerging"),
-    (r"KOSPI|KRX|KOSDAQ|코스피|코스닥|KAP|종합채권|국공채|국고채|채권종합|KIS|KOFR|CD\s*금리|MK\s*|FnGuide|FN\s*|iSelect|WISE|한국|KOREA|제로인|CALL|통안", "Region_Korea"),
-    (r"CSI|SSE|SZSE|HANG\s*SENG|HSCEI|항셍|중국|CHINA|CHINEXT|STAR\s*50|A50", "Region_China"),
-    (r"NIKKEI|TOPIX|일본|JAPAN|JPX", "Region_Japan"),
-    (r"NIFTY|SENSEX|인도|INDIA", "Region_India"),
-    (r"VN\s*30|VIETNAM|베트남", "Region_Vietnam"),
-    (r"EURO\s*STOXX|STOXX|EUROPE|유럽|DAX|FTSE\s*100|CAC|MSCI\s*EAFE|EMU", "Region_Europe"),
-    (r"LATIN|BRAZIL|IBOVESPA|MEXICO|남미|중남미", "Region_LatinAmerica"),
-    (r"ASIA|아시아|ASEAN|TAIWAN|TWSE|대만|INDONESIA|PHILIPPINE|THAILAND|MALAYSIA|SINGAPORE", "Region_Asia"),
-    (r"MIDDLE\s*EAST|AFRICA|SAUDI|중동|아프리카", "Region_MEA"),
-    (r"S&P|RUSSELL|NASDAQ|DOW\s*JONES|DJ\s|BLOOMBERG\s*U\.?S|US\s*TREASURY|U\.S\.|\bUS\b|MSCI\s*USA|CBOE|SOFR|미국|AMERICA|NYSE|WILSHIRE|CRSP|SOLACTIVE\s*US|ICE\s*BOFA\s*US|MORNINGSTAR\s*US", "Region_US"),
+    (r"NORTH\s*AMERICA|북미", "Region_NorthAmerica"),
+    (r"LATIN\s*AMERICA|LATAM|중남미|남미", "Region_LatinAmerica"),
+    (r"WORLD\s*EX[- ]?USA?|ACWI\s*EX[- ]?USA?|EX[- ]?US\b|EX[- ]?USA\b|\bEAFE\b|DM\s*EX\s*NA|INTERNATIONAL\s*(EQUITY|DEVELOPED)|DEVELOPED\s*EX", "Region_GlobalExUS"),
+    (r"MSCI\s*ACWI|MSCI\s*AC\s*WORLD|ALL[- ]?COUNTRY\s*WORLD|FTSE\s*ALL[- ]WORLD|FTSE\s*AW\b|MSCI\s*WORLD|MSCI\s*WI\b|WORLD|글로벌|GLOBAL|\bGBI\b|\bEMBI\b|\bGBL\b", "Region_Global"),
+    (r"EMERGING|MSCI\s*EM\b|\bEM\s+(ASIA|EUROPE|LATIN|EMEA|LOCAL|BOND|BND)|신흥|이머징|BRIC|브릭스|FRONTIER\s*MARKET|GBI-EM", "Region_Emerging"),
+    (r"\bASX\b|AUSTRALIA|호주", "Region_Australia"),
+    (r"\bTSX\b|CANADA|캐나다", "Region_Canada"),
+    (r"\bDAX\b|GERMANY|독일", "Region_Germany"),
+    (r"\bCAC\b|FRANCE|프랑스", "Region_France"),
+    (r"FTSE\s*(100|250|350)|\bUK\b|UNITED\s*KINGDOM|BRITAIN|영국", "Region_UK"),
+    (r"\bIBEX\b|SPAIN|스페인", "Region_Spain"),
+    (r"\bSMI\b|SWISS|SWITZERLAND|스위스", "Region_Switzerland"),
+    (r"NETHERLANDS|네덜란드|\bAEX\b", "Region_Netherlands"),
+    (r"ITALY|이탈리아|FTSE\s*MIB", "Region_Italy"),
+    (r"EURO\s*STOXX|STOXX|EUROPE|유럽|EUROZONE|\bEMU\b|유로", "Region_Europe"),
+    (r"BRAZIL|IBOVESPA|브라질", "Region_Brazil"),
+    (r"MEXICO|멕시코", "Region_Mexico"),
+    (r"ISRAEL|이스라엘|TA-?35|TA-?125", "Region_Israel"),
+    (r"SAUDI|사우디", "Region_SaudiArabia"),
+    (r"SOUTH\s*AFRICA|남아공", "Region_SouthAfrica"),
+    (r"TURKEY|TURKIYE|튀르키예|터키", "Region_Turkey"),
+    (r"MIDDLE\s*EAST|AFRICA|중동|아프리카|GULF|\bGCC\b|\bMENA\b", "Region_MEA"),
+    (r"\bKOSPI|\bKRX\d*\b|\bKTOP\b|KOSDAQ|코스피|코스닥|\bKAP\b|종합채권|국공채|국고채|채권종합|\bKIS\b|\bKOFR\b|\bCD\s*금리|\bMKF?\b|FNGUIDE|\bFN\b|ISELECT|\bWISE\b|한국|KOREA|제로인|통안|\bKTB\b|\bLKTB\b|콜금리|(?<!COVERED\s)(?<!COVERED)\bCALL\b(?!\s*BALANCED)|회사채", "Region_Korea"),
+    (r"HANG\s*SENG(?!.*(CHINA|ENTERPRISE|H-SHARE))|HONG\s*KONG|홍콩", "Region_HongKong"),
+    (r"\bCSI[\s_]?\d|\bCSI\b|\bSSE\b|SZSE|ZHONG\s*HUA|HANG\s*SENG|HSCEI|항셍|중국|CHINA|CHINEXT|STAR\s*50|\bA50\b|심천|상해|상하이|차이나", "Region_China"),
+    (r"TAIWAN|TWSE|TAIEX|대만", "Region_Taiwan"),
+    (r"INDONESIA|인도네시아", "Region_Indonesia"),
+    (r"THAILAND|태국", "Region_Thailand"),
+    (r"MALAYSIA|말레이시아", "Region_Malaysia"),
+    (r"PHILIPPINE|필리핀", "Region_Philippines"),
+    (r"SINGAPORE|싱가포르|싱가폴", "Region_Singapore"),
+    (r"VN\s*30|VN\s*INDEX|\bVN\b|VIETNAM|베트남|호치민", "Region_Vietnam"),
+    (r"NIKKEI|TOPIX|\bJPX\b|(?<!EX\s)(?<!EX)JAPAN(?!\s*EX)|(?<!EX )일본", "Region_Japan"),
+    (r"NIFTY|SENSEX|\bBSE\b|(?<!W\s)INDIA\b|인도", "Region_India"),
+    (r"ASIA|아시아|ASEAN|동남아|\bJACI\b|PAN[- ]ASIA", "Region_Asia"),
+    (r"S&P\s*5|S&P\s*4|S&P\s*6|S&P\s*1500|S&P\s*(MID|SMALL|LARGE)|SELECT\s*SECTOR|SELECT\s*INDUSTRY|RUSSELL|NASDAQ|나스닥|DOW\s*JONES|다우|\bDJ\s|DJIA|BLOOMBERG\s*U\.?S|BLOOMBERG\s*US\b|US\s*TREASURY|U\.S\.|\bUS\b|\bUSA\b|UNITED\s*STATES|MSCI\s*USA|CBOE|\bPHLX\b|SOFR|미국|(?<!LATIN\s)(?<!NORTH\s)(?<!SOUTH\s)AMERICA\b|NYSE|WILSHIRE|CRSP|MUNICIPAL|\bMUNI\b|ICE\s*BOFA\s*US|MORNINGSTAR\s*US|ICE\s*U\.S", "Region_US"),
+    # 폴백: 위 규칙에 안 걸린 S&P·iBoxx USD·ICE BofA Core/Pref 는 미국 (S&P GSCI 원자재는 지역 없음)
+    (r"S&P(?!\s*GSCI)|IBOXX\s*(USD|\$)|ICE\s*BOFA\s*(CORE|PREF|FIXED|ALL\s*CAP)", "Region_US"),
 ]
+# 자산군 — 앞쪽이 우선. 주식 강제(광산·배당 등)는 채권·원자재 키워드보다 먼저 본다.
 _ASSET_RULES = [
-    (r"COMMODITY|GOLD|SILVER|OIL|CRUDE|WTI|BRENT|NATURAL\s*GAS|COPPER|원자재|금\s*선물|골드|은\s*선물|ROGERS|BLOOMBERG\s*COMMODITY|GSCI|METAL|AGRICULTURE", "AssetClass_Commodity"),
-    (r"REIT|리츠|REAL\s*ESTATE|부동산|PROPERTY", "AssetClass_RealEstate"),
-    (r"BOND|AGG|TREASURY|MUNICIPAL|CORP|CREDIT|HIGH\s*YIELD|MBS|TIPS|T-BILL|BILL|NOTE|채권|국채|국고채|국공채|통안|회사채|KTB|LKTB|CD\s*|CALL|SOFR|KOFR|MMF|MONEY\s*MARKET|CASH|단기자금|금리|FLOATING|LOAN|YIELD", "AssetClass_Bond"),
-    (r"USDKRW|KRWUSD|DOLLAR|DXY|CURRENCY|환율|달러|엔화|위안", "AssetClass_Currency"),
-    (r"VOLATILITY|VIX|ALTERNATIVE|대안투자|절대수익|HEDGE\s*FUND|BUYWRITE|BXM|COVERED\s*CALL|커버드콜", "AssetClass_Alternatives"),
+    (r"MINERS|MINING|광업|금광|PRODUCERS|EXPLORATION|EQUIPMENT|DIVIDEND|배당|SHAREHOLDER|EQUITY|STOCK|주식|\bETF\s*TRUST", "AssetClass_Equity"),
+    (r"TREASURY\s*BALANCED|BALANCED\s*\d+|/\s*\d+\s*%|\d+\s*%\s*/|ALLOCATION|자산배분|혼합", "AssetClass_Mixed"),
+    (r"BITCOIN|ETHER\b|ETHEREUM|CRYPTO|SOLANA|\bXRP\b|DIGITAL\s*ASSET|VOLATILITY|\bVIX\b|ALTERNATIVE|대안투자|절대수익|HEDGE\s*FUND|BUYWRITE|\bBXM\b|COVERED\s*CALL|커버드콜|MANAGED\s*FUTURES|LONG/SHORT", "AssetClass_Alternatives"),
+    (r"COMMODITY|\bGOLD\b|SILVER|\bOIL\b|CRUDE|\bWTI\b|BRENT|NATURAL\s*GAS|COPPER|원자재|금\s*선물|골드|은\s*선물|ROGERS|GSCI|METALS?\b|AGRICULTURE|CARBON\s*CREDIT|URANIUM\s*(FUTURES|PRICE)|\bLBMA\b|PLATINUM|PALLADIUM|LITHIUM\s*PRICE", "AssetClass_Commodity"),
+    (r"\bREITS?\b|리츠|REAL\s*ESTATE|부동산|PROPERTY", "AssetClass_RealEstate"),
+    (r"\bMMF\b|MONEY\s*MARKET|\bCD\s*금리|\bCD\s+\d|콜금리|(?<!COVERED\s)(?<!COVERED)\bCALL\b(?!\s*BALANCED)|T-?BILLS?\b|\bBILLS?\b|SOFR|KOFR|단기자금|3-MONTH|1-3\s*MONTH", "AssetClass_MoneyMarket"),
+    (r"\bBONDS?\b|\bAGG\b|AGGREGATE|TREASUR|MUNICIPAL|\bMUNI\b|\bCORP\b|CORPORATE|(?<!CARBON\s)CREDIT|HIGH\s*YI?E?I?LD|\bHY\b|\bMBS\b|\bTIPS\b|\bNOTES?\b|채권|국채|국고채|국공채|통안|회사채|\bKTB\b|\bLKTB\b|IBOXX|INVESTMENT\s*GRADE|\bIG\b|FLOATING|\bLOAN\b|FIXED\s*(RATE|INCOME)|PREF(ERRED)?\b|PREF\s*SEC|\bGBI\b|\bEMBI\b|\bJACI\b|INFLATION\s*LINKED|DURATION|YIELD|금리|GOVERNMENT", "AssetClass_Bond"),
+    (r"USDKRW|KRWUSD|DOLLAR|\bDXY\b|CURRENCY|환율|달러|엔화|위안|BUYING\s*RATE|EXCHANGE\s*RATE|\bFX\b", "AssetClass_Currency"),
+    # 양성 주식 규칙 — 지수 제공사·주식 전용 어휘. 기본값(Equity) 폴백을 "규칙 적중" 으로 바꿔 미확정 집계를 줄인다
+    (r"MSCI|RUSSELL|S&P\s*\d|S&P\s*(MID|SMALL|LARGE|EQUAL|TOTAL|COMPOSITE)|NASDAQ|나스닥|KOSPI|KOSDAQ|코스피|코스닥|\bKRX\d*\b|KTOP|TOPIX|NIKKEI|NIFTY|SENSEX|\bCSI[\s_]?\d|\bSSE\b|HANG\s*SENG|항셍|FTSE|STOXX|\bDAX\b|\bCAC\b|IBEX|DOW\s*JONES|다우|WILSHIRE|CRSP|SOLACTIVE|INDXX|BITA|MORNINGSTAR|SELECT\s*SECTOR|GROWTH|VALUE|\bCAP\b|SMALL[- ]CAP|MID[- ]CAP|LARGE[- ]CAP|SEMICONDUCTOR|BIOTECH|HEALTH\s*CARE|FINANCIALS?\b|INFRASTRUCTURE|\bMLP\b|TECHNOLOGY|INTERNET|ROBOT|\bAI\b|ESG|호치민|VN\s*INDEX|\bVN\b", "AssetClass_Equity"),
 ]
 _ZRIN_BTYP_TO_AC = {
     "주식형": "AssetClass_Equity", "해외주식형": "AssetClass_Equity",
@@ -112,6 +148,21 @@ _ZRIN_BTYP_TO_AC = {
     # '기타' · '해외기타' 는 의도적으로 미매핑 — 리포트에 남긴다
 }
 
+OVERRIDE_CSV = os.path.join(ROOT, "ontology", "codebooks", "index_axis_override.csv")
+
+
+def _load_override():
+    """라벨 완전일치(정규화·대소문자 무시) → (region_node, asset_node). 규칙보다 우선."""
+    ov = {}
+    if os.path.exists(OVERRIDE_CSV):
+        with open(OVERRIDE_CSV, encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                ov[norm(r["index_label"]).casefold()] = (r.get("region_node") or None, r.get("asset_class_node") or None)
+    return ov
+
+
+_OVERRIDE = _load_override()
+
 
 def rule_hit(rules, name):
     up = norm(name).upper()
@@ -122,15 +173,28 @@ def rule_hit(rules, name):
 
 
 def asset_for(name):
+    ov = _OVERRIDE.get(norm(name).casefold())
+    if ov and ov[1]:
+        return ov[1]
     if is_composite(name):
         return "AssetClass_Mixed"
     return rule_hit(_ASSET_RULES, name) or "AssetClass_Equity"   # 기본 Equity (규칙 미적중은 별도 집계)
 
 
+def asset_is_default(name):
+    """Equity 기본값으로 떨어진 것(override·합성·규칙 적중 아님)."""
+    ov = _OVERRIDE.get(norm(name).casefold())
+    return not (ov and ov[1]) and not is_composite(name) and rule_hit(_ASSET_RULES, name) is None
+
+
 def region_for(name):
+    ov = _OVERRIDE.get(norm(name).casefold())
+    if ov and ov[0]:
+        return ov[0]
     if is_composite(name):
-        # 합성은 첫 구성요소 기준
-        name = name.split("+")[0]
+        # 합성은 첫 구성요소 기준 ("60% A/40% B" 는 첫 % 뒤 이름)
+        name = re.split(r"\+|/", name)[0]
+        name = re.sub(r"^\s*\d+\s*%", "", name)
     return rule_hit(_REGION_RULES, name)
 
 
@@ -215,17 +279,20 @@ def build_index(con):
 
     # edge — 자동 노드 전부 (패밀리 포함)
     edges, miss_region, miss_asset_default = [], 0, 0
-    for nid, node in nodes.items():
-        lab = node["label_ko"]
+    # 수동 index.yaml 노드에도 같은 규칙/override 로 edge 를 만든다 (2026-08-25 검수 B — 상위 BM 대부분이 수동 노드였음)
+    targets = [(nid, node["label_ko"]) for nid, node in nodes.items()] + \
+              [(nid, node.get("label_ko") or node.get("label_en") or "") for nid, node in (manual.get("nodes") or {}).items()]
+    for nid, lab in targets:
         reg = region_for(lab)
+        src = "override" if _OVERRIDE.get(norm(lab).casefold()) else "rule"
         if reg and reg in region_ids:
-            edges.append({"src": nid, "predicate": "coversRegion", "dst": reg, "source": "rule", "as_of": AS_OF})
+            edges.append({"src": nid, "predicate": "coversRegion", "dst": reg, "source": src, "as_of": AS_OF})
         else:
             miss_region += 1
         ac = asset_for(lab)
         if ac in ac_ids:
-            edges.append({"src": nid, "predicate": "hasAssetClass", "dst": ac, "source": "rule", "as_of": AS_OF})
-        if not is_composite(lab) and rule_hit(_ASSET_RULES, lab) is None:
+            edges.append({"src": nid, "predicate": "hasAssetClass", "dst": ac, "source": src, "as_of": AS_OF})
+        if asset_is_default(lab):
             miss_asset_default += 1   # Equity 기본값으로 떨어진 건수
 
     # zrin_btyp_nm → AssetClass 확장 (asset_class.yaml 기존 노드)
@@ -337,9 +404,18 @@ def write_manager_en_codebook(rows):
     """asset_manager_en.csv — 국내 운용사 한↔영 대응표 (근거: domestic_etfs 동일 행 ref_fund_mgmt_co ↔ cu_fund_mgmt_co 공기 + asset_manager.csv 법인명)"""
     import csv
     path = os.path.join(CODEBOOKS, "asset_manager_en.csv")
+    base = ["code", "name_ko", "name_en", "brand_ko", "node_id", "n_rows", "source", "as_of"]
+    # 🔴 기존 파일은 사람 검수본(status·name_en_lipper·출처 URL 등 추가 컬럼)일 수 있다 — 덮어쓰지 않는다.
+    #    기존 행·컬럼을 그대로 두고, DB 에서 새로 나타난 코드만 뒤에 추가한다 (2026-08-25 검수 A 손실 사고 후 보존 규칙).
+    existing, fields = [], base
+    if os.path.exists(path):
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            rd = csv.DictReader(f); existing = list(rd); fields = list(rd.fieldnames or base)
+    have = {r["code"] for r in existing}
+    fresh = [r for r in rows if r["code"] not in have]
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["code", "name_ko", "name_en", "brand_ko", "node_id", "n_rows", "source", "as_of"])
-        w.writeheader(); w.writerows(rows)
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader(); w.writerows(existing); w.writerows({**{k: "" for k in fields}, **r} for r in fresh)
     return path
 
 

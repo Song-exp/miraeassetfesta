@@ -51,7 +51,7 @@ columns:
     answer_policy: "AUM 질의 답변 가능 — ETF 기준 결측 4.8%(59건)·0값 6건. 단위 KRW(원). 해외ETF(USD)와 통합 정렬 금지 — 상품군별 분리 제시."
     note: >-
       단위 KRW 확정 (1차 KODEX200 = 28.4조원 실제값 일치). 해외ETF du_last_aum은 USD라 숫자 직접 비교 시 순위 역전(함정②).
-      🔴 2026-08-25 2차 — 결측·0값이 **ETN 에 몰려 있다**: ETN NULL 123 + 0값 422 (= cu_strtegy 'C' 422건과 동일 집단, 추정).
+      🔴 2026-08-25 2차 — 결측·0값이 **ETN 에 몰려 있다**: ETN NULL 123 + 0값 422 (= cu_strtegy 'C' 422건과 동일 집단 — ✅ 검수 C 실측 422/422 완전 일치).
       ETF 는 NULL 59 · 0값 6 뿐. 1차의 "결측 16.2%·0값 411" 은 ETN 몫이었다.
     unit: krw
     layer:
@@ -80,24 +80,24 @@ columns:
     missing_reason: mixed
     answer_policy: >-
       '분배금 많이 주는 ETF' Top-N 답변 가능 — `pd_grp_no='ETF' AND pd_divd_amt_pshr > 0` (유효 967건 = ETF 78.3%).
-      0값 241건은 무분배(추정)로 취급해 정렬에서 제외하되 "분배 실적 없음"으로 응답. ETN 545건 NULL = '데이터 미제공'.
+      0값 241건은 정렬에서 제외하고 "분배금 0(수록값)"으로 응답 — 주최 공지(0 은 의도된 값). ✅ 검수 C — 0값 241건도 pd_dvid_cycl(A 87·Q 148·M 6)·pay_cnt 는 있음 → 주기는 있으나 금액 0. 무분배인지 미입력인지는 확정 불가 → '분배 실적 없음' 단정 금지, '분배금 0으로 수록' 으로.
     note: >-
       🟢 2026-08-25 2차 — ETF: 유효 967 · 0값 241 · NULL 27. 상품명 '배당'/'커버드콜' 119건 중 0값은 3건뿐
-      → 1차의 "배당형도 전부 0 = 미입력" 근거가 사라졌으므로 0 = 무분배(추정)로 판정 전환.
+      → 1차의 "배당형도 전부 0 = 미입력" 근거가 사라졌으므로 0 을 실제 수록값으로 취급(주최 공지). 🔴 단위 주의(검수 C): pd_dvid_yield(%) = pd_divd_amt_ann / pd_dvid_nav 가 588/588 정확 일치 → 분배금 절대액이 NAV 대비 100배 스케일(원 단위 아닐 가능성). **분배금 절대액 답변 금지, 분배수익률(%)·지급월만 답한다.**
       기준일 pd_dvid_base_dt = 2026-08-22, 가격 기준 pd_dvid_prc_base_dt = 2026-08-20 (1,161건).
     unit: krw
-    zero_is_value: true   # 0 = 무분배(추정). 정렬에서는 제외하되 "없음"으로 답한다
+    zero_is_value: true   # 0 = 수록값(주최 공지). 정렬에서는 제외하되 "분배금 0으로 수록"으로 답한다
   pd_divd_amt_ann:
     korean_name: 연간분배금(주당)
     missing_reason: mixed
     answer_policy: "연간 분배금 질의 가능 — 유효 588건. NULL 951건(ETN 545 + ETF 406)은 '데이터 미제공'."
-    note: 2차 신규. 유효 588 · 0값 241 · NULL 951. pd_divd_amt_pshr(최근 1회분)와 별개 — 연간 합산 개념(추정).
+    note: 2차 신규. 유효 588 · 0값 241 · NULL 951. ✅ 검수 C 2026-08-25 — pd_divd_amt_ann = pd_divd_amt_pshr × pd_dvid_pay_cnt 가 588/588 정확 일치(스키마 코멘트 "연간 추정 분배금") — 회당 × 연간 지급횟수. 절대액은 단위 미확정이라 답변 금지(pd_divd_amt_pshr 참조).
     unit: krw
     zero_is_value: true
   pd_dvid_yield:
     korean_name: 분배수익률
     missing_reason: mixed
-    answer_policy: "분배수익률 순위 질의 가능 — `pd_dvid_yield > 0` (ETF 967건). 0값 241 = 무분배(추정), ETN NULL."
+    answer_policy: "분배수익률 순위 질의 가능 — `pd_dvid_yield > 0` (ETF 967건). 단위 % (✅ 검수 C — = pd_divd_amt_ann / pd_dvid_nav, 588건 정확 일치 · 범위 0.004~27.8). 0값 241 = 분배금 0 수록, ETN NULL."
     note: 🟢 2차 — ETF 유효 967 · 0값 241 · NULL 27. pd_divd_amt_pshr 와 유효/0 집합이 동일.
     unit: percent
     zero_is_value: true
@@ -128,7 +128,7 @@ columns:
   pd_dvid_nav:
     korean_name: 분배기준NAV
     missing_reason: mixed
-    note: 2차 신규. 유효 1,208 (ETF). 분배수익률 산출 분모(추정).
+    note: 2차 신규. 유효 1,208 (ETF). ✅ 분배수익률 산출 분모 확정 — pd_dvid_yield = pd_divd_amt_ann / pd_dvid_nav (검수 C 2026-08-25, 588/588).
   pd_dvid_tax_basis:
     korean_name: 분배금과세기준
     missing_reason: mixed
@@ -177,7 +177,7 @@ columns:
   du_vlty_1y:
     korean_name: 1년변동성
     missing_reason: mixed
-    answer_policy: "'변동성 낮은/높은 ETF' 질의 가능 — 유효 1,289건(72.4%). `du_vlty_1y > 0` (0값 20건은 미산출 추정). 상장 1년 미만은 NULL."
+    answer_policy: "'변동성 낮은/높은 ETF' 질의 가능 — 유효 1,289건(72.4%). `du_vlty_1y > 0` (0값 20건은 du_er_1y=0 동반·상장 5~15년 된 종목 = 거래정지 집단, 미산출로 배제 — 검수 C). 상장 1년 미만은 NULL."
     note: 2차 신규. NULL 471 · 0값 20 · 범위 0~128. 기준일 du_vlty_base_dt = 20260821 (1,584건).
     unit: percent
   du_vlty_6m:
@@ -219,8 +219,8 @@ columns:
   fn_average_quality:
     korean_name: 평균신용등급(수치)
     missing_reason: not_applicable
-    answer_policy: "유효 75건뿐. 값이 등급 서열 수치(1.0~5.6, 2.0 이 45건)로 보이나 스케일 정의 없음 → 답변 시 '수치형 평균 등급(스케일 미공개)' 단서. 추정."
-    note: 2차 신규. 스케일 미확정(추정 — 낮을수록 우량).
+    answer_policy: "유효 75건뿐. 스케일 정의 없음(코드북 미제공) → 수치 자체를 답하지 말고 상대 비교('평균 신용품질이 더 높다/낮다')만. ✅ 방향 확정(검수 C): 미국30년국채 ETF 1.0~1.9 · 하이일드 ETF 5.5~5.6 → 낮을수록 우량."
+    note: 2차 신규. 스케일 숫자 의미 미확정(답변 배제) · 방향은 실측 확정.
   fn_portfolio_dt:
     korean_name: 포트폴리오기준일
     missing_reason: mixed
@@ -382,13 +382,13 @@ columns:
     missing_reason: mixed
     answer_policy: >-
       복제방식 질의는 ETF 한정 — 실물복제 763 · 합성복제 82 · 액티브 358 (+ ETF NULL 32).
-      'C' 422건은 **전부 ETN** 이며 코드북 미제공(주최 확정)이라 의미 불명 → **미분류(추정)** 로 두고 복제방식 질의 모수에서 제외·명시.
-    note: 2차 실측 — C 422(ETN) · NULL 155(ETF 32 + ETN 123). 'C' 는 cu_strtegy 외 du_last_aum=0·du_chas_errt=0 인 ETN 422건 집단과 일치(추정 — ETN 공통 더미값).
+      'C' 422건은 **전부 ETN** 이며 코드북 미제공(주최 확정)이라 의미 불명 → **미분류** 로 두고 복제방식 질의 모수에서 제외·명시 (✅ 검수 C — 'C' 422 = du_last_aum 0 · du_chas_errt 0 · cu_charge_rt NULL 인 ETN 집단과 422/422 일치 — ETN 공통 더미값 확정, 코드 의미는 배제).
+    note: 2차 실측 — C 422(ETN) · NULL 155(ETF 32 + ETN 123). 'C' 집단 = du_last_aum 0 · du_chas_errt 0 ETN 422건과 완전 일치(검수 C 2026-08-25 확정).
     value_semantics:
       "실물복제": Physical
       "합성복제": Synthetic
       "액티브": Active
-      "C": 미분류 (ETN 전용 코드 · 의미 미확인 · 추정)
+      "C": 미분류 (ETN 전용 더미 코드 — 의미 미제공, 답변 배제)
 
 # ── ETF/ETN 구분 (핵심) ──
   # ── 2026-08-25 kg_entity 포인터용 stub (재작성 때 누락된 축 컬럼) ──
@@ -424,7 +424,7 @@ product_group:
     ETF: 1235
     ETN: 545
   note: "'국내ETF마스터'에 ETN 30.6% 혼입 (2차). ETF 전용 질의는 pd_grp_no='ETF' 필수. 보조신호: cu_strtegy='C'(422건 전부 ETN), ETN은 cu_charge_rt·ref_*·pd_ticker·분배정보 전부 NULL."
-  workshop: ETF/ETN 별도 클래스 vs 공통상위 → §F-1
+  _closed_2026-08-25: "ETF/ETN 클래스 구조 — ontology.ttl 에 :ETF owl:disjointWith :ETN 으로 확정(build_ontology emit_ttl). 공통상위는 :DomesticETF 테이블 클래스"
 
 # ── 정규화 (문자열 비교 시 TRIM) ──
 normalization:
@@ -443,7 +443,7 @@ normalization:
   zero_as_missing_default: true
   zero_is_value_columns:
   - cu_lev_fector      # 배수 없음 = 1.0 (0 은 부재)
-  - pd_divd_amt_pshr   # 0 = 무분배 (추정) — 정렬 제외하되 "없음"으로 응답
+  - pd_divd_amt_pshr   # 0 = 수록값(주최 공지) — 정렬 제외하되 "분배금 0으로 수록"으로 응답
   - pd_divd_amt_ann
   - pd_dvid_yield
 

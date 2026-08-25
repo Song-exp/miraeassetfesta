@@ -4737,16 +4737,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 4행
   Org_fund_00040099:
-    label_ko: 신한금융투자
+    label_ko: 신한투자증권(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00040099
       source: rule
-      evidence: asset_manager.csv derived · 13행
+      evidence: asset_manager.csv web_confirmed · 13행
   Org_fund_00040100:
     label_ko: 토러스Stead
     role: manager
@@ -4902,16 +4902,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv web_confirmed · 26행
   Org_fund_00080085:
-    label_ko: AIP
+    label_ko: (주)에이아이피자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080085
       source: rule
-      evidence: asset_manager.csv derived · 20행
+      evidence: asset_manager.csv web_confirmed · 20행
   Org_fund_00080091:
     label_ko: (주)안다자산운용
     role: manager
@@ -4924,16 +4924,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv web_confirmed · 34행
   Org_fund_00080095:
-    label_ko: 시몬느미국부동산
+    label_ko: 시몬느자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080095
       source: rule
-      evidence: asset_manager.csv derived · 15행
+      evidence: asset_manager.csv web_confirmed · 15행
   Org_fund_00080096:
     label_ko: 외환단기공사채D
     role: manager
@@ -4979,27 +4979,27 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 5행
   Org_fund_00080106:
-    label_ko: 그로쓰힐
+    label_ko: 그로쓰힐자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080106
       source: rule
-      evidence: asset_manager.csv derived · 11행
+      evidence: asset_manager.csv web_confirmed · 11행
   Org_fund_00080107:
-    label_ko: INMARK미국
+    label_ko: (주)인마크자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080107
       source: rule
-      evidence: asset_manager.csv derived · 18행
+      evidence: asset_manager.csv web_confirmed · 18행
   Org_fund_00080108:
     label_ko: 밸류파트너스
     role: manager
@@ -5012,16 +5012,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 7행
   Org_fund_00080109:
-    label_ko: 포커스
+    label_ko: 포커스자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080109
       source: rule
-      evidence: asset_manager.csv derived · 24행
+      evidence: asset_manager.csv web_confirmed · 24행
   Org_fund_00080110:
     label_ko: 아우름
     role: manager
@@ -5078,27 +5078,27 @@ nodes:
       source: rule
       evidence: asset_manager.csv web_confirmed · 17행
   Org_fund_00080115:
-    label_ko: 오라이언
+    label_ko: 오라이언자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080115
       source: rule
-      evidence: asset_manager.csv derived · 17행
+      evidence: asset_manager.csv web_confirmed · 17행
   Org_fund_00080116:
-    label_ko: W코스닥벤처(M
+    label_ko: (주)더블유자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080116
       source: rule
-      evidence: asset_manager.csv derived · 22행
+      evidence: asset_manager.csv web_confirmed · 22행
   Org_fund_00080117:
     label_ko: 씨스퀘어
     role: manager
@@ -5155,16 +5155,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 4행
   Org_fund_00080123:
-    label_ko: 한&파트너스
+    label_ko: (주)한앤파트너스자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080123
       source: rule
-      evidence: asset_manager.csv derived · 10행
+      evidence: asset_manager.csv web_confirmed · 10행
   Org_fund_00080124:
     label_ko: 메리츠전문투자형
     role: manager
@@ -5188,16 +5188,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 5행
   Org_fund_00080126:
-    label_ko: 인벡스
+    label_ko: 인벡스자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080126
       source: rule
-      evidence: asset_manager.csv derived · 14행
+      evidence: asset_manager.csv web_confirmed · 14행
   Org_fund_00080128:
     label_ko: 아샘
     role: manager
@@ -5342,16 +5342,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 10행
   Org_fund_00080142:
-    label_ko: 라쿤Agile전
+    label_ko: (주)라쿤자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080142
       source: rule
-      evidence: asset_manager.csv derived · 5행
+      evidence: asset_manager.csv web_confirmed · 5행
   Org_fund_00080143:
     label_ko: 라살일반사모부동
     role: manager
@@ -5507,16 +5507,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv web_confirmed · 26행
   Org_fund_00080158:
-    label_ko: 아크
+    label_ko: 아크임팩트자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080158
       source: rule
-      evidence: asset_manager.csv derived · 7행
+      evidence: asset_manager.csv web_confirmed · 7행
   Org_fund_00080160:
     label_ko: 베스트사모칠호M
     role: manager
@@ -5562,16 +5562,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 4행
   Org_fund_00080165:
-    label_ko: JB
+    label_ko: JB자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080165
       source: rule
-      evidence: asset_manager.csv derived · 24행
+      evidence: asset_manager.csv web_confirmed · 24행
   Org_fund_00080166:
     label_ko: 첼시뉴크레딧사모
     role: manager
@@ -5595,16 +5595,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 4행
   Org_fund_00080168:
-    label_ko: 삼성SRA일반사
+    label_ko: 삼성에스알에이자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080168
       source: rule
-      evidence: asset_manager.csv derived · 14행
+      evidence: asset_manager.csv web_confirmed · 14행
   Org_fund_00080169:
     label_ko: 에이디에프자산운용(주)
     role: manager
@@ -5727,16 +5727,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 6행
   Org_fund_00080181:
-    label_ko: IBK투자증권인
+    label_ko: 아이비케이투자증권(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080181
       source: rule
-      evidence: asset_manager.csv derived · 48행
+      evidence: asset_manager.csv web_confirmed · 48행
   Org_fund_00080182:
     label_ko: 교보증권
     role: manager
@@ -5804,16 +5804,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 1행
   Org_fund_00080188:
-    label_ko: 에이아이파트너스
+    label_ko: 에이아이파트너스자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080188
       source: rule
-      evidence: asset_manager.csv derived · 7행
+      evidence: asset_manager.csv web_confirmed · 7행
   Org_fund_00080189:
     label_ko: 루트엔글로벌코리
     role: manager
@@ -5892,27 +5892,27 @@ nodes:
       source: rule
       evidence: asset_manager.csv web_confirmed · 44행
   Org_fund_00080197:
-    label_ko: 브이엠
+    label_ko: 브이엠자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080197
       source: rule
-      evidence: asset_manager.csv derived · 7행
+      evidence: asset_manager.csv web_confirmed · 7행
   Org_fund_00080199:
-    label_ko: 마스턴제192호
+    label_ko: 마스턴투자운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080199
       source: rule
-      evidence: asset_manager.csv derived · 11행
+      evidence: asset_manager.csv web_confirmed · 11행
   Org_fund_00080202:
     label_ko: 아름드리Gaus
     role: manager
@@ -5969,27 +5969,27 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 1행
   Org_fund_00080218:
-    label_ko: 파인스트리트글로
+    label_ko: 파인스트리트자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080218
       source: rule
-      evidence: asset_manager.csv derived · 7행
+      evidence: asset_manager.csv web_confirmed · 7행
   Org_fund_00080226:
-    label_ko: 비엔비
+    label_ko: 비엔비자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080226
       source: rule
-      evidence: asset_manager.csv derived · 20행
+      evidence: asset_manager.csv web_confirmed · 20행
   Org_fund_00080227:
     label_ko: 밸류시스템
     role: manager
@@ -6057,16 +6057,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 1행
   Org_fund_00080242:
-    label_ko: 타이거대체전문투
+    label_ko: (주)타이거대체투자운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080242
       source: rule
-      evidence: asset_manager.csv derived · 9행
+      evidence: asset_manager.csv web_confirmed · 9행
   Org_fund_00080243:
     label_ko: 피타
     role: manager
@@ -6277,16 +6277,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 4행
   Org_fund_00080290:
-    label_ko: 웰브릿지
+    label_ko: 웰브릿지자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080290
       source: rule
-      evidence: asset_manager.csv derived · 10행
+      evidence: asset_manager.csv web_confirmed · 10행
   Org_fund_00080292:
     label_ko: 이지스리츠포트폴
     role: manager
@@ -6299,16 +6299,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 1행
   Org_fund_00080294:
-    label_ko: NB글로벌비상장
+    label_ko: 누버거버먼자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080294
       source: rule
-      evidence: asset_manager.csv derived · 6행
+      evidence: asset_manager.csv web_confirmed · 6행
   Org_fund_00080303:
     label_ko: 피아이에이하인즈
     role: manager
@@ -6387,16 +6387,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 2행
   Org_fund_00080322:
-    label_ko: 안다H
+    label_ko: (주)안다에이치자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080322
       source: rule
-      evidence: asset_manager.csv derived · 17행
+      evidence: asset_manager.csv web_confirmed · 17행
   Org_fund_00080323:
     label_ko: 으뜸
     role: manager
@@ -6409,16 +6409,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 1행
   Org_fund_00080326:
-    label_ko: TCK
+    label_ko: 토포앤코코리아자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080326
       source: rule
-      evidence: asset_manager.csv derived · 6행
+      evidence: asset_manager.csv web_confirmed · 6행
   Org_fund_00080327:
     label_ko: 헤리티지
     role: manager
@@ -6673,27 +6673,27 @@ nodes:
       source: rule
       evidence: asset_manager.csv web_confirmed · 17행
   Org_fund_00080398:
-    label_ko: 브이엠
+    label_ko: 브이엠자산운용(주)
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080398
       source: rule
-      evidence: asset_manager.csv derived · 8행
+      evidence: asset_manager.csv web_confirmed · 8행
   Org_fund_00080399:
-    label_ko: 블리츠리베로오아
+    label_ko: (주)블리츠자산운용
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=web_confirmed
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00080399
       source: rule
-      evidence: asset_manager.csv derived · 11행
+      evidence: asset_manager.csv web_confirmed · 11행
   Org_fund_00080404:
     label_ko: 엔라이튼
     role: manager

@@ -1,30 +1,30 @@
-﻿code,name_ko,name_en,brand_ko,node_id,n_rows,source,as_of
-00040010,삼성자산운용,Samsung Asset Management Co Ltd,삼성,Org_00040010,243,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080008,미래에셋자산운용,Mirae Asset Global Investments Co Ltd,미래에셋,Org_00080008,235,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040035,KB자산운용,KB Asset Ltd,KB,Org_00040035,144,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040024,한국투자신탁운용,Korea Investment Management Co Ltd,한국투자,Org_00040024,118,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040027,한화자산운용,Hanwha Asset Management,한화,Org_00040027,89,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040067,신한자산운용,Shinhan Asset Management Co Ltd,신한,Org_00040067,80,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080052,키움투자자산운용,"Kiwoom Asset Management Co.,Ltd",키움,Org_00080052,76,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040040,NH-Amundi자산운용,NH-Amundi Asset Management Co Ltd,NH-Amundi,Org_00040040,57,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040005,하나자산운용,Hana Asset Management Co Ltd,하나,Org_00040005,29,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080135,삼성액티브자산운용,Samsung Active Asset Management,삼성액티브,Org_SamsungActive,25,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080248,타임폴리오자산운용,Time Folio Asset Management Co Ltd,타임폴리오,Org_00080248,19,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040007,우리자산운용,Woori Asset Management Corp,우리,Org_00040007,18,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080086,에셋플러스자산운용,Asset Plus Investment Management Co Ltd,에셋플러스,Org_00080086,9,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080033,BNK자산운용,BNK Asset Management Co Ltd,BNK,Org_00080033,8,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040006,DB자산운용,DB Asset Management Co Ltd,DB,Org_00040006,7,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080022,아이비케이자산운용,IBK Asset Management Co Ltd,IBK,Org_00080022,7,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040018,브이아이자산운용,VI Asset Management Korea Co Ltd,브이아이,Org_00040018,7,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040021,흥국자산운용,"Heungkuk Investment Trust Management Co., Ltd",흥국,Org_00040021,6,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080041,현대자산운용,Hyundai Asset Management Co Ltd,현대,Org_00080041,5,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040001,교보악사자산운용,Kyobo AXA Investment Managers Co Ltd,교보악사,Org_00040001,5,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080005,마이다스에셋자산운용,Midas Asset Management Co Ltd,마이다스,Org_00080005,5,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040004,대신자산운용,Daishin Investment Trust Management,대신,Org_00040004,4,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00040087,케이씨지아이자산운용,KCGI Asset Management Co Ltd,KCGI,Org_00040087,3,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080021,한국투자밸류자산운용,Korea Investment Value Asset Management Co Ltd,한국밸류10년투자,Org_00080021,2,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080043,트러스톤자산운용,Truston Asset Management Co Ltd,트러스톤,Org_00080043,2,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080010,유리자산운용,Yurie asset Management Inc,유리,Org_00080010,2,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080162,디에스자산운용,DS Asset Management Co Ltd,디에스,Org_00080162,1,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080035,iM에셋자산운용,IM Asset Investment & Management Co Ltd,iM에셋,Org_00080035,1,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
-00080359,더제이자산운용,The J Investment Co Ltd,더제이,Org_00080359,1,domestic_etfs 동일 행 ref_fund_mgmt_co<->cu_fund_mgmt_co 공기(2차 DB) + asset_manager.csv 법인명,2026-08-22
+﻿code,name_ko,name_en,brand_ko,node_id,n_rows,source,as_of,name_en_lipper,status
+00040010,삼성자산운용,"Samsung Asset Management Co., Ltd.",삼성,Org_00040010,243,co-occurrence + https://en.wikipedia.org/wiki/Samsung_Asset_Management (2026-08-25 확인),2026-08-22,Samsung Asset Management Co Ltd,verified
+00080008,미래에셋자산운용,"Mirae Asset Global Investments Co., Ltd.",미래에셋,Org_00080008,235,co-occurrence + https://www.sec.gov/edgar/browse/?CIK=0001569395 (2026-08-25 확인),2026-08-22,Mirae Asset Global Investments Co Ltd,verified
+00040035,KB자산운용,"KB Asset Management Co., Ltd.",KB,Org_00040035,144,co-occurrence + https://www.kbam.co.kr/en (2026-08-25 확인),2026-08-22,KB Asset Ltd,verified
+00040024,한국투자신탁운용,"Korea Investment Management Co., Ltd.",한국투자,Org_00040024,118,co-occurrence + https://thevc.kr/koreainvestmentmanagement (2026-08-25 확인),2026-08-22,Korea Investment Management Co Ltd,verified
+00040027,한화자산운용,"Hanwha Asset Management Co., Ltd.",한화,Org_00040027,89,co-occurrence + https://www.hanwhafund.co.kr/en/global-network (2026-08-25 확인),2026-08-22,Hanwha Asset Management,verified
+00040067,신한자산운용,"Shinhan Asset Management Co., Ltd.",신한,Org_00040067,80,co-occurrence + https://englishdart.fss.or.kr/dsbc001/selectPopup.ax?selectKey=00243553 (2026-08-25 확인),2026-08-22,Shinhan Asset Management Co Ltd,verified
+00080052,키움투자자산운용,"Kiwoom Asset Management Co., Ltd.",키움,Org_00080052,76,co-occurrence + https://www.kiwoomam.com/KI0800000000M (2026-08-25 확인),2026-08-22,"Kiwoom Asset Management Co.,Ltd",verified
+00040040,NH-Amundi자산운용,"NH-Amundi Asset Management Co., Ltd.",NH-Amundi,Org_00040040,57,co-occurrence + https://www.nh-amundi.com/en/company/introduction (2026-08-25 확인),2026-08-22,NH-Amundi Asset Management Co Ltd,verified
+00040005,하나자산운용,"Hana Asset Management Co., Ltd.",하나,Org_00040005,29,co-occurrence + https://www.hanaam.com/ (2026-08-25 확인),2026-08-22,Hana Asset Management Co Ltd,verified
+00080135,삼성액티브자산운용,"Samsung Active Asset Management Co., Ltd.",삼성액티브,Org_SamsungActive,25,co-occurrence + https://www.samsungactive.co.kr/eng/main.do (2026-08-25 확인),2026-08-22,Samsung Active Asset Management,verified
+00080248,타임폴리오자산운용,"TIMEFOLIO Asset Management Co., Ltd.",타임폴리오,Org_00080248,19,co-occurrence + https://www.timefolio.co.kr/en/ (2026-08-25 확인),2026-08-22,Time Folio Asset Management Co Ltd,corrected
+00040007,우리자산운용,Woori Asset Management Corp.,우리,Org_00040007,18,co-occurrence + https://thevc.kr/wooriassetmanagement (2026-08-25 확인),2026-08-22,Woori Asset Management Corp,verified
+00080086,에셋플러스자산운용,"Assetplus Investment Management Co., Ltd.",에셋플러스,Org_00080086,9,co-occurrence + https://www.linkedin.com/company/assetplus-investment-management-co-ltd (2026-08-25 확인),2026-08-22,Asset Plus Investment Management Co Ltd,corrected
+00080033,BNK자산운용,"BNK Asset Management Co., Ltd.",BNK,Org_00080033,8,co-occurrence + https://www.bnkasset.co.kr/company/overview.aspx (2026-08-25 확인),2026-08-22,BNK Asset Management Co Ltd,verified
+00040006,DB자산운용,"DB Asset Management Co., Ltd.",DB,Org_00040006,7,co-occurrence + https://www.db-asset.com/front/kr/company/organization (2026-08-25 확인),2026-08-22,DB Asset Management Co Ltd,verified
+00080022,아이비케이자산운용,"IBK Asset Management Co., Ltd.",IBK,Org_00080022,7,co-occurrence + https://www.ibkasset.com/ (2026-08-25 확인),2026-08-22,IBK Asset Management Co Ltd,verified
+00040018,브이아이자산운용,"VI Asset Management Korea Co., Ltd.",브이아이,Org_00040018,7,co-occurrence + https://altss.com/profile/vi-asset-management-korea (2026-08-25 확인),2026-08-22,VI Asset Management Korea Co Ltd,verified
+00040021,흥국자산운용,"Heungkuk Asset Management Co., Ltd.",흥국,Org_00040021,6,co-occurrence + https://englishdart.fss.or.kr/dsbh001/main.do?rcpNo=20251030000249 (2026-08-25 확인),2026-08-22,"Heungkuk Investment Trust Management Co., Ltd",corrected
+00080041,현대자산운용,"Hyundai Asset Management Co., Ltd.",현대,Org_00080041,5,co-occurrence + https://www.linkedin.com/company/hyundai-asset-management-co.-ltd. (2026-08-25 확인),2026-08-22,Hyundai Asset Management Co Ltd,verified
+00040001,교보악사자산운용,"Kyobo AXA Investment Managers Co., Ltd.",교보악사,Org_00040001,5,co-occurrence + https://lei.bloomberg.com/leis/view/988400SR8XGNC82K2Y53 (2026-08-25 확인),2026-08-22,Kyobo AXA Investment Managers Co Ltd,verified
+00080005,마이다스에셋자산운용,"Midas Asset Management Co., Ltd.",마이다스,Org_00080005,5,co-occurrence + https://www.bloomberg.com/profile/company/MIDASAMZ:KS (2026-08-25 확인),2026-08-22,Midas Asset Management Co Ltd,verified
+00040004,대신자산운용,"Daishin Asset Management Co., Ltd.",대신,Org_00040004,4,co-occurrence + https://www.crunchbase.com/organization/daishin-asset-management (2026-08-25 확인),2026-08-22,Daishin Investment Trust Management,corrected
+00040087,케이씨지아이자산운용,"KCGI Asset Management Co., Ltd.",KCGI,Org_00040087,3,co-occurrence + https://www.kcgiam.com/company/introduction.php (2026-08-25 확인),2026-08-22,KCGI Asset Management Co Ltd,verified
+00080021,한국투자밸류자산운용,"Korea Investment Value Asset Management Co., Ltd.",한국밸류10년투자,Org_00080021,2,co-occurrence + https://vam.koreainvestment.com/eng/about.do?cmd=pageLink&link=company (2026-08-25 확인),2026-08-22,Korea Investment Value Asset Management Co Ltd,verified
+00080043,트러스톤자산운용,"Truston Asset Management Co., Ltd.",트러스톤,Org_00080043,2,co-occurrence + https://lei.bloomberg.com/leis/view/988400TCDOXEUPWQR670 (2026-08-25 확인),2026-08-22,Truston Asset Management Co Ltd,verified
+00080010,유리자산운용,Yurie Asset Management Inc.,유리,Org_00080010,2,co-occurrence + https://www.yurieasset.co.kr/ (2026-08-25 확인),2026-08-22,Yurie asset Management Inc,verified
+00080162,디에스자산운용,"DS Asset Management Co., Ltd.",디에스,Org_00080162,1,co-occurrence + https://www.crunchbase.com/organization/ds-asset-management (2026-08-25 확인),2026-08-22,DS Asset Management Co Ltd,verified
+00080035,iM에셋자산운용,"iM Asset Investment & Management Co., Ltd.",iM에셋,Org_00080035,1,co-occurrence + https://m.kofia.or.kr/brd/m_31/view.do?seq=6605 (2026-08-25 확인),2026-08-22,IM Asset Investment & Management Co Ltd,verified
+00080359,더제이자산운용,"TheJ Asset Management Co., Ltd.",더제이,Org_00080359,1,co-occurrence + https://www.thejasset.com/etc/credit-information.php (2026-08-25 확인),2026-08-22,The J Investment Co Ltd,corrected

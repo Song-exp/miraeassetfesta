@@ -84,11 +84,24 @@ if [ "$MODE" != "--db-only" ]; then
   ssh_ "cd $REMOTE && git pull --ff-only && git log --oneline -1"
 
   say "1-B. 서버 .env 점검"
+  # 🔴 SITE_ADDRESS 는 경고가 아니라 중단이다. 비어 있으면 Caddyfile 의 `{$SITE_ADDRESS} {` 가
+  #    ` {` 가 되어 설정 파싱이 실패하고, caddy 가 안 떠서 HTTPS 가 통째로 죽는다.
+  if ! ssh_ "grep -qE '^SITE_ADDRESS=.+' $REMOTE/.env"; then
+    echo "❌ 서버 .env 에 SITE_ADDRESS 가 없습니다 — 이대로 up 하면 Caddy 가 죽습니다."
+    echo "   서버에서: echo 'SITE_ADDRESS=$IP.nip.io' >> $REMOTE/.env"
+    exit 1
+  fi
   ssh_ "cd $REMOTE && for k in HYPERCLOVA_API_KEY SITE_ADDRESS AGENT_READY RELOAD_TOKEN CHAT_TOKEN; do
           if grep -q \"^\$k=.\" .env 2>/dev/null; then echo \"   ✅ \$k 설정됨\"; else echo \"   ⚠️  \$k 비어있음/없음\"; fi
         done"
+  # 팀 전체에 퍼지는 토큰(CHAT)과 운영 토큰(RELOAD)이 같으면 안 된다
+  if ssh_ "cd $REMOTE && [ -n \"\$(grep '^CHAT_TOKEN=.' .env | cut -d= -f2-)\" ] &&            [ \"\$(grep '^CHAT_TOKEN=' .env | cut -d= -f2-)\" = \"\$(grep '^RELOAD_TOKEN=' .env | cut -d= -f2-)\" ]"; then
+    echo "   ⚠️  CHAT_TOKEN 과 RELOAD_TOKEN 이 같습니다 — CHAT 은 팀 전원에게 퍼집니다."
+    echo "      RELOAD_TOKEN 을 다른 값으로 바꾸세요 (운영용은 혼자 쥡니다)."
+  fi
   echo "   ⚠️  AGENT_READY=1 이 아니면 에이전트가 '구축 중' 으로 답합니다."
-  echo "      서버에서: cd $REMOTE && nano .env   (AGENT_READY=1 · RELOAD_TOKEN · CHAT_TOKEN)"
+  echo "   🔴 .env 를 고쳤다면 restart 로는 반영되지 않습니다 — env_file 은 컨테이너 생성 시 읽습니다."
+  echo "      이 스크립트는 up -d 로 재생성하므로 정상 반영됩니다."
 fi
 
 # ── 2. DB 반입 ──────────────────────────────────────────────────────────

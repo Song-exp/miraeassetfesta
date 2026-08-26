@@ -11,6 +11,10 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      # 🔴 컨테이너 기본은 UTC 입니다 (python:3.12-slim). 호스트가 KST 여도 로그 타임스탬프는
+      #    9시간 어긋나고, 질의 로그를 팀 대화·평가 시각과 맞춰 볼 때 헷갈립니다.
+      TZ: Asia/Seoul
     # 호스트에 포트를 열지 않습니다. Caddy 만 외부에 노출됩니다.
     expose:
       - "8000"

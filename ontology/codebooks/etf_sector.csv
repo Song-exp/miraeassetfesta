@@ -1,4 +1,4 @@
-﻿# source=internal (마스터 데이터 유도 — 외부 수집 아님) · as_of=2026-07-11
+﻿# source=internal (마스터 데이터 유도 — 외부 수집 아님) · as_of=2026-08-22
 code,name,group,count,note_source
 2,일반 ETF,ETF,1126,"교차검증(pd_grp_no+상품명), 전부 ETF·다양한 자산군"
 3,일반 ETN,ETN,406,"교차검증(pd_grp_no+상품명), 전부 ETN·'상장지수증권 제N호'"

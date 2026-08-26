@@ -3,7 +3,7 @@
 
 방법·출처: data/external/holdings/SOURCES.md (커밋 6941fbb 에서 확립, 대표 20개 검증 완료)
   - 엔드포인트: GET https://www.funetf.co.kr/api/public/product/view/etfpdf
-  - 기준일 etfPdfYmd=20260710 고정 (7/11 토요일 → 마지막 영업일, 7/11 제약 준수)
+  - 기준일 etfPdfYmd=SNAP (2026-08-21 = 마스터 기준일 8/22 토요일의 마지막 영업일; 외부자료 ≤ 8/24 허용)
   - 인증 불필요(ROLE_ANONYMOUS) · 요청 간격 0.6초
 
 대상: domestic_etfs 전량 1,734 (ETF 1,202 + ETN 532 — ETN 은 '구성종목 미제공' 응답 예상, 로그로 기록)
@@ -22,19 +22,21 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "data" / "external" / "holdings"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-HOLDINGS_CSV = OUT_DIR / "domestic_holdings_20260710.csv"
-LOG_CSV = OUT_DIR / "fetch_log_20260710.csv"
+# 스냅샷 기준일 — 마스터 기준일 8/22(토) 의 마지막 영업일 8/21. 1차(7/10) 파일은 그대로 두고 별도 파일로 쌓는다.
+SNAP = "20260821"
+HOLDINGS_CSV = OUT_DIR / f"domestic_holdings_{SNAP}.csv"
+LOG_CSV = OUT_DIR / f"fetch_log_{SNAP}.csv"
 
 URL = "https://www.funetf.co.kr/api/public/product/view/etfpdf"
 PARAMS_BASE = {
     "fid": "2ETF01",
-    "etfPdfYmd": "20260710",
+    "etfPdfYmd": SNAP,
     "roleType": "ROLE_ANONYMOUS",
     "schCtenDvsn": "MK_VIEW",
 }
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 SLEEP = 0.6
-AS_OF = "2026-07-10"
+AS_OF = f"{SNAP[:4]}-{SNAP[4:6]}-{SNAP[6:]}"
 
 HOLD_FIELDS = ["etf_code", "etf_name", "rank", "ticker", "constituent", "weight_pct", "quantity", "as_of"]
 LOG_FIELDS = ["etf_code", "etf_name", "grp", "status", "n_rows", "note"]

@@ -18,6 +18,7 @@ property: tracksIndex
 nodes:
   Idx_KOSPI200:
     label_ko: KOSPI200
+    parent: Idx_a_fa21f0fb15   # 자동 패밀리(KOSPI200, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "KOSPI200", source: rule, evidence: "ETF 9건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "KOSPI200", source: rule, evidence: "펀드 10,655건 — 표기 완전일치"}
@@ -118,6 +119,7 @@ nodes:
       - {table: domestic_etfs, column: cu_base_index, raw: "KRX 미디어통신", source: rule, evidence: "ETF 1건"}
   Idx_SP500TR:
     label_ko: S&P 500 TR
+    parent: Idx_a_25e8381c5f   # 자동 패밀리(S&P 500, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
     note: 해외ETF 대표 지수 — 해외 지수 자동 등록 트랙의 선반영
     aliases:
       - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 TR", source: manual, evidence: "해외ETF 335건"}

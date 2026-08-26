@@ -2,11 +2,11 @@
 # 3개 테이블 × 표기 3종(정수 / PD_RISK_GCD_1X 문자열 / 실수)을 하나의 등급 노드로 잇는다.
 #
 # 🔴 등급 범위는 0~6 (1~5 아님) — .agents/rules/miraeasset-rules.md §4.
-#    6등급: 채권 10,408 · 펀드 2,397 · 국내ETF 21 / 0(미분류 추정): 채권 58건.
+#    6등급(2차 실측 2026-08-25): 채권 8,929 · 국내ETF 21 / 해당없음: 채권 19건("00").
 # 🔴 해외ETF는 위험등급 컬럼 자체가 없음 → absent_in. "없다"도 데이터다.
 #
-# 값 근거: DB distinct 전수 확인 (2026-08-18)
-#   domestic_bonds.PD_RISK_GCD          : 0~6 (정수)
+# 값 근거: DB distinct 전수 확인 (2026-08-18 · 채권은 2026-08-25 2차 데이터로 갱신)
+#   domestic_bonds.pd_risk_gcd          : '00','11'~'16' (문자열, 2차 데이터 — 1차의 0~6 정수는 코드 이슈로 폐기. pd_risk_nm 병행 수록)
 #   domestic_etfs.pd_risk_cd            : PD_RISK_GCD_11 ~ _16 (뒤 2자리 - 10 = 등급)
 #   domestic_etfs.pd_risk_nm            : '매우높은위험(1등급)' 등 6종
 #   public_funds.zrin_fd_ivst_risk_gcd  : 1.0~6.0 (실수) + 오염값 20054.0 (65건 추정 — 미매핑 리포트로 추적)
@@ -22,7 +22,7 @@ nodes:
   RiskGrade_1:
     label_ko: 매우 높은 위험
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD,              raw: "1",                    source: rule, evidence: "정수 그대로"}
+      - {table: domestic_bonds, column: pd_risk_gcd,              raw: "11",                    source: rule, evidence: "정수 그대로"}
       - {table: domestic_etfs,  column: pd_risk_cd,               raw: "PD_RISK_GCD_11",       source: rule, evidence: "뒤 2자리-10 규칙"}
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "매우높은위험(1등급)",   source: manual, evidence: "distinct 확인 260818"}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "1.0",                  source: rule, evidence: "실수 표기"}
@@ -30,7 +30,7 @@ nodes:
   RiskGrade_2:
     label_ko: 높은 위험
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD,              raw: "2",              source: rule}
+      - {table: domestic_bonds, column: pd_risk_gcd,              raw: "12",              source: rule}
       - {table: domestic_etfs,  column: pd_risk_cd,               raw: "PD_RISK_GCD_12", source: rule}
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "높은위험(2등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "2.0",            source: rule}
@@ -39,7 +39,7 @@ nodes:
   RiskGrade_3:
     label_ko: 다소 높은 위험
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD,              raw: "3",                  source: rule}
+      - {table: domestic_bonds, column: pd_risk_gcd,              raw: "13",                  source: rule}
       - {table: domestic_etfs,  column: pd_risk_cd,               raw: "PD_RISK_GCD_13",     source: rule}
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "다소높은위험(3등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "3.0",                source: rule}
@@ -47,7 +47,7 @@ nodes:
   RiskGrade_4:
     label_ko: 보통 위험
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD,              raw: "4",              source: rule}
+      - {table: domestic_bonds, column: pd_risk_gcd,              raw: "14",              source: rule}
       - {table: domestic_etfs,  column: pd_risk_cd,               raw: "PD_RISK_GCD_14", source: rule}
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "보통위험(4등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "4.0",            source: rule}
@@ -56,7 +56,7 @@ nodes:
   RiskGrade_5:
     label_ko: 낮은 위험
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD,              raw: "5",              source: rule}
+      - {table: domestic_bonds, column: pd_risk_gcd,              raw: "15",              source: rule}
       - {table: domestic_etfs,  column: pd_risk_cd,               raw: "PD_RISK_GCD_15", source: rule}
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "낮은위험(5등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "5.0",            source: rule}
@@ -64,22 +64,17 @@ nodes:
   RiskGrade_6:
     label_ko: 매우 낮은 위험
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD,              raw: "6",                  source: rule, evidence: "🔴 채권 10,408건(24.6%) — 1~5 제약이면 차단됨"}
+      - {table: domestic_bonds, column: pd_risk_gcd,              raw: "16",                  source: rule, evidence: "🔴 채권 8,929건(40.8%, 2차) — 1~5 제약이면 차단됨"}
       - {table: domestic_etfs,  column: pd_risk_cd,               raw: "PD_RISK_GCD_16",     source: rule}
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "매우낮은위험(6등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "6.0",                source: rule}
       - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "매우 낮은 위험",      source: manual}
-  RiskGrade_6_variant:
-    label_ko: 매우 낮은 위험 (오염 표기)
-    note: "🔴 등급명 컬럼에 코드 '06' 이 들어간 1행 — 6등급 추정이나 오염값이라 보류"
-    aliases:
-      - {table: public_funds, column: zrin_fd_ivst_risk_grd_nm, raw: "06", source: manual, evidence: "1행 — coverage report 260818 발견", status: pending}
 
   RiskGrade_0:
     label_ko: 미분류
     note: "🔴 채권 58건에만 존재 — 미분류 추정, 워크샵 확정 필요"
     aliases:
-      - {table: domestic_bonds, column: PD_RISK_GCD, raw: "0", source: rule, evidence: "58건", status: pending}
+      - {table: domestic_bonds, column: pd_risk_gcd, raw: "00", source: rule, evidence: "2차: 19건 · pd_risk_nm='해당없음'"}
 
 absent_in:
   overseas_etfs: "위험등급 컬럼 자체 없음 → '위험등급 낮은 해외ETF' 질의는 HCX 호출 0회로 기각"

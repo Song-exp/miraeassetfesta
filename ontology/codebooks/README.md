@@ -202,3 +202,16 @@ NEXT_STEPS §68 요구: **운용사 · 수탁사 · 금투협(펀드분류) · �
 | :--- | :--- | :--- |
 | 펀드기준 | `asset_manager` `trustee` `market` `fx_rate` (+펀드분류) | 운용사·거래소·환율만 ETF 관련 |
 | **ETF전용** | `etf_sector` `region_map` `asset_type_map` | 🟢 **교차질의 핵심** |
+
+
+---
+
+## 9. `fund_attr_code.csv` · `fund_country_tag.csv` — 펀드 속성코드 ↔ 명칭 (2026-08-25 신설, 자동 생성)
+
+| 항목 | 내용 |
+| :--- | :--- |
+| 생성 | `python scripts/gen_fund_attr_codebook.py` — 2차 `public_funds.prfd_attr_search_text` 의 `코드 명칭` 인접쌍에서 도출 |
+| 규모 | 속성코드 **210종**, 축 15개(첫 글자: C 설정형태 · D 판매채널 · E 가입대상 · F 세제 · G 세제특례/연금 · M 구조 · N 테마 · O 섹터 · P 스타일 · Q 실물 · R 특수자산 · S 전략 · T TDF빈티지 · V 지역구분 · W 세부지역) + 국가 태그(ISO3↔한글) |
+| 검증 | 명칭이 같은 행의 `zrin_attr_nms` 집합에 등장하는지 → `verified_rate`. `status` confirmed / confirmed_low_n(표본<5) / check |
+| 주의 | `prfd_attr_cds` ↔ `zrin_attr_nms` 는 **위치 대응이 아님** — 코드 해석은 반드시 이 코드북으로. 축 이름(`axis_name`)은 명칭 분포로 붙인 **추정**(주최 코드북 제공 불가 확정) |
+| 활용 | "연금저축 가능 펀드"(G110) · "TDF2045"(T245) · "ESG 테마"(N167) · "북미 투자"(W104) 같은 태그 질의를 `prfd_attr_cds LIKE '%코드%'` 로 |

@@ -11,13 +11,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 logging.basicConfig(
@@ -30,6 +31,25 @@ log = logging.getLogger("api")
 AGENT_READY = os.environ.get("AGENT_READY", "0") == "1"
 # /reload 보호용. 비어 있으면 엔드포인트를 잠급니다 — 공개 URL 에 무인증 갱신구를 두지 않습니다.
 RELOAD_TOKEN = os.environ.get("RELOAD_TOKEN", "")
+# 실험용 웹 UI(/chat) 접근 토큰. 비어 있으면 /chat 자체가 404 입니다.
+CHAT_TOKEN = os.environ.get("CHAT_TOKEN", "")
+# 질의 로그 — 실험의 산출물입니다. 컨테이너에서는 볼륨(./logs)으로 빼서 회수합니다.
+LOG_DIR = os.environ.get("API_LOG_DIR", "logs")
+
+
+def _log_qa(payload: dict) -> None:
+    """질의·답변·근거를 jsonl 로 남깁니다.
+
+    🔴 실패해도 응답을 막지 않습니다. 로그는 산출물이지 계약이 아닙니다 —
+       디스크가 차서 채점 응답이 깨지는 쪽이 훨씬 나쁩니다.
+    """
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        day = time.strftime("%Y%m%d", time.localtime())
+        with open(os.path.join(LOG_DIR, f"api-{day}.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        log.warning("질의 로그 기록 실패 — 응답은 정상 진행", exc_info=True)
 
 _PLANNER = None
 _PLANNER_TRIED = False
@@ -172,7 +192,33 @@ def answer(
     result = answer_question(question_id, question)
     dt = time.perf_counter() - t0
     log.info("answer qid=%s dt=%.3fs q=%r", question_id, dt, question[:80])
+    _log_qa({
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+        "question_id": question_id,
+        "question": question,
+        "answer": result.answer,
+        "retrieved_context": result.retrieved_context,
+        "think_trace": result.think_trace,
+        "elapsed_s": round(dt, 2),
+    })
     return result
+
+
+@app.get("/chat", response_class=HTMLResponse)
+def chat_ui(t: str = Query(default="")) -> HTMLResponse:
+    """실험용 웹 UI. 토큰이 맞아야 열립니다 — `/chat?t=<CHAT_TOKEN>`.
+
+    🔴 존재 자체를 숨깁니다(403 이 아니라 404). 공개 URL 에서 "여기 뭔가 있다" 는 신호를
+       주지 않기 위해서입니다.
+    ⚠️ 이 토큰은 UI 접근만 막습니다. `/answer` 는 평가 계약상 열려 있어야 하므로
+       주소를 아는 사람은 직접 호출할 수 있습니다 — 키 소진이 걱정되면 평가 기간 전까지
+       ACG 나 Caddy 에서 IP 를 제한하세요.
+    """
+    if not CHAT_TOKEN or t != CHAT_TOKEN:
+        return HTMLResponse(status_code=404, content="not found")
+    from .chat_ui import PAGE
+
+    return HTMLResponse(content=PAGE)
 
 
 def _fallback(request: Request, trace: str) -> JSONResponse:

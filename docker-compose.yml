@@ -24,6 +24,9 @@ services:
     #    DB 가 아직 없으면 스텁은 그대로 뜨고, 에이전트를 붙일 때 걸립니다.
     volumes:
       - ./data:/app/data:ro
+      # 질의 로그 — 실험의 산출물입니다. data 와 달리 쓰기 가능해야 합니다.
+      # 오답을 골라 eval/questions_*.jsonl 로 승격하는 것이 루프의 마지막 단계입니다.
+      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=4).status==200 else 1)"]

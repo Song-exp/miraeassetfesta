@@ -4,6 +4,12 @@
 #   bash deploy/deploy.sh              # 전체 (코드 + DB + 기동)
 #   bash deploy/deploy.sh --code-only  # 코드만 (DB 그대로)
 #   bash deploy/deploy.sh --db-only    # DB만 반입 후 restart
+#   bash deploy/deploy.sh --yaml-only  # 🚀 온톨로지 규칙만 반영 (git pull + restart, 약 5초)
+#
+# --yaml-only 는 실험 루프용입니다. compose 가 ./ontology 를 마운트하므로 enums/*.yaml 의
+# query_rules 를 고친 경우 재빌드도 DB 재전송도 필요 없습니다.
+#   ⚠️ shared/*.yaml(개체·alias)을 고쳤다면 kg_* 를 다시 만들어야 하므로 --db-only 가 필요합니다
+#      (로컬에서 build_ontology.py 를 먼저 돌린 뒤).
 #
 # 🔴 이 스크립트는 **로컬에서** 실행합니다. 22번 포트는 ACG 로 특정 IP 에만 열려 있으므로
 #    허용된 자리에서 돌려야 합니다.
@@ -49,6 +55,16 @@ PY
 
 LOCAL_MD5=$(python -c "import hashlib;print(hashlib.md5(open('$DB','rb').read()).hexdigest())")
 echo "   로컬 md5 $LOCAL_MD5"
+
+# ── 1-Fast. 온톨로지 규칙만 반영 ────────────────────────────────────────
+if [ "$MODE" = "--yaml-only" ]; then
+  say "1-Fast. 온톨로지 규칙 반영 (git pull + restart)"
+  ssh_ "cd $REMOTE && git pull --ff-only && git log --oneline -1 && docker compose restart api"
+  sleep 5
+  curl -s -m 20 "https://$IP.nip.io/health"; echo
+  echo "✅ 반영 완료. shared/*.yaml 을 고쳤다면 이걸로는 부족합니다 — --db-only 로 kg_* 도 보내세요."
+  exit 0
+fi
 
 # ── 1. 코드 ─────────────────────────────────────────────────────────────
 if [ "$MODE" != "--db-only" ]; then

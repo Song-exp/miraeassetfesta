@@ -99,3 +99,7 @@ ontology/enums/*.auto.yaml
 
 # 도메인 이해용 원본 PDF — 원문 배포 금지 (요지는 docs/domain/*.md 로 정리됨)
 docs/domain/*.pdf
+
+# 외부 수집 데이터 아카이브 — 실물은 data/external/ (드라이브 공유)
+external.zip
+*.zip

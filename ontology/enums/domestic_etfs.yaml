@@ -80,27 +80,30 @@ columns:
     missing_reason: mixed
     answer_policy: >-
       '분배금 많이 주는 ETF' Top-N 답변 가능 — `pd_grp_no='ETF' AND pd_divd_amt_pshr > 0` (유효 967건 = ETF 78.3%).
-      0값 241건은 정렬에서 제외하고 "분배금 0(수록값)"으로 응답 — 주최 공지(0 은 의도된 값). ✅ 검수 C — 0값 241건도 pd_dvid_cycl(A 87·Q 148·M 6)·pay_cnt 는 있음 → 주기는 있으나 금액 0. 무분배인지 미입력인지는 확정 불가 → '분배 실적 없음' 단정 금지, '분배금 0으로 수록' 으로.
+      🔴 2026-08-26 주최 답변 확정 — 0값 241건은 **결과에서 아예 제외**한다("값이 0 이니 당연히 기준이 없음").
+      옛 지침("분배금 0으로 수록"으로 응답)은 폐기. 모수(967건)만 밝히고 0값 행은 언급하지 않는다.
+      ✅ 검수 C — 0값 241건도 pd_dvid_cycl(A 87·Q 148·M 6)·pay_cnt 는 있음(주기는 있으나 금액 0).
+      무분배인지 미입력인지 확정 불가라는 사실은 유지하되, 이제 어느 쪽이든 제외 대상이라 답변에 영향 없음.
     note: >-
       🟢 2026-08-25 2차 — ETF: 유효 967 · 0값 241 · NULL 27. 상품명 '배당'/'커버드콜' 119건 중 0값은 3건뿐
       → 1차의 "배당형도 전부 0 = 미입력" 근거가 사라졌으므로 0 을 실제 수록값으로 취급(주최 공지). 🔴 단위 주의(검수 C): pd_dvid_yield(%) = pd_divd_amt_ann / pd_dvid_nav 가 588/588 정확 일치 → 분배금 절대액이 NAV 대비 100배 스케일(원 단위 아닐 가능성). **분배금 절대액 답변 금지, 분배수익률(%)·지급월만 답한다.**
       기준일 pd_dvid_base_dt = 2026-08-22, 가격 기준 pd_dvid_prc_base_dt = 2026-08-20 (1,161건).
     unit: krw
-    zero_is_value: true   # 0 = 수록값(주최 공지). 정렬에서는 제외하되 "분배금 0으로 수록"으로 답한다
+    # zero_is_value 해제 (2026-08-26 주최 답변) — 0값 241건은 결과에서 제외
   pd_divd_amt_ann:
     korean_name: 연간분배금(주당)
     missing_reason: mixed
     answer_policy: "연간 분배금 질의 가능 — 유효 588건. NULL 951건(ETN 545 + ETF 406)은 '데이터 미제공'."
     note: 2차 신규. 유효 588 · 0값 241 · NULL 951. ✅ 검수 C 2026-08-25 — pd_divd_amt_ann = pd_divd_amt_pshr × pd_dvid_pay_cnt 가 588/588 정확 일치(스키마 코멘트 "연간 추정 분배금") — 회당 × 연간 지급횟수. 절대액은 단위 미확정이라 답변 금지(pd_divd_amt_pshr 참조).
     unit: krw
-    zero_is_value: true
+    # zero_is_value 해제 (2026-08-26 주최 답변)
   pd_dvid_yield:
     korean_name: 분배수익률
     missing_reason: mixed
     answer_policy: "분배수익률 순위 질의 가능 — `pd_dvid_yield > 0` (ETF 967건). 단위 % (✅ 검수 C — = pd_divd_amt_ann / pd_dvid_nav, 588건 정확 일치 · 범위 0.004~27.8). 0값 241 = 분배금 0 수록, ETN NULL."
     note: 🟢 2차 — ETF 유효 967 · 0값 241 · NULL 27. pd_divd_amt_pshr 와 유효/0 집합이 동일.
     unit: percent
-    zero_is_value: true
+    # zero_is_value 해제 (2026-08-26 주최 답변)
   pd_dvid_cycl:
     korean_name: 분배주기
     missing_reason: mixed
@@ -439,13 +442,13 @@ normalization:
   - pd_mkt_nm
   - pd_dvid_cycl       # ETN 422건 '  ' 공백 패딩
   # 수치 정렬·필터 기본값: <컬럼> IS NOT NULL AND <컬럼> <> 0 (주최 공지 "0/결측은 의도된 값 — 빼고 보여주거나 없다고 응답").
-  # 0 이 실제값인 컬럼은 columns.<col>.zero_is_value: true 로 예외 선언 (cu_lev_fector · 분배금 3종).
+  # 🔴 2026-08-26 주최 답변으로 예외 축소 — "수익률·총보수 같은 컬럼을 질의했을 때 그 컬럼의 값이 0 인 행들은
+  #     아예 포함하지 않는 게 맞다 (값이 0 이니 당연히 기준이 없음)".
+  #     → 분배금 3종(pd_divd_amt_pshr · pd_divd_amt_ann · pd_dvid_yield) 예외 해제.
+  #     남는 예외는 0 이 랭킹 축이 아니라 분류 정보인 컬럼뿐.
   zero_as_missing_default: true
   zero_is_value_columns:
-  - cu_lev_fector      # 배수 없음 = 1.0 (0 은 부재)
-  - pd_divd_amt_pshr   # 0 = 수록값(주최 공지) — 정렬 제외하되 "분배금 0으로 수록"으로 응답
-  - pd_divd_amt_ann
-  - pd_dvid_yield
+  - cu_lev_fector      # 배수 없음 = 1.0 (0 은 부재) — 랭킹 축 아님, 필터 전용
 
 # ── 쿼리 가드레일 ──
 query_rules:

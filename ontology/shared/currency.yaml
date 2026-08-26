@@ -29,7 +29,9 @@ nodes:
     label_ko: 미국 달러
     label_en: USD
     aliases:
-      - {table: domestic_bonds, column: curr_cd,    raw: "USD", source: manual, evidence: "외화채권 19건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
+      # 🔴 2026-08-26 중복 키 수정 — evidence 가 두 번 선언돼 앞의 "외화채권 19건"(1차 실측)이 파서에서 소실되고 있었다.
+      - {table: domestic_bonds, column: curr_cd,    raw: "USD", source: manual, status: pending,
+         evidence: "1차 외화채권 19건 → 2차 데이터(8/22)에는 외화채 없음 (curr_cd distinct = KRW·000 뿐). pending 유지 — domestic_bonds.query_rules.외화채없음 과 정합"}
       - {table: public_funds,   column: curr_cd,    raw: "USD", source: manual, evidence: "역외펀드 572건"}
       - {table: overseas_etfs,  column: pd_trd_ccy, raw: "USD", source: manual, evidence: "해외ETF 전량 USD 5,646건"}
 
@@ -38,14 +40,16 @@ nodes:
     label_en: JPY
     aliases:
       - {table: public_funds, column: curr_cd, raw: "JPY", source: rule, evidence: "2차 펀드 15행 (2026-08-25)"}
-      - {table: domestic_bonds, column: curr_cd, raw: "JPY", source: manual, evidence: "1건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
+      - {table: domestic_bonds, column: curr_cd, raw: "JPY", source: manual, status: pending,
+         evidence: "1차 1건 → 2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
 
   Curr_EUR:
     label_ko: 유로
     label_en: EUR
     aliases:
       - {table: public_funds, column: curr_cd, raw: "EUR", source: rule, evidence: "2차 펀드 56행 (2026-08-25)"}
-      - {table: domestic_bonds, column: curr_cd, raw: "EUR", source: manual, evidence: "1건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
+      - {table: domestic_bonds, column: curr_cd, raw: "EUR", source: manual, status: pending,
+         evidence: "1차 1건 → 2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
 
   Curr_AUD:
     label_ko: 호주 달러

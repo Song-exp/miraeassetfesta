@@ -27,6 +27,18 @@ REMOTE="/opt/mirae"
 DB="data/financial_products.db"
 MODE="${1:-all}"
 
+# 오타가 전체 배포로 떨어지지 않게 막는다 — 모르는 인자는 실행하지 않는다
+case "$MODE" in
+  all|--code-only|--db-only|--yaml-only) ;;
+  -h|--help)
+    sed -n '2,12p' "$0" | sed 's/^# \?//'
+    exit 0 ;;
+  *)
+    echo "알 수 없는 인자: $MODE"
+    echo "사용법: bash deploy/deploy.sh [--code-only | --db-only | --yaml-only]"
+    exit 2 ;;
+esac
+
 ssh_() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$USER@$IP" "$@"; }
 say()  { printf '\n\033[1m▶ %s\033[0m\n' "$*"; }
 

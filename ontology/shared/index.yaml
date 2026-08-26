@@ -6,10 +6,13 @@
 # 컬럼이 달라(cu_base_index vs bmrk_nm) 표기가 같아도 alias 가 필요하다 —
 # "어느 테이블 어느 컬럼에서 찾나"가 KG 가 답하는 정보이기 때문 (BUILD_PLAN §3.3).
 #
-# 🔴 미등록 (coverage report 로 추적):
-#   · 펀드 전용 벤치마크 374종 (혼합식 'KOSPI200 25% + 종합채권01Y 75%' 다수 — 합성 벤치마크 분해는 워크샵 안건)
-#   · 해외ETF 지수 ~1,733종 — 센티넬 2종('Index is not provided…' 1,984건 · 'Index is not available…' 721건) 제거 후 자동 등록 트랙
-#   · 대표 해외지수 2종(S&P 500 TR · Bloomberg US Agg)만 선반영
+# ✅ 2026-08-22 해외ETF 지수 등록(이병철) → 🔧 2026-08-25 자동 등록으로 대체됨
+#   당시 codebooks/index_master.csv 로 해외 61종을 수동 등록했으나, index_auto.yaml 의 자동 등록
+#   (지수 3,151노드 + 패밀리 closure)이 같은 값을 더 넓게 덮어 raw 값 충돌(V2) 59건이 발생.
+#   → 수동 중복 노드 53개 삭제. 교차질의 연결은 alias 가 아니라 **parent(자동 패밀리)** 로 유지한다:
+#     Idx_MSCI_ACWI → Idx_a_83b9b8edb8 · Idx_MSCI_EM → Idx_a_c2f932ab65 · Idx_SP500TR → Idx_a_25e8381c5f
+#   즉 "국내ETF+펀드(수동 노드) ↔ 해외ETF(자동 노드)" 는 같은 패밀리 아래에서 closure 로 묶인다.
+#   정규화 규칙(TR/CR/NR·철자변형 → base_index)은 codebooks/index_master.csv 에 남아 있다.
 
 entity: Index
 description: 기초지수·벤치마크
@@ -34,6 +37,7 @@ nodes:
       - {table: domestic_etfs, column: cu_base_index, raw: "코스닥150 150%", source: rule, evidence: "ETF 1건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "코스닥150 150%", source: rule, evidence: "펀드 45건"}
   Idx_MSCI_ACWI:
+    parent: Idx_a_83b9b8edb8   # 자동 패밀리(MSCI AC World, index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
     label_ko: MSCI ACWI
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI", source: rule, evidence: "ETF 6건"}
@@ -59,6 +63,7 @@ nodes:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI NORTH AMERICA", source: rule, evidence: "ETF 4건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "MSCI NORTH AMERICA", source: rule, evidence: "펀드 936건"}
   Idx_MSCI_EM:
+    parent: Idx_a_c2f932ab65   # 자동 패밀리(MSCI EM (Emerging Markets), index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
     label_ko: MSCI EM (EMERGING MARKETS)
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "ETF 1건"}
@@ -120,13 +125,18 @@ nodes:
   Idx_SP500TR:
     label_ko: S&P 500 TR
     parent: Idx_a_25e8381c5f   # 자동 패밀리(S&P 500, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
-    note: 해외ETF 대표 지수 — 해외 지수 자동 등록 트랙의 선반영
+    note: >-
+      해외ETF 대표 지수. 수익률방식 변형(TR·CR·NR)을 alias 로 함께 묶는다 — 335→387건 통합 조회.
+      노드 id 는 index_auto.yaml 이 edge 로 참조하므로 유지 (Idx_SP500 으로 개명 금지).
     aliases:
       - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 TR", source: manual, evidence: "해외ETF 335건"}
   Idx_BbgUSAgg:
-    label_ko: Bloomberg U.S. Aggregate Bond TR
+    label_ko: Bloomberg US Aggregate Bond
     aliases:
       - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg U.S. Aggregate Bond TR", source: manual, evidence: "해외ETF 89건"}
 
+  # ── 해외ETF 지수 (2026-08-22 등록, 이병철) ──
+  # 원천: ontology/codebooks/index_master.csv (base_index 정규화본)
+  # 수익률방식(TR/CR/NR)·철자변형은 한 노드에 alias 로 통합 — 교차질의용
 absent_in:
   domestic_bonds: "기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각"

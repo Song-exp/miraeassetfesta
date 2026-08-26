@@ -12,13 +12,18 @@
 fp:Product
    │
    ├── fp:ETF ─────────────── owl:disjointWith ──── fp:ETN
-   │     ├── (국내ETF 1,202)                          국내ETN 532
-   │     └── fp:ForeignETF (해외ETF 5,646)            (증권사 발행)
+   │     ├── (국내ETF 1,202)                          국내ETN 532 + 해외ETN 59
+   │     └── fp:ForeignETF (해외ETF 5,587)            (증권사 발행)
    │           ↑ PDF: rdfs:subClassOf fp:ETF
 ```
 
 - **ETN** = ETF와 **배타적 형제**(disjoint). "레버리지 ETF" 질의에 ETN 섞이면 오답.
 - **해외ETF**(`ForeignETF`) = ETF의 **하위클래스**. ETF의 일종이나 스키마가 크게 다름.
+
+> 🔴 **함정 — 테이블 ≠ 상품종류** (2026-08-22 ttl 반영):
+> `overseas_etfs` 테이블 5,646건은 **ETF 5,587 + ETN 59** 다. `domestic_etfs` 도 ETF 1,202 + ETN 532.
+> 즉 **테이블 클래스(`:DomesticETF`·`:OverseasETF`)를 `:ETF` 하위로 두면 안 된다** — ETN 행까지
+> ETF 로 단정해 `owl:disjointWith` 와 모순이 된다. 상품종류 판별은 **`pd_grp_no`** 로 한다.
 
 ### 관계도 (mermaid)
 

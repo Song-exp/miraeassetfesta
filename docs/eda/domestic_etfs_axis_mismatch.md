@@ -89,10 +89,24 @@ axis 7축 중 **5축은 데이터 컬럼으로 90~100% 유도 가능**하나, �
 
 ---
 
+## 3.5 🔬 컬럼 밀림(정답지 버그) 가설 — **기각** (2026-08-21 재검증)
+
+국고채 ETF의 assetType=Equity 가 정답지 컬럼 밀림 오류인지 전체 축을 대조:
+
+| 국고채 ETF 4건 | assetType | region | strategy | replication | leverageType | underlyingScope | distribution |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 전부 동일 | 🔴 **Equity** | Domestic ✅ | Passive ✅ | Physical ✅ | Standard ✅ | SectorTheme | Distributing ✅ |
+
+→ **assetType 만 이상하고 나머지 6축은 전부 정상** = 값이 밀린 게 아님. **4개 운용사 국고채가 전부 Equity = 일관된 의도적 라벨링**(오타·랜덤 아님). 기준이 opaque 할 뿐, 정답지 버그는 아니다.
+
+> 검토한 가설: "ETF는 법적으로 지분증권이라 Equity" → 그럼 전 ETF가 Equity여야 하나 단기채권은 MoneyMarket 이라 기각. **이유 불명 확정 → 주최 확인 필수.**
+
+---
+
 ## 4. 📮 주최측 문의사항 (디스코드)
 
 1. **axis_assetType 기준:** 국고채 ETF가 `Equity`, 단기채권이 `MoneyMarket` 으로 분류된
-   기준이 무엇인가요? (상품명·자산군 컬럼과 상충)
+   기준이 무엇인가요? (자산군 컬럼="채권"과 상충. **정답지 컬럼밀림 아님 확인** — 나머지 6축 정상)
 2. **평가 채점:** 평가 시 이 `axis_*` 값 기준으로 채점하나요, 참가팀 자체 분류도 인정되나요?
 3. **axis_underlyingScope 유도 기준:** 상품명('단일종목' 등)과 다르게 분류된 근거를
    알 수 있을까요?

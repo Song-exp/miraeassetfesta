@@ -63,8 +63,17 @@ def validate_sql(sql: str) -> str | None:
     return None
 
 
-def _ground(question: str, ctx: RuntimeContext) -> tuple[list, list[str]]:
-    """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다 (긴 레이블 우선)."""
+def _ground(question: str, ctx: RuntimeContext, tables: list[str] | None = None) -> tuple[list, list[str]]:
+    """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다.
+
+    우선순위는 ① 질의가 가리키는 테이블에 alias 가 있는 노드 ② 그 다음 긴 레이블이다.
+
+    🔴 ①이 없으면 틀린다. '미래에셋자산운용' 은 채권 발행사 노드(domestic_bonds.pd_pbcm)와
+       ETF 운용사 노드(domestic_etfs.cu_fund_mgmt_co, Org_00080008) 양쪽에 걸린다.
+       레이블 길이만 보면 국내ETF 질의에 채권 발행사 노드를 물어와 조회가 0건이 된다
+       (2026-08-26 실측: "미래에셋자산운용이 운용하는 국내 ETF" → 0행).
+    """
+    target = set(tables or ())
     hits, lines = [], []
     # 자동 생성 노드(Idx_a_/Idx_v_/Org_issuer_)는 수천 개라 짧은 라벨의 오매칭을 막기 위해 길이 하한을 높인다
     def _min_len(node, label):
@@ -73,19 +82,115 @@ def _ground(question: str, ctx: RuntimeContext) -> tuple[list, list[str]]:
             return 6 if not re.search(r"[가-힣]", label) else 4
         return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
 
+    def _in_target(node) -> bool:
+        if not target:
+            return False
+        return any(t in target for t, _, _ in ctx.kg_aliases.get(node.node_id, ()))
+
     candidates = sorted(
         ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node, label)),
-        key=lambda x: -len(x[0]),
+        key=lambda x: (not _in_target(x[1]), -len(x[0])),
     )
     consumed = question
     for label, node in candidates:
         if label in consumed:
             hits.append(node)
             consumed = consumed.replace(label, " ")
-            aliases = ctx.kg_aliases.get(node.node_id, [])
+            aliases = target_aliases(ctx, node, target)
             where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
+            if len(aliases) > 4:
+                where += f" … 외 {len(aliases) - 4}종"
             lines.append(f"'{label}' → {node.node_id} ({node.node_type}) → {where}")
     return hits, lines
+
+
+def target_aliases(ctx: RuntimeContext, node, target: set) -> list[tuple[str, str, str]]:
+    """노드의 alias 중 질의 대상 테이블 것만. 대상이 없으면 전부."""
+    aliases = ctx.kg_aliases.get(node.node_id, [])
+    if not target:
+        return list(aliases)
+    return [a for a in aliases if a[0] in target] or list(aliases)
+
+
+MAX_ALIAS_VALUES = 60   # 한 컬럼에 실을 값 상한. 병목이 rate limit 이라 토큰이 곧 처리량이다
+
+# 교차질의 조인 키 — 마스터 ↔ 외부 수집 테이블.
+# 출처: eval/questions_*.jsonl 의 gold_sql. 2026-08-26 2차 DB 실측으로 행수 확인
+# (75,859 / 910,997 / 179,333 / 10,565행). 🔴 해외는 같은 ISIN 이 상장시장별로 여러 행이라
+# 조인 시 팬아웃이 있다 — 개수를 셀 때는 DISTINCT 를 쓴다.
+JOIN_KEYS: list[tuple[str, str]] = [
+    ("ext_etf_holdings", "ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no"),
+    ("ext_ovs_etf_holdings", "ext_ovs_etf_holdings.isin = overseas_etfs.pd_isin_cd"),
+    ("ext_fund_holdings", "ext_fund_holdings.grp = public_funds.mtco_itm_no"),
+    ("ext_fund_page", "ext_fund_page.itm_no = public_funds.itm_no"),
+]
+
+
+def _mapping_block(ctx: RuntimeContext, hits: list, target: set) -> str:
+    """플래너에 넘길 개체 매핑 — **DB 실제 값만** 싣는다.
+
+    🔴 개체 ID(Org_…·Idx_…)를 넘기지 않는다. 넘기면 모델이 그걸 값으로 착각해
+       `cu_fund_mgmt_co = 'Org_issuer_97e46cada6'` 같은 SQL 을 쓴다 (2026-08-26 실측).
+       ID 는 think_trace 에만 남긴다 — 근거 추적은 사람이 하고, SQL 은 값으로 쓴다.
+    """
+    out: list[str] = []
+    for node in hits:
+        name = node.label_ko or node.label_en or node.node_id
+        groups: dict[tuple[str, str], list[str]] = {}
+        for t, c, raw in target_aliases(ctx, node, target):
+            groups.setdefault((t, c), []).append(raw)
+        for (t, c), vals in groups.items():
+            uniq = sorted(set(vals), key=lambda v: (len(v), v))
+            shown = uniq[:MAX_ALIAS_VALUES]
+            more = "" if len(uniq) <= len(shown) else f" … 외 {len(uniq) - len(shown)}종"
+            out.append(
+                f"- {name} ({node.node_type}) → {t}.{c} 의 값: "
+                + ", ".join(f"'{v}'" for v in shown) + more
+            )
+    return "\n".join(out)
+
+
+def build_grounding(
+    ctx: RuntimeContext,
+    hits: list,
+    tables: list[str],
+    cross: bool,
+) -> str:
+    """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
+
+    🔴 여기 실린 것만이 SQL 생성의 근거다. 규칙(yaml)을 고치면 이 문서가 바뀌고,
+       그래서 프롬프트가 바뀐다 — 판정을 문서가 아니라 yaml 에 적어야 하는 이유다.
+
+    테이블을 탐지하지 못하면 마스터 4개를 다 싣는다. 프롬프트는 커지지만, 엉뚱한 테이블만
+    싣고 "컬럼이 없다" 로 실패하는 것보다 낫다.
+    """
+    target = list(tables) or list(TABLES)
+    if cross:
+        target += [t for t in EXT_TABLES if t not in target]
+
+    parts: list[str] = []
+    mapping = _mapping_block(ctx, hits, set(target))
+    if mapping:
+        parts.append(
+            "# KG 개체 매핑 — 질의의 표기를 DB 실제 값으로 옮긴 것\n"
+            "# 한 개체에 값이 여럿이면 전부 같은 개체다. 하나만 고르지 말고 IN 으로 모두 넣는다.\n"
+            + mapping
+        )
+    if cross:
+        # 구성종목·설명서 조건은 ext_* 에 있고 마스터에는 없다. 조인 키를 주지 않으면
+        # 모델이 마스터에 없는 컬럼(constituent 등)을 WHERE 에 써서 실행이 깨진다
+        # (2026-08-26 실측: "삼성전자를 보유한 국내 ETF" → OperationalError).
+        parts.append(
+            "# 교차질의 조인 키 — 구성종목·설명서 조건은 아래 외부 테이블에 있다. 반드시 JOIN 해서 쓴다\n"
+            + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
+        )
+    rules = ctx.planner_context(target)
+    if rules:
+        parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다)\n" + rules)
+    schema = ctx.schema_text(target)
+    if schema:
+        parts.append("# 스키마 — 여기 없는 컬럼은 존재하지 않는다\n" + schema)
+    return "\n\n".join(parts)
 
 
 def _execute(sql: str) -> tuple[str, int]:
@@ -117,8 +222,12 @@ def answer_question(
     q = question.strip()
     step(f"[Normalize] 질의 정규화 — 길이 {len(q)}")
 
+    # 테이블 추정을 Ground 보다 먼저 한다 — 같은 표기가 여러 도메인에 걸릴 때
+    # 어느 노드를 고를지가 여기서 갈린다 (_ground 의 우선순위 ①)
+    tables = gate.detect_tables(q)
+
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다
-    hits, ground_lines = _ground(q, ctx)
+    hits, ground_lines = _ground(q, ctx, tables)
     if ground_lines:
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
@@ -132,7 +241,6 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = g.answer
         return result
-    tables = gate.detect_tables(q)
     cross = gate.is_cross_query(q)
     step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}"
          + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else ""))
@@ -143,7 +251,8 @@ def answer_question(
         result.answer = "현재 시스템 구축 중으로 이 질의에는 답변을 제공할 수 없습니다."
         return result
 
-    grounding = "\n".join(ground_lines)
+    grounding = build_grounding(ctx, hits, tables, cross)
+    step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · {len(grounding):,}자")
     sql = planner.plan_sql(q, grounding)
     step(f"[Plan] SQL 생성 — {sql[:120]}")
 

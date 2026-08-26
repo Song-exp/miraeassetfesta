@@ -15,7 +15,7 @@ import logging
 import os
 import time
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -28,6 +28,34 @@ log = logging.getLogger("api")
 
 # 에이전트 완성 여부. 더미 응답임을 로그·헬스체크에 드러냅니다.
 AGENT_READY = os.environ.get("AGENT_READY", "0") == "1"
+# /reload 보호용. 비어 있으면 엔드포인트를 잠급니다 — 공개 URL 에 무인증 갱신구를 두지 않습니다.
+RELOAD_TOKEN = os.environ.get("RELOAD_TOKEN", "")
+
+_PLANNER = None
+_PLANNER_TRIED = False
+
+
+def get_planner():
+    """HCX 플래너 싱글턴 — 없으면 None.
+
+    None 이면 파이프라인이 Ground·Gate 까지만 돌고 '구축 중' 으로 답합니다.
+    🔴 여기서 예외를 밖으로 내보내지 않습니다. 키 오류로 서버가 죽으면 평가 계약
+       (어떤 경우에도 200 + 5필드)이 깨집니다.
+    """
+    global _PLANNER, _PLANNER_TRIED
+    if not AGENT_READY:
+        return None
+    if not _PLANNER_TRIED:
+        _PLANNER_TRIED = True
+        try:
+            from src.hcx.planner import build_planner
+
+            _PLANNER = build_planner()
+            log.info("planner=%s", "HCX" if _PLANNER else "none (HYPERCLOVA_API_KEY 없음)")
+        except Exception:
+            log.exception("planner 생성 실패 — Ground·Gate 만으로 운영합니다")
+            _PLANNER = None
+    return _PLANNER
 
 class UTF8JSONResponse(JSONResponse):
     """🔴 규격: `Content-Type: application/json; charset=utf-8` (PROJECT.md §7 계약 조건).
@@ -70,7 +98,7 @@ def answer_question(question_id: str, question: str) -> AnswerResponse:
     try:
         from src.runtime.pipeline import answer_question as run
 
-        r = run(question_id, question)
+        r = run(question_id, question, planner=get_planner())
         return AnswerResponse(
             question_id=r.question_id,
             question=r.question,
@@ -92,7 +120,47 @@ def answer_question(question_id: str, question: str) -> AnswerResponse:
 @app.get("/health")
 def health() -> dict:
     """엔드포인트 생존 확인용. 배포 모니터링에서 이걸 폴링합니다."""
-    return {"status": "ok", "agent_ready": AGENT_READY, "version": app.version}
+    return {
+        "status": "ok",
+        "agent_ready": AGENT_READY,
+        "planner": "hcx" if get_planner() else "none",
+        "version": app.version,
+    }
+
+
+@app.post("/reload")
+def reload_context(x_reload_token: str = Header(default="")) -> JSONResponse:
+    """온톨로지 수정 → KG 재생성 후, 재기동 없이 판단 원천을 다시 읽습니다.
+
+    실험 루프(yaml 수정 → build_ontology.py → 확인)를 돌릴 때 재기동을 없애기 위한 것입니다.
+
+    🔴 제약 두 가지를 알고 쓰세요.
+      ① 워커별로 캐시가 따로입니다. `--workers 2` 로 떠 있으면 이 호출은 **한 워커만**
+         갱신합니다. 실험 중에는 워커를 1로 두거나, 확실히 반영하려면 재기동하세요.
+      ② DB 파일 자체를 교체했다면 이것으로는 부족합니다 — 컨테이너가 잡고 있는 fd 는
+         옛 inode 를 가리킵니다. `docker compose restart api` 가 답입니다.
+
+    RELOAD_TOKEN 이 비어 있으면 잠급니다. 공개 URL 이라 무인증 갱신구를 열어둘 수 없습니다.
+    """
+    if not RELOAD_TOKEN:
+        return UTF8JSONResponse(status_code=404, content={"detail": "not found"})
+    if x_reload_token != RELOAD_TOKEN:
+        return UTF8JSONResponse(status_code=403, content={"detail": "forbidden"})
+
+    from src.runtime.loader import load_context
+
+    load_context.cache_clear()
+    ctx = load_context()
+    log.info("context reloaded pid=%s nodes=%d", os.getpid(), len(ctx.kg_nodes))
+    return UTF8JSONResponse(
+        content={
+            "status": "reloaded",
+            "pid": os.getpid(),
+            "kg_nodes": len(ctx.kg_nodes),
+            "kg_aliases": len(ctx.kg_aliases),
+            "enums": sorted(ctx.enums),
+        }
+    )
 
 
 @app.get("/answer", response_model=AnswerResponse)

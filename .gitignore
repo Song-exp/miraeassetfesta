@@ -99,3 +99,6 @@ ontology/enums/*.auto.yaml
 
 # 도메인 이해용 원본 PDF — 원문 배포 금지 (요지는 docs/domain/*.md 로 정리됨)
 docs/domain/*.pdf
+
+# 실험 챗봇 로그 — 산출물이지 소스가 아니다 (오답은 eval/questions_*.jsonl 로 승격)
+logs/

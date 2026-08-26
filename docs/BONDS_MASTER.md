@@ -252,8 +252,33 @@ STD_PD_MCLS_NM 대분류 6  →  STD_PD_SCLS_NM 소분류 16  →  BD_KND 채권
 
 **다음 할 일 (순서)**
 
-1. ~~브랜치를 `main` 에 맞춘다~~ ✅ **08-26 병합 완료** (`7e7e129`) — yaml 은 2차. ⚠️ **로컬 DB 는 아직 1차**(42,394행) — 2차 원본 `1.금융상품/prbd01n001_data.xlsx` 를 드라이브에서 받아 `scripts/build_db.py` 재실행 필요
-2. §6 표의 🟡 를 2차 DB 로 재실행 — 특히 지역개발채·키워드 규칙·역질문 2종 건수
-3. 회의 — `additional_bonds.md` 부록 F 11건 + `main` 안건 3-1(gold 63문항 채권 분담) · 3-4(2차 yaml `query_rules` 검토)
-4. 코드북 2차 재검수 (yaml workshop B-15: `bd_knd` 32종 · 발행사 1,818)
-5. **채권 평가셋** — `eval/questions_domestic_bonds.jsonl` 은 아직 없다. 위험등급 방향 테스트부터 (ETF-D-002 복제)
+1. ~~브랜치를 `main` 에 맞춘다~~ ✅ **08-26 병합 완료** (`7e7e129`, push 됨)
+2. **2차 DB 만들기** — §9
+3. §6 표의 🟡 를 2차 DB 로 재실행 — 특히 지역개발채·키워드 규칙·역질문 2종 건수
+4. 회의 — `additional_bonds.md` 부록 F **12건**(F-2-12 B9 기본값 복원 포함) + 회의 안건 3-1(gold 63문항 채권 분담) · 3-4(2차 yaml 검토) · 3-6(B9 기본값)
+5. 코드북 2차 재검수 (yaml workshop B-15: `bd_knd` 32종 · 발행사 1,818)
+6. **채권 평가셋** — `eval/questions_domestic_bonds.jsonl` 은 아직 없다. 위험등급 방향 테스트부터 (ETF-D-002 복제)
+
+---
+
+## 9. 2차 DB 준비 — 지금 로컬은 규칙만 2차, 데이터는 1차
+
+```
+1.금융상품/*.xlsx  ──▶  scripts/build_db.py  ──▶  data/financial_products.db
+(주최 원본)              (엑셀 → SQLite)            (모든 쿼리·검증이 여기서)
+```
+
+| | 로컬 (08-26) | 판 |
+| :-- | :-- | :-: |
+| 원본 엑셀 `1.금융상품/` | `PRBD01N001_국내채권마스터_20260711_datarows.xlsx` 등 8개 | **1차** |
+| DB `data/financial_products.db` | 채권 42,394행 | **1차** |
+| 규칙 `ontology/enums/domestic_bonds.yaml` | 병합으로 갱신 | **2차** |
+
+**왜 `git pull` 로 안 오나** — `1.금융상품/`·`data/` 는 `.gitignore` 라 git 에 없다. 팀은 **드라이브**로 공유한다. 2차 엑셀은 8/24 배포본이라 파일명도 다르다 (`prbd01n001_data.xlsx` / `prbd01n001_schema.xlsx`, 소문자 `{prefix}_data.xlsx` 형식 — `build_db.py` 는 이 이름만 찾는다).
+
+**절차**
+
+1. 드라이브에서 2차 엑셀 8개 (`*_data.xlsx` + `*_schema.xlsx` × 4테이블) 다운로드 → `1.금융상품/` 에 넣기
+2. 1차 8개는 `1.금융상품/_v1_20260711/` 로 이동 (스크립트가 그 폴더는 안 봄)
+3. `python scripts/build_db.py` → DB 가 2차(채권 21,882행)로 재생성. 확인: `build_info` 테이블에 버전·기준일 기록됨
+4. 그 다음에야 §6 의 🟡 재검증이 가능하다 — 지금은 "아마 유효" 까지만 말할 수 있다

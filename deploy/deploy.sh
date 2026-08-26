@@ -21,7 +21,10 @@
 set -euo pipefail
 
 IP="${MIRAE_IP:-49.50.134.229}"
-KEY="${MIRAE_KEY:-secrets/mirae-api-key.pem}"
+# 🔴 SSH 로그인 키는 deploy_key 입니다 (authorized_keys 에 등록된 것 = claude-deploy@mirae).
+#    mirae-api-key.pem 은 NCP 콘솔에서 root 비밀번호를 복호화하는 용도라 SSH 인증에는 쓰이지 않습니다
+#    — 그걸로 붙으면 Permission denied (2026-08-26 실측).
+KEY="${MIRAE_KEY:-secrets/deploy_key}"
 USER="${MIRAE_USER:-root}"
 REMOTE="/opt/mirae"
 DB="data/financial_products.db"
@@ -39,7 +42,7 @@ case "$MODE" in
     exit 2 ;;
 esac
 
-ssh_() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$USER@$IP" "$@"; }
+ssh_() { ssh -i "$KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new "$USER@$IP" "$@"; }
 say()  { printf '\n\033[1m▶ %s\033[0m\n' "$*"; }
 
 # ── 0. 로컬 점검 — 깨진 것을 올리지 않는다 ──────────────────────────────
@@ -110,7 +113,7 @@ if [ "$MODE" != "--code-only" ]; then
   gzip -c "$DB" > /tmp/fp.db.gz
   echo "   압축 $(du -h /tmp/fp.db.gz | cut -f1)"
   ssh_ "mkdir -p $REMOTE/data $REMOTE/logs"
-  scp -i "$KEY" /tmp/fp.db.gz "$USER@$IP:$REMOTE/data/"
+  scp -i "$KEY" -o IdentitiesOnly=yes /tmp/fp.db.gz "$USER@$IP:$REMOTE/data/"
   ssh_ "cd $REMOTE/data && gunzip -f -c fp.db.gz > financial_products.db && rm fp.db.gz && md5sum financial_products.db"
   echo "   🔴 위 md5 가 로컬($LOCAL_MD5)과 같은지 확인하세요."
 fi

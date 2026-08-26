@@ -83,3 +83,9 @@ FunETF 공개 API를 종목코드별로 호출(요청 간격 0.6초 권장)해 �
 `etfPdfYmd=20260710` 고정. 대상 코드는 `domestic_etfs` AUM 상위 N.
 
 > 🔴 **마스터 데이터와 별도 테이블 유지** (EDA_GUIDE §9-4). 답변 시 출처 구분 표기.
+
+## 재수집 2026-08-25 — 스냅샷 2026-08-21 (`domestic_holdings_20260821.csv` · `fetch_log_20260821.csv`)
+
+- 근거: 주최 8/24 공지 — 외부 자료 8/24 발행분까지 허용, 마스터 기준일 8/22(토) → 마지막 영업일 8/21 로 `etfPdfYmd=20260821`.
+- 대상: 2차 마스터 `domestic_etfs` 1,780 (ETF 1,235 + ETN 545). 결과: **ETF ok 1,160 / empty 75**, ETN empty 545(전건 — "ETN 은 구성종목 미제공" 근거 유지), HTTP 오류 0. 75,859행.
+- 7/10 스냅샷 파일은 그대로 보존(비교·회귀용). DB 적재는 `scripts/load_external_holdings.py` 가 최신 파일을 자동 선택.

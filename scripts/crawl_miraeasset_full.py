@@ -37,7 +37,7 @@ HOLDINGS_EP = BASE + "/mw/mks/mks4116/a07.json"
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
       "AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1")
 SLEEP = 0.6
-AS_OF_LIMIT = "20260711"
+AS_OF_LIMIT = "20260824"  # 8/24 공지: 8/24까지 발행분 허용 (기존 20260711)
 RETRIEVED_AT = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 SRC_PAGE = "miraeasset_web(mks4116/p11.do)"
 SRC_HOLD = "miraeasset_web(mks4116/a07.json)"

@@ -1,0 +1,211 @@
+﻿code,name,axis,axis_name,n_rows,n_selling,verified_rate,alt_names,status,source,as_of
+C101,추가,C,설정형태(추가/단위·개방/폐쇄),10658,8355,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+C102,단위,C,설정형태(추가/단위·개방/폐쇄),622,195,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+C103,개방,C,설정형태(추가/단위·개방/폐쇄),11085,8544,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+C104,폐쇄,C,설정형태(추가/단위·개방/폐쇄),195,6,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+D101,직판,D,판매채널,70,58,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+D102,국내위탁판매,D,판매채널,11047,8355,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+D103,직판&국내위탁판매,D,판매채널,136,118,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+D105,국내외혼합판매,D,판매채널,562,323,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+D106,온라인전용,D,판매채널,3705,3223,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+E101,개인,E,가입대상,46,32,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+E102,법인,E,가입대상,224,133,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+E103,가입대상제한없음,E,가입대상,8,3,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F101,단순비과세,F,세제혜택유형,638,604,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F102,단순소득공제,F,세제혜택유형,153,130,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F103,단순세액공제,F,세제혜택유형,3091,2780,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F104,소득공제비과세,F,세제혜택유형,82,75,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F105,세액공제비과세,F,세제혜택유형,2,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F106,세금우대,F,세제혜택유형,12,12,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+F107,분리과세,F,세제혜택유형,31,15,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G101,개인연금,G,세제특례·연금상품,48,46,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G102,근로자장기저축,G,세제특례·연금상품,12,12,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G105,근로자우대,G,세제특례·연금상품,1,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G106,비과세,G,세제특례·연금상품,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G108,퇴직신탁,G,세제특례·연금상품,1,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G109,비과세근로자,G,세제특례·연금상품,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G110,연금저축,G,세제특례·연금상품,1615,1412,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G112,장기증권투자,G,세제특례·연금상품,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G113,장기주택마련,G,세제특례·연금상품,18,17,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G114,장기주식,G,세제특례·연금상품,6,3,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G115,퇴직연금,G,세제특례·연금상품,2096,1909,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G116,재형저축,G,세제특례·연금상품,17,16,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G117,소득공제장기펀드,G,세제특례·연금상품,36,36,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G118,해외비과세,G,세제특례·연금상품,1688,1605,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+G119,벤처기업투자신탁,G,세제특례·연금상품,23,21,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M101,목표달성전환,M,펀드구조(모자/종류형/FoFs 등),189,90,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M102,목표달성상환,M,펀드구조(모자/종류형/FoFs 등),71,45,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M104,엄브렐러,M,펀드구조(모자/종류형/FoFs 등),93,66,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M105,Wrap,M,펀드구조(모자/종류형/FoFs 등),240,189,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M106,라이프싸이클,M,펀드구조(모자/종류형/FoFs 등),716,700,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M107,운용펀드,M,펀드구조(모자/종류형/FoFs 등),37,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M108,모펀드,M,펀드구조(모자/종류형/FoFs 등),1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M109,자펀드,M,펀드구조(모자/종류형/FoFs 등),6984,5868,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M110,종류형 운용펀드,M,펀드구조(모자/종류형/FoFs 등),35,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M111,종류형 클래스펀드,M,펀드구조(모자/종류형/FoFs 등),10510,8421,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M112,FoFs,M,펀드구조(모자/종류형/FoFs 등),2052,1454,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M113,ETF,M,펀드구조(모자/종류형/FoFs 등),63,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M115,정부공공기금풀(개별),M,펀드구조(모자/종류형/FoFs 등),1,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M119,MoM,M,펀드구조(모자/종류형/FoFs 등),9,8,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M120,역내/역외일치재간접,M,펀드구조(모자/종류형/FoFs 등),230,169,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+M121,외화기준가펀드,M,펀드구조(모자/종류형/FoFs 등),37,27,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N101,삼성그룹주,N,테마·컨셉,54,52,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N102,현대그룹주,N,테마·컨셉,6,6,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N104,BIG7 그룹주,N,테마·컨셉,2,2,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N105,5대그룹주,N,테마·컨셉,12,12,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N106,SRI,N,테마·컨셉,22,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N107,어린이펀드,N,테마·컨셉,43,36,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N108,적립식펀드,N,테마·컨셉,53,51,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N109,복제,N,테마·컨셉,155,143,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N111,상장지주,N,테마·컨셉,8,6,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N112,현대차그룹,N,테마·컨셉,13,13,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N113,15대그룹,N,테마·컨셉,14,12,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N114,원자재,N,테마·컨셉,113,51,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N115,천연자원,N,테마·컨셉,27,10,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N116,인프라,N,테마·컨셉,75,57,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N117,물,N,테마·컨셉,4,4,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N118,럭셔리,N,테마·컨셉,14,13,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N119,친환경,N,테마·컨셉,34,4,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N121,지배구조,N,테마·컨셉,19,17,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N122,중국본토A,N,테마·컨셉,280,227,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N123,녹색성장,N,테마·컨셉,27,3,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N124,LG그룹주,N,테마·컨셉,2,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N125,분배식,N,테마·컨셉,94,52,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N126,분할매수,N,테마·컨셉,32,14,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N127,3대그룹주,N,테마·컨셉,3,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N129,변액보험,N,테마·컨셉,3,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N130,4차산업,N,테마·컨셉,172,146,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N131,성과보수,N,테마·컨셉,12,8,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N132,뉴딜,N,테마·컨셉,36,36,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N134,메타버스,N,테마·컨셉,37,37,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N135,투자전략(전통),N,테마·컨셉,393,391,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N136,투자전략(퀀트),N,테마·컨셉,66,66,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N137,투자전략(배당/우선주),N,테마·컨셉,70,70,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N138,투자전략(우량주/블루칩),N,테마·컨셉,117,116,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N139,투자전략(IPO/SPAC),N,테마·컨셉,21,21,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N140,그룹주,N,테마·컨셉,21,21,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N141,4차산업(메타버스),N,테마·컨셉,36,36,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N142,4차산업(인공지능/로봇),N,테마·컨셉,127,119,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N143,디지털,N,테마·컨셉,135,131,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N144,반도체,N,테마·컨셉,64,64,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N145,2차전지/배터리,N,테마·컨셉,12,12,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N147,럭셔리,N,테마·컨셉,39,38,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N149,금융,N,테마·컨셉,12,12,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N151,조선(해운/선박),N,테마·컨셉,4,4,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N152,방위산업,N,테마·컨셉,19,19,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N153,우주항공,N,테마·컨셉,38,38,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N154,리츠,N,테마·컨셉,57,53,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N155,인프라,N,테마·컨셉,31,30,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N156,헬스케어(바이오),N,테마·컨셉,98,98,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N158,에너지(수소),N,테마·컨셉,2,2,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N159,에너지,N,테마·컨셉,31,31,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N160,자동차(미래차),N,테마·컨셉,44,44,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N161,원자재(금),N,테마·컨셉,49,49,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N165,원자재(원유),N,테마·컨셉,6,5,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N166,원자재(농산물),N,테마·컨셉,6,6,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N167,ESG,N,테마·컨셉,306,301,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N168,친환경,N,테마·컨셉,19,19,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N175,TIF,N,테마·컨셉,26,26,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N176,TRF,N,테마·컨셉,28,28,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N177,TDF,N,테마·컨셉,752,743,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+N178,디딤펀드,N,테마·컨셉,98,98,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O101,에너지섹터,O,섹터,59,36,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O102,기초소재섹터,O,섹터,38,37,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O103,일반산업섹터,O,섹터,23,23,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O108,자동차&부품 제조,O,섹터,1,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O117,헬스케어섹터,O,섹터,71,59,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O120,금융섹터,O,섹터,23,14,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O125,정보기술섹터,O,섹터,27,11,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O131,기타섹터,O,섹터,34,14,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O132,소비재섹터,O,섹터,69,49,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+O133,원자재섹터,O,섹터,36,21,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P101,배당주,P,투자스타일·채권듀레이션,565,496,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P102,가치주,P,투자스타일·채권듀레이션,322,296,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P103,성장주,P,투자스타일·채권듀레이션,234,231,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P104,중소형주,P,투자스타일·채권듀레이션,344,316,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P105,중형주,P,투자스타일·채권듀레이션,2,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P108,Dur 0.5~1,P,투자스타일·채권듀레이션,7,7,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P111,Dur 3~4,P,투자스타일·채권듀레이션,4,4,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P120,만기매칭,P,투자스타일·채권듀레이션,5,5,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P121,국공채,P,투자스타일·채권듀레이션,221,169,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+P122,회사채,P,투자스타일·채권듀레이션,5,4,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+Q105,선박,Q,실물자산,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+Q107,부동산,Q,실물자산,7,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+Q109,농산물,Q,실물자산,12,10,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+Q111,천연자원(에너지),Q,실물자산,18,5,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+Q112,천연자원(광물),Q,실물자산,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R102,전환사채,R,특수자산·전략자산,37,23,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R103,코스닥,R,특수자산·전략자산,3,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R104,비상장,R,특수자산·전략자산,3,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R105,공모주(혼합),R,특수자산·전략자산,277,218,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R106,공모주(채권),R,특수자산·전략자산,78,52,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R107,하이일드,R,특수자산·전략자산,169,131,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R108,CBO,R,특수자산·전략자산,2,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R110,ELS,R,특수자산·전략자산,46,8,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R111,코넥스,R,특수자산·전략자산,9,9,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+R112,메자닌,R,특수자산·전략자산,5,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S101,시스템자산배분,S,운용전략,25,3,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S102,자산배분,S,운용전략,103,90,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S103,원금보존추구,S,운용전략,12,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S104,인덱스,S,운용전략,579,414,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S106,(인핸스드인덱스),S,운용전략,1,1,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S107,차익거래,S,운용전략,24,15,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S108,롱/숏,S,운용전략,194,127,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S109,시장매크로,S,운용전략,5,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S112,델타헷징,S,운용전략,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S115,Covered Call,S,운용전략,98,88,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S116,퀀트,S,운용전략,15,4,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S117,레버리지,S,운용전략,130,44,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S118,집중,S,운용전략,18,18,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S119,로보어드바이저,S,운용전략,80,57,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S120,리버스,S,운용전략,24,4,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+S121,EMP,S,운용전략,243,158,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T210,TDF(빈티지 없음),T,TDF 빈티지,22,22,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T215,TDF2015,T,TDF 빈티지,13,13,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T220,TDF2020,T,TDF 빈티지,25,25,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T225,TDF2025,T,TDF 빈티지,67,65,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T230,TDF2030,T,TDF 빈티지,106,106,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T235,TDF2035,T,TDF 빈티지,93,91,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T240,TDF2040,T,TDF 빈티지,107,105,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T245,TDF2045,T,TDF 빈티지,86,85,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T250,TDF2050,T,TDF 빈티지,108,106,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T255,TDF2055,T,TDF 빈티지,68,68,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+T260,TDF2060,T,TDF 빈티지,57,57,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+V101,국내,V,투자지역구분(국내/국외/국내외),4746,3389,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+V102,국외,V,투자지역구분(국내/국외/국내외),5163,4225,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+V103,국내외,V,투자지역구분(국내/국외/국내외),1366,928,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W101,글로벌,W,세부투자지역,3193,2708,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W102,글로벌신흥국,W,세부투자지역,292,128,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W104,북미,W,세부투자지역,550,494,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W105,남미,W,세부투자지역,38,24,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W106,아태,W,세부투자지역,55,34,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W107,아-태(ex 일),W,세부투자지역,101,53,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W108,아시아,W,세부투자지역,109,86,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W109,아시아(ex 일),W,세부투자지역,130,94,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W110,아시아신흥국,W,세부투자지역,73,73,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W111,동북아,W,세부투자지역,44,40,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W112,동남아,W,세부투자지역,134,102,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W114,범유럽,W,세부투자지역,101,94,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W115,서유럽,W,세부투자지역,60,39,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W116,동유럽,W,세부투자지역,43,42,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W118,유로권,W,세부투자지역,28,23,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W119,아프리카,W,세부투자지역,2,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W120,브릭스,W,세부투자지역,71,58,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W121,친디아,W,세부투자지역,45,44,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W122,범중국,W,세부투자지역,166,166,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W123,한일,W,세부투자지역,8,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W124,한중,W,세부투자지역,20,16,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W125,한중일,W,세부투자지역,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W127,한중인,W,세부투자지역,13,13,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W128,중베트남,W,세부투자지역,8,8,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W132,호주권,W,세부투자지역,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W135,브러시아,W,세부투자지역,22,14,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W137,EMEA(동유럽중동아프리카),W,세부투자지역,31,10,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W138,인니말레이,W,세부투자지역,8,0,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W139,프런티어,W,세부투자지역,4,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W140,차브라질,W,세부투자지역,10,10,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W142,G2,W,세부투자지역,21,15,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W143,MENA(중동북아프리카),W,세부투자지역,2,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W144,유라시아,W,세부투자지역,10,8,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W145,MIKT,W,세부투자지역,1,0,1.000,,confirmed_low_n,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22
+W147,글로벌선진국,W,세부투자지역,26,22,1.000,,confirmed,"public_funds.prfd_attr_search_text 인접쌍 도출 (2차 데이터, zrin_attr_nms 로 검증) — scripts/gen_fund_attr_codebook.py",2026-08-22

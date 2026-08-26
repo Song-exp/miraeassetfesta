@@ -1,0 +1,19 @@
+slug,name_ko,name_en,kr_ticker,isin,cusip,lei,parent_slug,source,as_of
+samsung_electronics,삼성전자,Samsung Electronics,005930,,796050888|796050201|796050979|796050896|677172009|Y74718100|Y74718118,9884007ER46L6N7EI764,,KRX 종목코드 005930 · GLEIF LEI 9884007ER46L6N7EI764 (https://search.gleif.org/#/record/9884007ER46L6N7EI764) · SEC NPORT-P 표기 실측 2026-08-25,2026-08-22
+sk_hynix,SK하이닉스,SK hynix,000660,,,,,KRX 000660 (LEI 는 NPORT-P 실측에 없어 미기입),2026-08-22
+nvidia,엔비디아,NVIDIA,,,67066G104,549300S4KLFTLO7GSQ80,,CUSIP 67066G104 (US67066G1040) · GLEIF LEI 549300S4KLFTLO7GSQ80,2026-08-22
+apple,애플,Apple,,,037833100,HWUPKR0MPOU8FGXBT394,,CUSIP 037833100 (US0378331005) · GLEIF LEI HWUPKR0MPOU8FGXBT394,2026-08-22
+cambricon,캠브리콘,Cambricon Technologies,,CNE1000041R8,Y10823105,,,SSE 688256 · ISIN CNE1000041R8 (펀드 구성종목 실측) · CINS Y10823105 (NPORT-P 실측) — 주최 예시 질의 3번,2026-08-22
+ecopro,에코프로,ECOPRO,086520,,,,,KRX 086520 · 지주회사 (https://www.ecopro.co.kr) — 주최 예시 질의 5번 '에코프로의 자회사',2026-08-22
+ecopro_bm,에코프로비엠,ECOPRO BM,247540,,,,ecopro,KRX 247540 · 에코프로 자회사 (DART 2025 사업보고서 계열회사 현황),2026-08-22
+ecopro_materials,에코프로머티리얼즈,ECOPRO Materials,450080,,,,ecopro,KRX 450080 · 에코프로 자회사 (DART 2025 사업보고서) · 홀딩스 약칭 '에코프로머티',2026-08-22
+ecopro_hn,에코프로에이치엔,ECOPRO HN,383310,,,,ecopro,KRX 383310 · 에코프로 자회사 (DART 2025 사업보고서),2026-08-22
+samsung_electro_mechanics,삼성전기,Samsung Electro-Mechanics,009150,,677168908|Y7470U102,,,KRX 009150 · 삼성전자와 별개 법인 — 이름 매칭 오탐 회귀 테스트용,2026-08-22
+tesla,테슬라,Tesla,,,88160R101,54930043XZGB27CTOV49,,CUSIP 88160R101 (US88160R1014) · GLEIF LEI,2026-08-22
+microsoft,마이크로소프트,Microsoft,,,594918104,INR2EJN1ERAN0W5ZP974,,CUSIP 594918104 (US5949181045) · GLEIF LEI,2026-08-22
+alphabet,알파벳,Alphabet,,,02079K305|02079K107,5493006MHB84DD0ZWV18,,CUSIP 02079K305(A)/02079K107(C) · GLEIF LEI,2026-08-22
+amazon,아마존,Amazon,,,023135106,ZXTILKJKG63JELOEG630,,CUSIP 023135106 (US0231351067) · GLEIF LEI,2026-08-22
+tsmc,TSMC,Taiwan Semiconductor Manufacturing,,,874039100,,,ADR CUSIP 874039100 (US8740391003) — 원주(2330.TW) 는 별도 증권. LEI 는 NPORT-P 실측에 없어 미기입,2026-08-22
+hyundai_motor,현대차,Hyundai Motor,005380,,,,,KRX 005380,2026-08-22
+lg_energy_solution,LG에너지솔루션,LG Energy Solution,373220,,,,,KRX 373220,2026-08-22
+posco_holdings,POSCO홀딩스,POSCO Holdings,005490,,,,,KRX 005490,2026-08-22

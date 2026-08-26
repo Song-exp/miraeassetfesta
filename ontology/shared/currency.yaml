@@ -9,7 +9,7 @@
 # 값 근거: DB distinct 전수 확인 (2026-08-18, financial_products.db)
 #   domestic_etfs.pd_curr_cd   : CURR_CD_KRW 1,732 · CURR_CD_000 1
 #   public_funds.curr_cd       : KRW 95,046 · USD 572
-#   domestic_bonds.CURR_CD     : KRW 42,372 · USD 19 · JPY 1 · EUR 1 · 000 1
+#   domestic_bonds.curr_cd     : KRW 42,372 · USD 19 · JPY 1 · EUR 1 · 000 1
 #   overseas_etfs.pd_trd_ccy   : USD 5,646 (단일값)
 
 entity: Currency
@@ -21,7 +21,7 @@ nodes:
     label_ko: 원화
     label_en: KRW
     aliases:
-      - {table: domestic_bonds, column: CURR_CD,    raw: "KRW",         source: manual, evidence: "distinct 전수 확인 260818"}
+      - {table: domestic_bonds, column: curr_cd,    raw: "KRW",         source: manual, evidence: "distinct 전수 확인 260818"}
       - {table: domestic_etfs,  column: pd_curr_cd, raw: "CURR_CD_KRW", source: manual, evidence: "distinct 전수 확인 260818 — 접두사 CURR_CD_ 붙는 표기"}
       - {table: public_funds,   column: curr_cd,    raw: "KRW",         source: manual, evidence: "distinct 전수 확인 260818"}
 
@@ -29,7 +29,7 @@ nodes:
     label_ko: 미국 달러
     label_en: USD
     aliases:
-      - {table: domestic_bonds, column: CURR_CD,    raw: "USD", source: manual, evidence: "외화채권 19건"}
+      - {table: domestic_bonds, column: curr_cd,    raw: "USD", source: manual, evidence: "외화채권 19건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
       - {table: public_funds,   column: curr_cd,    raw: "USD", source: manual, evidence: "역외펀드 572건"}
       - {table: overseas_etfs,  column: pd_trd_ccy, raw: "USD", source: manual, evidence: "해외ETF 전량 USD 5,646건"}
 
@@ -37,19 +37,36 @@ nodes:
     label_ko: 일본 엔
     label_en: JPY
     aliases:
-      - {table: domestic_bonds, column: CURR_CD, raw: "JPY", source: manual, evidence: "1건"}
+      - {table: public_funds, column: curr_cd, raw: "JPY", source: rule, evidence: "2차 펀드 15행 (2026-08-25)"}
+      - {table: domestic_bonds, column: curr_cd, raw: "JPY", source: manual, evidence: "1건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
 
   Curr_EUR:
     label_ko: 유로
     label_en: EUR
     aliases:
-      - {table: domestic_bonds, column: CURR_CD, raw: "EUR", source: manual, evidence: "1건"}
+      - {table: public_funds, column: curr_cd, raw: "EUR", source: rule, evidence: "2차 펀드 56행 (2026-08-25)"}
+      - {table: domestic_bonds, column: curr_cd, raw: "EUR", source: manual, evidence: "1건", status: pending, evidence: "2차 데이터(8/22)에 외화채 없음 — curr_cd distinct = KRW·000 뿐. 1차엔 존재"}
 
+  Curr_AUD:
+    label_ko: 호주 달러
+    label_en: AUD
+    aliases:
+      - {table: public_funds, column: curr_cd, raw: "AUD", source: rule, evidence: "2차 펀드 2행 (2026-08-25)"}
+  Curr_GBP:
+    label_ko: 영국 파운드
+    label_en: GBP
+    aliases:
+      - {table: public_funds, column: curr_cd, raw: "GBP", source: rule, evidence: "2차 펀드 2행 (2026-08-25)"}
+  Curr_SEK:
+    label_ko: 스웨덴 크로나
+    label_en: SEK
+    aliases:
+      - {table: public_funds, column: curr_cd, raw: "SEK", source: rule, evidence: "2차 펀드 1행 (2026-08-25)"}
   Curr_Unknown:
     label_ko: 통화 미상
     note: "🔴 '000' 계열은 통화가 아니라 미입력 센티넬로 의심 — 워크샵 확정 필요"
     aliases:
-      - {table: domestic_bonds, column: CURR_CD,    raw: "000",         source: manual, evidence: "1건 — 센티넬 의심", status: pending}
+      - {table: domestic_bonds, column: curr_cd,    raw: "000",         source: manual, evidence: "1건 — 센티넬 의심", status: pending}
       - {table: domestic_etfs,  column: pd_curr_cd, raw: "CURR_CD_000", source: manual, evidence: "1건 — 센티넬 의심", status: pending}
 
 absent_in: {}   # 통화 컬럼은 4개 테이블 모두 존재

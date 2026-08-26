@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from . import gate
-from .loader import TABLES, RuntimeContext, connect_readonly, load_context
+from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly, load_context
 
 MAX_ROWS = 30            # retrieved_context 폭주 방지 — 근거는 표본이면 충분하다
 SQL_TIMEOUT_S = 10.0
@@ -54,6 +54,10 @@ def validate_sql(sql: str) -> str | None:
     if not used:
         m = re.search(r"\bfrom\s+([\w.]+)", s, re.I)
         return f"허용 테이블 밖: {m.group(1) if m else '?'}"
+    # FROM/JOIN 에 등장하는 모든 테이블이 마스터 4 + 외부 ext_* 안에 있어야 한다 (교차질의 조인 허용, 그 외 차단)
+    for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", s, re.I):
+        if t.lower() not in TABLES and t.lower() not in EXT_TABLES:
+            return f"허용 테이블 밖: {t}"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
     return None
@@ -62,8 +66,15 @@ def validate_sql(sql: str) -> str | None:
 def _ground(question: str, ctx: RuntimeContext) -> tuple[list, list[str]]:
     """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다 (긴 레이블 우선)."""
     hits, lines = [], []
+    # 자동 생성 노드(Idx_a_/Idx_v_/Org_issuer_)는 수천 개라 짧은 라벨의 오매칭을 막기 위해 길이 하한을 높인다
+    def _min_len(node, label):
+        if node.node_id.startswith("Sec_"):
+            # Security(종목) 자동 노드 수만 개 — 영문 라벨은 6자 이상만 (AAPL·NVDA 류 짧은 토큰 오탐 방지), 한글은 4자
+            return 6 if not re.search(r"[가-힣]", label) else 4
+        return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
+
     candidates = sorted(
-        ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= 2),
+        ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node, label)),
         key=lambda x: -len(x[0]),
     )
     consumed = question
@@ -122,7 +133,9 @@ def answer_question(
         result.answer = g.answer
         return result
     tables = gate.detect_tables(q)
-    step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}")
+    cross = gate.is_cross_query(q)
+    step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}"
+         + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else ""))
 
     if planner is None:
         step("[Plan] SQL 생성기 미연결 — 답변 보류 (Ground·Gate 결과는 유효)")

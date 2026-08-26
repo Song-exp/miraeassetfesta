@@ -3,7 +3,7 @@
 
 1단계: company_tickers_mf.json 으로 티커→(cik, seriesId, classId) 매핑
 2단계: overseas_etfs AUM 상위 200 조인 → ticker_series_map.csv
-3단계: 매칭 상위 N개 series 의 최신 NPORT-P(보고기준일 ≤ 2026-07-11) 구성종목 추출
+3단계: 매칭 상위 N개 series 의 최신 NPORT-P(보고기준일 ≤ 2026-08-24) 구성종목 추출
 """
 import csv, json, re, sqlite3, sys, time
 from pathlib import Path
@@ -11,11 +11,13 @@ import xml.etree.ElementTree as ET
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data" / "external" / "holdings_overseas"
+import os
+# 재수집·확장은 새 폴더에 쌓는다 (기존 186종 7/11 이전본 보존). 예) HOLD_OUT=holdings_overseas_20260824
+OUT = ROOT / "data" / "external" / os.environ.get("HOLD_OUT", "holdings_overseas")
 OUT.mkdir(parents=True, exist_ok=True)
 
 UA = {"User-Agent": "miraeasset-festa-research contact@miraeassetfesta.example"}
-AS_OF_LIMIT = "2026-07-11"
+AS_OF_LIMIT = "2026-08-24"  # 8/24 공지: 8/24까지 발행분 허용 (기존 7/11)
 SLEEP = 0.2
 
 session = requests.Session()

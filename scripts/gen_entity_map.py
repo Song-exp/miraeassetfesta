@@ -27,6 +27,14 @@ ENT_N = {k: v.get("count") for k, v in D["entities"].items()}
 # 🔴 Fund 는 문자열로 박아두면 낡는다 — yaml 에서 읽는다 (2026-08-17: 모펀드 4,660 오기 정정)
 FUND = D["entities"]["Fund"]
 FUND_N, FUND_SRC = FUND.get("count"), FUND.get("source", "")
+q = lambda sql: conn.execute(sql).fetchone()[0]
+N_ITM = q("select count(distinct itm_no) from public_funds")
+N_PUB_SELL = q("select count(*) from public_funds where sale_yn='판매중' and prvo_pbff_desc='공모'")
+N_PRIV = q("select count(*) from public_funds where prvo_pbff_desc='사모'")
+N_STD_MULTI = q("select count(*) from (select std_itm_no from public_funds where std_itm_no is not null and trim(std_itm_no) not in ('','00000') group by 1 having count(distinct itm_no)>1)")
+CTRY_COV = q("select avg(case when prfd_attr_search_text glob '*[A-Z][A-Z][A-Z] *' then 1.0 else 0 end) from public_funds where prfd_attr_search_text is not null")
+ABRV_N = A["columns"]["itm_abrv_nm"]["distinct_count"]
+ASOF = A["meta"].get("data_asof", "")
 
 def facts(c):
     e = A["columns"][c]
@@ -55,8 +63,8 @@ w("\n---\n")
 w("## 1. 한눈에 — 무엇이 개체이고 무엇이 속성인가\n")
 w(f"""```
                     ┌─────────────────┐
-                    │  AssetManager   │ 67   운용사 (or_co_xtn_itt_cd)
-                    │  Custodian      │ 18   수탁사 (trusc_xtn_itt_cd)
+                    │  AssetManager   │ {ENT_N["AssetManager"]:,}  운용사 (or_co_xtn_itt_cd)
+                    │  Custodian      │ {ENT_N["Custodian"]:,}   수탁사 (trusc_xtn_itt_cd)
                     └────────▲────────┘
                              │ managedBy / custodiedBy
               ┌──────────────┴──────────────┐
@@ -65,20 +73,22 @@ w(f"""```
               └──────────────▲──────────────┘
                              │ belongsToFund
               ┌──────────────┴──────────────┐
-              │        FundClass            │ 11,139   ★ 주 노드 = 판매 단위
-              │           itm_no            │          속성 44컬럼이 여기 붙음
+              │        FundClass            │ {ENT_N["FundClass"]:,}   ★ 주 노드 = 판매 단위 = 행 (itm_no PK)
+              │           itm_no            │          속성 {len(COLS)-1}컬럼이 여기 붙음
               └───┬────────┬─────────┬──────┘
         hasShare  │        │         │  hasAttribute / investsIn / benchmarkedTo
           Class   ▼        ▼         ▼
       ┌───────────┐ ┌────────────┐ ┌──────────┐ ┌────────────┐
       │ShareClass │ │FundAttribute│ │ Country  │ │ Benchmark  │
-      │   112     │ │   210 (15축)│ │    17    │ │    391     │
-      │itm_nm 파싱│ │prfd_attr_cd │ │prfd_attr │ │  bmrk_nm   │
+      │   {ENT_N["ShareClass"]:>4}    │ │  {ENT_N["FundAttribute"]:>4} (15축)│ │   {ENT_N["Country"]:>3}    │ │    {ENT_N["Benchmark"]:>4}    │
+      │itm_nm 파싱│ │prfd_attr_cds│ │prfd_attr │ │  bmrk_nm   │
       └───────────┘ └────────────┘ └──────────┘ └────────────┘
                                                   🔵 국내ETF와 17종 통용
 
-  ※ 행(95,619) = FundClass(11,139) × 그 종목의 태그 수(4~16, 평균 8.58)
-     45컬럼 중 itm_no 안에서 갈리는 것은 prfd_attr_cd 하나뿐 → 나머지는 전부 FundClass 속성
+  ※ 행({TOTAL:,}) = FundClass({N_ITM:,}) — 2차 데이터(기준일 {ASOF})부터 itm_no 가 행 단위 PK.
+     속성태그는 prfd_attr_cds(쉼표 목록) 한 컬럼에 집약 → {len(COLS)}컬럼 전부 FundClass 속성.
+     std_itm_no 는 클래스 묶음 키가 아니다(2개 이상 itm_no 를 가리키는 값 {N_STD_MULTI}개뿐) — 펀드 단위 키는 (or_co, mtco) 합성키.
+  🔴 기본 모수 = 판매중 AND 공모 {N_PUB_SELL:,}행 — 사모 {N_PRIV:,}행이 섞여 있다(prvo_pbff_desc). 개수·Top-N 질의는 모수를 밝힐 것.
   🔴 Fund 는 '모펀드' 가 아니다 — 클래스를 걷어낸 펀드 단위다. 모자형 모펀드는 이 테이블에 없다
      (모투자신탁·모투자회사 0건). mtco 단독 조인 금지 — 65종이 여러 운용사에 걸친다
 ```\n""")
@@ -86,14 +96,14 @@ w(f"""```
 w("\n### 관계도 (mermaid)\n")
 w("```mermaid")
 w("graph TD")
-w('  FC["<b>FundClass</b><br/>★ 주 노드 11,139<br/>itm_no"]')
+w(f'  FC["<b>FundClass</b><br/>★ 주 노드 {ENT_N["FundClass"]:,}<br/>itm_no (행 PK)"]')
 w(f'  FD["Fund<br/>펀드 {FUND_N:,} (모펀드 아님)<br/>(or_co, mtco) 합성키"]')
-w('  SC["ShareClass<br/>112<br/>itm_nm 파싱"]')
-w('  FA["FundAttribute<br/>210 · 15축<br/>prfd_attr_cd"]')
-w('  CO["Country<br/>17 · 커버리지 13.9%"]')
-w('  BM["Benchmark<br/>391<br/>국내ETF와 17종 통용"]')
-w('  AM["AssetManager<br/>67 · 이름 컬럼 없음"]')
-w('  CU["Custodian<br/>18 · 이름 컬럼 없음"]')
+w(f'  SC["ShareClass<br/>{ENT_N["ShareClass"]}<br/>itm_nm 파싱 + han_clas_nm"]')
+w(f'  FA["FundAttribute<br/>{ENT_N["FundAttribute"]} · 15축<br/>prfd_attr_cds"]')
+w(f'  CO["Country<br/>{ENT_N["Country"]} · 태그 커버리지 {CTRY_COV:.1%}"]')
+w(f'  BM["Benchmark<br/>{ENT_N["Benchmark"]}<br/>국내ETF와 통용분 있음"]')
+w(f'  AM["AssetManager<br/>{ENT_N["AssetManager"]} · 이름 컬럼 없음(코드북)"]')
+w(f'  CU["Custodian<br/>{ENT_N["Custodian"]} · 이름 컬럼 없음(코드북)"]')
 w("  FC -->|belongsToFund| FD")
 w("  FD -->|managedBy| AM")
 w("  FD -->|custodiedBy| CU")
@@ -121,8 +131,8 @@ w("\n> 🔴 **`AssetManager`·`Custodian` 은 코드만 있고 이름 컬럼이 
   "사용자가 *\"미래에셋자산운용\"* 이라고 물어도 이을 수 없습니다 (EDA_GUIDE §5-A 최우선 이슈).\n")
 
 w("\n---\n")
-w("## 3. 컬럼 45개 전수 배정\n")
-w("모든 컬럼이 **엔티티 출처 · 유도규칙 · 속성** 중 하나 이상에 배정돼 있습니다 (45/45).\n")
+w(f"## 3. 컬럼 {len(COLS)}개 전수 배정\n")
+w(f"모든 컬럼이 **엔티티 출처 · 유도규칙 · 속성** 중 하나 이상에 배정돼 있습니다 ({len(COLS)}/{len(COLS)}).\n")
 for g in ["_엔티티/규칙"] + [x for x in D["attributes"] if not x.startswith("_")]:
     if g == "_엔티티/규칙":
         sel = [c for c in COLS if any(o.startswith("**") or o.startswith("rule") for o in owner[c])
@@ -141,7 +151,7 @@ w("\n> 📌 **`itm_nm` 은 두 역할을 합니다** — `FundClass` 의 **레�
   "`ShareClass`(종류X/클래스X 파싱)와 `assetClass`(괄호 표기) 유도의 **출처**입니다.\n>")
 w("> 📌 **성과 9컬럼은 판정을 공유합니다** — `fd_yr1_ern_r` 의 `missing_patterns`"
   "(접미결측/전무/구멍)이 `applies_to` 로 9개 전체에 적용됩니다. 표에는 대표 컬럼에만 표시됩니다.\n>")
-w("> ⚠️ **`itm_abrv_nm` distinct 11,119 < `itm_no` 11,139** — 약어명 13종이 종목 여럿에 "
+w(f"> ⚠️ **`itm_abrv_nm` distinct {ABRV_N:,} < `itm_no` {N_ITM:,}** — 약어명 {N_ITM-ABRV_N:,}건이 종목 여럿에 "
   "대응합니다. **이름은 유일키가 아닙니다** (노트 §D.11).\n")
 
 w("\n---\n")

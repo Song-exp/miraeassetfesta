@@ -10,9 +10,9 @@
 
 | 순위 | 무엇 | 어디 | 기준 |
 | :-: | :--- | :--- | :-- |
-| 1 | **2차 yaml** (판정·규칙 정본) | `main:ontology/enums/domestic_bonds.yaml` | 2차 |
-| 2 | 2차 영향 분석·재검증 | `docs/DATA_V2_2026-08-24_impact.md` · `review_recheck_2026-08-25.md` · `review_yaml_pending_2026-08-25.md` (main) | 2차 |
-| 3 | 1차 yaml | `eda/domestic_bonds:ontology/enums/domestic_bonds.yaml` | 1차 |
+| 1 | **2차 yaml** (판정·규칙 정본) | `ontology/enums/domestic_bonds.yaml` (08-26 병합 후 이 브랜치도 2차) | 2차 |
+| 2 | 2차 영향 분석·재검증 | [`DATA_V2_2026-08-24_impact.md`](DATA_V2_2026-08-24_impact.md) · [`review_recheck_2026-08-25.md`](review_recheck_2026-08-25.md) · [`review_yaml_pending_2026-08-25.md`](review_yaml_pending_2026-08-25.md) | 2차 |
+| 3 | 1차 yaml | 커밋 `420f1cf` 의 `ontology/enums/domestic_bonds.yaml` (08-26 병합 전) | 1차 |
 | 4 | 구조도 | `docs/domain/domestic_bonds_graph.md` | 1차 |
 | 5 | EDA 노트 · 검토 답글 · 추가 검토 | `docs/eda/domestic_bonds_notes.md` · `review_reply_bonds_2026-08-21.md` · `additional_bonds.md` | 1차 |
 | 6 | 도메인 가이드 | `docs/domain/domestic_bonds.md` | 1차 (개념은 판 무관) |
@@ -117,8 +117,8 @@ STD_PD_MCLS_NM 대분류 6  →  STD_PD_SCLS_NM 소분류 16  →  BD_KND 채권
 | :-- | --: | :-- |
 | ① 매수 가능 | 254 | `buyable_quantity` 무효 → **판매조건 634 LOT** |
 | ② 거래 중지/미판매 | 25,641 | `mat_dt >= 20260822` 21,828행 전부 "구매 가능하나 당사 판매 조건 미수록" |
-| ③ 만기 소멸 (이력) | 16,180 | 대부분 소멸 (54행 잔존) |
-| ④ 만기일 불명 | 319 | `mat_dt=0` 4건 |
+| ③ 만기 소멸 (이력) | 16,180 | 만기 경과 **49행** (잔존일수 0 과 정확 일치) — 거의 정리됨 |
+| ④ 만기일 불명 | 319 | **5행** (NULL 1 + 0값 4) — 1차 `99991231` 센티넬 4건 소멸 |
 
 ### 4-④ 축 8종 (`axis_derivation`) — 2차 기준
 
@@ -204,7 +204,9 @@ STD_PD_MCLS_NM 대분류 6  →  STD_PD_SCLS_NM 소분류 16  →  BD_KND 채권
 | 영구채 471 → 500 (F-2-1) | ⚫ 종결 | 2차 `신종\|영구` 266행/237종목 채택 |
 | `is_callable` 12,187 (F-2-1) | 🟡 재산정 | 2차 2,673 |
 
-> **다음 작업 1순위 = 이 표의 🟡 를 2차 DB 로 다시 돌리는 것.** 브랜치가 `main` 대비 22커밋 뒤처져 있고 로컬에 2차 DB 가 없다 — §8.
+> **다음 작업 1순위 = 이 표의 🟡 를 2차 DB 로 다시 돌리는 것.** 08-26 에 `main` 을 병합해 yaml 은 2차가 됐지만 **로컬 DB 와 원본 xlsx 는 아직 1차**다 — §8.
+>
+> ⚠️ **병합에서 떨어진 것** — main 의 2차 재작성은 이 브랜치의 08-21 검토 답글을 읽지 않고 만들어져, B9 가 확정한 **역질문 무응답 기본값이 clarify 절에서 13개 → 2개로 줄었다.** 데이터 판과 무관한 설계 원칙이라 복원 대상 — `additional_bonds.md` F-2-12 · 회의 안건 3-6.
 
 ---
 
@@ -220,12 +222,12 @@ STD_PD_MCLS_NM 대분류 6  →  STD_PD_SCLS_NM 소분류 16  →  BD_KND 채권
 | 검토 요청 B1~B9 | [`review_request_2026-08-20.md`](review_request_2026-08-20.md) §채권 | 1차 |
 | 검토 답글 — 기준일·영구채·듀레이션0·유동화·역질문 확정 | [`review_reply_bonds_2026-08-21.md`](review_reply_bonds_2026-08-21.md) | 1차 |
 | 추가 검토 — 미탐·규칙 실행성·외부 대조·자체 재검증·**회의 안건 F**·**담보·업종 K** | [`additional_bonds.md`](additional_bonds.md) | 1차 |
-| 2차 전환 영향 | `DATA_V2_2026-08-24_impact.md` (main) | 2차 |
-| 2차 재검증 B1·B2·B3·B5·B8 | `review_recheck_2026-08-25.md` (main) | 2차 |
-| 2차 yaml 추정·미확정 판정 B-1~B-16 | `review_yaml_pending_2026-08-25.md` (main) | 2차 |
-| 그래프 재료 (발행사·등급·담보·업종 노드) | `graph_sources_review_2026-08-25.md` §1 (main) | 2차 |
+| 2차 전환 영향 | [`DATA_V2_2026-08-24_impact.md`](DATA_V2_2026-08-24_impact.md) | 2차 |
+| 2차 재검증 B1·B2·B3·B5·B8 | [`review_recheck_2026-08-25.md`](review_recheck_2026-08-25.md) | 2차 |
+| 2차 yaml 추정·미확정 판정 B-1~B-16 | [`review_yaml_pending_2026-08-25.md`](review_yaml_pending_2026-08-25.md) | 2차 |
+| 그래프 재료 (발행사·등급·담보·업종 노드) | [`graph_sources_review_2026-08-25.md`](graph_sources_review_2026-08-25.md) §1 | 2차 |
 | 외부 코드북 실물 | `data/external/lookups/` · 카탈로그 [`EXTERNAL_DATA.md`](EXTERNAL_DATA.md) | 1차 |
-| 판정·규칙 정본 | `ontology/enums/domestic_bonds.yaml` | main=2차 / 브랜치=1차 |
+| 판정·규칙 정본 | `ontology/enums/domestic_bonds.yaml` | 2차 (08-26 병합) |
 
 ### 낡은 수치 주의 — 문서에 남아 있지만 폐기된 것
 
@@ -250,7 +252,7 @@ STD_PD_MCLS_NM 대분류 6  →  STD_PD_SCLS_NM 소분류 16  →  BD_KND 채권
 
 **다음 할 일 (순서)**
 
-1. 브랜치를 `main` 에 맞춘다 (behind 22) — 2차 yaml·DB 확보
+1. ~~브랜치를 `main` 에 맞춘다~~ ✅ **08-26 병합 완료** (`7e7e129`) — yaml 은 2차. ⚠️ **로컬 DB 는 아직 1차**(42,394행) — 2차 원본 `1.금융상품/prbd01n001_data.xlsx` 를 드라이브에서 받아 `scripts/build_db.py` 재실행 필요
 2. §6 표의 🟡 를 2차 DB 로 재실행 — 특히 지역개발채·키워드 규칙·역질문 2종 건수
 3. 회의 — `additional_bonds.md` 부록 F 11건 + `main` 안건 3-1(gold 63문항 채권 분담) · 3-4(2차 yaml `query_rules` 검토)
 4. 코드북 2차 재검수 (yaml workshop B-15: `bd_knd` 32종 · 발행사 1,818)

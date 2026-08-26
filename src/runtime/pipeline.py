@@ -63,6 +63,20 @@ def validate_sql(sql: str) -> str | None:
     return None
 
 
+def ensure_limit(sql: str) -> tuple[str, bool]:
+    """LIMIT 이 없으면 붙인다. (보정된 SQL, 보정했는지)
+
+    🔴 기각이 아니라 보정이다. LIMIT 의 목적은 결과 폭주를 막는 것인데, `COUNT(*)` 처럼
+       한 행만 나오는 집계 질의에는 애초에 필요가 없어 모델이 자연스럽게 생략한다.
+       그걸 기각하면 정답 SQL 을 만들고도 답을 못 내놓는다
+       (2026-08-26 실측: "유동화 채권 몇 건이야?" → 조건식은 정확했으나 LIMIT 누락으로 기각).
+       상한을 강제하는 성질은 그대로 유지된다.
+    """
+    if re.search(r"\blimit\s+\d+", sql, re.I):
+        return sql, False
+    return f"{sql.strip().rstrip(';')} LIMIT {MAX_ROWS}", True
+
+
 def _ground(question: str, ctx: RuntimeContext, tables: list[str] | None = None) -> tuple[list, list[str]]:
     """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다.
 
@@ -255,6 +269,10 @@ def answer_question(
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · {len(grounding):,}자")
     sql = planner.plan_sql(q, grounding)
     step(f"[Plan] SQL 생성 — {sql[:120]}")
+
+    sql, limited = ensure_limit(sql)
+    if limited:
+        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
 
     err = validate_sql(sql)
     if err:

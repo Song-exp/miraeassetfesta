@@ -169,3 +169,15 @@ def test_gate_still_passes_valid_grade_with_particle(ctx):
 
     r = answer_question("T-CRD2", "신용등급 AAA인 회사채 알려줘", ctx=ctx)
     assert "[Gate] 통과" in r.think_trace
+
+
+def test_ensure_limit_appends_when_missing():
+    # 🔴 집계 질의는 LIMIT 을 안 쓴다. 기각하면 정답 SQL 을 만들고도 답을 못 낸다 (2026-08-26 회귀)
+    from src.runtime.pipeline import MAX_ROWS, ensure_limit
+
+    sql, changed = ensure_limit("SELECT COUNT(*) FROM domestic_bonds WHERE bd_knd='MBS'")
+    assert changed and sql.endswith(f"LIMIT {MAX_ROWS}")
+    assert validate_sql(sql) is None
+
+    keep, changed2 = ensure_limit("SELECT pd_nm FROM domestic_etfs LIMIT 5")
+    assert not changed2 and keep.endswith("LIMIT 5")

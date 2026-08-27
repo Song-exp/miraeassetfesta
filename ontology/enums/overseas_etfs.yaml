@@ -120,7 +120,7 @@ columns:
   # ── 수익률 (1일만 — 2차부터 유효, 판정 뒤집힘 2026-08-25) ──
   du_er_1d:
     korean_name: 1일수익률
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: >-
       1일수익률 질의는 답변 가능(유효 5,898건 = 97.7%, 기준일 du_clpr_base_dt 병기).
       🔴 연/YTD/기간 수익률은 컬럼 자체가 없어 **미수록**.
@@ -136,6 +136,7 @@ columns:
       0 이 '당일 등락 없음(보합)' 이라는 관측 사실은 유지하되, 랭킹 축으로는 쓰지 않는다.
     unit: percent
 
+    # ✅ 검토(이병철/08-27) [A절]: 🔴 결측 14건은 du_val_1d·ru_mkt_price 와 완전 동일 집합이며 14건 전부 du_clpr 도 NULL = 시세가 통째로 없음. pd_sale_yn=0 은 0건(판매중 표시)이나 실제로는 데이터 껍데기 → 어떤 질의에서도 제외.
   # ── 총보수 (국내와 대조 — 깨끗) ──
   cu_charge_rt:
     korean_name: 총보수요율
@@ -146,7 +147,7 @@ columns:
 
   du_last_aum:
     korean_name: 최종AUM
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "AUM 질의 답변 가능(결측 3.4% · 0값 11건 제외). 단위 USD. 국내ETF(KRW)와 통합 정렬 시 ontology/codebooks/fx_rate.csv(8/21 기준으로 교체 예정) 적용 — 미적용 상태면 상품군별로 분리 제시."
     note: "단위 USD 확정 (VOO $995B·SPY $783B 실제값 대조 + pd_trd_ccy 전부 USD). 국내ETF는 KRW라 숫자 직접 비교 시 순위 역전(함정②)."
     # ✅ 검토(이병철/08-21): 환율 확정(1,504.92 ECB)으로 통합 정렬 조건부 허용. 근거 — VOO는 두 환율(1,485↔1,505) 모두 KODEX200의 50배(1,498조 vs 28조)라 큰 격차엔 ±1.3% 무영향. 뒤집힘은 규모 유사($19~20B ↔ 28조원 부근) 종목만이라 5% 경계 단서로 방어. 🔧 정정: 통합 정렬 금지 → 조건부 허용(환율 병기). 최종 go 는 워크샵/리드 확인 권장(답변 행동 변경).
@@ -155,13 +156,15 @@ columns:
       scale: USD (달러)
       cross_sort: "국내ETF du_last_aum(KRW)와 나란히 정렬 불가. VOO $995B > KODEX200 28.4조원(≈$200억)인데 숫자만 보면 KODEX가 28배 커 보임."
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 205건 — '시세 전무 14건'과 다른 집단. 205건 전부 du_clpr 유효(정상 거래중)이고 판매종료 0건 = 거래는 되나 순자산만 미수록(소형 ETF 집계 누락 추정). Top-N 에서 제외하고 모수 명시.
   # ── 실시간 (국내와 달리 채워짐) ──
   ru_mkt_price:
     korean_name: 현재가
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "결측 0.2% — 종가로 백필된 값. '실시간'이 아니라 기준일(8/21) 종가임을 명시."
     note: 종가(du_clpr)로 채워짐. 2차부터는 국내ETF도 같은 방식으로 채워져 대칭.
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 14건 — du_er_1d 와 동일 집합·동일 원인(시세 전무).
   # ── 레버리지 (2차부터 부분 유효 — 판정 뒤집힘 2026-08-25) ──
   cu_lev_fector:
     korean_name: 레버리지배수
@@ -214,7 +217,7 @@ columns:
   # ── 거래대금·거래량 0값 (2026-08-18 감사 신설) ──
   du_val_1d:
     korean_name: 일거래대금
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "거래대금·거래량 Top-N 은 0값 91건(미거래 상품, du_val=du_vol 동시 0)을 **제외**하고 모수를 밝힐 것 — 주최 답변(0값 행 제외) 확정."
     note: >-
       2차 0값 91건(1차 187)은 du_vol_1d 와 정확히 동일 상품 — 당일 미거래(관측 사실).
@@ -223,16 +226,18 @@ columns:
     - du_val_1d
     - du_vol_1d
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 14건 — du_er_1d 와 동일 집합·동일 원인(시세 전무).
   # ── 운용사 (영문) ──
   cu_fund_mgmt_co:
     korean_name: 운용사
     kg_entity: Organization                # 2026-08-25 포인터 기입 — coverage report 추적용 (shared/organization.yaml)
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     trap: "영문 382종(BlackRock Fund Advisors 등). 국내ETF(한글 약칭)와 표기 체계 완전히 다름 → 교차질의 매핑 필요. 2차에서 국내ETF 에 ref_fund_mgmt_co(영문 정규 법인명) 가 생겨 영문↔영문 매핑 경로 가능."
     answer_policy: 운용사 질의는 영문 기준. 국내 운용사명과 매핑은 워크샵 결정(§F-2).
     note: 2차 BlackRock 498·First Trust 327·Tidal 319. 결측 0.2%(12건).
 
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 12건 — '시세 전무 14건'(du_er_1d 참조)에 포함. 상품명이 티커와 동일(TAWN·BBLS 등)해 정식 명칭조차 없음.
   # ── 2026-08-26 도메인 감사(정현 지시) — 한글명만 있고 결측판정 없던 컬럼 보강 ──
   # 대상 선정: 33종(column_korean_names 는 있으나 columns 판정 없음) 중 분석상 의미있는 17종만 우선.
   # 나머지(pd_itm_no·pd_nm 등 순수식별자, pd_grp_no·pd_sale_yn·pd_tr_yn 등 기제출 no-op 상수)는 제외.
@@ -330,13 +335,15 @@ columns:
   wu_inv_rgn:
     korean_name: 투자지역
     kg_entity: Region                # 2026-08-25 포인터 기입 (stub)
-    missing_reason: none
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: none → mixed
     note: "59종 영문 — 14/59 매핑, 45종 계층 매핑 대기 (graph_sources_review §3)"
+    # ✅ 검토(이병철/08-27) [A절]: 결측 11건 — wu_inv_ast_type 과 동일 집합·동일 원인.
   wu_inv_ast_type:
     korean_name: 투자자산유형
     kg_entity: AssetClass                # 2026-08-25 포인터 기입 (stub)
-    missing_reason: none
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: none → mixed
     note: "6종 영문 (Equity/Bond/…) — 6/6 매핑"
+    # ✅ 검토(이병철/08-27) [A절]: 결측 11건 — wu_inv_rgn 과 동일 집합이며 '시세 전무 14건'에 포함(11/11). 시세뿐 아니라 분류까지 없는 상품 = 마스터 수록 자체가 불완전.
   pd_trd_ccy:
     korean_name: 거래통화
     kg_entity: Currency                # 2026-08-25 포인터 기입 (stub)

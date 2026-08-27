@@ -319,7 +319,7 @@ columns:
   # ── 상품유형 코드 (섹터 아님) ──
   pd_sect_cd:
     korean_name: ETF섹터코드(실제=상품유형구분)
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "'섹터' 질의에 이 코드로 답하지 말 것 — 섹터가 아니라 상품유형 구분임. 섹터·테마는 ref_base_index·상품명·외부 Holdings 로."
     note: >-
       🔴 교차대조로 해독: 섹터 아님. 2차 실측 — 2=일반ETF(1,160) / 3=일반ETN(419) / 8=단일종목ETF(16) / 4=특수구조ETN(1) / 9=단일종목ETN(2) / NULL=ETF59+ETN123.
@@ -332,6 +332,7 @@ columns:
       "9.0": 단일종목(레버리지) ETN 2건 — 삼성전자·SK하이닉스
     cross_use: "🔴 코드 8 ≠ axis_underlyingScope SingleStock. 실측(샘플 100건 재채점, 1차): 코드8을 SingleStock 규칙으로 넣으면 87→83%로 하락. underlyingScope는 규칙으로 유도 불가 → 워크샵 안건."
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 182 = ETN 123 + ETF 59, 전부 판매종료. 🔴 시세가 아니라 분류 코드인데도 결측 — 마스터가 판매종료 상품의 속성을 통째로 안 채우는 패턴.
   # ── 운용사 (약칭 함정 + 상품명 오염 — 2차도 동일, 정답지 등장) ──
   cu_fund_mgmt_co:
     korean_name: 운용사(원본)
@@ -344,25 +345,28 @@ columns:
   # ── 전일NAV·등락금액 (🟢 2차에서 ETF 도 정상화 — 1차 broken_etf_only 판정 폐기) ──
   du_nav_yday:
     korean_name: 전일NAV
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "🟢 ETF·ETN 모두 사용 가능. 일간 등락은 du_nav_rnf_amt 또는 du_er_1d."
     note: >-
       🟢 2026-08-25 2차 정정 — 1차에서 ETF 1,137건이 오늘 NAV 복사(깨짐)였으나, 2차는 ETF 1,176건 중
       du_nav_yday = du_last_nav 인 행이 16건뿐이고 du_nav_rnf_amt = (du_last_nav − du_nav_yday) 가 ETF 1,176 · ETN 422 전건 성립.
       주최가 말한 "정합성 이슈" 정정 사례. 판정 broken_etf_only → present.
+    # ✅ 검토(이병철/08-27) [A절]: 결측 182 = ETN 123 + ETF 59, 전부 판매종료. du_nav_rnf_amt 와 동일 집합.
   du_nav_rnf_amt:
     korean_name: 전일NAV등락금액
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "🟢 사용 가능 (= 오늘 NAV − 전일 NAV, ETF·ETN 전건 성립)."
     note: 2차 정정 — 1차 "ETF = -du_nav_yday (깨짐)" 는 2차에서 0건.
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 182 = ETN 123 + ETF 59, 전부 판매종료(pd_sale_yn=0). du_nav_yday·pd_sect_cd 와 동일 집합. 판매종료 상품은 시세 갱신이 멈춰 결측.
   # ── 종가 (0값 = 미거래) ──
   du_clpr:
     korean_name: 종가
-    missing_reason: present
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: present → mixed
     answer_policy: "가격 기반 Top-N/조회 시 du_clpr > 0 필터. 0값은 만기채권ETF·신규상장·거래중단 미거래."
     note: 2차 실측 — 0값 192건 = ETF 58 + ETN 134. -100 센티넬 110건 전부 이 집합에 포함.
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 4건 = 판매종료 3건 + ETN 1건(판매중인데 시세 부재 — 확인 필요). 시세 질의는 pd_sale_yn=1 한정.
   # ── 레버리지 배수 (🔴 2차 회귀 — 부호 소실) ──
   cu_lev_fector:
     korean_name: 레버리지배수
@@ -418,9 +422,10 @@ columns:
   pd_curr_cd:
     korean_name: 통화코드
     kg_entity: Currency                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
-    missing_reason: none
+    missing_reason: mixed   # 🔧 정정(이병철/08-27) [A절]: none → mixed
     note: "'CURR_CD_KRW' 1,775 · 'CURR_CD_000' 1 (센티넬)"
 
+    # ✅ 검토(이병철/08-27) [A절]: 결측 3건 = 전부 판매종료 ETF(du_clpr 결측분과 동일 상품). 통화코드는 상품 속성인데도 판매종료면 비어 있음.
 product_group:
   column: pd_grp_no
   values:

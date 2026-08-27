@@ -412,8 +412,14 @@ query_rules:
   #          — SSPC·SKDD·SPCQ (전부 배수 -2.0, 이름도 '2X Short').
   #          이름에 'Inverse'/'2X Short' 인데 플래그 없는 것 5건 추가.
   #    → 플래그 OR 음수배수 OR 상품명 병행. 183 → 191건 (기존 Y 183 누락 0 · 오탐 0 검증).
-  #    ⚠️ 오탐 제외 필수: 'Short Duration/Term'(단기채권) · 'BullBear'(양방향) ·
-  #       'UltraShort + Income/Bond/Treasury/Municipal/Fixed'(초단기 채권) — 여기서 Short 는 만기가 짧다는 뜻이다.
+  #    ⚠️ 오탐 제외 필수 — 이름에 Short/Bear 가 들어가도 인버스가 아닌 것들이다.
+  #       · 'Short Duration/Term/Trm' · 'UltraShort + Income/Bond/Treasury/Municipal/Fixed'
+  #         → 여기서 Short 는 방향이 아니라 **만기가 짧다**(초단기 채권)는 뜻.
+  #       · 'BullBear' (WBI BullBear 3종 — WBIF·WBIG·WBIL)
+  #         → 양방향이 아니라 **하락장 방어 기능을 얹은 상승 추종 액티브 주식펀드**.
+  #           근거: 셋 다 wu_inv_ast_type='Equity' · cu_strtegy 원문 "invests at least 80% of its
+  #           net assets in the equity securities ... while also seeking to protect principal
+  #           during unfavorable market conditions" · cu_lev_fector 전부 NULL.
   인버스숏: >-
     cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0
     OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%'

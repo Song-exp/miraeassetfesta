@@ -456,3 +456,31 @@ domestic_asymmetry:
   해외가_나은_것: [총보수(결측0%), AUM(결측3.4%), 식별자(ISIN/Lipper/CIK), 레버리지부호(국내는 2차에서 소실)]
   언어차이: 자산군·지역 영문 (국내는 한글)
   지역입도: 59종 국가단위 (국내는 11종 대분류)
+
+# ── 외부 구성종목 조인 (2026-08-27 A-3-02·A-4-04 검토 확정) ──
+external_join:
+  ext_ovs_etf_holdings:
+    # 🔴 ISIN 으로 조인하면 **다른 ETF 의 구성종목이 붙는다.**
+    #    실증: FILL.K(iShares MSCI Global Energy Producers)를 ISIN 조인하면 69행이 붙는데,
+    #          그 69행은 POWR(iShares US Power Infrastructure)의 구성종목이다. 전혀 다른 상품이다.
+    #    원인: pd_isin_cd 가 두 상품에 걸린 케이스(A-2-03)에서 외부 데이터는 한쪽 티커만 갖고 있다.
+    key: "ext_ovs_etf_holdings.etf_ticker = replace(replace(overseas_etfs.pd_itm_no,'.K',''),'.O','')"
+    forbidden_key: "isin = pd_isin_cd   # 사용 금지 — 오배정 8건 확인"
+    misassigned_if_isin: [CCMG.K, STXF.K, SIXG.O, GSWO.K, FILL.K, FIBR.K, IEQ, SPLG.K]
+    coverage: "티커 조인 1,358 상품 / 마스터 6,037 (22.5%) · 오배정 0"
+    caveat: >-
+      접미어 제거 후 base 티커가 마스터에 2행인 경우 6건 — **전수 확인 결과 실제 위험 0**.
+      실제로 2상품에 붙는 것은 JEMA(544행)·SHV(65행) 둘뿐이고, 둘 다 ISIN·운용사·종가·상장일이
+      완전히 같고 거래소만 갈리는 **동일 상품 2회 등록**이라 같은 구성종목이 붙는 게 맞다.
+      나머지 4건(JOYT·LVDS·NERD·SMCC)은 외부 데이터에 해당 티커가 **0행**이라 아무것도 붙지 않는다.
+      ⚠️ SMCC 는 SMCC.K(Corgi SMCI 2x Daily, Corgi Strategies)와 SMCC.O(Defiance Leveraged Long+Income SMCI,
+      Tidal Investments)로 **서로 다른 상품**이지만, 외부 수집분이 0행이라 현재 데이터에서는 배정 문제가 발생하지 않는다.
+      향후 외부 데이터에 SMCC 가 들어오면 그때 배정 판단이 필요하다 —
+      판단 순서: ① 외부에 티커 존재 여부 ② 구성종목 내용이 어느 상품과 맞는지 ③ seriesId/accession 으로 발행사 역추적.
+    report_date: "2025-10-31 ~ 2026-06-30 (8종)"
+    answer_policy: >-
+      🔴 해외 구성종목 답변에는 **상품별 report_date 를 반드시 병기**한다.
+      마스터 기준일(2026-08-22) 대비 **2~10개월 전**이다 — SEC N-PORT 분기공시 주기라 구조적이며 개선 불가.
+      국내(1일 전)와 달리 '현재 구성' 으로 단정하면 오답. '최신 시세와 시점이 다르다' 고 밝힌다.
+      분포: 2026-04-30(463) · 2026-05-31(404) · 2026-03-31(366) · 2026-06-30(98) · 2026-05-29(20) ·
+      2026-01-31(1) · 2025-11-30(2) · 2025-10-31(2).

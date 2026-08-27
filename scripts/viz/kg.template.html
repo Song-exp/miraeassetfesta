@@ -1,0 +1,460 @@
+<title>금융상품 지식그래프 탐색기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=Noto+Serif+KR:wght@500;700&display=swap">
+
+<style>
+:root{
+  --ground:#F4F5F1; --panel:#FBFBF8; --sunk:#EAEBE4;
+  --ink:#1A1E23; --ink-2:#4C535B; --ink-3:#7C848D;
+  --line:#D6D8CF; --line-2:#C2C5B9;
+  --cheong:#1F4E8C; --cheong-soft:#DCE6F2;
+  --jeok:#B0392B; --jeok-soft:#F3DEDA;
+  --geum:#8C6D1F; --geum-soft:#F0E7CF;
+  --muk:#6B7178; --na:#4E7A5E;
+  --shadow:0 1px 2px rgba(26,30,35,.06),0 8px 24px -12px rgba(26,30,35,.18);
+  --on-accent:#FBFBF8;
+  --rail:270px; --drawer:420px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#14171B; --panel:#1B1F24; --sunk:#0F1216;
+    --ink:#E6E8E3; --ink-2:#A8AEB4; --ink-3:#767D85;
+    --line:#2A2F35; --line-2:#3A4046;
+    --cheong:#7FA8DC; --cheong-soft:#1E2C3E;
+    --jeok:#E08573; --jeok-soft:#3A2320;
+    --geum:#D4B463; --geum-soft:#332B15;
+    --muk:#8E959C; --na:#7FB08F;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+    --on-accent:#12161A;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#14171B; --panel:#1B1F24; --sunk:#0F1216;
+  --ink:#E6E8E3; --ink-2:#A8AEB4; --ink-3:#767D85;
+  --line:#2A2F35; --line-2:#3A4046;
+  --cheong:#7FA8DC; --cheong-soft:#1E2C3E;
+  --jeok:#E08573; --jeok-soft:#3A2320;
+  --geum:#D4B463; --geum-soft:#332B15;
+  --muk:#8E959C; --na:#7FB08F;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+    --on-accent:#12161A;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans KR",system-ui,-apple-system,"Malgun Gothic",sans-serif;
+  font-weight:350; font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:"Noto Serif KR","Batang",serif; font-weight:700; text-wrap:balance; margin:0}
+code,.mono{font-family:"IBM Plex Mono","D2Coding",monospace; font-variant-numeric:tabular-nums}
+
+header{display:flex; align-items:flex-end; gap:24px; flex-wrap:wrap;
+  padding:18px 22px 14px; border-bottom:1px solid var(--line); background:var(--panel)}
+.brand h1{font-size:21px; letter-spacing:-.01em}
+.brand p{margin:3px 0 0; color:var(--ink-2); font-size:12.5px}
+.stats{display:flex; gap:20px; margin-left:auto; flex-wrap:wrap}
+.stat{text-align:right}
+.stat b{display:block; font-family:"IBM Plex Mono",monospace; font-size:17px; font-weight:600; font-variant-numeric:tabular-nums}
+.stat span{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
+
+.shell{display:grid; grid-template-columns:var(--rail) minmax(0,1fr) var(--drawer); height:calc(100vh - 74px)}
+.rail,.drawer{background:var(--panel); overflow-y:auto; padding:16px 14px}
+.rail{border-right:1px solid var(--line)} .drawer{border-left:1px solid var(--line)}
+.stage{position:relative; background:var(--sunk); min-width:0}
+canvas{display:block; width:100%; height:100%; cursor:grab}
+canvas.drag{cursor:grabbing}
+
+.sec{margin-bottom:20px}
+.sec>h3{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+  font-family:"IBM Plex Sans KR",sans-serif; font-weight:600; margin-bottom:8px}
+input[type=search]{width:100%; font:inherit; font-size:13px; padding:7px 9px; color:var(--ink);
+  background:var(--ground); border:1px solid var(--line-2); border-radius:2px}
+input[type=search]:focus-visible{outline:2px solid var(--cheong); outline-offset:-1px}
+.hits{margin-top:8px; max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:2px}
+.hit{display:block; width:100%; text-align:left; font:inherit; font-size:12.5px; padding:6px 9px;
+  background:transparent; border:0; border-bottom:1px solid var(--line); cursor:pointer; color:var(--ink)}
+.hit:last-child{border-bottom:0}
+.hit:hover,.hit:focus-visible{background:var(--cheong-soft); outline:none}
+.hit b{font-weight:500} .hit i{font-style:normal; color:var(--ink-3); font-size:11px; display:block}
+.tchip{display:inline-block; font-size:10px; padding:1px 5px; border-radius:2px; margin-right:5px;
+  font-family:"IBM Plex Mono",monospace; background:var(--sunk); color:var(--ink-2)}
+
+.tstat{display:flex; align-items:center; gap:7px; padding:3px 0; font-size:12.5px; cursor:pointer}
+.tstat .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.tstat .n{margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+
+.empty{color:var(--ink-3); font-size:13px; padding:40px 4px; text-align:center; line-height:1.7}
+.dh{border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:12px}
+.dh .eyebrow{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
+.dh h2{font-size:17px; margin:2px 0 3px; word-break:break-word}
+.dh .ko{color:var(--ink-2); font-size:13px}
+.pill{display:inline-block; font-size:11px; padding:1.5px 7px; border-radius:2px; margin:2px 4px 2px 0;
+  font-family:"IBM Plex Mono",monospace}
+.pill.b{background:var(--cheong-soft); color:var(--cheong)}
+.pill.g{background:var(--geum-soft); color:var(--geum)}
+.pill.r{background:var(--jeok-soft); color:var(--jeok)}
+.pill.n{background:var(--sunk); color:var(--ink-2); border:1px solid var(--line)}
+.blk{margin:12px 0; font-size:12.5px}
+.blk h4{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  font-family:"IBM Plex Sans KR",sans-serif; font-weight:600; margin:0 0 5px}
+.lst{max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:2px}
+.lst table{width:100%; border-collapse:collapse; font-size:12px}
+.lst td{padding:3px 8px; border-bottom:1px solid var(--line); vertical-align:top}
+.lst tr:last-child td{border-bottom:0}
+.lst td.m{font-family:"IBM Plex Mono",monospace; word-break:break-all}
+.lst td.k{color:var(--ink-3); white-space:nowrap; font-size:11px}
+.lnk{background:none;border:0;padding:0;font:inherit;color:var(--cheong);cursor:pointer;text-align:left}
+.lnk:hover{text-decoration:underline}
+
+.tip{position:absolute; pointer-events:none; background:var(--panel); border:1px solid var(--line-2);
+  border-radius:2px; padding:6px 9px; font-size:12px; box-shadow:var(--shadow); max-width:300px; opacity:0; transition:opacity .12s}
+.tip.on{opacity:1}
+.tip b{font-family:"IBM Plex Mono",monospace; font-weight:600}
+.tip i{display:block; font-style:normal; color:var(--ink-3); font-size:11px}
+.hint{position:absolute; left:14px; bottom:12px; font-size:11.5px; color:var(--ink-3);
+  background:var(--panel); border:1px solid var(--line); border-radius:2px; padding:5px 9px}
+.mode{position:absolute; left:14px; top:12px; display:flex; border:1px solid var(--line-2); border-radius:2px; overflow:hidden}
+.mode button{font:inherit; font-size:12px; padding:5px 12px; border:0; cursor:pointer;
+  background:var(--panel); color:var(--ink-2); border-right:1px solid var(--line-2)}
+.mode button:last-child{border-right:0}
+.mode button[aria-pressed="true"]{background:var(--cheong); color:var(--on-accent)}
+.mode button:focus-visible{outline:2px solid var(--cheong); outline-offset:-2px}
+.legend-note{font-size:11.5px; color:var(--ink-3); line-height:1.6}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:1100px){
+  .shell{grid-template-columns:1fr; height:auto}
+  .rail,.drawer{border:0; border-bottom:1px solid var(--line)}
+  .stage{height:60vh}
+}
+</style>
+
+<header>
+  <div class="brand">
+    <h1>금융상품 지식그래프 탐색기</h1>
+    <p>개체 · 별칭 · 관계 전량 수록 — 기준일 <span class="mono" id="asof"></span></p>
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="sec">
+      <h3>개체 검색</h3>
+      <input type="search" id="q" placeholder="종목·지수·운용사·등급 이름" autocomplete="off">
+      <div class="hits" id="hits" hidden></div>
+      <p class="legend-note" id="qn" style="margin-top:6px">이름과 별칭 원시값까지 함께 찾습니다.</p>
+    </div>
+    <div class="sec"><h3>개체 종류</h3><div id="ftypes"></div></div>
+    <div class="sec">
+      <h3>읽는 법</h3>
+      <p class="legend-note">
+        <b>스키마</b>는 개체 종류와 그 사이 관계를 집계해 보여 줍니다.
+        <b>이웃</b>은 고른 개체 하나를 가운데 두고 별칭·관계·계층을 펼칩니다.
+        관계선은 전부 규칙으로 유도된 <b>추정</b>입니다.
+      </p>
+    </div>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="mode">
+      <button id="mSchema" aria-pressed="true">스키마</button>
+      <button id="mEgo" aria-pressed="false">이웃</button>
+    </div>
+    <div class="tip" id="tip"></div>
+    <div class="hint" id="hint">드래그로 이동 · 휠로 확대 · 클릭으로 상세</div>
+  </main>
+
+  <aside class="drawer" id="drawer">
+    <p class="empty">왼쪽에서 개체를 찾거나<br>그래프에서 골라 보세요.</p>
+  </aside>
+</div>
+
+<script>
+const D = /*__DATA__*/;
+const $ = s => document.querySelector(s);
+const fmt = n => (n ?? 0).toLocaleString('ko-KR');
+const esc = t => String(t ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+const TCOLOR = ['--cheong','--geum','--na','--muk','--jeok','--cheong','--geum','--na','--muk'];
+const tName = i => D.types[i][0];
+
+/* 인덱스: 노드별 alias / edge / closure */
+const aliasOf = new Map(), outOf = new Map(), inOf = new Map(), parOf = new Map(), chOf = new Map();
+const put = (m,k,v) => { let a = m.get(k); if(!a){ a=[]; m.set(k,a);} a.push(v); };
+D.alias.forEach(a => put(aliasOf, a[0], a));
+D.edges.forEach(e => { put(outOf, e[0], e); put(inOf, e[2], e); });
+D.closure.forEach(c => { put(chOf, c[0], c[1]); put(parOf, c[1], c[0]); });
+
+/* 개체 종류 × (테이블,컬럼) 별칭 집계 — 한 번만 훑는다 (매번 재계산하면 6백만 번 비교가 된다) */
+const covByType = new Map();
+for (const a of D.alias){
+  const ti = D.nodes[a[0]][0], key = a[1] + ':' + a[2];
+  let m = covByType.get(ti); if (!m){ m = new Map(); covByType.set(ti, m); }
+  m.set(key, (m.get(key) || 0) + 1);
+}
+
+/* ── 두 가지 그래프 ───────────────────────────────────────────── */
+let mode = 'schema', sel = null, N = [], L = [], alpha = 1;
+
+function buildSchema(){
+  N = D.types.map((t,i) => ({
+    kind:'type', ti:i, label:t[0], n:t[1],
+    r: 14 + Math.log10(Math.max(10,t[1])) * 9,
+    x:Math.cos(i/D.types.length*6.283)*220, y:Math.sin(i/D.types.length*6.283)*220, vx:0, vy:0
+  }));
+  L = D.agg.map(a => ({a:a[0], b:a[2], pred:D.preds[a[1]], n:a[3], len:230, k:.02}));
+  alpha = 1;
+}
+function buildEgo(i){
+  const seen = new Map(), add = (idx, kind) => {
+    if (seen.has(idx)) return seen.get(idx);
+    const nd = D.nodes[idx];
+    const o = {kind:kind||'node', ni:idx, ti:nd[0], label:nd[1] || nd[2] || ('#'+idx),
+      r: kind==='center' ? 16 : 7, x:(Math.random()-.5)*300, y:(Math.random()-.5)*300, vx:0, vy:0};
+    seen.set(idx, o); N.push(o); return o;
+  };
+  N = []; L = [];
+  add(i, 'center');
+  const lim = 60;
+  (outOf.get(i)||[]).slice(0,lim).forEach(e => { add(e[2]); L.push({a:0, b:N.indexOf(seen.get(e[2])), pred:D.preds[e[1]], len:150, k:.03}); });
+  (inOf.get(i)||[]).slice(0,lim).forEach(e => { add(e[0]); L.push({a:N.indexOf(seen.get(e[0])), b:0, pred:D.preds[e[1]], len:150, k:.03}); });
+  (parOf.get(i)||[]).slice(0,20).forEach(p => { add(p); L.push({a:N.indexOf(seen.get(p)), b:0, pred:'상위', len:110, k:.05, dash:true}); });
+  (chOf.get(i)||[]).slice(0,40).forEach(ch => { add(ch); L.push({a:0, b:N.indexOf(seen.get(ch)), pred:'하위', len:130, k:.04, dash:true}); });
+  N[0].x = N[0].y = 0;
+  alpha = 1;
+}
+
+/* ── 물리 ─────────────────────────────────────────────────────── */
+function tick(){
+  if (alpha < .003 || !N.length) return;
+  for (let i=0;i<N.length;i++){
+    const a = N[i];
+    for (let j=i+1;j<N.length;j++){
+      const b = N[j];
+      let dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy;
+      if (d2 < 1e-4){ dx=Math.random()-.5; dy=Math.random()-.5; d2=.25; }
+      if (d2 > 400000) continue;
+      const d=Math.sqrt(d2), f=(900 + a.r*a.r + b.r*b.r)/d2*alpha;
+      a.vx -= dx/d*f; a.vy -= dy/d*f; b.vx += dx/d*f; b.vy += dy/d*f;
+    }
+  }
+  for (const l of L){
+    const a=N[l.a], b=N[l.b]; if(!a||!b) continue;
+    const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||.01, f=(d-l.len)*l.k*alpha;
+    a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f;
+  }
+  for (const n of N){
+    if (n.kind === 'center'){ n.vx = n.vy = 0; n.x = n.y = 0; continue; }
+    n.vx -= n.x*.0022*alpha; n.vy -= n.y*.0022*alpha;
+    n.x += n.vx *= .8; n.y += n.vy *= .8;
+  }
+  alpha *= .987;
+}
+
+/* ── 렌더 ─────────────────────────────────────────────────────── */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let view = {x:0,y:0,s:1}, DPR = 1, hov = null;
+const activeT = new Set(D.types.map((_,i) => i));
+
+function vis(n){ return mode === 'ego' || activeT.has(n.ti); }
+function resize(){
+  DPR = Math.min(2, devicePixelRatio||1);
+  const r = cv.parentElement.getBoundingClientRect();
+  cv.width = r.width*DPR; cv.height = r.height*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+function draw(){
+  const w=cv.width/DPR, h=cv.height/DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,w,h);
+  ctx.save(); ctx.translate(w/2+view.x, h/2+view.y); ctx.scale(view.s,view.s);
+  const ink=css('--ink'), ink3=css('--ink-3'), line=css('--line-2');
+
+  for (const l of L){
+    const a=N[l.a], b=N[l.b]; if(!a||!b||!vis(a)||!vis(b)) continue;
+    ctx.strokeStyle = l.dash ? css('--muk') : css('--cheong');
+    ctx.globalAlpha = mode==='schema' ? .45 : .55;
+    ctx.lineWidth = mode==='schema' ? Math.max(.6, Math.log10(l.n||2)*1.5) : .9;
+    if (l.dash) ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.globalAlpha=1;
+
+  if (mode==='schema'){
+    ctx.font='500 10px "IBM Plex Mono", monospace'; ctx.textAlign='center'; ctx.fillStyle=ink3;
+    for (const l of L){
+      const a=N[l.a], b=N[l.b]; if(!a||!b||!vis(a)||!vis(b)) continue;
+      ctx.fillText(`${l.pred} ${fmt(l.n)}`, (a.x+b.x)/2, (a.y+b.y)/2 - 4);
+    }
+  }
+
+  for (const n of N){
+    if (!vis(n)) continue;
+    const col = css(TCOLOR[n.ti % TCOLOR.length]);
+    ctx.fillStyle = col; ctx.globalAlpha = n.kind==='center' ? 1 : .82;
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,7); ctx.fill();
+    if (n===hov || n.kind==='center'){
+      ctx.globalAlpha=1; ctx.strokeStyle=ink; ctx.lineWidth=1.6;
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+5,0,7); ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  ctx.textAlign='center';
+  for (const n of N){
+    if (!vis(n)) continue;
+    if (mode==='schema'){
+      ctx.font='700 13px "Noto Serif KR", serif'; ctx.fillStyle=ink;
+      ctx.fillText(n.label, n.x, n.y+n.r+15);
+      ctx.font='400 10px "IBM Plex Mono", monospace'; ctx.fillStyle=ink3;
+      ctx.fillText(fmt(n.n), n.x, n.y+n.r+28);
+    } else if (n.kind==='center' || view.s>.75){
+      ctx.font = n.kind==='center' ? '700 13px "Noto Serif KR", serif' : '400 10px "IBM Plex Sans KR", sans-serif';
+      ctx.fillStyle = n.kind==='center' ? ink : ink3;
+      const t = n.label.length>22 ? n.label.slice(0,21)+'…' : n.label;
+      ctx.fillText(t, n.x, n.y+n.r+12);
+    }
+  }
+  ctx.restore();
+}
+function loop(){ tick(); draw(); requestAnimationFrame(loop); }
+
+/* ── 조작 ─────────────────────────────────────────────────────── */
+function at(ev){
+  const r=cv.getBoundingClientRect();
+  const x=(ev.clientX-r.left-r.width/2-view.x)/view.s, y=(ev.clientY-r.top-r.height/2-view.y)/view.s;
+  let best=null, bd=1e9;
+  for (const n of N){ if(!vis(n)) continue; const d=Math.hypot(n.x-x,n.y-y); if(d<n.r+6 && d<bd){bd=d;best=n;} }
+  return best;
+}
+let drag=null;
+cv.addEventListener('pointerdown', e=>{ drag={x:e.clientX,y:e.clientY,moved:0}; cv.classList.add('drag'); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointerup', e=>{
+  cv.classList.remove('drag');
+  if (drag && drag.moved<4){
+    const n=at(e);
+    if (n){ n.kind==='type' ? showType(n.ti) : openNode(n.ni); }
+  }
+  drag=null;
+});
+cv.addEventListener('pointermove', e=>{
+  if (drag){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    drag.moved+=Math.abs(dx)+Math.abs(dy); view.x+=dx; view.y+=dy;
+    drag.x=e.clientX; drag.y=e.clientY; $('#tip').classList.remove('on'); return;
+  }
+  const n=at(e); hov=n; const tip=$('#tip');
+  if (n){
+    tip.innerHTML = n.kind==='type'
+      ? `<b>${esc(n.label)}</b><i>노드 ${fmt(n.n)}</i>`
+      : `<b>${esc(n.label)}</b><i>${esc(tName(n.ti))} · 별칭 ${fmt((aliasOf.get(n.ni)||[]).length)}</i>`;
+    const r=cv.getBoundingClientRect();
+    tip.style.left=(e.clientX-r.left+14)+'px'; tip.style.top=(e.clientY-r.top+14)+'px';
+    tip.classList.add('on');
+  } else tip.classList.remove('on');
+});
+cv.addEventListener('pointerleave', ()=>{ $('#tip').classList.remove('on'); hov=null; });
+cv.addEventListener('wheel', e=>{ e.preventDefault(); view.s=Math.min(6,Math.max(.2,view.s*Math.exp(-e.deltaY*.0012))); }, {passive:false});
+
+/* ── 상세 ─────────────────────────────────────────────────────── */
+function showType(ti){
+  const t = D.types[ti];
+  const outs = D.agg.filter(a=>a[0]===ti), ins = D.agg.filter(a=>a[2]===ti);
+  const cov = [...(covByType.get(ti) || new Map())]
+    .map(([k,n]) => { const [t,c] = k.split(':'); return [D.tabs[+t], D.cols[+c], n]; })
+    .sort((a,b) => b[2]-a[2]).slice(0,25);
+  $('#drawer').innerHTML = `<div class="dh"><div class="eyebrow">개체 종류</div>
+    <h2>${esc(t[0])}</h2><div class="ko">노드 ${fmt(t[1])}개</div></div>
+    ${outs.length?`<div class="blk"><h4>나가는 관계</h4>${outs.map(a=>`<div><span class="pill b">${esc(D.preds[a[1]])}</span> → ${esc(tName(a[2]))} <span class="mono">${fmt(a[3])}</span></div>`).join('')}</div>`:''}
+    ${ins.length?`<div class="blk"><h4>들어오는 관계</h4>${ins.map(a=>`<div>${esc(tName(a[0]))} <span class="pill b">${esc(D.preds[a[1]])}</span> → <span class="mono">${fmt(a[3])}</span></div>`).join('')}</div>`:''}
+    <div class="blk"><h4>이 개체로 이어진 테이블·컬럼</h4><div class="lst"><table>${
+      cov.map(c=>`<tr><td class="m">${esc(c[0])}</td><td class="m">${esc(c[1])}</td><td class="k">${fmt(c[2])}</td></tr>`).join('')||'<tr><td class="k">집계 없음</td></tr>'}</table></div></div>
+    <p class="legend-note">관계는 전부 규칙으로 유도된 <b>추정</b>입니다 — 답변에 “추정” 을 병기합니다.</p>`;
+}
+function openNode(i){
+  sel = i;
+  const nd = D.nodes[i], al = aliasOf.get(i)||[], out = outOf.get(i)||[], inn = inOf.get(i)||[];
+  const par = parOf.get(i)||[], ch = chOf.get(i)||[];
+  $('#drawer').innerHTML = `<div class="dh"><div class="eyebrow">${esc(tName(nd[0]))}</div>
+      <h2>${esc(nd[1]||nd[2]||'#'+i)}</h2>
+      ${nd[2] && nd[2]!==nd[1] ? `<div class="ko mono">${esc(nd[2])}</div>` : ''}
+      <div style="margin-top:6px">
+        <span class="pill n">별칭 ${fmt(al.length)}</span>
+        <span class="pill b">관계 ${fmt(out.length+inn.length)}</span>
+        ${par.length?`<span class="pill g">상위 ${fmt(par.length)}</span>`:''}
+        ${ch.length?`<span class="pill g">하위 ${fmt(ch.length)}</span>`:''}
+      </div></div>
+    <div class="blk"><h4>별칭 전량 — 어느 컬럼의 어떤 값이 이 개체인가</h4>
+      <div class="lst"><table>${al.map(a=>
+        `<tr><td class="k">${esc(D.tabs[a[1]])}<br>${esc(D.cols[a[2]])}</td><td class="m">${esc(a[3])}</td></tr>`
+      ).join('') || '<tr><td class="k">별칭 없음</td></tr>'}</table></div></div>
+    ${out.length?`<div class="blk"><h4>나가는 관계</h4><div class="lst"><table>${out.slice(0,200).map(e=>
+      `<tr><td class="k">${esc(D.preds[e[1]])}</td><td><button class="lnk" data-go="${e[2]}">${esc(D.nodes[e[2]][1]||D.nodes[e[2]][2])}</button></td></tr>`).join('')}</table></div></div>`:''}
+    ${inn.length?`<div class="blk"><h4>들어오는 관계 ${inn.length>200?`(상위 200 / ${fmt(inn.length)})`:''}</h4><div class="lst"><table>${inn.slice(0,200).map(e=>
+      `<tr><td><button class="lnk" data-go="${e[0]}">${esc(D.nodes[e[0]][1]||D.nodes[e[0]][2])}</button></td><td class="k">${esc(D.preds[e[1]])}</td></tr>`).join('')}</table></div></div>`:''}
+    ${par.length?`<div class="blk"><h4>상위 계층</h4>${par.map(p=>`<button class="lnk pill g" data-go="${p}">${esc(D.nodes[p][1]||D.nodes[p][2])}</button>`).join(' ')}</div>`:''}
+    ${ch.length?`<div class="blk"><h4>하위 계층 ${ch.length>150?`(상위 150 / ${fmt(ch.length)})`:''}</h4>${ch.slice(0,150).map(c=>`<button class="lnk pill n" data-go="${c}">${esc(D.nodes[c][1]||D.nodes[c][2])}</button>`).join(' ')}</div>`:''}`;
+  $('#drawer').querySelectorAll('[data-go]').forEach(b =>
+    b.addEventListener('click', () => openNode(+b.dataset.go)));
+  setMode('ego');
+}
+
+/* ── 검색 ─────────────────────────────────────────────────────── */
+const rawIdx = new Map();
+D.alias.forEach(a => { const k=(a[3]||'').toLowerCase(); if(!rawIdx.has(k)) rawIdx.set(k, a[0]); });
+$('#q').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  const box = $('#hits');
+  if (q.length < 1){ box.hidden = true; $('#qn').textContent='이름과 별칭 원시값까지 함께 찾습니다.'; return; }
+  const out = [], seen = new Set();
+  for (let i=0;i<D.nodes.length && out.length<60;i++){
+    const n = D.nodes[i];
+    if ((n[1]||'').toLowerCase().includes(q) || (n[2]||'').toLowerCase().includes(q)){ out.push(i); seen.add(i); }
+  }
+  if (out.length < 60) for (const [k,i] of rawIdx){
+    if (out.length>=60) break;
+    if (!seen.has(i) && k.includes(q)){ out.push(i); seen.add(i); }
+  }
+  box.hidden = false;
+  box.innerHTML = out.map(i => {
+    const n = D.nodes[i];
+    return `<button class="hit" data-i="${i}"><span class="tchip">${esc(tName(n[0]))}</span><b>${esc(n[1]||n[2])}</b>
+      <i>${esc(n[2] && n[2]!==n[1] ? n[2]+' · ' : '')}별칭 ${fmt((aliasOf.get(i)||[]).length)}</i></button>`;
+  }).join('') || '<div style="padding:10px;color:var(--ink-3);font-size:12.5px">일치하는 개체가 없습니다.</div>';
+  box.querySelectorAll('.hit').forEach(b => b.addEventListener('click', () => openNode(+b.dataset.i)));
+  $('#qn').textContent = `${out.length}${out.length>=60?'+':''}건`;
+});
+
+/* ── 레일·머리 ────────────────────────────────────────────────── */
+D.types.forEach((t,i) => {
+  const w = document.createElement('label'); w.className='tstat';
+  w.innerHTML = `<input type="checkbox" checked style="accent-color:var(--cheong);margin:0">
+    <span class="dot" style="background:var(${TCOLOR[i%TCOLOR.length]})"></span>
+    <span>${esc(t[0])}</span><span class="n">${fmt(t[1])}</span>`;
+  w.querySelector('input').addEventListener('change', e => {
+    e.target.checked ? activeT.add(i) : activeT.delete(i); alpha = Math.max(alpha,.1);
+  });
+  $('#ftypes').appendChild(w);
+});
+$('#asof').textContent = D.meta.asOf;
+$('#stats').innerHTML = [['개체 노드',D.meta.nodes],['별칭',D.meta.alias],['관계',D.meta.edges],['계층 전개',D.meta.closure]]
+  .map(([s,b])=>`<div class="stat"><b>${fmt(b)}</b><span>${s}</span></div>`).join('');
+
+function setMode(m){
+  mode = m;
+  $('#mSchema').ariaPressed = String(m==='schema');
+  $('#mEgo').ariaPressed = String(m==='ego');
+  $('#hint').textContent = m==='schema'
+    ? '개체 종류를 클릭하면 관계 집계가 나옵니다'
+    : '이웃 노드를 클릭하면 그 개체로 이동합니다';
+  view = {x:0,y:0,s:1};
+  if (m==='schema') buildSchema(); else if (sel!=null) buildEgo(sel);
+}
+$('#mSchema').addEventListener('click', () => setMode('schema'));
+$('#mEgo').addEventListener('click', () => { if (sel!=null) setMode('ego'); });
+
+addEventListener('resize', resize);
+resize(); buildSchema(); loop();
+</script>

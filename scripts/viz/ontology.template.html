@@ -1,0 +1,583 @@
+<title>금융상품 온톨로지 도해</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=Noto+Serif+KR:wght@500;700&display=swap">
+
+<style>
+/* ── 토큰: 명(明) ─────────────────────────────────────────────── */
+:root{
+  --ground:#F4F5F1; --panel:#FBFBF8; --sunk:#EAEBE4;
+  --ink:#1A1E23; --ink-2:#4C535B; --ink-3:#7C848D;
+  --line:#D6D8CF; --line-2:#C2C5B9;
+  --cheong:#1F4E8C;      /* 청 — 구조 */
+  --cheong-soft:#DCE6F2;
+  --jeok:#B0392B;        /* 적 — 함정·경고 */
+  --jeok-soft:#F3DEDA;
+  --geum:#8C6D1F;        /* 금 — 개체 */
+  --geum-soft:#F0E7CF;
+  --muk:#6B7178;         /* 묵 — 중립 */
+  --na:#4E7A5E;          /* 해당없음 */
+  --unjudged:#A9AEA4;
+  --shadow:0 1px 2px rgba(26,30,35,.06),0 8px 24px -12px rgba(26,30,35,.18);
+  --on-accent:#FBFBF8;
+  --rail:250px; --drawer:400px;
+}
+/* ── 토큰: 암(暗) ─────────────────────────────────────────────── */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#14171B; --panel:#1B1F24; --sunk:#0F1216;
+    --ink:#E6E8E3; --ink-2:#A8AEB4; --ink-3:#767D85;
+    --line:#2A2F35; --line-2:#3A4046;
+    --cheong:#7FA8DC; --cheong-soft:#1E2C3E;
+    --jeok:#E08573; --jeok-soft:#3A2320;
+    --geum:#D4B463; --geum-soft:#332B15;
+    --muk:#8E959C; --na:#7FB08F; --unjudged:#5E646B;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+    --on-accent:#12161A;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#14171B; --panel:#1B1F24; --sunk:#0F1216;
+  --ink:#E6E8E3; --ink-2:#A8AEB4; --ink-3:#767D85;
+  --line:#2A2F35; --line-2:#3A4046;
+  --cheong:#7FA8DC; --cheong-soft:#1E2C3E;
+  --jeok:#E08573; --jeok-soft:#3A2320;
+  --geum:#D4B463; --geum-soft:#332B15;
+  --muk:#8E959C; --na:#7FB08F; --unjudged:#5E646B;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+    --on-accent:#12161A;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans KR",system-ui,-apple-system,"Malgun Gothic",sans-serif;
+  font-weight:350; font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:"Noto Serif KR","Batang",serif; font-weight:700; text-wrap:balance; margin:0}
+code,.mono,.num{font-family:"IBM Plex Mono","D2Coding",monospace; font-variant-numeric:tabular-nums}
+
+/* ── 머리 ─────────────────────────────────────────────────────── */
+header{
+  display:flex; align-items:flex-end; gap:24px; flex-wrap:wrap;
+  padding:18px 22px 14px; border-bottom:1px solid var(--line); background:var(--panel);
+}
+.brand h1{font-size:21px; letter-spacing:-.01em}
+.brand p{margin:3px 0 0; color:var(--ink-2); font-size:12.5px}
+.stats{display:flex; gap:20px; margin-left:auto; flex-wrap:wrap}
+.stat{text-align:right}
+.stat b{display:block; font-family:"IBM Plex Mono",monospace; font-size:17px; font-weight:600; font-variant-numeric:tabular-nums}
+.stat span{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
+.views{display:flex; border:1px solid var(--line-2); border-radius:2px; overflow:hidden}
+.views button{
+  font:inherit; font-size:12.5px; padding:6px 14px; border:0; cursor:pointer;
+  background:transparent; color:var(--ink-2); border-right:1px solid var(--line-2);
+}
+.views button:last-child{border-right:0}
+.views button[aria-pressed="true"]{background:var(--cheong); color:var(--on-accent)}
+.views button:focus-visible{outline:2px solid var(--cheong); outline-offset:-2px}
+
+/* ── 뼈대 ─────────────────────────────────────────────────────── */
+.shell{display:grid; grid-template-columns:var(--rail) minmax(0,1fr) var(--drawer); height:calc(100vh - 74px)}
+.rail,.drawer{background:var(--panel); overflow-y:auto; padding:16px 14px}
+.rail{border-right:1px solid var(--line)}
+.drawer{border-left:1px solid var(--line)}
+.stage{position:relative; background:var(--sunk); min-width:0}
+canvas{display:block; width:100%; height:100%; cursor:grab}
+canvas.drag{cursor:grabbing}
+
+.sec{margin-bottom:20px}
+.sec>h3{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+  font-family:"IBM Plex Sans KR",sans-serif; font-weight:600; margin-bottom:8px}
+input[type=search]{
+  width:100%; font:inherit; font-size:13px; padding:7px 9px; color:var(--ink);
+  background:var(--ground); border:1px solid var(--line-2); border-radius:2px;
+}
+input[type=search]:focus-visible{outline:2px solid var(--cheong); outline-offset:-1px}
+.chk{display:flex; align-items:center; gap:7px; padding:3px 0; font-size:13px; cursor:pointer}
+.chk input{accent-color:var(--cheong); margin:0}
+.chk .dot{width:9px; height:9px; border-radius:50%; flex:none}
+.chk .n{margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+
+/* ── 상세 ─────────────────────────────────────────────────────── */
+.empty{color:var(--ink-3); font-size:13px; padding:40px 4px; text-align:center; line-height:1.7}
+.dh{border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:12px}
+.dh .eyebrow{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)}
+.dh h2{font-size:17px; margin:2px 0 3px; word-break:break-all}
+.dh .ko{color:var(--ink-2); font-size:13px}
+.pill{display:inline-block; font-size:11px; padding:1.5px 7px; border-radius:2px; margin:2px 4px 2px 0;
+  font-family:"IBM Plex Mono",monospace}
+.pill.b{background:var(--cheong-soft); color:var(--cheong)}
+.pill.r{background:var(--jeok-soft); color:var(--jeok)}
+.pill.g{background:var(--geum-soft); color:var(--geum)}
+.pill.n{background:var(--sunk); color:var(--ink-2); border:1px solid var(--line)}
+.kv{display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:12.5px; margin:10px 0}
+.kv dt{color:var(--ink-3); white-space:nowrap}
+.kv dd{margin:0; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+.blk{margin:12px 0; font-size:12.5px; line-height:1.6}
+.blk h4{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  font-family:"IBM Plex Sans KR",sans-serif; font-weight:600; margin:0 0 4px}
+.blk.trap{border-left:2px solid var(--jeok); padding-left:9px}
+.blk.policy{border-left:2px solid var(--cheong); padding-left:9px}
+.vals{max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:2px}
+.vals table{width:100%; border-collapse:collapse; font-size:12px}
+.vals td{padding:3px 8px; border-bottom:1px solid var(--line)}
+.vals tr:last-child td{border-bottom:0}
+.vals td:first-child{font-family:"IBM Plex Mono",monospace; word-break:break-all}
+.vals td:last-child{text-align:right; color:var(--ink-3); font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums; white-space:nowrap}
+
+/* ── 전수표 ───────────────────────────────────────────────────── */
+.tableview{display:none; overflow:auto; height:calc(100vh - 74px); background:var(--ground)}
+.tableview.on{display:block}
+.shell.off{display:none}
+table.full{width:100%; border-collapse:collapse; font-size:12.5px}
+table.full th{
+  position:sticky; top:0; background:var(--panel); text-align:left; padding:8px 10px;
+  border-bottom:1px solid var(--line-2); font-size:10.5px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600; white-space:nowrap; z-index:2;
+}
+table.full td{padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+table.full tr:hover td{background:var(--panel)}
+table.full td.m{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+table.full td.r{text-align:right}
+.bar{display:inline-block; height:4px; background:var(--muk); border-radius:2px; vertical-align:middle; min-width:1px}
+
+.legend-note{font-size:11.5px; color:var(--ink-3); line-height:1.6; margin-top:6px}
+.tip{
+  position:absolute; pointer-events:none; background:var(--panel); border:1px solid var(--line-2);
+  border-radius:2px; padding:6px 9px; font-size:12px; box-shadow:var(--shadow); max-width:280px;
+  opacity:0; transition:opacity .12s;
+}
+.tip.on{opacity:1}
+.tip b{font-family:"IBM Plex Mono",monospace; font-weight:600}
+.tip i{display:block; font-style:normal; color:var(--ink-3); font-size:11px}
+.hint{position:absolute; left:14px; bottom:12px; font-size:11.5px; color:var(--ink-3);
+  background:var(--panel); border:1px solid var(--line); border-radius:2px; padding:5px 9px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+@media (max-width:1100px){
+  .shell{grid-template-columns:1fr; height:auto}
+  .rail,.drawer{border:0; border-bottom:1px solid var(--line)}
+  .stage{height:60vh}
+}
+</style>
+
+<header>
+  <div class="brand">
+    <h1>금융상품 온톨로지 도해</h1>
+    <p>마스터 4 · 외부 4 테이블의 전 컬럼과 값, 결측 판정, 질의 규칙 — 기준일 <span class="mono" id="asof"></span></p>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="views">
+    <button id="vNet" aria-pressed="true">네트워크</button>
+    <button id="vTab" aria-pressed="false">전수표</button>
+  </div>
+</header>
+
+<div class="shell" id="shell">
+  <aside class="rail">
+    <div class="sec">
+      <h3>검색</h3>
+      <input type="search" id="q" placeholder="컬럼명·한글명·값" autocomplete="off">
+      <p class="legend-note" id="qn"></p>
+    </div>
+    <div class="sec"><h3>테이블</h3><div id="fDom"></div></div>
+    <div class="sec"><h3>결측 판정</h3><div id="fReason"></div></div>
+    <div class="sec">
+      <h3>읽는 법</h3>
+      <p class="legend-note">
+        큰 원은 <b>테이블</b>, 작은 원은 <b>컬럼</b>, 마름모는 <b>공유 개체</b>입니다.
+        컬럼 원의 크기는 서로 다른 값의 개수(distinct), 색은 결측 판정입니다.
+        테두리가 점선인 것은 <b>판정이 없는 컬럼</b>입니다.
+      </p>
+    </div>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="tip" id="tip"></div>
+    <div class="hint">드래그로 이동 · 휠로 확대 · 클릭으로 상세</div>
+  </main>
+
+  <aside class="drawer" id="drawer">
+    <p class="empty">컬럼을 고르면<br>의미 · 결측 판정 · 답변 정책 · <b>값 전체</b>가 여기 나옵니다.</p>
+  </aside>
+</div>
+
+<div class="tableview" id="tableview"></div>
+
+<script>
+const DATA = /*__DATA__*/;
+const $ = s => document.querySelector(s);
+
+/* 결측 판정 → 색·설명 */
+const REASON = {
+  not_applicable:{c:'--na',   ko:'해당 없음',  d:'그 상품엔 개념 자체가 없다 → “해당 사항이 없습니다”'},
+  missing:       {c:'--jeok', ko:'미수록',     d:'있어야 하는데 안 왔다 → “데이터가 제공되지 않았습니다”'},
+  present:       {c:'--cheong',ko:'결측 없음', d:'그대로 답변 가능'},
+  none:          {c:'--cheong',ko:'결측 없음', d:'그대로 답변 가능'},
+  mixed:         {c:'--geum', ko:'행마다 다름',d:'값별 의미로 분해해야 답변 문장이 정해진다'},
+  unresolved:    {c:'--muk',  ko:'미해결',     d:'🔴 문서화된 4분류 밖 — 답변 규칙이 없는 상태'},
+  __none:        {c:'--unjudged', ko:'판정 없음', d:'주최 한글명과 실측만 있음 — 질의에 쓰면 안 된다'}
+};
+const rk = c => (c.judged && c.reason) ? (REASON[c.reason] ? c.reason : 'unresolved') : '__none';
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = n => n.toLocaleString('ko-KR');
+
+/* ── 그래프 구성 ─────────────────────────────────────────────── */
+const N = [], L = [], byId = new Map();
+function push(o){ o.i = N.length; N.push(o); byId.set(o.id, o); return o; }
+
+DATA.domains.forEach(d => push({
+  id:d.id, kind:'table', label:d.ko, r:d.ext?13:19, dom:d.id, raw:d
+}));
+DATA.entities.forEach(e => push({
+  id:'E:'+e.id, kind:'entity', label:e.id, r:11, dom:null, raw:e
+}));
+DATA.columns.forEach(c => {
+  const r = 3 + Math.min(7, Math.log2(Math.max(2, c.dis)) * 0.95);
+  push({id:c.id, kind:'col', label:c.name, r, dom:c.tbl, raw:c, reason:rk(c)});
+});
+DATA.columns.forEach(c => {
+  L.push({a:byId.get(c.tbl).i, b:byId.get(c.id).i, len:52 + c.dis ** .12 * 6, k:.055});
+  if (c.ent && byId.has('E:'+c.ent))
+    L.push({a:byId.get(c.id).i, b:byId.get('E:'+c.ent).i, len:120, k:.022, ent:true});
+});
+DATA.domains.filter(d => d.ext).forEach(d =>
+  L.push({a:byId.get(d.id).i, b:byId.get(d.owner).i, len:190, k:.03, ext:true}));
+
+/* ── 배치: 테이블을 원주에 고정하고 컬럼을 붙인다 ──────────────── */
+const masters = DATA.domains.filter(d => !d.ext);
+N.forEach(n => { n.x = (Math.random()-.5)*600; n.y = (Math.random()-.5)*600; n.vx = n.vy = 0; });
+DATA.domains.forEach((d,k) => {
+  const t = byId.get(d.id), a = (k / DATA.domains.length) * Math.PI * 2 - Math.PI/2;
+  t.x = Math.cos(a) * (d.ext ? 430 : 250); t.y = Math.sin(a) * (d.ext ? 430 : 250);
+});
+DATA.entities.forEach((e,k) => {
+  const n = byId.get('E:'+e.id), a = (k / DATA.entities.length) * Math.PI * 2;
+  n.x = Math.cos(a) * 90; n.y = Math.sin(a) * 90;
+});
+
+let alpha = 1;
+function tick(){
+  if (alpha < .003) return;
+  for (let i=0;i<N.length;i++){
+    const a = N[i];
+    for (let j=i+1;j<N.length;j++){
+      const b = N[j];
+      let dx = b.x-a.x, dy = b.y-a.y, d2 = dx*dx+dy*dy;
+      if (d2 < 1e-4){ dx = Math.random()-.5; dy = Math.random()-.5; d2 = .25; }
+      if (d2 > 250000) continue;
+      const d = Math.sqrt(d2), f = (240 + a.r*a.r + b.r*b.r) / d2 * alpha;
+      const ux = dx/d*f, uy = dy/d*f;
+      a.vx -= ux; a.vy -= uy; b.vx += ux; b.vy += uy;
+    }
+  }
+  for (const l of L){
+    const a = N[l.a], b = N[l.b];
+    const dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx,dy) || .01;
+    const f = (d - l.len) * l.k * alpha, ux = dx/d*f, uy = dy/d*f;
+    a.vx += ux; a.vy += uy; b.vx -= ux; b.vy -= uy;
+  }
+  for (const n of N){
+    n.vx -= n.x * .0016 * alpha; n.vy -= n.y * .0016 * alpha;
+    n.x += n.vx *= .82; n.y += n.vy *= .82;
+  }
+  alpha *= .988;
+}
+
+/* ── 렌더 ────────────────────────────────────────────────────── */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let view = {x:0, y:0, s:1}, DPR = 1, sel = null, hov = null;
+const active = new Set(DATA.domains.map(d => d.id));
+const activeR = new Set(Object.keys(REASON));
+let query = '';
+
+function visible(n){
+  if (n.kind === 'entity') return true;
+  if (!active.has(n.dom)) return false;
+  if (n.kind === 'col' && !activeR.has(n.reason)) return false;
+  if (query){
+    if (n.kind === 'table') return true;
+    return matches(n);
+  }
+  return true;
+}
+function matches(n){
+  const q = query;
+  if (n.kind !== 'col') return (n.label||'').toLowerCase().includes(q);
+  const c = n.raw;
+  if (c.name.toLowerCase().includes(q)) return true;
+  if ((c.ko||'').toLowerCase().includes(q)) return true;
+  return (c.vals||[]).some(v => (v[0]||'').toLowerCase().includes(q));
+}
+
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  const r = cv.parentElement.getBoundingClientRect();
+  cv.width = r.width * DPR; cv.height = r.height * DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+function draw(){
+  const w = cv.width/DPR, h = cv.height/DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.save();
+  ctx.translate(w/2 + view.x, h/2 + view.y); ctx.scale(view.s, view.s);
+
+  const line = css('--line-2'), inkc = css('--ink'), ink3 = css('--ink-3');
+  const selSet = sel ? neighbours(sel) : null;
+
+  ctx.lineWidth = .7;
+  for (const l of L){
+    const a = N[l.a], b = N[l.b];
+    if (!visible(a) || !visible(b)) continue;
+    const on = selSet && (selSet.has(a.i) && selSet.has(b.i));
+    ctx.strokeStyle = on ? css('--cheong') : line;
+    ctx.globalAlpha = on ? .9 : (sel ? .12 : (l.ent ? .5 : .28));
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  for (const n of N){
+    if (!visible(n)) continue;
+    const dim = sel && !selSet.has(n.i);
+    ctx.globalAlpha = dim ? .18 : 1;
+    if (n.kind === 'entity'){
+      ctx.fillStyle = css('--geum-soft'); ctx.strokeStyle = css('--geum'); ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(n.x, n.y-n.r); ctx.lineTo(n.x+n.r, n.y); ctx.lineTo(n.x, n.y+n.r); ctx.lineTo(n.x-n.r, n.y);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (n.kind === 'table'){
+      ctx.fillStyle = css('--panel'); ctx.strokeStyle = css('--cheong'); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,7); ctx.fill(); ctx.stroke();
+    } else {
+      const col = css(REASON[n.reason].c);
+      ctx.fillStyle = col; ctx.globalAlpha = dim ? .12 : (n.raw.judged ? .85 : .35);
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,7); ctx.fill();
+      ctx.globalAlpha = dim ? .18 : 1;
+      ctx.strokeStyle = col; ctx.lineWidth = n.raw.judged ? 0 : 1;
+      if (!n.raw.judged){ ctx.setLineDash([2,2]); ctx.stroke(); ctx.setLineDash([]); }
+      if (n.raw.trap){
+        ctx.strokeStyle = css('--jeok'); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(n.x,n.y,n.r+2.5,0,7); ctx.stroke();
+      }
+    }
+    if (n === sel || n === hov){
+      ctx.strokeStyle = inkc; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+5,0,7); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.font = '600 12px "Noto Serif KR", serif'; ctx.textAlign = 'center';
+  for (const n of N){
+    if (n.kind === 'col' || !visible(n)) continue;
+    ctx.fillStyle = n.kind === 'entity' ? css('--geum') : inkc;
+    ctx.fillText(n.label, n.x, n.y + n.r + 14);
+  }
+  if (view.s > 1.5){
+    ctx.font = '400 9px "IBM Plex Mono", monospace'; ctx.fillStyle = ink3;
+    for (const n of N) if (n.kind === 'col' && visible(n) && (!sel || selSet.has(n.i)))
+      ctx.fillText(n.label, n.x, n.y - n.r - 4);
+  }
+  ctx.restore();
+}
+function neighbours(n){
+  const s = new Set([n.i]);
+  for (const l of L){ if (l.a === n.i) s.add(l.b); if (l.b === n.i) s.add(l.a); }
+  return s;
+}
+function loop(){ tick(); draw(); requestAnimationFrame(loop); }
+
+/* ── 조작 ────────────────────────────────────────────────────── */
+function at(ev){
+  const r = cv.getBoundingClientRect();
+  const x = (ev.clientX - r.left - r.width/2 - view.x) / view.s;
+  const y = (ev.clientY - r.top - r.height/2 - view.y) / view.s;
+  let best = null, bd = 1e9;
+  for (const n of N){
+    if (!visible(n)) continue;
+    const d = Math.hypot(n.x-x, n.y-y);
+    if (d < n.r + 6 && d < bd){ bd = d; best = n; }
+  }
+  return best;
+}
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = {x:e.clientX, y:e.clientY, moved:0}; cv.classList.add('drag'); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointerup', e => {
+  cv.classList.remove('drag');
+  if (drag && drag.moved < 4){ const n = at(e); select(n); }
+  drag = null;
+});
+cv.addEventListener('pointermove', e => {
+  if (drag){
+    const dx = e.clientX-drag.x, dy = e.clientY-drag.y;
+    drag.moved += Math.abs(dx)+Math.abs(dy);
+    view.x += dx; view.y += dy; drag.x = e.clientX; drag.y = e.clientY;
+    $('#tip').classList.remove('on'); return;
+  }
+  const n = at(e); hov = n;
+  const tip = $('#tip');
+  if (n){
+    const c = n.raw;
+    tip.innerHTML = n.kind === 'col'
+      ? `<b>${n.label}</b><i>${c.ko||''} · distinct ${fmt(c.dis)} · 결측 ${fmt(c.miss)}</i>`
+      : n.kind === 'entity'
+      ? `<b>${n.label}</b><i>노드 ${fmt(c.kg||c.n)} · ${c.prop||''}</i>`
+      : `<b>${n.label}</b><i>${fmt(c.rows)}행 × ${c.cols}컬럼</i>`;
+    const r = cv.getBoundingClientRect();
+    tip.style.left = (e.clientX - r.left + 14) + 'px';
+    tip.style.top = (e.clientY - r.top + 14) + 'px';
+    tip.classList.add('on');
+  } else tip.classList.remove('on');
+});
+cv.addEventListener('pointerleave', () => { $('#tip').classList.remove('on'); hov = null; });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const k = Math.exp(-e.deltaY * .0012);
+  view.s = Math.min(6, Math.max(.25, view.s * k));
+}, {passive:false});
+
+/* ── 상세 ────────────────────────────────────────────────────── */
+function esc(t){ return String(t ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function select(n){
+  sel = n; alpha = Math.max(alpha, .12);
+  const d = $('#drawer');
+  if (!n){ d.innerHTML = '<p class="empty">컬럼을 고르면<br>의미 · 결측 판정 · 답변 정책 · <b>값 전체</b>가 여기 나옵니다.</p>'; return; }
+  if (n.kind === 'table') return void (d.innerHTML = tableCard(n.raw));
+  if (n.kind === 'entity') return void (d.innerHTML = entCard(n.raw));
+  d.innerHTML = colCard(n.raw);
+}
+function tableCard(t){
+  const cs = DATA.columns.filter(c => c.tbl === t.id);
+  const j = cs.filter(c => c.judged).length;
+  return `<div class="dh"><div class="eyebrow">${t.ext ? '외부 보강 · L2' : '마스터 · L0'}</div>
+    <h2>${esc(t.ko)}</h2><div class="ko mono">${esc(t.id)}</div></div>
+    <dl class="kv"><dt>행</dt><dd>${fmt(t.rows)}</dd><dt>컬럼</dt><dd>${t.cols}</dd>
+    <dt>판정 완료</dt><dd>${j} / ${cs.length}</dd>
+    ${t.nqr ? `<dt>질의 규칙</dt><dd>${t.nqr}</dd>` : ''}</dl>
+    ${t.grain ? `<div class="blk"><h4>행 단위</h4>${esc(t.grain)}</div>` : ''}
+    ${t.blocks && t.blocks.length ? `<div class="blk"><h4>도메인 전용 블록</h4>${t.blocks.map(b=>`<span class="pill n">${esc(b)}</span>`).join('')}</div>` : ''}
+    ${t.owner ? `<div class="blk"><h4>조인 대상</h4><span class="pill b">${esc(t.owner)}</span></div>` : ''}
+    ${t.nqr ? `<div class="blk"><h4>질의 규칙 전수</h4>${DATA.qrules.filter(q=>q.dom===t.id).map(q=>`<div style="margin:6px 0"><span class="pill b">${esc(q.key)}</span><br>${esc(q.text)}</div>`).join('')}</div>` : ''}`;
+}
+function entCard(e){
+  return `<div class="dh"><div class="eyebrow">공유 개체 · L1</div><h2>${esc(e.id)}</h2>
+    <div class="ko">${esc(e.desc||'')}</div></div>
+    <dl class="kv"><dt>속성</dt><dd>${esc(e.prop||'—')}</dd>
+    <dt>yaml 노드</dt><dd>${fmt(e.n)}</dd><dt>KG 노드</dt><dd>${fmt(e.kg||0)}</dd>
+    <dt>계층(parent)</dt><dd>${e.parents ? fmt(e.parents) : '없음'}</dd></dl>
+    ${Object.keys(e.absent).length ? `<div class="blk trap"><h4>부재 선언</h4>${
+      Object.entries(e.absent).map(([k,v])=>`<div style="margin:5px 0"><b>${esc(k)}</b> — ${esc(v)}</div>`).join('')}</div>` : ''}
+    <div class="blk"><h4>이 개체로 이어진 컬럼</h4>${
+      DATA.columns.filter(c=>c.ent===e.id).map(c=>`<span class="pill g">${esc(c.name)}</span>`).join('') || '<span class="pill n">없음</span>'}</div>`;
+}
+function colCard(c){
+  const R = REASON[rk(c)];
+  const mp = c.tot ? (c.miss/c.tot*100) : 0;
+  return `<div class="dh">
+      <div class="eyebrow">${esc(c.tbl)}${c.ext?' · 외부':''}</div>
+      <h2 class="mono">${esc(c.name)}</h2>
+      <div class="ko">${esc(c.ko||'한글명 없음')}</div>
+      <div style="margin-top:6px">
+        <span class="pill ${R.c==='--jeok'?'r':R.c==='--geum'?'g':'b'}">${esc(R.ko)}</span>
+        ${c.unit ? `<span class="pill n">단위 ${esc(c.unit)}</span>` : ''}
+        ${c.zv ? '<span class="pill g">0 은 실제값</span>' : ''}
+        ${c.trap ? '<span class="pill r">함정</span>' : ''}
+        ${c.inh ? `<span class="pill n">판정 상속 ← ${esc(c.inh)}</span>` : ''}
+      </div>
+    </div>
+    <dl class="kv">
+      <dt>타입</dt><dd>${esc(c.dt||'—')}</dd>
+      <dt>Nullable</dt><dd>${esc(c.nu||'—')}</dd>
+      <dt>전체 행</dt><dd>${fmt(c.tot)}</dd>
+      <dt>결측</dt><dd>${fmt(c.miss)} (${mp.toFixed(1)}%)</dd>
+      <dt>값이 0</dt><dd>${fmt(c.zero)}</dd>
+      <dt>서로 다른 값</dt><dd>${fmt(c.dis)}</dd>
+      ${c.an!=null ? `<dt>답변 모수</dt><dd>${fmt(c.an)}</dd>` : ''}
+    </dl>
+    <div class="blk"><h4>결측 판정</h4>${esc(R.d)}${c.sem ? `<div class="mono" style="margin-top:5px;font-size:11.5px">${esc(c.sem)}</div>` : ''}</div>
+    ${c.policy ? `<div class="blk policy"><h4>답변 정책</h4>${esc(c.policy)}</div>` : ''}
+    ${c.trap ? `<div class="blk trap"><h4>함정</h4>${esc(c.trap)}</div>` : ''}
+    ${c.note ? `<div class="blk"><h4>근거·메모</h4>${esc(c.note)}</div>` : ''}
+    <div class="blk"><h4>값 ${c.vtrunc ? `— 상위 15 (서로 다른 값 ${fmt(c.dis)}개, 개체이므로 전체는 지식그래프에서)` : `전체 ${fmt(c.vals.length)}종`}</h4>
+      <div class="vals"><table>${c.vals.map(v=>`<tr><td>${esc(v[0])}</td><td>${fmt(v[1])}</td></tr>`).join('')}</table></div>
+    </div>`;
+}
+
+/* ── 레일 ────────────────────────────────────────────────────── */
+function chip(colorVar, label, n, checked, on){
+  const w = document.createElement('label'); w.className = 'chk';
+  w.innerHTML = `<input type="checkbox" ${checked?'checked':''}>
+    <span class="dot" style="background:var(${colorVar})"></span>
+    <span>${label}</span><span class="n">${fmt(n)}</span>`;
+  w.querySelector('input').addEventListener('change', e => on(e.target.checked));
+  return w;
+}
+DATA.domains.forEach(d => {
+  const n = DATA.columns.filter(c => c.tbl === d.id).length;
+  $('#fDom').appendChild(chip(d.ext?'--muk':'--cheong', d.ko, n, true, v => {
+    v ? active.add(d.id) : active.delete(d.id); alpha = Math.max(alpha,.1);
+  }));
+});
+Object.entries(REASON).forEach(([k,v]) => {
+  const n = DATA.columns.filter(c => rk(c) === k).length;
+  if (!n) return;
+  $('#fReason').appendChild(chip(v.c, v.ko, n, true, on => {
+    on ? activeR.add(k) : activeR.delete(k); alpha = Math.max(alpha,.1);
+  }));
+});
+$('#q').addEventListener('input', e => {
+  query = e.target.value.trim().toLowerCase();
+  const n = query ? DATA.columns.filter(c => matches({kind:'col', raw:c})).length : 0;
+  $('#qn').textContent = query ? `컬럼 ${n}개 일치 (값 안까지 검색)` : '';
+  alpha = Math.max(alpha, .1);
+});
+
+const M = DATA.meta;
+$('#asof').textContent = M.asOf;
+$('#stats').innerHTML = [
+  ['테이블', M.doms], ['컬럼', M.cols], ['공유 개체', M.ents], ['질의 규칙', M.qrules],
+  ['판정 완료', DATA.columns.filter(c=>c.judged).length + ' / ' + M.cols]
+].map(([s,b]) => `<div class="stat"><b>${typeof b==='number'?fmt(b):b}</b><span>${s}</span></div>`).join('');
+
+/* ── 전수표 ───────────────────────────────────────────────────── */
+function buildTable(){
+  const rows = DATA.columns.map(c => {
+    const R = REASON[rk(c)], mp = c.tot ? c.miss/c.tot*100 : 0;
+    return `<tr>
+      <td class="m">${esc(c.tbl)}</td>
+      <td class="m"><b>${esc(c.name)}</b></td>
+      <td>${esc(c.ko||'')}</td>
+      <td class="m">${esc(c.dt||'')}</td>
+      <td class="m r">${fmt(c.tot)}</td>
+      <td class="m r">${fmt(c.miss)} <span class="bar" style="width:${Math.round(mp*.4)}px"></span></td>
+      <td class="m r">${fmt(c.zero)}</td>
+      <td class="m r">${fmt(c.dis)}</td>
+      <td><span class="pill ${R.c==='--jeok'?'r':R.c==='--geum'?'g':R.c==='--unjudged'?'n':'b'}">${esc(R.ko)}</span></td>
+      <td class="m">${esc(c.unit||'')}</td>
+      <td>${c.trap?'<span class="pill r">함정</span>':''}${c.policy?'<span class="pill b">정책</span>':''}</td>
+      <td style="max-width:340px">${esc((c.vals||[]).slice(0,10).map(v=>v[0]).join(' · '))}${c.vtrunc?' …':''}</td>
+    </tr>`;
+  }).join('');
+  $('#tableview').innerHTML = `<table class="full"><thead><tr>
+    <th>테이블</th><th>컬럼</th><th>한글명</th><th>타입</th><th>행</th><th>결측</th><th>0값</th>
+    <th>distinct</th><th>결측 판정</th><th>단위</th><th>표시</th><th>값(상위 10)</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+let built = false;
+$('#vNet').addEventListener('click', () => {
+  $('#vNet').ariaPressed = 'true'; $('#vTab').ariaPressed = 'false';
+  $('#shell').classList.remove('off'); $('#tableview').classList.remove('on'); resize();
+});
+$('#vTab').addEventListener('click', () => {
+  $('#vTab').ariaPressed = 'true'; $('#vNet').ariaPressed = 'false';
+  if (!built){ buildTable(); built = true; }
+  $('#shell').classList.add('off'); $('#tableview').classList.add('on');
+});
+
+addEventListener('resize', () => { resize(); });
+resize(); loop();
+</script>

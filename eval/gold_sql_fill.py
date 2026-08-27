@@ -112,19 +112,15 @@ G["ETF-O-023"] = f"SELECT pd_abrv_nm, pd_nm, du_last_aum FROM overseas_etfs WHER
 
 # ── 교차·답변불가 ─────────────────────────────────────────
 G["CROSS-001"] = (f"""SELECT * FROM (
-SELECT '국내ETF' AS grp, e.pd_abrv_nm AS name, e.du_er_1y AS ret_1y, NULL AS ret_1d, h.as_of AS hold_as_of
+SELECT '국내ETF' AS grp, e.pd_abrv_nm AS name, e.du_er_1y AS ret_1y, h.as_of AS hold_as_of
 FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code=e.pd_itm_no
 WHERE e.{ETF} AND h.constituent='삼성전자' AND e.du_er_1y IS NOT NULL AND e.du_er_1y > -100 AND e.du_er_1y<>0
 UNION ALL
-SELECT '해외ETF(연수익률 미수록)', e.pd_abrv_nm, NULL, e.du_er_1d, h.report_date
-FROM overseas_etfs e JOIN ext_ovs_etf_holdings h ON h.isin=e.pd_isin_cd
-WHERE e.pd_grp_no='ETF' AND h.holding_name LIKE '%Samsung Electronics%'
-UNION ALL
-SELECT '공모펀드', p.itm_nm, p.fd_yr1_ern_r, NULL, MAX(h.bas_dt)
+SELECT '공모펀드', p.itm_nm, p.fd_yr1_ern_r, MAX(h.bas_dt)
 FROM public_funds p JOIN ext_fund_holdings h ON h.grp=p.mtco_itm_no
 WHERE p.{FUND} AND h.holding_nm LIKE '%삼성전자%' AND p.fd_yr1_ern_r IS NOT NULL AND p.fd_yr1_ern_r > -100 AND p.fd_yr1_ern_r<>0
 GROUP BY p.itm_no
-) ORDER BY ret_1y DESC LIMIT 30""", "해외ETF 는 연수익률 없어 순위 제외·1일수익률 병기(OQ-2 fallback). Holdings 기준일 병기")
+) ORDER BY ret_1y DESC LIMIT 20""", "해외ETF 는 연수익률 미수록 — 주최 확정으로 순위에서 제외(병기도 하지 않음). Holdings 기준일 병기.")
 G["CROSS-002"] = (G["ETF-D-014"][0].replace("cu_charge_rt AS fee FROM domestic_etfs", "CASE WHEN cu_charge_rt>0 THEN cu_charge_rt ELSE NULL END AS fee FROM domestic_etfs"),
                   "국내 총보수 0 = 미입력 → NULL 로 표시(대부분 미수록)")
 G["CROSS-003"] = (f"""SELECT * FROM (

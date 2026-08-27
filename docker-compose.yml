@@ -11,6 +11,10 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      # 🔴 컨테이너 기본은 UTC 입니다 (python:3.12-slim). 호스트가 KST 여도 로그 타임스탬프는
+      #    9시간 어긋나고, 질의 로그를 팀 대화·평가 시각과 맞춰 볼 때 헷갈립니다.
+      TZ: Asia/Seoul
     # 호스트에 포트를 열지 않습니다. Caddy 만 외부에 노출됩니다.
     expose:
       - "8000"
@@ -24,6 +28,16 @@ services:
     #    DB 가 아직 없으면 스텁은 그대로 뜨고, 에이전트를 붙일 때 걸립니다.
     volumes:
       - ./data:/app/data:ro
+      # 질의 로그 — 실험의 산출물입니다. data 와 달리 쓰기 가능해야 합니다.
+      # 오답을 골라 eval/questions_*.jsonl 로 승격하는 것이 루프의 마지막 단계입니다.
+      - ./logs:/app/logs
+      # 🔴 실험 루프용 — Dockerfile 이 ontology/ 를 이미지에 굽지만, 여기서 덮어씁니다.
+      #    이게 없으면 query_rules 한 줄을 고쳐도 이미지 재빌드가 필요합니다.
+      #    있으면 `git pull && docker compose restart api` (약 5초)로 끝납니다.
+      #    ⚠️ enums/*.yaml(질의 규칙)만 해당합니다. shared/*.yaml(개체·alias)을 고치면
+      #       kg_* 테이블을 다시 만들어야 하므로 DB 재반입이 필요합니다.
+      #    제출물 재현성은 이미지 쪽 COPY 가 그대로 보장합니다 (마운트는 운영 편의).
+      - ./ontology:/app/ontology:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=4).status==200 else 1)"]

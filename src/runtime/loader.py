@@ -55,6 +55,23 @@ class RuntimeContext:
     kg_nodes: list[KGNode] = field(default_factory=list)
     kg_aliases: dict = field(default_factory=dict)     # node_id -> [(table, column, raw)]
     crd_grades: set = field(default_factory=set)       # 채권 신용등급 enum 화이트리스트
+    schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
+
+    def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+        """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
+
+        컬럼당 한 줄이 아니라 한 줄에 몰아 씁니다. 4테이블 280컬럼을 다 실으면 프롬프트가
+        커지고, 병목이 rate limit(분당 3.6질의)이라 토큰이 곧 처리량입니다 —
+        그래서 호출부가 **탐지된 테이블만** 넘깁니다.
+        """
+        out: list[str] = []
+        for t in tables or TABLES:
+            cols = self.schema.get(t) or []
+            if not cols:
+                continue
+            out.append(f"## {t}")
+            out.append(", ".join(f"{c}({ko})" if ko else c for c, ko, _ in cols))
+        return "\n".join(out)
 
     def planner_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너(HCX SQL 생성)에 넘길 도메인 규칙 텍스트 — yaml 의 query_rules·normalization 을
@@ -134,4 +151,16 @@ def load_context() -> RuntimeContext:
             "select node_id, table_name, column_name, raw_value from kg_alias"
         ):
             ctx.kg_aliases.setdefault(nid, []).append((t, c, raw))
+
+        # 마스터 4테이블 — 한글 컬럼명은 schema_metadata 가 원천 (build_db.py 가 원본 헤더에서 만듦)
+        for t, c, ko, dt in con.execute(
+            "select table_name, column_name, korean_name, data_type from schema_metadata"
+        ):
+            ctx.schema.setdefault(t, []).append((c, ko, dt))
+        # 외부 수집 테이블 — schema_metadata 대상이 아니므로(마스터가 아님) PRAGMA 로 읽는다.
+        # 교차질의에서 조인 대상이 되므로 컬럼명은 플래너가 알아야 한다.
+        for t in EXT_TABLES:
+            cols = [(r[1], "", r[2]) for r in con.execute(f"pragma table_info({t})")]
+            if cols:
+                ctx.schema[t] = cols
     return ctx

@@ -29,6 +29,10 @@ row_grain:
 
 columns:
   # ── 식별 ────────────────────────────────────────────────────────────
+  itm_no:
+    korean_name: 종목번호
+    missing_reason: none
+    note: "식별 기준 키 · 행 PK(23,676 완전 유일). 개수·조인·식별은 이 컬럼으로. (2026-08-29 B-1-60 신설 — DB 재현: count=distinct=23,676)"
   std_itm_no:
     korean_name: 표준종목번호
     missing_reason: missing
@@ -45,9 +49,9 @@ columns:
     korean_name: 대표예탁원종목번호
     missing_reason: unresolved
     evidence_grade: C
-    evidence: 2026-08-25 — NULL+더미 1,761행(7.4%). 기전(미부여/말소)은 확정 불가 → 답변 배제(값 없으면 "확인 불가"). 검수 C.
+    evidence: 2026-08-29 — NULL 116 + 더미 6,970 = 7,086행(29.9% · 판매중 116행 1.1%). 더미 대부분 'KR0000000000' 5,308·'000000000000' 1,645. 기전(미부여/말소)은 확정 불가 → 답변 배제(값 없으면 "확인 불가"). 검수 C. (DB 재현 확인)
     answer_policy: >-
-      결측 시 '확인할 수 없음' + sale_yn 병렬 서술. 인과 서술 금지. 대체 식별자는 ksd_itm_no(결측+더미 592, 2.5%).
+      결측 시 '확인할 수 없음' + sale_yn 병렬 서술. 인과 서술 금지. 대체 식별자는 ksd_itm_no(결측+더미 2,370, 전체 10.0%).
     applies_to:
     - ksd_itm_no
     - rptt_ksd_itm_no
@@ -55,7 +59,7 @@ columns:
     korean_name: 예탁원종목번호
     missing_reason: unresolved
     evidence_grade: C
-    answer_policy: 결측·더미 592행(2.5%). 다른 코드가 빌 때 대체 식별자로 제시 가능. 더미('KR'+0패딩·길이 이탈)는 dummy_as_missing 으로 배제.
+    answer_policy: 결측·더미 2,370행(전체 10.0% · 판매중 116행 1.1%). 다른 코드가 빌 때 대체 식별자로 제시 가능. 더미('KR'+0패딩·반복문자)는 normalization.dummy_as_missing 으로 배제. (2026-08-29 DB 재현 갱신 — 구 592행/2.5%)
   fss_itm_no:
     korean_name: 금융감독원종목번호
     missing_reason: unresolved
@@ -502,8 +506,10 @@ columns:
   trusc_xtn_itt_cd:
     korean_name: 수탁사 대외기관코드
     kg_entity: Organization                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
-    missing_reason: none
-    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정"
+    missing_reason: mixed                   # 2026-08-29 A-1-26: none 오선언 → mixed. 물리 NULL 42행 실재(DB 재현 확인 2026-08-29)
+    missing_semantics:
+      "null": "수탁사 코드 미기재 42행 — 미지정·누락 혼재로 원인 미확정. 답변은 '수탁사 정보가 수록돼 있지 않습니다' (다른 값으로 채우지 말 것). 물리 NULL 42 · distinct 50 은 2026-08-29 DB 재현 확인"
+    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정 · 물리 NULL 42(더미 규칙 대상 아님 — 고정 코드)"
   fd_ivst_rgn_desc:
     korean_name: 투자지역 설명
     kg_entity: Region                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
@@ -544,7 +550,7 @@ missing_profile:
     fss_itm_no:              [1336, 12.2, 49.2, unresolved]
     kofia_fd_ccd:            [1158, 10.6, 48.5, unresolved]
     exchdg_yn:               [5524, 50.4, 70.5, not_applicable]
-    rptt_ksd_itm_no:         [null, null, 7.4, unresolved]
+    rptt_ksd_itm_no:         [116, 1.1, 29.9, unresolved]
     mtco_itm_no:             [null, null, 3.7, missing]
     std_itm_no:              [0, 0.0, 2.8, missing]
     ksd_itm_no:              [null, null, 2.5, unresolved]

@@ -35,6 +35,8 @@ RELOAD_TOKEN = os.environ.get("RELOAD_TOKEN", "")
 CHAT_TOKEN = os.environ.get("CHAT_TOKEN", "")
 # 질의 로그 — 실험의 산출물입니다. 컨테이너에서는 볼륨(./logs)으로 빼서 회수합니다.
 LOG_DIR = os.environ.get("API_LOG_DIR", "logs")
+# 근거문서(플래너에 넘긴 원문)까지 로그에 남길지. 실험 중에는 1, 평가 기간에는 0 (질의당 수 KB).
+LOG_GROUNDING = os.environ.get("LOG_GROUNDING", "1") == "1"
 
 
 def _log_qa(payload: dict) -> None:
@@ -109,32 +111,39 @@ class AnswerResponse(BaseModel):
     answer: str
 
 
-def answer_question(question_id: str, question: str) -> AnswerResponse:
-    """런타임 파이프라인 호출 (src/runtime/). Ground·Gate·Guard 는 가동,
-    Plan(HCX SQL 생성)은 planner 연결 전까지 보류 응답.
+def run_pipeline(question_id: str, question: str):
+    """런타임 파이프라인 호출 (src/runtime/) → PipelineResult.
 
     파이프라인 로드 실패(DB 부재 등) 시 구 스텁 문구로 강등 — 어떤 경우에도 5필드는 지킨다.
+    응답 스키마(5필드)로 줄이는 것은 호출부의 몫이다. 🔴 `sql`·`grounding` 은 응답에는 안 실리고
+    로그·실험 UI 로만 나간다 — 채점 스키마는 5필드 고정이기 때문이다.
     """
+    from src.runtime.pipeline import PipelineResult
+
     try:
         from src.runtime.pipeline import answer_question as run
 
-        r = run(question_id, question, planner=get_planner())
-        return AnswerResponse(
-            question_id=r.question_id,
-            question=r.question,
-            retrieved_context=r.retrieved_context,
-            think_trace=r.think_trace,
-            answer=r.answer,
-        )
+        return run(question_id, question, planner=get_planner())
     except Exception:
         log.exception("runtime pipeline unavailable — falling back to stub")
-        return AnswerResponse(
+        return PipelineResult(
             question_id=question_id,
             question=question,
-            retrieved_context="",
             think_trace="1. [Error] 런타임 파이프라인 로드 실패 — 답변 보류",
             answer="현재 시스템 구축 중으로 답변을 제공할 수 없습니다.",
         )
+
+
+def answer_question(question_id: str, question: str) -> AnswerResponse:
+    """평가 응답 5필드로 축약."""
+    r = run_pipeline(question_id, question)
+    return AnswerResponse(
+        question_id=r.question_id,
+        question=r.question,
+        retrieved_context=r.retrieved_context,
+        think_trace=r.think_trace,
+        answer=r.answer,
+    )
 
 
 @app.get("/health")
@@ -188,20 +197,49 @@ def answer(
     question_id: str = Query(..., description="문항 ID"),
     question: str = Query(..., description="질의 원문"),
 ) -> AnswerResponse:
+    from src.runtime.qa_log import build_record
+
     t0 = time.perf_counter()
-    result = answer_question(question_id, question)
+    r = run_pipeline(question_id, question)
     dt = time.perf_counter() - t0
-    log.info("answer qid=%s dt=%.3fs q=%r", question_id, dt, question[:80])
-    _log_qa({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
-        "question_id": question_id,
-        "question": question,
-        "answer": result.answer,
-        "retrieved_context": result.retrieved_context,
-        "think_trace": result.think_trace,
+    log.info("answer qid=%s dt=%.3fs sql=%r q=%r", question_id, dt, r.sql[:120], question[:80])
+    _log_qa(build_record(r, dt, with_grounding=LOG_GROUNDING))
+    return AnswerResponse(
+        question_id=r.question_id,
+        question=r.question,
+        retrieved_context=r.retrieved_context,
+        think_trace=r.think_trace,
+        answer=r.answer,
+    )
+
+
+@app.get("/chat/ask")
+def chat_ask(question: str = Query(...), t: str = Query(default="")) -> JSONResponse:
+    """실험용 JSON — 5필드 + **검토용 `sql`·`grounding`**.
+
+    🔴 `/answer` 는 채점 스키마가 5필드로 고정이라 근거문서를 실을 수 없다. 그래서 화면용은
+       따로 둔다 — 팀이 "KG·온톨로지를 의도대로 썼는가" 를 보려면 플래너에 실제로 넘어간
+       근거문서 원문과 실행된 SQL 이 필요하다.
+    🔴 /chat 과 같은 이유로 토큰이 틀리면 404 다 (존재를 숨긴다).
+    """
+    from src.runtime.qa_log import build_record
+
+    if not CHAT_TOKEN or t != CHAT_TOKEN:
+        return UTF8JSONResponse(status_code=404, content={"detail": "not found"})
+
+    t0 = time.perf_counter()
+    r = run_pipeline("CHAT", question)
+    dt = time.perf_counter() - t0
+    _log_qa(build_record(r, dt, with_grounding=LOG_GROUNDING))
+    return UTF8JSONResponse(content={
+        "question": r.question,
+        "answer": r.answer,
+        "retrieved_context": r.retrieved_context,
+        "think_trace": r.think_trace,
+        "sql": r.sql,
+        "grounding": r.grounding,
         "elapsed_s": round(dt, 2),
     })
-    return result
 
 
 @app.get("/chat", response_class=HTMLResponse)

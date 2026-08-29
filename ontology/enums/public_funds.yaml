@@ -29,6 +29,10 @@ row_grain:
 
 columns:
   # ── 식별 ────────────────────────────────────────────────────────────
+  itm_no:
+    korean_name: 종목번호
+    missing_reason: none
+    note: "식별 기준 키 · 행 PK(23,676 완전 유일). 개수·조인·식별은 이 컬럼으로. (2026-08-29 B-1-60 신설 — DB 재현: count=distinct=23,676)"
   std_itm_no:
     korean_name: 표준종목번호
     missing_reason: missing
@@ -45,9 +49,9 @@ columns:
     korean_name: 대표예탁원종목번호
     missing_reason: unresolved
     evidence_grade: C
-    evidence: 2026-08-25 — NULL+더미 1,761행(7.4%). 기전(미부여/말소)은 확정 불가 → 답변 배제(값 없으면 "확인 불가"). 검수 C.
+    evidence: 2026-08-29 — NULL 116 + 더미 6,970 = 7,086행(29.9% · 판매중 116행 1.1%). 더미 대부분 'KR0000000000' 5,308·'000000000000' 1,645. 기전(미부여/말소)은 확정 불가 → 답변 배제(값 없으면 "확인 불가"). 검수 C. (DB 재현 확인)
     answer_policy: >-
-      결측 시 '확인할 수 없음' + sale_yn 병렬 서술. 인과 서술 금지. 대체 식별자는 ksd_itm_no(결측+더미 592, 2.5%).
+      결측 시 '확인할 수 없음' + sale_yn 병렬 서술. 인과 서술 금지. 대체 식별자는 ksd_itm_no(결측+더미 2,370, 전체 10.0%).
     applies_to:
     - ksd_itm_no
     - rptt_ksd_itm_no
@@ -55,7 +59,7 @@ columns:
     korean_name: 예탁원종목번호
     missing_reason: unresolved
     evidence_grade: C
-    answer_policy: 결측·더미 592행(2.5%). 다른 코드가 빌 때 대체 식별자로 제시 가능. 더미('KR'+0패딩·길이 이탈)는 dummy_as_missing 으로 배제.
+    answer_policy: 결측·더미 2,370행(전체 10.0% · 판매중 116행 1.1%). 다른 코드가 빌 때 대체 식별자로 제시 가능. 더미('KR'+0패딩·반복문자)는 normalization.dummy_as_missing 으로 배제. (2026-08-29 DB 재현 갱신 — 구 592행/2.5%)
   fss_itm_no:
     korean_name: 금융감독원종목번호
     missing_reason: unresolved
@@ -502,8 +506,10 @@ columns:
   trusc_xtn_itt_cd:
     korean_name: 수탁사 대외기관코드
     kg_entity: Organization                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
-    missing_reason: none
-    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정"
+    missing_reason: mixed                   # 2026-08-29 A-1-26: none 오선언 → mixed. 물리 NULL 42행 실재(DB 재현 확인 2026-08-29)
+    missing_semantics:
+      "null": "수탁사 코드 미기재 42행 — 미지정·누락 혼재로 원인 미확정. 답변은 '수탁사 정보가 수록돼 있지 않습니다' (다른 값으로 채우지 말 것). 물리 NULL 42 · distinct 50 은 2026-08-29 DB 재현 확인"
+    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정 · 물리 NULL 42(더미 규칙 대상 아님 — 고정 코드)"
   fd_ivst_rgn_desc:
     korean_name: 투자지역 설명
     kg_entity: Region                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
@@ -541,13 +547,13 @@ missing_profile:
     zrin_ptn_nm:             [2411, 22.0, 52.4, missing]
     bmrk_nm:                 [2411, 22.0, 52.4, missing]
     han_clas_nm:             [2228, 20.3, 59.3, missing]
-    fss_itm_no:              [1336, 12.2, 49.2, unresolved]
+    fss_itm_no:              [1338, 12.2, 49.2, unresolved]   # 2026-08-29 DB 재현 — 구 1,336 은 규칙 ④(반복문자) 미적용값. 판매중 '111111111111' 2행이 ④에만 걸린다
     kofia_fd_ccd:            [1158, 10.6, 48.5, unresolved]
     exchdg_yn:               [5524, 50.4, 70.5, not_applicable]
-    rptt_ksd_itm_no:         [null, null, 7.4, unresolved]
-    mtco_itm_no:             [null, null, 3.7, missing]
-    std_itm_no:              [0, 0.0, 2.8, missing]
-    ksd_itm_no:              [null, null, 2.5, unresolved]
+    rptt_ksd_itm_no:         [116, 1.1, 29.9, unresolved]
+    mtco_itm_no:             [128, 1.2, 4.5, missing]        # 2026-08-29 DB 재현 — 구 [null, null, 3.7]
+    std_itm_no:              [0, 0.0, 19.7, missing]          # 2026-08-29 DB 재현 — 구 [0, 0.0, 2.8]. 판매중 0 은 유지(실측 0)
+    ksd_itm_no:              [116, 1.1, 10.0, unresolved]     # 2026-08-29 DB 재현 — 구 [null, null, 2.5]. answer_policy 는 이미 10.0% 로 갱신돼 있었다(한 파일 안에서 2.5 vs 10.0 공존)
   결측의_축: >-
     🔴 2차에서 결측의 지배 변수는 **판매상태 + 공모/사모** 두 개다.
       판매완료 → 평가 컬럼 99% 결측 (1차와 동일 방향)
@@ -586,8 +592,12 @@ normalization:
     - mtco_itm_no
     - ksd_itm_no
     - std_itm_no
-    실측_2026-08-25: >-
-      fss_itm_no 더미 11,611 · kofia_fd_ccd 11,431 · rptt_ksd_itm_no(NULL+더미) 1,761 · mtco_itm_no 869 · ksd_itm_no 592 · std_itm_no 145(공백 패딩 '00000')
+    실측_2026-08-29: >-
+      🔴 아래는 이 블록의 sql 4갈래를 **그대로 실행**한 값이다(2차 정본 23,676행 · 판매중 10,962). 어림한 정규화로 다시 세지 말 것.
+      fss_itm_no 11,655(49.2%) · kofia_fd_ccd 11,476(48.5%) · rptt_ksd_itm_no 7,086(29.9%) ·
+      std_itm_no 4,668(19.7%) · ksd_itm_no 2,370(10.0%) · mtco_itm_no 1,057(4.5%). 모두 NULL 포함 값이다.
+      (구 실측_2026-08-25 는 1차 모수 — fss 11,611 · kofia 11,431 · rptt 1,761 · mtco 869 · ksd 592 · std 145.
+       rptt·ksd·std 가 각각 5,325 · 1,778 · 4,523 행 어긋나 있었다. 규칙 ④ 반복문자 미적용이 원인으로 추정)
     sql: >-
       (C IS NULL OR trim(C)='' OR replace(replace(trim(C),'KR',''),'0','')=''
        OR (length(trim(C))>1 AND replace(trim(C), substr(trim(C),1,1), '')=''))

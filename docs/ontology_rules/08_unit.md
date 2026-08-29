@@ -30,13 +30,13 @@
 
 | 단위 표기 | 컬럼 수 | 컬럼 |
 | :-- | --: | :-- |
-| `percent` | 32 | 채권.`srfc_irt`, 채권.`exrt_grte_ern_r`, 채권.`exrt_rpy_r`, 채권.`applied_yield`, 채권.`exg_close_yield`, 채권.`buy_yield`, 채권.`after_tax_yield`, 채권.`corp_pretax_yield` … |
-| `krw` | 10 | 채권.`isu_bal_amt`, 채권.`bd_tisu_a`, 채권.`eval_price`, 채권.`dirty`, 채권.`exg_close_price`, 채권.`trade_price`, 국내ETF.`du_last_aum`, 국내ETF.`pd_divd_amt_pshr` … |
+| `percent` | 39 | 채권.`srfc_irt`, 채권.`exrt_grte_ern_r`, 채권.`exrt_rpy_r`, 채권.`applied_yield`, 채권.`ndy_applied_yield`, 채권.`exg_close_yield`, 채권.`buy_yield`, 채권.`after_tax_yield` … |
+| `krw` | 13 | 채권.`isu_bal_amt`, 채권.`bd_tisu_a`, 채권.`eval_price`, 채권.`dirty`, 채권.`ndy_eval_price`, 채권.`ndy_dirty`, 채권.`exg_close_price`, 채권.`trade_price` … |
 | `grade` | 3 | 채권.`crd_grd`, 채권.`pd_risk_gcd`, 펀드.`zrin_fd_ivst_risk_gcd` |
 | `‰ (값÷10 = %, or_co_rwrd_r 참조)` | 3 | 펀드.`sale_co_rwrd_r`, 펀드.`trusc_rwrd_r`, 펀드.`ofwk_trus_rwrd_r` |
+| `years` | 2 | 채권.`dur`, 채권.`ndy_dur` |
 | `yyyymmdd(REAL 저장)` | 2 | 펀드.`fd_last_dstb_actg_bss_dt`, 펀드.`fd_daily_bas_dt` |
 | `percent_cumulative` | 2 | 펀드.`fd_yr1_ern_r`, 펀드.`fd_yr3_ern_r` |
-| `years` | 1 | 채권.`dur` |
 | `days` | 1 | 채권.`remaining_days` |
 | `usd` | 1 | 해외ETF.`du_last_aum` |
 | `‰ (값÷10 = %) — ext_fund_page 8,925건 대조로 확정 (2026-08-25)` | 1 | 펀드.`or_co_rwrd_r` |

@@ -548,8 +548,21 @@ query_rules:
   복제방식_모수: pd_grp_no = 'ETF' AND cu_strtegy IN ('실물복제','합성복제','액티브')     # 'C' 422건(ETN) 미분류 제외
   판매중만: pd_sale_yn = 1
   거래정상: pd_tr_yn = 0
-  레버리지: ABS(cu_lev_fector) > 1       # 🔴 2026-08-25 개정 — 부호 소실로 ABS 필수. '>1' 은 2026-08-20 개정(+1.5X ETN 포함) 유지
-  인버스: "pd_abrv_nm LIKE '%인버스%'"    # 🔴 2026-08-25 개정 — 'cu_lev_fector < 0' 은 2차에서 22건만 잡음(실제 225건). derivation_rules.inverse_direction 참조
+  # 🆕 2026-08-29 회의 결정 — 공통 패턴 "살 수 없는 건 제외, 살 수는 있는데 위험한 건 알린다".
+  #    빼지 않고 주의 문구를 붙인다(채권 domestic_bonds.query_rules.고위험제외 와 같은 방침).
+  레버리지: ABS(cu_lev_fector) > 1
+  # 🔴 레버리지 질의 주의 문구 — `레버리지`(ABS>1) 324건 중 113건이 인버스다.
+  #    "레버리지 ETF 알려줘" 에 하락 베팅 상품이 섞여 나가므로, 결과는 그대로 주되
+  #    답변에 인버스가 포함되면 밝힌다 —
+  #    "이 중 N건은 지수가 **내릴 때** 수익이 나는 인버스 상품입니다. 방향이 반대이니 확인하세요."
+  #    제외하지 않는 이유: 인버스도 살 수 있는 정상 상품이고, 배수 자체는 사실이다.
+  레버리지_인버스혼입경고: "ABS(cu_lev_fector) > 1 AND (pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0)"       # 🔴 2026-08-25 개정 — 부호 소실로 ABS 필수. '>1' 은 2026-08-20 개정(+1.5X ETN 포함) 유지
+  # 🔴 2026-08-25 개정 — 'cu_lev_fector < 0' 만으로는 22건만 잡힌다(실제 225건). derivation_rules.inverse_direction 참조.
+  # 🆕 2026-08-30 확장 — 약어명만 보면 4건을 놓친다. 실측:
+  #    `미래에셋 -2X 홍콩H 선물 ETN(H)` 처럼 약어엔 '-2X' 로만 적히고 정식명(pd_nm)에 '인버스' 가 있다
+  #    (정식: "미래에셋 인버스 레버리지 홍콩H 선물 상장지수증권"). 4건 전부 진짜 인버스이며 오탐 0.
+  #    → 약어명 OR 정식명 OR 음수배수. 기존 225건 누락 0 확인.
+  인버스: "pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0"
   운용사정규화: "ref_fund_mgmt_co (영문 정규) ↔ 코드북 asset_manager.csv 한글 약칭 — cu_fund_mgmt_co 직접 비교 금지"
   # 💡 형식 제안(SQL생성기용, 이병철/08-21): `{er_col} > -100 AND {er_col} IS NOT NULL`,
   #    치환표 {1개월:du_er_1m, 3개월:du_er_3m, 6개월:du_er_6m, 연초이후/YTD:du_er_ytd, 1년:du_er_1y}. 기간 미지정 질의는 du_er_1y 기본.

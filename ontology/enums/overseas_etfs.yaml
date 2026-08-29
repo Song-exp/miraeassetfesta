@@ -427,6 +427,18 @@ query_rules:
     OR (pd_nm LIKE '%UltraShort%' AND pd_nm NOT LIKE '%Income%' AND pd_nm NOT LIKE '%Bond%'
         AND pd_nm NOT LIKE '%Treasury%' AND pd_nm NOT LIKE '%Municipal%' AND pd_nm NOT LIKE '%Fixed%')
   레버리지: "cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1"   # NULL 5,136건은 '미수록'이지 1배 확정 아님
+  # 🆕 2026-08-29 회의 결정 — 공통 패턴 "살 수 없는 건 제외, 살 수는 있는데 위험한 건 알린다".
+  #    `레버리지` 901건 중 **131건(14%)이 인버스**다(EDZ -3.0 · SRTY.K -3.0 등).
+  #    "레버리지 ETF 알려줘" 에 하락 베팅 상품이 섞여 나간다.
+  #    🔴 빼지 않는다 — 인버스도 살 수 있는 정상 상품이고 배수는 사실이다.
+  #    대신 답변에 인버스가 포함되면 밝힌다 —
+  #    "이 중 N건은 지수가 **내릴 때** 수익이 나는 인버스 상품입니다. 방향이 반대이니 확인하세요."
+  #    국내(domestic_etfs.레버리지_인버스혼입경고)와 같은 방침. 부호 소실은 국내만의 문제다(해외는 부호 정상).
+  레버리지_인버스혼입경고: >-
+    cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1
+    AND (cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0
+         OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%'
+         OR (pd_nm LIKE '%Bear%' AND pd_nm NOT LIKE '%BullBear%'))
   상장일유효: pd_lstg_dt <> 0
   판매중만: pd_sale_yn = 1       # ⚠️ 해외는 유효분 전부 판매중이라 no-op (constant_columns) — 국내와의 대칭 유지용
   거래정상: pd_tr_yn = 0         # ⚠️ 동일 — no-op

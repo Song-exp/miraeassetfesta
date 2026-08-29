@@ -26,10 +26,16 @@
 
 ## 1. 구성종목 (Holdings) — 마스터에 컬럼 자체가 없던 값
 
+> 🔧 **2026-08-30 갱신** — 아래 표가 오래도록 **7/10 · 3/31~5/31 본**(1차 제약 시절)을 적고 있어
+> 상단 `[!NOTE]` DB 적재 현황(8/21본)과 한 문서 안에서 수치가 두 벌이었다. **DB 에 실제로 들어간 정본 기준으로 교체**했다.
+> 옛 파일(`domestic_holdings_20260710.csv` · `holdings_overseas/`)은 비교용으로 **보존**한다 — 삭제 금지.
+> 근거: 주최 8/24 공지 *"공시 및 기타 시장데이터는 금일 기준(~26.08.24 까지) 발행된 자료 사용가능"*.
+
+
 | 데이터 | 위치 (`data/external/`) | 규모 | 원천 소스 | 의미 — 무엇이 열리나 |
 | :--- | :--- | :--- | :--- | :--- |
-| **국내 ETF·ETN 구성종목** | `holdings/domestic_holdings_20260710.csv` + `fetch_log_20260710.csv` | **75,081행** · ETF 1,131/1,202(94.1%) | KRX/코스콤/제로인 원천 — FunETF 공개 API 경유 (`funetf.co.kr`, 기준일 `etfPdfYmd=20260710` 고정 = 7/11 제약 준수) | 주최 예시질의 3번(캠브리콘 편입)·5번(에코프로 자회사) — "○○ 편입 ETF" 전반. ETN 532 전건 "미제공" 로그 = "ETN 은 구성종목이 없다" 답변의 실측 근거 |
-| **해외 ETF 구성종목** | `holdings_overseas/overseas_holdings.csv` + `ticker_series_map.csv` + `fetch_log.csv` | **274,997행** · 186 ETF (AUM 상위 200 중, 매칭 94%) | **SEC EDGAR NPORT-P** 공시 (`data.sec.gov`) — 티커→seriesId 는 SEC 공식 `company_tickers_mf.json`. 전 행 보고기준일 3/31~5/31 ≤ 7/11 검증 | 해외판 "○○ 편입 ETF" (NVIDIA 편입 55개 실동작). 🔵 CIK 운용사 단위 문제 해소 실증. ⚠️ ETF별 기준일 이질 — 답변 시 report_date 병기 |
+| **국내 ETF·ETN 구성종목** | `holdings/domestic_holdings_20260821.csv` + `fetch_log_20260821.csv` **(정본)** · 7/10본 보존 | **75,859행** · **판매중 ETF 1,160/1,160 (100%)** | KRX/코스콤/제로인 원천 — FunETF 공개 API 경유 (`funetf.co.kr`, 기준일 `etfPdfYmd=20260821`). **8/24 공지 기준 적합** | 주최 예시질의 3번(캠브리콘 편입)·5번(에코프로 자회사) — "○○ 편입 ETF" 전반. ETN 532 전건 "미제공" 로그 = "ETN 은 구성종목이 없다" 답변의 실측 근거 |
+| **해외 ETF 구성종목** | `holdings_overseas_20260824/` **(정본)** · `holdings_overseas/` 보존 | **906,848행** · **1,356 ETF** (AUM 상위 1,500 확장 · AUM 가중 88.6%) | **SEC EDGAR NPORT-P** 공시 (`data.sec.gov`) — 티커→seriesId 는 SEC 공식 `company_tickers_mf.json`. 보고기준일 **2025-10-31 ~ 2026-06-30**, 발행일 ≤ 8/24 | 해외판 "○○ 편입 ETF" (NVIDIA 편입 55개 실동작). 🔵 CIK 운용사 단위 문제 해소 실증. ⚠️ ETF별 기준일 이질 — 답변 시 report_date 병기 |
 
 방법·스키마·한계: 각 폴더의 `SOURCES.md`. 재생성: `scripts/fetch_etf_holdings.py` · `scripts/fetch_overseas_holdings.py` (이어받기 지원).
 

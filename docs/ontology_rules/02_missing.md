@@ -28,20 +28,20 @@
 
 #### (1) `missing_reason` 분포 — 도메인 × 분류
 
-| 도메인 | `mixed` | `missing` | `none` | `not_applicable` | `present` | `unresolved` | `None` | 계 |
+| 도메인 | `mixed` | `missing` | `none` | `not_applicable` | `unresolved` | `present` | `None` | 계 |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
 | 채권 | 6 | 14 | 22 | 16 | 0 | 0 | 0 | 58 |
-| 국내ETF | 35 | 8 | 5 | 4 | 5 | 0 | 0 | 57 |
-| 해외ETF | 18 | 5 | 3 | 0 | 9 | 0 | 2 | 37 |
-| 펀드 | 4 | 30 | 20 | 1 | 0 | 6 | 3 | 64 |
+| 국내ETF | 45 | 8 | 4 | 4 | 0 | 1 | 0 | 62 |
+| 해외ETF | 22 | 5 | 1 | 3 | 0 | 4 | 2 | 37 |
+| 펀드 | 4 | 30 | 20 | 1 | 6 | 0 | 3 | 64 |
 
 > 🔴 **문서화된 4분류 밖의 값이 있다** — `unresolved`, `None`. `None` 은 필드 자체가 비어 있는 것이고, 그 외는 정의되지 않은 분류다. 답변 문장이 분류에서 나오므로 **분류 밖 값은 답변 규칙이 없는 상태**다.
 
-#### (2) `mixed` 판정 63개 중 **값별 분해가 없는 것 56개**
+#### (2) `mixed` 판정 77개 중 **값별 분해가 없는 것 70개**
 
 `mixed` 는 '행마다 이유가 다름' 이라는 선언이므로 `missing_semantics` 로 값별 분해가 있어야 답변 문장을 고를 수 있다. 분해가 없으면 **판정만 있고 답변 규칙은 없는 상태**다.
 
-> 🔴 분해 없는 컬럼 56개 — 국내ETF.`pd_ticker`, 국내ETF.`pd_isin_cd`, 국내ETF.`pd_ric`, 국내ETF.`du_last_aum`, 국내ETF.`pd_divd_amt_pshr`, 국내ETF.`pd_divd_amt_ann`, 국내ETF.`pd_dvid_yield`, 국내ETF.`pd_dvid_cycl`, 국내ETF.`pd_dvid_pay_cnt`, 국내ETF.`pd_dvid_pay_months`, 국내ETF.`pd_dvid_nav`, 국내ETF.`pd_dvid_tax_basis`, 국내ETF.`pd_dvid_base_dt`, 국내ETF.`pd_dvid_prc_base_dt`, 국내ETF.`du_chas_errt`, 국내ETF.`du_diff_rt`, 국내ETF.`du_chas_errt_base_dt`, 국내ETF.`du_diff_rt_base_dt`, 국내ETF.`du_nav_base_dt`, 국내ETF.`du_vlty_1y`, 국내ETF.`du_vlty_6m`, 국내ETF.`du_vlty_3m`, 국내ETF.`du_vlty_1m`, 국내ETF.`du_vlty_base_dt`, 국내ETF.`fn_portfolio_dt`, 국내ETF.`fn_base_dt`, 국내ETF.`ref_base_index`, 국내ETF.`ref_base_dt`, 국내ETF.`ref_fund_mgmt_co`, 국내ETF.`ref_ast_type`, 국내ETF.`ref_geo_focus`, 국내ETF.`ru_mkt_price`, 국내ETF.`ru_mkt_volume`, 국내ETF.`cu_lev_fector`, 국내ETF.`cu_strtegy`, 해외ETF.`cu_lev_fector`, 해외ETF.`pd_lstg_dt`, 해외ETF.`cu_strtegy`, 해외ETF.`cu_index_repl_mthd`, 해외ETF.`cu_index_tracking_yn`, 해외ETF.`cu_inverse_short_yn`, 해외ETF.`cu_etn_yn`, 해외ETF.`du_opr`, 해외ETF.`du_hpr`, 해외ETF.`du_lpr`, 해외ETF.`du_bpr`, 해외ETF.`du_clpr`, 해외ETF.`du_vol_1d`, 해외ETF.`pd_isin_cd`, 해외ETF.`pd_us_cik`, 해외ETF.`pd_lipper_id`, 해외ETF.`pd_curr_cd`, 해외ETF.`du_clpr_base_dt`, 펀드.`han_clas_policie
+> 🔴 분해 없는 컬럼 70개 — 국내ETF.`pd_ticker`, 국내ETF.`pd_isin_cd`, 국내ETF.`pd_ric`, 국내ETF.`du_last_aum`, 국내ETF.`pd_divd_amt_pshr`, 국내ETF.`pd_divd_amt_ann`, 국내ETF.`pd_dvid_yield`, 국내ETF.`pd_dvid_cycl`, 국내ETF.`pd_dvid_pay_cnt`, 국내ETF.`pd_dvid_pay_months`, 국내ETF.`pd_dvid_nav`, 국내ETF.`pd_dvid_tax_basis`, 국내ETF.`pd_dvid_base_dt`, 국내ETF.`pd_dvid_prc_base_dt`, 국내ETF.`du_chas_errt`, 국내ETF.`du_diff_rt`, 국내ETF.`du_chas_errt_base_dt`, 국내ETF.`du_diff_rt_base_dt`, 국내ETF.`du_nav_base_dt`, 국내ETF.`du_vlty_1y`, 국내ETF.`du_vlty_6m`, 국내ETF.`du_vlty_3m`, 국내ETF.`du_vlty_1m`, 국내ETF.`du_vlty_base_dt`, 국내ETF.`fn_portfolio_dt`, 국내ETF.`fn_base_dt`, 국내ETF.`ref_base_index`, 국내ETF.`ref_base_dt`, 국내ETF.`ref_fund_mgmt_co`, 국내ETF.`ref_ast_type`, 국내ETF.`ref_geo_focus`, 국내ETF.`du_er_1d`, 국내ETF.`du_er_1m`, 국내ETF.`du_er_3m`, 국내ETF.`du_er_6m`, 국내ETF.`du_er_ytd`, 국내ETF.`ru_mkt_price`, 국내ETF.`ru_mkt_volume`, 국내ETF.`pd_sect_cd`, 국내ETF.`du_nav_yday`, 국내ETF.`du_nav_rnf_amt`, 국내ETF.`du_clpr`, 국내ETF.`cu_lev_fector`, 국내ETF.`cu_strtegy`, 국내ETF.`pd_curr_cd`, 해외ETF.`du_er_1d`, 해외ETF.`du_last_aum`, 해외ETF.`ru_mkt_price`, 해외ETF.`cu_lev_fector`, 해외ETF.`pd_lstg_dt`, 해외ETF.`du_val_1d`, 해외ETF.`cu_fund_mgmt_co`, 해외ETF.`cu_strtegy`, 해외ETF.`cu_inverse_short_yn`, 해외ETF
 
 | 도메인 | 컬럼 | 한글명 | missing_semantics |
 | :-- | :-- | :-- | :-- |

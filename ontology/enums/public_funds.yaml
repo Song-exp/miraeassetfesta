@@ -547,13 +547,13 @@ missing_profile:
     zrin_ptn_nm:             [2411, 22.0, 52.4, missing]
     bmrk_nm:                 [2411, 22.0, 52.4, missing]
     han_clas_nm:             [2228, 20.3, 59.3, missing]
-    fss_itm_no:              [1336, 12.2, 49.2, unresolved]
+    fss_itm_no:              [1338, 12.2, 49.2, unresolved]   # 2026-08-29 DB 재현 — 구 1,336 은 규칙 ④(반복문자) 미적용값. 판매중 '111111111111' 2행이 ④에만 걸린다
     kofia_fd_ccd:            [1158, 10.6, 48.5, unresolved]
     exchdg_yn:               [5524, 50.4, 70.5, not_applicable]
     rptt_ksd_itm_no:         [116, 1.1, 29.9, unresolved]
-    mtco_itm_no:             [null, null, 3.7, missing]
-    std_itm_no:              [0, 0.0, 2.8, missing]
-    ksd_itm_no:              [null, null, 2.5, unresolved]
+    mtco_itm_no:             [128, 1.2, 4.5, missing]        # 2026-08-29 DB 재현 — 구 [null, null, 3.7]
+    std_itm_no:              [0, 0.0, 19.7, missing]          # 2026-08-29 DB 재현 — 구 [0, 0.0, 2.8]. 판매중 0 은 유지(실측 0)
+    ksd_itm_no:              [116, 1.1, 10.0, unresolved]     # 2026-08-29 DB 재현 — 구 [null, null, 2.5]. answer_policy 는 이미 10.0% 로 갱신돼 있었다(한 파일 안에서 2.5 vs 10.0 공존)
   결측의_축: >-
     🔴 2차에서 결측의 지배 변수는 **판매상태 + 공모/사모** 두 개다.
       판매완료 → 평가 컬럼 99% 결측 (1차와 동일 방향)
@@ -592,8 +592,12 @@ normalization:
     - mtco_itm_no
     - ksd_itm_no
     - std_itm_no
-    실측_2026-08-25: >-
-      fss_itm_no 더미 11,611 · kofia_fd_ccd 11,431 · rptt_ksd_itm_no(NULL+더미) 1,761 · mtco_itm_no 869 · ksd_itm_no 592 · std_itm_no 145(공백 패딩 '00000')
+    실측_2026-08-29: >-
+      🔴 아래는 이 블록의 sql 4갈래를 **그대로 실행**한 값이다(2차 정본 23,676행 · 판매중 10,962). 어림한 정규화로 다시 세지 말 것.
+      fss_itm_no 11,655(49.2%) · kofia_fd_ccd 11,476(48.5%) · rptt_ksd_itm_no 7,086(29.9%) ·
+      std_itm_no 4,668(19.7%) · ksd_itm_no 2,370(10.0%) · mtco_itm_no 1,057(4.5%). 모두 NULL 포함 값이다.
+      (구 실측_2026-08-25 는 1차 모수 — fss 11,611 · kofia 11,431 · rptt 1,761 · mtco 869 · ksd 592 · std 145.
+       rptt·ksd·std 가 각각 5,325 · 1,778 · 4,523 행 어긋나 있었다. 규칙 ④ 반복문자 미적용이 원인으로 추정)
     sql: >-
       (C IS NULL OR trim(C)='' OR replace(replace(trim(C),'KR',''),'0','')=''
        OR (length(trim(C))>1 AND replace(trim(C), substr(trim(C),1,1), '')=''))

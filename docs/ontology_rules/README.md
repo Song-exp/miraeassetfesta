@@ -47,6 +47,6 @@ python scripts/gen_ontology_rules_doc.py 2 8    # 규칙 2·8 만
 | 채권 | 22 | 58/58 | `name_encoding`, `clarify`, `axis_derivation`, `workshop` |
 | 국내ETF | 18 | 57/98 | `product_group`, `derivation_rules`, `axis_derivation` |
 | 해외ETF | 13 | 35/49 | `column_korean_names`, `product_group`, `constant_columns`, `domestic_asymmetry` |
-| 펀드 | 14 | 69/75 | `missing_profile`, `entities`, `class_hierarchy`, `axis_mapping`, `derivation_rules`, `attributes`, `cross_domain`, `external_facts` |
+| 펀드 | 14 | 70/75 | `missing_profile`, `entities`, `class_hierarchy`, `axis_mapping`, `derivation_rules`, `attributes`, `cross_domain`, `external_facts` |
 
 **비어 있는 것** — 역질문 규칙(`clarify`)은 채권에만, 교차 도메인 규칙(`cross_domain`)은 펀드에만 있다. `shared/` 개체 7종의 수동 `edges` 는 전부 0 이라 `kg_edge` 는 **전량 `source: rule`(추정)** 이고, 그래서 답변에 “추정” 을 병기한다. AssetClass · Currency · RiskGrade 는 `parent` 가 없어 계층 질의가 안 된다.

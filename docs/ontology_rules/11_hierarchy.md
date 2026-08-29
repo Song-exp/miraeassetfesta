@@ -31,9 +31,9 @@
 | `AssetClass` | 9 | 0 | 🔴 **없음** |
 | `CreditGrade` | 21 | 19 | ✅ 있음 |
 | `Currency` | 8 | 0 | 🔴 **없음** |
-| `Index` | 21 | 2 | ✅ 있음 |
+| `Index` | 21 | 4 | ✅ 있음 |
 | `Organization` | 64 | 0 | 🔴 **없음** |
-| `Region` | 58 | 57 | ✅ 있음 |
+| `Region` | 59 | 57 | ✅ 있음 |
 | `RiskGrade` | 7 | 0 | 🔴 **없음** |
 
 #### (2) 실측 — KG 에 올라간 계층

@@ -72,6 +72,7 @@
 | `fund_country_tag.csv` | 17 |
 | `fx_rate.csv` | 1 |
 | `index_axis_override.csv` | 37 |
+| `index_master.csv` | 97 |
 | `market.csv` | 6 |
 | `public_funds_asset_manager.derived.csv` | 74 |
 | `region_map.csv` | 12 |

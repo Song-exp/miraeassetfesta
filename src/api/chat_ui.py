@@ -31,7 +31,7 @@ PAGE = """<!doctype html>
   .meta { color:var(--mut); font-size:12.5px }
   .err { color:#c00 }
 </style>
-<header><b>금융상품 Agent</b><span>실험용 · 데이터 기준일 2026-08-22 · 답변과 함께 근거(think_trace)를 확인하세요</span></header>
+<header><b>금융상품 Agent</b><span>실험용 · 데이터 기준일 2026-08-22 · 답변 → <b>실행 SQL</b> → think_trace → 근거문서 순으로 확인하세요</span></header>
 <main>
   <form id="f"><input type="text" id="q" placeholder="예) 미래에셋자산운용이 운용하는 국내 ETF 5개만 알려줘" autofocus><button id="b">질문</button></form>
   <div id="log"></div>
@@ -49,13 +49,15 @@ f.onsubmit=async e=>{
   log.prepend(el);
   const t0=performance.now();
   try{
-    const r=await fetch(`/answer?question_id=CHAT&question=${encodeURIComponent(q)}&t=${encodeURIComponent(tok)}`);
+    const r=await fetch(`/chat/ask?question=${encodeURIComponent(q)}&t=${encodeURIComponent(tok)}`);
     const j=await r.json();
     const dt=((performance.now()-t0)/1000).toFixed(1);
     el.innerHTML=`<div class="q">${esc(q)}</div><div class="a">${esc(j.answer)}</div>`
       +`<div class="meta">${dt}s</div>`
+      +(j.sql?`<details open><summary>실행 SQL — 조건식이 의도대로인지 보는 곳</summary><pre>${esc(j.sql)}</pre></details>`:'')
       +(j.retrieved_context?`<details><summary>retrieved_context</summary><pre>${esc(j.retrieved_context)}</pre></details>`:'')
-      +`<details open><summary>think_trace</summary><pre>${esc(j.think_trace)}</pre></details>`;
+      +`<details open><summary>think_trace</summary><pre>${esc(j.think_trace)}</pre></details>`
+      +(j.grounding?`<details><summary>근거문서 — KG 매핑·yaml 규칙이 실제로 프롬프트에 실린 원문 (${j.grounding.length.toLocaleString()}자)</summary><pre>${esc(j.grounding)}</pre></details>`:'');
   }catch(err){
     el.querySelector('.a').className='a err'; el.querySelector('.a').textContent='요청 실패: '+err;
   }

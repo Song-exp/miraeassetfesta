@@ -28,6 +28,7 @@ from pathlib import Path
 
 from src.runtime.loader import load_context
 from src.runtime.pipeline import answer_question
+from src.runtime.qa_log import build_record
 
 # CLI 진입점에서만 .env 를 읽는다 (서버는 compose 의 env_file 로 주입받는다).
 try:
@@ -53,18 +54,15 @@ def ask(question: str, planner, ctx, qid: str = "CHAT") -> None:
     dt = time.perf_counter() - t0
 
     print(f"\n\033[1m답변\033[0m  ({dt:.1f}s)\n{r.answer}\n")
+    if r.sql:
+        print(f"\033[2m--- 실행 SQL ---\n{r.sql}\033[0m\n")
     if r.retrieved_context:
         print(f"\033[2m--- retrieved_context ---\n{r.retrieved_context}\033[0m\n")
     print(f"\033[2m--- think_trace ---\n{r.think_trace}\033[0m\n")
 
-    _log({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
-        "question": question,
-        "answer": r.answer,
-        "retrieved_context": r.retrieved_context,
-        "think_trace": r.think_trace,
-        "elapsed_s": round(dt, 2),
-    })
+    # 🔴 CLI 실험 로그에는 근거문서까지 남긴다 — "KG·yaml 이 실제로 프롬프트에 실렸는가" 는
+    #    이 원문 없이는 확인할 방법이 없다. 평가 서버 쪽은 LOG_GROUNDING 으로 끈다.
+    _log(build_record(r, dt, with_grounding=True))
 
 
 def main() -> int:

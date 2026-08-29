@@ -26,6 +26,12 @@ class PipelineResult:
     retrieved_context: str = ""
     think_trace: str = ""
     answer: str = ""
+    # ── 아래 둘은 평가 응답 5필드가 아니다. 로그·실험 UI 가 쓰는 검토용 필드다 ──
+    # 🔴 "KG·온톨로지를 의도대로 썼는가" 를 검토하려면 이 둘이 있어야 한다.
+    #    sql 없이는 조건식이 틀렸는지 매핑이 틀렸는지 구분할 수 없고,
+    #    grounding 없이는 어떤 yaml 규칙이 실제로 프롬프트에 실렸는지 알 수 없다.
+    sql: str = ""            # 실제로 실행한 SQL (LIMIT 보정 후). 기각됐으면 기각된 SQL
+    grounding: str = ""      # 플래너에 넘긴 근거문서 원문
 
 
 class Planner(Protocol):
@@ -207,6 +213,20 @@ def build_grounding(
     return "\n\n".join(parts)
 
 
+def _grounding_blocks(grounding: str) -> list[str]:
+    """근거문서에 실제로 실린 블록 이름 — trace 에 글자 수만 적으면 무엇이 실렸는지 알 수 없다.
+
+    블록은 `\n\n` 으로 이어 붙이고 첫 줄이 제목이다. 블록 **안쪽**에도 `#` 주석(모델 지시문)이
+    있으므로 전체에서 `#` 줄을 긁으면 요약이 아니라 프롬프트 복사가 된다.
+    """
+    names = []
+    for part in grounding.split("\n\n"):
+        head = part.splitlines()[0] if part.strip() else ""
+        if head.startswith("# "):
+            names.append(re.split(r"\s+[—(]", head[2:].strip())[0].strip())
+    return names
+
+
 def _execute(sql: str) -> tuple[str, int]:
     con = connect_readonly()
     try:
@@ -266,13 +286,19 @@ def answer_question(
         return result
 
     grounding = build_grounding(ctx, hits, tables, cross)
-    step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · {len(grounding):,}자")
-    sql = planner.plan_sql(q, grounding)
-    step(f"[Plan] SQL 생성 — {sql[:120]}")
+    result.grounding = grounding
+    blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
+    step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
+         f"{len(grounding):,}자 · 구성: {blocks}")
+    raw_sql = planner.plan_sql(q, grounding)
 
-    sql, limited = ensure_limit(sql)
+    sql, limited = ensure_limit(raw_sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    result.sql = sql
+    # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
+    #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
+    step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
     err = validate_sql(sql)
     if err:

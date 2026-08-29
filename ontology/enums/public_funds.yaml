@@ -501,15 +501,19 @@ columns:
   or_co_xtn_itt_cd:
     korean_name: 운용사 대외기관코드
     kg_entity: Organization                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
-    missing_reason: none
-    note: "275종 0패딩 코드 — codebooks/asset_manager.csv (법인명 90 · derived 나머지). 이름 컬럼 없음"
+    missing_reason: mixed                   # 2026-08-30 E-3-14: none 오선언 → mixed. '99999999' 27행이 운용사가 아닌 미지정 센티넬(DB 재현 확인)
+    missing_semantics:
+      "99999999": "운용사 미지정 27행(전부 판매완료) — codebooks/asset_manager.csv 는 이 코드를 '현대와이즈03사'(종목명 접두 최빈값 · 점유 15% · source 가 '법인명 아님' 이라 자인)로 등재해 KG 에 Org_fund_99999999 노드를 만들고 있다. 🔴 실재하지 않는 운용사다 — 운용사명으로 답하지 말 것. 답변은 '운용사 정보가 수록돼 있지 않습니다'"
+    note: "275종 0패딩 코드 — codebooks/asset_manager.csv (법인명 90 · derived 나머지). 이름 컬럼 없음 · 2026-08-30 추가: 파생 라벨 157/275(점유<50% 가 36건)는 근거가 약하다 — 운용사명 단정 대신 '추정' 병기. 센티넬 '99999999' 27행은 결측(코드북 행 제외 + KG 재생성 필요 — PLAN P1-4)"
   trusc_xtn_itt_cd:
     korean_name: 수탁사 대외기관코드
     kg_entity: Organization                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
-    missing_reason: mixed                   # 2026-08-29 A-1-26: none 오선언 → mixed. 물리 NULL 42행 실재(DB 재현 확인 2026-08-29)
+    missing_reason: mixed                   # 2026-08-29 A-1-26: none 오선언 → mixed. 2026-08-30 보정: NULL 42 만이 아니라 센티넬 672 를 더해 714행(3.0%)
     missing_semantics:
       "null": "수탁사 코드 미기재 42행 — 미지정·누락 혼재로 원인 미확정. 답변은 '수탁사 정보가 수록돼 있지 않습니다' (다른 값으로 채우지 말 것). 물리 NULL 42 · distinct 50 은 2026-08-29 DB 재현 확인"
-    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정 · 물리 NULL 42(더미 규칙 대상 아님 — 고정 코드)"
+      "99999999": "미지정 센티넬 598행 — codebooks/trustee.csv 미등재. 정상 코드는 '00020081'·'00020004' 같은 8자리 체계다. 답변은 null 과 동일하게 '수탁사 정보가 수록돼 있지 않습니다' (2026-08-30 DB 재현)"
+      "00000000": "미지정 센티넬 74행 — 위와 동일. 두 센티넬 합 672행 중 판매중·공모가 72행이라 답변 노출 구간이다 (2026-08-30 DB 재현)"
+    note: "50종 — codebooks/trustee.csv 17종만 법인명 확정 · 물리 NULL 42(더미 규칙 대상 아님 — 고정 코드) · 2026-08-30 추가: 이 컬럼은 dummy_as_missing 화이트리스트 밖이라 규칙이 걸리지 않는다. 결측 = NULL 42 + '99999999' 598 + '00000000' 74 = 714행(3.0% · 판매중·공모 72). KG 의 Org_trustee_99999999 · Org_trustee_00000000 두 노드는 코드 숫자를 label_ko 로 달고 있어 제거 대상(KG 재생성 — PLAN P1-4)"
   fd_ivst_rgn_desc:
     korean_name: 투자지역 설명
     kg_entity: Region                # 2026-08-25 포인터 기입 (stub — 판정 본문은 auto.yaml·shared alias 참조)
@@ -582,6 +586,12 @@ normalization:
     🔴_화이트리스트_필수: >-
       patterns 를 columns 목록 **밖**의 컬럼에 적용하지 말 것. 고정 자리수 코드에서 '전부 0' 은 흔한 정상값이다 —
       fd_estb_ctry_cd '000' 23,055 · pfiv_sale_cntl_tcd '00' 22,263 · fd_set_pcd '00' 1,967 은 값이다.
+      🔴 **다른 도메인에 이 규칙을 복사하지 말 것** (2026-08-30 전 도메인 스캔 실측 — 무엇이 사라지는지):
+        · domestic_bonds.crd_grd 'AAA' **8,722행** — 최고 신용등급이 패턴 ②(^(.)\1+$)에 걸린다. "신용등급 AAA 채권" 질의가 통째로 죽는다.
+        · overseas_etfs 의 실재 티커 TTT(ProShares UltraPro Short 20+ Year Treasury) · YYY(Amplify CEF High Income) ·
+          FFF(Founders 100) · VV(Vanguard Large-Cap) — 전부 실제 상장 ETF 다. 반복문자라고 더미가 아니다.
+        · domestic_bonds.pd_ctry_cd 'KR' 21,881(국가코드) · pd_risk_gcd '11' 1,441(위험등급 11~16 체계) 도 정상값.
+      → 규칙에 걸렸다는 것과 결측이라는 것은 다르다. 더미 후보는 반드시 이름 컬럼(pd_nm·itm_nm)과 함께 조회해 실물을 확인한 뒤 판정한다.
     patterns:
     - '^(KR)?0+$'
     - '^(.)\1+$'
@@ -602,6 +612,38 @@ normalization:
       (C IS NULL OR trim(C)='' OR replace(replace(trim(C),'KR',''),'0','')=''
        OR (length(trim(C))>1 AND replace(trim(C), substr(trim(C),1,1), '')=''))
     sql_주의: 🔴 CAST(C AS INTEGER)=0 으로 판정하지 말 것 — '00AG530' 같은 값도 0 으로 읽힌다.
+
+  # ── 자릿수 폭 손실 — 값을 살리는 규칙 (결측 아님) ─────────────────────
+  code_width:
+    _note: >-
+      🔴 결측 규칙이 **아니다.** 선행 0 이 유실돼 자릿수가 짧아진 기관코드가 있다. 비교·조인·코드북 조회 전에 zfill 한다.
+      길이가 다르다고 결측으로 처리하면 정상 기관이 사라진다 — 아래 실측이 그 반례다.
+    columns:
+      or_co_xtn_itt_cd: 8
+      trusc_xtn_itt_cd: 8
+    실측_2026-08-30: >-
+      trusc '0016022' 202행(판매중 178) → zfill '00016022' = **미래에셋증권**(codebooks/trustee.csv 등재).
+      or_co '0040106' 2행(판매중 2) → zfill '00040106'. 두 행 모두 'DS증권 스테이블인컴 일반사모투자신탁' — 코드북에 8자리 이웃(00040103·00040105) 존재.
+    sql: printf('%08d', CAST(C AS INTEGER))   # 또는 조회 전 파이썬 str.rjust(8,'0')
+
+  # ── 형식 이탈 — 값이 있어 보이나 식별 기능이 없는 것 ──────────────────
+  malformed_as_missing:
+    _note: >-
+      dummy_as_missing 이 못 잡는 축. 키보드 난타('wtrewrwe'·'ZXWQREW'·'sdf')와 절단 코드('KRZ'·'KRZ500')는
+      0 계열도 반복문자도 아니라 더미 규칙을 통과한다. 아래 4컬럼은 **12자 고정**이므로 길이로 가른다.
+    columns:
+    - std_itm_no
+    - ksd_itm_no
+    - rptt_ksd_itm_no
+    - fss_itm_no
+    sql: (length(trim(C)) <> 12)
+    실측_2026-08-30: std 127(판매중 3) · ksd 67 · rptt 16 · fss 0 = 210행. rptt 쪽은 가짜 Fund 노드 5개를 만들고 있었다.
+    🔴_적용금지: >-
+      · mtco_itm_no — 운용사 내부번호라 **가변 길이**다(짧은 값 7,962행이 정상일 수 있다). 별도 판정 대상.
+      · or_co_xtn_itt_cd · trusc_xtn_itt_cd — 폭 손실은 결측이 아니라 정규화 대상이다(위 code_width).
+      · 설명 텍스트 컬럼 — ovrs_fd_desc '국내외혼합' 1,687 · int_dvd_desc '해당없음' 347 ·
+        국내ETF wu_inv_rgn '글로벌' · 채권 bd_inrt_tcd '고정+변동금리' 148 은 전부 정상값이다.
+    잔여: 12자를 채운 이탈값은 길이로 못 잡는다 — ksd 'KRdfdfsdfsdf'·'KRZdfdfdfdfd' · std 'kR5205A22251'(소문자 k). 소수라 형식 정규식 도입은 미판정.
 
   # ── 수치 컬럼의 0 처리 (주최 공지 2026-08-24: 0/결측은 의도된 값 → 빼거나 "없다"고 응답) ──
   zero_as_missing:
@@ -666,10 +708,25 @@ normalization:
       매우 낮은 위험: []
 
   invalid_values:
-    _note: 2차에서 1차의 오염 유래 이탈값 5종('20054.0'·'06'·'해외'·'00080008'·'KRZ50226929C') 전부 소멸. 현재 등재 0건.
+    _note: >-
+      등재 0건 유지. 🔴 2026-08-30 C-4-03 재실측 — 구 기술 "1차 이탈값 5종 전부 소멸" 은 부정확했다. 3종만 소멸이고 2종은 남아 있으며 성격이 서로 다르다:
+        · '20054.0' · '06' · '해외' → 소멸 확인.
+        · '00080008' 4,536행(or_co_xtn_itt_cd) → 🔴 **이탈값이 아니다. 미래에셋자산운용**
+          (codebooks/asset_manager.csv status=confirmed · 판매중 2,306). 1차가 최대 운용사 코드를 오염값으로 잘못 올렸던 것 —
+          **이 값을 배제하면 미래에셋 펀드가 통째로 사라진다. 절대 필터에 걸지 말 것.**
+        · 'KRZ50226929C' 1행(ksd_itm_no) → 여전히 이탈값. 단 단독 건이 아니라 KRZ 절단 계열의 일원이다
+          (KRZ · KRZ500 · KRZ0 · KRZ5 … 고정 12자에서 길이 이탈 67행).
+      → 교훈: 개별 값 열거는 이 데이터에 맞지 않는다(정상값을 오염으로 올리고, 같은 계열을 놓친다). 형식 이탈은 길이·형식 규칙으로 판정한다.
+        미판정 상태이며 규칙안은 검토기록 `공모펀드_검토기록_2026-08-30.md` §9-2 에 있다.
 
   constant_columns:
-    _note: 2차에서 상수 컬럼 없음 — 1차의 hdge_fd_yn·ofsfd_yn 은 사모 유입으로 1 값이 생겼다(210·116행). 공모 한정 시 사실상 상수.
+    _note: >-
+      2차에서 상수 컬럼 없음 — 1차의 hdge_fd_yn·ofsfd_yn 은 사모 유입으로 1 값이 생겼다(210·116행).
+      🔴 2026-08-30 C-4-06 재실측 — 구 기술 "공모 한정 시 사실상 상수" 는 두 컬럼 중 하나에만 맞다:
+        · hdge_fd_yn  전체 0:23,466 / 1:210  · **공모 한정 0:14,716 (전부)** → 공모 한정 상수 ✅
+        · ofsfd_yn    전체 0:23,560 / 1:116  · 공모 한정 0:14,606 / **1:110** → ❌ **상수가 아니다.**
+          공모·역외펀드 110행이 실재하므로 '공모에는 역외펀드가 없다' 는 취지의 답변을 하지 말 것.
+        · frc_bpr_itm_yn 전체 0:23,263 / 1:413 · 공모 한정 0:14,626 / 1:90 (참고 — 원래도 상수 아님)
 
 query_rules:
   종목단위: 행 = itm_no (dedup 불필요 — 2차)
@@ -703,7 +760,11 @@ entities:
     source: itm_no
     count: 23676
     label: itm_nm
-    note: 판매 단위(클래스) = 행. 2차 75컬럼 중 관계 컬럼을 뺀 전부가 여기 붙음. 공모 14,716 · 판매중 10,962.
+    note: >-
+      판매 단위(클래스) = 행. 2차 75컬럼 중 관계 컬럼을 뺀 전부가 여기 붙음. 공모 14,716 · 판매중 10,962.
+      🔴 2026-08-30 — **KG 에 FundClass 노드는 없고 `belongsToFund` edge 도 0건이다. 이것은 결함이 아니라 설계다** —
+      클래스→묶음 관계를 마스터 컬럼 `rptt_ksd_itm_no` 가 이미 담고 있어 23,676 노드와 edge 를 중복 생성하지 않는다
+      (`gen_fund_structure_auto.py` docstring). 클래스 단위 조회·집계는 KG 가 아니라 `itm_no` 로 한다.
   Fund:
     kind: entity
     source: (or_co_xtn_itt_cd, mtco_itm_no) 합성키
@@ -713,6 +774,12 @@ entities:
     note: >-
       '모펀드' 가 아니다 — 클래스를 걷어낸 '펀드' 단위(운용사 내부 관리 단위). 모자형 모펀드는 이 테이블에 없다(1차 판정 유지).
       순자산은 이 단위 MAX. 🔴 count 14,522 는 더미 배제 후 원값 기준·사모 포함 — 판매중 4,342.
+      🔴 **이름 충돌 주의 (2026-08-30 F-2 판정: 이름 유지 · note 로 명시)** —
+      여기의 Fund(운용 단위, `(or_co_xtn_itt_cd, mtco_itm_no)` 14,522)와 **KG 의 Fund 노드는 다른 축**이다.
+      KG `node_type='Fund'` 7,600 = `rptt_ksd_itm_no` 묶음 6,883 + 마스터 밖 MotherFund 717
+      (`shared/fund_structure_auto.yaml`). 집계·순자산은 `(or_co, mtco)` 기준, KG 개체 조회는 `rptt` 기준으로 읽을 것.
+      개체를 분리(ManagementFund/KsdFund/FundClass)하지 않는 이유 — 제출물 `.ttl` 클래스명과 제안서 도해가 함께 바뀌는데,
+      이 충돌이 현재 오답을 만들고 있지 않다. 분리 검토 이력은 `공모펀드_검토_결정대기_2026-08-29.md` §3.
     용어규칙: mtco 단위는 '펀드'. '모펀드' 는 모자형에만 쓰고 이 테이블에는 없다고 명시할 것
   ShareClass:
     kind: entity

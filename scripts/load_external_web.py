@@ -68,10 +68,20 @@ def main():
            "asset_type", "market", "as_of_ok", "retrieved_at", "source"]]
     con.execute("drop table if exists ext_fund_holdings")
     h.to_sql("ext_fund_holdings", con, index=False)
+    # 🔴 2026-08-30 A-3-03 — grp(=mtco_itm_no)는 **운용사 안에서만 유일**하다. grp 단독 조인은
+    #    103개 grp 가 복수 운용사에 걸려 (클래스,holding) 쌍 179,333 중 5,099(2.84%)를 오부착시킨다
+    #    (최악 grp='00' 은 운용사 34곳·클래스 138개). 그렇다고 itm_no 단독 조인으로 바꾸면
+    #    **형제 클래스 비중 확장이 사라져** 쌍이 59,206 으로 줄어든다(정당한 확장 174,234 를 버린다).
+    #    → 수집원 클래스의 운용사 코드를 컬럼으로 굳혀 (grp, or_co) 복합키로 조인한다. 확장은 지키고 오부착만 막는다.
+    con.execute("alter table ext_fund_holdings add column or_co TEXT")
+    con.execute("""update ext_fund_holdings set or_co =
+                     (select p.or_co_xtn_itt_cd from public_funds p where p.itm_no = ext_fund_holdings.itm_no)""")
     con.execute("create index idx_ext_hold_grp on ext_fund_holdings(grp)")
+    con.execute("create index idx_ext_hold_orco_grp on ext_fund_holdings(or_co, grp)")
     con.execute("create index idx_ext_hold_isin on ext_fund_holdings(isin)")
     con.execute("create index idx_ext_hold_nm on ext_fund_holdings(holding_nm)")
-    print(f"ext_fund_holdings  {len(h):6d}행 · 그룹 {h.grp.nunique()}")
+    n_orco = con.execute("select count(*) from ext_fund_holdings where or_co is null").fetchone()[0]
+    print(f"ext_fund_holdings  {len(h):6d}행 · 그룹 {h.grp.nunique()} · or_co 미해결 {n_orco}행")
 
     con.commit()
 

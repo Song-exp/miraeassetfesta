@@ -63,10 +63,10 @@
 | B-1-42 | 해외ETF `du_base_dt_match_yn` | NAV/종가 기준일 일치 여부 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 14/6,037 · distinct 1 · 값 N | ☐ |  |
 | B-1-43 | 해외ETF `du_clpr_src` | 선택된 종가 원천 컬럼 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 14/6,037 · distinct 1 · 값 pd65n101.tday_clpr | ☐ |  |
 | B-1-44 | 해외ETF `du_nav_base_dt` | NAV 원천 etf_reference 기준일 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 1 · 값 20260822 | ☐ |  |
-| B-1-45 | 해외ETF `pd_abrv_nm` | 상품약어명_티커 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,031 · 값 SMCC · SHV · NERD | ☐ |  |
+| B-1-45 | 해외ETF `pd_abrv_nm` | 상품약어명_티커 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,031 · 값 SMCC · SHV · NERD | ✅ | `missing_reason: none`. 결측 0/6,037. 🔴 반복문자 티커(`TTT`·`YYY`·`FFF`·`VV`·`XXX`·`ZZZ`)를 더미로 오판하지 말 것 — 전건 실재 ETF(ProShares UltraPro Short 20+ Year Treasury · Amplify CEF High Income · Founders 100 · Vanguard Large-Cap 등, `pd_nm` 으로 확인). 기록 `공모펀드_검토기록_2026-08-30.md` §3-2 |
 | B-1-46 | 해외ETF `pd_grp_no` | 상품군종류 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 2 · 값 ETF · ETN | ☐ |  |
-| B-1-47 | 해외ETF `pd_itm_no` | 해외 ETF RIC — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,037 · 값 ZZZ.O · ZYN.O · ZVOL.K | ☐ |  |
-| B-1-48 | 해외ETF `pd_itm_no_ma` | 해외 ETF RIC_PDF 조인키 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,037 · 값 ZZZ.O · ZYN.O · ZVOL.K | ☐ |  |
+| B-1-47 | 해외ETF `pd_itm_no` | 해외 ETF RIC — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,037 · 값 ZZZ.O · ZYN.O · ZVOL.K | ✅ | `missing_reason: none`. 결측 0/6,037 · distinct 6,037(전건 유일 → RIC). 위 B-1-45 와 동일 — 반복문자 값은 실재 티커다. 조치 없음 |
+| B-1-48 | 해외ETF `pd_itm_no_ma` | 해외 ETF RIC_PDF 조인키 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,037 · 값 ZZZ.O · ZYN.O · ZVOL.K | ✅ | `missing_reason: none`. `pd_itm_no` 와 값 동일(RIC_PDF 조인키). 위와 동일. 조치 없음 |
 | B-1-49 | 해외ETF `pd_lst_stk_cnt` | 상장주식수 — 결측 사유 4분류 중 무엇인가 | `numeric(28,2)` · 결측 0/6,037 · distinct 3,213 · 값 0 · 15000 · 50000 | ☐ |  |
 | B-1-50 | 해외ETF `pd_mkt_id` | 거래소국가코드 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 1 · 값 US | ☐ |  |
 | B-1-51 | 해외ETF `pd_nm` | 상품명 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/6,037 · distinct 6,009 · 값 iShares 0-1 Year Treasury Bond ETF · WisdomTree GeoAlpha Opportunities Fund · VanEck Digit | ☐ |  |
@@ -78,7 +78,7 @@
 | B-1-57 | 펀드 `itm_abrv_nm` | 종목약어명 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/23,676 · distinct 23,588 · 값 다올중국플러스찬스증권(채권혼합)A · 흥국공모주하이일드증권투자신탁[채권혼합] · 현대스위스사부동산1 | ☐ |  |
 | B-1-58 | 펀드 `itm_eng_nm` | 종목영문명 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/23,676 · distinct 23,403 · 값 소규모해지 · 소규모 청산 2016.02.19. · YURIE GLOBAL TOP10 STOCKS & SHORT-TERM FIXED INCOME FUND[BOND | ☐ |  |
 | B-1-59 | 펀드 `itm_nm` | 종목명 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/23,676 · distinct 23,624 · 값 크리스탈CB플러스 혼합투자신탁 · 대한투신21C비젼코리 · 대한파워단기공사B3-1 | ☐ |  |
-| B-1-60 | 펀드 `itm_no` | 종목번호 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/23,676 · distinct 23,676 · 값 OS559003001M · OS559002002M · OS559002001M | ☐ |  |
+| B-1-60 | 펀드 `itm_no` | 종목번호 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/23,676 · distinct 23,676 · 값 OS559003001M · OS559002002M · OS559002001M | ✅ | 결측 0 · 더미 0 · distinct = 행수 23,676(완전 유일). → `public_funds.yaml` `columns.itm_no` **신설 완료**(8/29): `missing_reason: none` + `note: 식별 기준 키 · 행 PK`. 개수·조인·식별은 이 컬럼으로 |
 | B-1-61 | 펀드 `ovrs_fd_desc` | 해외펀드구분코드 설명 — 결측 사유 4분류 중 무엇인가 | `text` · 결측 0/23,676 · distinct 4 · 값 국내 · 해외 · 국내외혼합 | ☐ |  |
 
 ## B-2. 판정을 물려받은 컬럼 — 상속이 타당한가

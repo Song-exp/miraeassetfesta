@@ -521,12 +521,21 @@ def build_managers(con):
     codes = con.execute("select or_co_xtn_itt_cd, count(*) from public_funds where or_co_xtn_itt_cd is not null group by 1").fetchall()
     for code, n in codes:
         code = norm(code)
-        if code in code2node:
+        key = code.rjust(8, "0")            # code_width — 폭 손실 흡수 (수동 노드 대조도 8자리 기준으로)
+        if code in code2node or key in code2node:
             continue
-        r = am.get(code, {})
+        # 🔴 2026-08-30 — 센티넬 코드는 운용사가 아니다. 노드를 만들지 않는다.
+        #    '99999999' 27행: asset_manager.csv 가 '현대와이즈03사'(종목명 접두 최빈값·점유 15%)로 등재해
+        #    실재하지 않는 운용사 노드 Org_fund_99999999 가 만들어지고 있었다 — 코드북 source 스스로 '법인명 아님' 이라 적어 둔 값이다.
+        if code in ("99999999", "00000000"):
+            stats["fund_sentinel_skipped"] += 1
+            continue
+        # 🔴 2026-08-30 code_width — 선행 0 유실로 7자리인 값이 있다(실측 '0040106' 2행 · DS증권 사모펀드).
+        #    수탁사 경로(아래 5번)는 rjust(8,'0') 폴백이 이미 있는데 이 경로엔 없어 라벨이 코드 숫자로 남았다 — 비대칭을 맞춘다.
+        r = am.get(code) or am.get(key) or {}
         st = r.get("status", "unknown")
-        label = r.get("name") or r.get("short_name") or code
-        nid = "Org_fund_" + code
+        label = r.get("name") or r.get("short_name") or key
+        nid = "Org_fund_" + key
         nodes[nid] = {"label_ko": label, "role": "manager", "auto": True,
                       "note": "asset_manager.csv status=" + st + ("" if r.get("name") else " — 법인명 미확정(브랜드/코드 라벨)"),
                       "aliases": []}
@@ -541,8 +550,15 @@ def build_managers(con):
         r = tr.get(key) or tr.get(key.rjust(8, "0"))
         nid = "Org_trustee_" + key
         sentinel = key in ("99999999", "00000000")
+        # 🔴 2026-08-30 — 센티넬은 '수탁사 미지정' 이라는 결측이지 개체가 아니다. note 만 달고 노드를 만들던 것을 제외로 바꾼다.
+        #    (실측 '99999999' 598행 · '00000000' 74행 — trustee.csv 미등재. 정상 코드는 '00020081' 같은 8자리 체계.
+        #     기존 동작은 label_ko 에 코드 숫자를 그대로 단 Organization 노드 2개를 만들고 있었다.)
+        #    판정은 public_funds.yaml columns.trusc_xtn_itt_cd.missing_semantics 에 있다.
+        if sentinel:
+            stats["trustee_sentinel_skipped"] += 1
+            continue
         nodes[nid] = {"label_ko": (r["name"] if r else key), "role": "trustee", "auto": True,
-                      "note": ("trustee.csv 관측 법인명" if r else ("센티넬 코드 — 수탁사 미지정/미상" if sentinel else "코드북 미확정 — 라벨=코드")),
+                      "note": ("trustee.csv 관측 법인명" if r else "코드북 미확정 — 라벨=코드"),
                       "aliases": []}
         add_alias(nid, "public_funds", "trusc_xtn_itt_cd", code, "수탁사 코드 · %d행" % n, False)
         stats["trustee_named" if r else "trustee_code_only"] += 1

@@ -596,6 +596,26 @@ query_rules:
     AND NOT (pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0)
     AND NOT (ref_base_index LIKE '%Stock%' OR ref_base_index LIKE '%Equity%'
              OR ref_base_index LIKE '%Preferred%')
+  # 🆕 2026-08-30 — 편입비중 질의. 키움 챗봇 대조에서 나온 것.
+  #
+  # ④ 편입비중상위 — "○○를 가장 많이 편입한 ETF" 는 상품명이 아니라 실측 비중으로 답한다.
+  #    🔴 키움이 여기서 틀렸다: `KODEX 삼성전자채권혼합`(비중 28.56%)을 1위로 답했는데
+  #       실제 1위는 `KODEX 삼성전자단일종목레버리지` 96.64% 다.
+  #       이름에 '삼성전자' 가 든다고 고른 것이며, 그 상품은 절반이 채권이다.
+  #    → 조인은 external_join.ext_etf_holdings 키를 쓰고 weight_pct 로 정렬한다.
+  #       삼성전자 편입 국내ETF 는 239개다.
+  #
+  # ⑤ 편입비중상위_레버리지경고 — 회의 공통 패턴("살 수는 있는데 위험한 건 알린다")
+  #    단일종목 ETF 가 있는 대형주는 상위가 레버리지로 채워진다. 실측:
+  #      삼성전자   TOP5 중 레버리지 5/5 (1위 96.6% KODEX 삼성전자단일종목레버리지)
+  #      SK하이닉스 TOP5 중 레버리지 5/5 (1위 99.9% SOL SK하이닉스단일종목레버리지)
+  #      현대차·카카오·NVIDIA 는 0/5 — 단일종목 ETF 가 없는 종목은 해당 없음
+  #    🔴 빼지 않는다 — "가장 많이 편입" 질문에는 그게 정답이다.
+  #       대신 답변에 레버리지가 포함되면 밝히고, 레버리지 아닌 최상위를 함께 준다:
+  #       "상위 N개는 2배 레버리지 상품이라 주가 변동의 2배로 손익이 납니다.
+  #        레버리지가 아닌 것 중에서는 KODEX KTOP30(37.59%)이 가장 높습니다."
+  #    ⚠️ 사용자가 '추천' 을 물은 경우엔 레버리지 아닌 것을 먼저 제시한다.
+  편입비중상위_레버리지경고: "ABS(cu_lev_fector) > 1"
   운용사정규화: "ref_fund_mgmt_co (영문 정규) ↔ 코드북 asset_manager.csv 한글 약칭 — cu_fund_mgmt_co 직접 비교 금지"
   # 💡 형식 제안(SQL생성기용, 이병철/08-21): `{er_col} > -100 AND {er_col} IS NOT NULL`,
   #    치환표 {1개월:du_er_1m, 3개월:du_er_3m, 6개월:du_er_6m, 연초이후/YTD:du_er_ytd, 1년:du_er_1y}. 기간 미지정 질의는 du_er_1y 기본.

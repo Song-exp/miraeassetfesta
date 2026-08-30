@@ -31,7 +31,7 @@ fp:manages a owl:ObjectProperty ; owl:inverseOf fp:hasManager ; rdfs:comment "�
 fp:issues a owl:ObjectProperty ; owl:inverseOf fp:hasIssuer ; rdfs:comment "발행사 → 상품 (fp:hasIssuer 의 역)"@ko .
 fp:isHeldBy a owl:ObjectProperty ; owl:inverseOf fp:holds ; rdfs:comment "종목 → 그 종목을 편입한 상품 (fp:holds 의 역) — '삼성전자 편입 ETF' 질의의 탐색 방향"@ko .
 
-# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 24.6%·0등급 존재) ──
+# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 40.8%(2차)·0등급 '00' 19행 존재 — 원본은 문자 코드, 정수는 shared/risk_grade.yaml 매핑값) ──
 fp:riskGradeValue a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf ( fp:DomesticBond fp:DomesticETF fp:PublicFund ) ] ;  # 해외ETF 는 위험등급 컬럼 자체가 없음(ABSENT — etf_gl.ttl)
     rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;

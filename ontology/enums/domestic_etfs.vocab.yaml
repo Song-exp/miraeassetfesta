@@ -1,0 +1,97 @@
+domain: domestic_etfs
+generated: true
+source: scripts/gen_value_vocab.py — DB distinct (trim) · 기준일 2026-08-22 · 직접 편집 금지
+_note: 범주형 컬럼의 실제 값 목록. 플래너 프롬프트에 실리고(loader.planner_context) WHERE 리터럴 검사(guard.check_values)에 쓰인다. 코드값('10','20' 등)의 뜻은 <domain>.yaml columns.*.note 가 원천.
+value_vocab:
+  cu_strtegy:
+    korean_name: 운용전략
+    values:
+    - 실물복제
+    - C
+    - 액티브
+    - 합성복제
+    counts:
+      실물복제: 763
+      C: 422
+      액티브: 358
+      합성복제: 82
+  pd_curr_nm:
+    korean_name: 상품통화명
+    values:
+    - 한국원화
+    - 해당없음
+    counts:
+      한국원화: 1776
+      해당없음: 1
+  pd_dvid_cycl:
+    korean_name: 분배주기(A/Q/M/S)
+    values:
+    - Q
+    - A
+    - M
+    - S
+    counts:
+      Q: 698
+      A: 306
+      M: 196
+      S: 8
+  pd_dvid_pay_months:
+    korean_name: 분배 지급월
+    values:
+    - January,April,July,October
+    - December
+    - January,February,March,April,May,June,July,August,September,October,November,December
+    - November
+    - March,June,September,December
+    - February,May,August,November
+    - January
+    - June,December
+    - May,November
+    - May
+    - March
+    - June
+    - January,April
+    - February,November
+    - August,November
+    counts:
+      January,April,July,October: 675
+      December: 265
+      January,February,March,April,May,June,July,August,September,October,November,December: 196
+      November: 32
+      March,June,September,December: 15
+      February,May,August,November: 8
+      January: 6
+      June,December: 4
+      May,November: 1
+      May: 1
+      March: 1
+      June: 1
+      January,April: 1
+      February,November: 1
+      August,November: 1
+  pd_pen_risk_nm:
+    korean_name: 연금거래위험구분
+    values:
+    - 위험자산
+    - N
+    - 안전자산
+    counts:
+      위험자산: 805
+      N: 757
+      안전자산: 218
+  pd_pen_tr_yn:
+    korean_name: 연금거래가능여부
+    values:
+    - Y
+    - N
+    counts:
+      Y: 1023
+      N: 757
+  wu_core_yn:
+    korean_name: 핵심ETF여부
+    values:
+    - N
+    - Y
+    counts:
+      N: 1689
+      Y: 91

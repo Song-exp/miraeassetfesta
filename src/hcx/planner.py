@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import re
 
-from src.runtime.pipeline import CLARIFY_PREFIX
+from src.runtime.pipeline import CLARIFY_PREFIX, REFUSE_PREFIX
 
 from .client import HCXClient, HCXConfig
 
@@ -56,7 +56,15 @@ _SQL_SYSTEM = """너는 SQLite SQL 생성기다. 주어진 스키마·도메인 
 되묻기 (예외 출력)
 - 근거문서에 '# 되묻기 규칙' 이 있고, 질문의 낱말이 그 규칙의 다의어에 해당하며, 어느 뜻인지 정할 단서가 질문에 없을 때만
   SQL 대신 `CLARIFY: ` 뒤에 사용자에게 되물을 한 문장(한국어, 선택지를 보여 준다)을 출력한다.
-- 단서가 있으면 되묻지 않고 SQL 을 쓴다. 되묻기는 위 경우 외에는 쓰지 않는다."""
+- 단서가 있으면 되묻지 않고 SQL 을 쓴다. 되묻기는 위 경우 외에는 쓰지 않는다.
+
+시점·규칙 (2026-08-30)
+- 데이터 기준일은 2026-08-22 다. '최근·현재·올해·지금' 은 이 기준일 기준이며, date('now')·CURRENT_DATE 를 쓰지 않는다 — 기준일 이후 시점의 값은 없다.
+- '도메인 규칙' 가운데 일부는 이 질문과 무관할 수 있다. 질문이 요구하지 않는 조건을 규칙만 보고 WHERE 에 덧붙이지 않는다.
+
+답변불가 (예외 출력)
+- 근거문서에 '# 답변불가 규칙' 이 있고 질문이 그 사유(실시간 시세·미래 예측·DB 밖 정보·인과 설명)에 분명히 해당하면
+  SQL 대신 `REFUSE: ` 뒤에 사유 한 문장을 출력한다. 조금이라도 SQL 로 답할 수 있으면 SQL 을 낸다."""
 
 _ANSWER_SYSTEM = """너는 금융상품 데이터 질의응답 답변자다. 아래 '조회 결과' 에 있는 사실만으로 답한다.
 
@@ -101,6 +109,14 @@ def extract_clarify(text: str) -> str:
     return f"{CLARIFY_PREFIX} {m.group(1).strip().rstrip('`').strip()}"
 
 
+def extract_refuse(text: str) -> str:
+    """LLM 출력이 답변불가 선언이면 'REFUSE: …' 한 줄로 정규화, 아니면 빈 문자열 (R-5 ②). SELECT 가 함께 있으면 SQL 로 본다."""
+    m = re.search(rf"{REFUSE_PREFIX}\s*(.+)", text, re.I)
+    if not m or re.search(r"\bselect\b", text, re.I):
+        return ""
+    return f"{REFUSE_PREFIX} {m.group(1).strip().rstrip('`').strip()}"
+
+
 class HCXPlanner:
     """pipeline.Planner 구현. 호출 2회(plan_sql·compose_answer)가 한 질의의 HCX 예산이다."""
 
@@ -115,11 +131,14 @@ class HCXPlanner:
 
     # -- Planner 프로토콜 -------------------------------------------------
     def plan_sql(self, question: str, grounding: str) -> str:
-        user = f"{grounding}\n\n# 질문\n{question}\n\n# 출력\nSQL 한 문장 (되묻기면 CLARIFY: 문장):"
+        user = f"{grounding}\n\n# 질문\n{question}\n\n# 출력\nSQL 한 문장 (되묻기면 CLARIFY: 문장 · 답변불가면 REFUSE: 사유):"
         text = self._sql.complete(_SQL_SYSTEM, user).text
         clarify = extract_clarify(text)
         if clarify:
             return clarify                      # pipeline 이 CLARIFY_PREFIX 를 보고 되묻기로 처리한다
+        refuse = extract_refuse(text)
+        if refuse:
+            return refuse                       # pipeline 이 REFUSE_PREFIX 를 보고 답변불가로 처리한다 (R-5 ②)
         return extract_sql(text)
 
     def compose_answer(self, question: str, rows: str, answer_rules: str = "") -> str:

@@ -69,6 +69,11 @@ class RuntimeContext:
     std_grades: set = field(default_factory=set)       # 신용등급 표준표 (credit_grade_scale.csv, DB 표기+표준 표기)
     route_vocab: dict = field(default_factory=dict)    # table -> {term: weight} — 라우팅 ② 겹 어휘. DB·yaml synonyms 에서 자동 생성
     schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
+    # ── 2026-08-30 개선 (docs/research/온톨로지_개정안_2026-08-30.md) ──
+    refusal_rules: dict = field(default_factory=dict)  # R-5 ② 층 — enums/_refusal.yaml (사유명 -> 규칙 문장). 플래너가 REFUSE: 를 내는 근거
+    value_vocab: dict = field(default_factory=dict)    # R-1 — (table, column) -> [값…]  범주형 컬럼의 실제 값 목록 (enums/<domain>.vocab.yaml, 생성물)
+    value_index: dict = field(default_factory=dict)    # R-4 — (table, column) -> {정규화 값}  WHERE 리터럴 검사용. **전 값을 아는 컬럼만** 들어간다
+    gate_constants: dict = field(default_factory=dict) # R-5 ① 층 — table -> [{column, value, triggers[], answer}] 상수 컬럼 위반 (enums yaml gate_constants)
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
@@ -86,10 +91,15 @@ class RuntimeContext:
             out.append(", ".join(f"{c}({ko})" if ko else c for c, ko, _ in cols))
         return "\n".join(out)
 
-    def planner_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+    def planner_context(self, tables: list[str] | tuple[str, ...] = (), question: str | None = None) -> str:
         """플래너(HCX SQL 생성)에 넘길 도메인 규칙 텍스트 — yaml 의 query_rules·normalization 을
         테이블별로 평문화한다. 교차질의면 여러 테이블을 넘겨 한 프롬프트에 합친다.
-        (해석하지 않고 yaml 문자열을 그대로 싣는다 — 규칙의 원천은 yaml.)"""
+        (해석하지 않고 yaml 문자열을 그대로 싣는다 — 규칙의 원천은 yaml.)
+
+        2026-08-30 R-2 — 규칙 2층: 값이 `{text:, triggers:[…]}` 꼴이면 **triggered** 규칙이다. `question` 이 주어졌을 때
+        triggers 낱말이 하나라도 질문에 있어야 싣는다(없으면 뺀다). 문자열 규칙은 종전대로 always_on.
+        question 을 안 주면 전부 싣는다(호환 — 테스트·문서 생성기). 근거: 규칙 전부 주입 < 선별 주입 (DK-1 Table VI).
+        2026-08-30 R-1 — value_vocab(범주형 컬럼의 실제 값)을 같이 싣는다. 값을 모르면 HCX 가 리터럴을 추측한다."""
         out: list[str] = []
         for t in tables or TABLES:
             doc = self.enums.get(t) or {}
@@ -101,6 +111,10 @@ class RuntimeContext:
             for name, rule in rules.items():
                 if str(name).startswith("_"):
                     continue
+                if isinstance(rule, dict) and "triggers" in rule:
+                    if question is not None and not any(w in question for w in rule.get("triggers") or []):
+                        continue
+                    rule = rule.get("text", "")
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")
             if norm:
@@ -109,7 +123,17 @@ class RuntimeContext:
             if syn:
                 # 사용자 통칭 → DB 표기. 라우팅 ② 겹과 같은 원천이라 플래너도 같은 어휘로 LIKE 를 쓴다
                 out.append("- 동의어(사용자 표기 → DB 표기): " + " · ".join(f"{k}→{v}" for k, v in syn.items()))
+            vocab = [(c, v) for (tt, c), v in self.value_vocab.items() if tt == t]
+            if vocab:
+                out.append("- 범주형 컬럼의 실제 값 (이 값 그대로 = 로 쓴다. 목록 밖 값을 만들지 않는다): "
+                           + " · ".join(f"{c}∈{{{', '.join(v)}}}" for c, v in vocab))
         return "\n".join(out)
+
+    def refusal_context(self) -> str:
+        """R-5 ② 층 — enums/_refusal.yaml 의 답변불가 사유. 플래너가 SQL 대신 'REFUSE: <사유>' 를 내는 근거."""
+        if not self.refusal_rules:
+            return ""
+        return "\n".join(f"- {k}: {str(v).strip()}" for k, v in self.refusal_rules.items() if not str(k).startswith("_"))
 
     def answer_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """답변 생성기(compose_answer)에 넘길 규약 — yaml `answer_rules` (조회 결과를 **어떻게 말할지**).
@@ -167,8 +191,20 @@ def load_context() -> RuntimeContext:
 
     for p in sorted(ENUMS_DIR.glob("*.yaml")):
         doc = _load_yaml(p)
+        if p.name.endswith(".vocab.yaml"):
+            # R-1 — 생성물(scripts/gen_value_vocab.py). 도메인 yaml 을 덮지 않고 별도 사전으로 둔다
+            for col, spec in (doc.get("value_vocab") or {}).items():
+                ctx.value_vocab[(doc["domain"], col)] = list(spec.get("values") or [])
+            continue
+        if p.name == "_refusal.yaml":
+            ctx.refusal_rules = doc.get("refusal_rules") or {}
+            if doc.get("출력_형식"):
+                ctx.refusal_rules["_출력_형식"] = doc["출력_형식"]
+            continue
         if doc.get("domain"):
             ctx.enums[doc["domain"]] = doc
+            for item in doc.get("gate_constants") or []:
+                ctx.gate_constants.setdefault(doc["domain"], []).append(item)
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
         doc = _load_yaml(p, header_only_if_big=True)
@@ -216,7 +252,34 @@ def load_context() -> RuntimeContext:
             if cols:
                 ctx.schema[t] = cols
         ctx.route_vocab = _build_route_vocab(con, ctx)
+        ctx.value_index = _build_value_index(con, ctx)
     return ctx
+
+
+def _build_value_index(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
+    """R-4 — WHERE 리터럴 검사용 값 집합. **전 값을 아는 컬럼만**: ① kg_alias 가 그 컬럼의 distinct 를 사실상 다 덮는
+    컬럼(≥ 98%) ② value_vocab 컬럼. 부분 사전(이름·자유 텍스트)은 넣지 않는다 — 정상 값을 기각하면 안 된다.
+    키 ('_raw', table, col) 에는 힌트용 원값 몇 개를 둔다."""
+    index: dict = {}
+    by_col: dict[tuple[str, str], set] = {}
+    raw_by_col: dict[tuple[str, str], set] = {}
+    for t, c, raw in con.execute("select table_name, column_name, raw_value from kg_alias"):
+        by_col.setdefault((t, c), set()).add(str(raw).strip().casefold())
+        raw_by_col.setdefault((t, c), set()).add(str(raw).strip())
+    for (t, c), vals in by_col.items():
+        if t not in TABLES:
+            continue
+        try:
+            n = con.execute(f"select count(distinct trim({c})) from {t} where {c} is not null").fetchone()[0]
+        except sqlite3.Error:
+            continue
+        if n and len(vals) >= 0.98 * n:
+            index[(t, c)] = vals
+            index[("_raw", t, c)] = sorted(raw_by_col[(t, c)])[:12]
+    for (t, c), values in ctx.value_vocab.items():
+        index[(t, c)] = {str(v).strip().casefold() for v in values}
+        index[("_raw", t, c)] = list(values)[:12]
+    return index
 
 
 def _load_std_grades() -> set:

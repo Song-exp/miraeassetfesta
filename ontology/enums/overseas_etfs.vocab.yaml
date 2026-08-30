@@ -1,0 +1,39 @@
+domain: overseas_etfs
+generated: true
+source: scripts/gen_value_vocab.py — DB distinct (trim) · 기준일 2026-08-22 · 직접 편집 금지
+_note: 범주형 컬럼의 실제 값 목록. 플래너 프롬프트에 실리고(loader.planner_context) WHERE 리터럴 검사(guard.check_values)에 쓰인다. 코드값('10','20' 등)의 뜻은 <domain>.yaml columns.*.note 가 원천.
+value_vocab:
+  cu_index_repl_mthd:
+    korean_name: 인덱스 복제방법
+    values:
+    - Optimized
+    - Swap
+    - Full
+    - Other
+    counts:
+      Optimized: 1826
+      Swap: 297
+      Full: 278
+      Other: 6
+  pd_curr_cd:
+    korean_name: 펀드통화코드
+    values:
+    - USD
+    - INR
+    counts:
+      USD: 6025
+      INR: 1
+  pd_exg_mkt_cd:
+    korean_name: 거래소코드
+    values:
+    - AMX
+    - NAS
+    - NYS
+    - '102'
+    - '101'
+    counts:
+      AMX: 4569
+      NAS: 1359
+      NYS: 78
+      '102': 22
+      '101': 9

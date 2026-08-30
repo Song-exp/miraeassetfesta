@@ -49,6 +49,9 @@ def is_cross_query(question: str, tables: list[str], groups: int | None = None) 
 # 질의 문구 → shared 개체 축. absent 검사의 좌변
 _ENTITY_HINTS: list[tuple[str, str]] = [
     ("위험등급", "RiskGrade"),
+    # 2026-08-30 — 이 항목이 없어 absent(CreditGrade, public_funds/ETF) 선언이 한 번도 발동하지 않았다 (검토표 D-4-04).
+    #   채권은 absent 에 없으므로 ① 을 지나 ② enum 검사로 간다.
+    ("신용등급", "CreditGrade"),
     ("기초지수", "Index"),
     ("벤치마크", "Index"),
     ("추종", "Index"),
@@ -168,6 +171,19 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                     reason=f"'{tok}' 는 표준 등급이나 2차 데이터에 0건 — HCX 없이 즉답 (등급서열 규칙)",
                     answer=f"'{tok}' 등급은 신용등급 체계에 있으나, 기준일 {DATA_CUTOFF} 데이터에 해당 등급의 채권이 없습니다.",
                 )
+
+    # ④ constant — 상수 컬럼 위반 (2026-08-30 R-5 ① 층). 그 테이블 하나로 라우팅됐을 때만. 규칙은 yaml gate_constants,
+    #    triggers 는 정규식(경계 포함 — '유로스탁스50' 지수명은 '유로 거래' 가 아니다)
+    if len(tables) == 1:
+        for item in ctx.gate_constants.get(tables[0], []):
+            for pat in item.get("triggers") or []:
+                hit = re.search(pat, question)
+                if hit:
+                    return GateResult(
+                        rejected=True,
+                        reason=f"{tables[0]}.{item['column']} 은(는) 전건 '{item['value']}' 인 상수 컬럼 — 질문의 '{hit.group(0)}' 조건은 데이터에 존재하지 않음 (yaml gate_constants)",
+                        answer=item.get("answer") or f"해당 상품군의 {item['column']} 은(는) 전부 '{item['value']}' 이라 요청하신 조건의 상품은 수록되어 있지 않습니다.",
+                    )
 
     # ② enum — 위험등급 범위 0~6 (규칙 §4: 1~5 제약은 오류)
     if "위험등급" in question:

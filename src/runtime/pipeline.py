@@ -8,18 +8,25 @@ Ground·Gate·Guard·Execute 는 전부 동작·테스트 가능하다.
 from __future__ import annotations
 
 import inspect
+import os
 import re
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
-from . import gate
+from . import gate, guard
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly, load_context
 from .router import route
 
 MAX_ROWS = 30            # retrieved_context 폭주 방지 — 근거는 표본이면 충분하다
 # 플래너가 SQL 대신 되묻기를 돌려줄 때의 접두어 — yaml `clarify` 규칙이 근거. 되묻기는 답변불가 문항의 정답 형태다 (주최 8/25)
 CLARIFY_PREFIX = "CLARIFY:"
+# 플래너가 SQL 대신 답변불가를 선언할 때의 접두어 — enums/_refusal.yaml 이 근거 (2026-08-30 R-5 ② 층)
+REFUSE_PREFIX = "REFUSE:"
+# HCX 재생성 예산 — 값 검사·SQL 기각에서 **한 번만**, 누적 시간이 이 안일 때만 (agent_architecture_notes §5 누적 12초 · 호출 2회 상한).
+# 🔴 0행은 재생성 대상이 아니다 — 거절이 정답인 문항에서 조건 완화 = 환각 (PROJECT.md §9)
+REGEN_BUDGET_S = 12.0
 SQL_TIMEOUT_S = 10.0
 
 
@@ -293,9 +300,11 @@ def build_grounding(
             "# 교차질의 조인 키 — 구성종목·설명서 조건은 아래 외부 테이블에 있다. 반드시 JOIN 해서 쓴다\n"
             + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
         )
-    rules = ctx.planner_context(target)
+    # R-2: triggered 규칙은 질문 어휘가 있을 때만. RULES_MODE=full 이면 종전처럼 전부 (eval/run_paired.py 의 대조군)
+    layered = os.environ.get("RULES_MODE", "layered") != "full"
+    rules = ctx.planner_context(target, question if (question and layered) else None)
     if rules:
-        parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다)\n" + rules)
+        parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다. 일부는 이 질문과 무관할 수 있다)\n" + rules)
     if future:
         # 기준일 이후 연도는 만기일 조건으로만 정당하다 (gate §③ — 사후 검사와 짝)
         parts.append(
@@ -307,6 +316,13 @@ def build_grounding(
         parts.append(
             "# 되묻기 규칙 (ontology/*.yaml clarify) — 아래 낱말이 질문에 있고 어느 뜻인지 단서가 없으면 SQL 대신 CLARIFY: 로 되묻는다\n"
             + clarify
+        )
+    refusal = ctx.refusal_context()
+    if refusal:
+        # R-5 ② 층 — 범위 밖(실시간·전망·DB 밖·인과)은 SQL 대신 REFUSE:. 가드: SQL 로 조금이라도 답할 수 있으면 SQL (PROJECT.md 모호 질의 최소)
+        parts.append(
+            "# 답변불가 규칙 (ontology/enums/_refusal.yaml) — 아래 사유에 해당하면 SQL 대신 REFUSE: <사유> 한 줄. 해당하지 않으면 SQL\n"
+            + refusal
         )
     schema = ctx.schema_text(target)
     if schema:
@@ -417,7 +433,17 @@ def answer_question(
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
          f"{len(grounding):,}자 · 구성: {blocks}")
+    t0 = time.monotonic()
     raw_sql = planner.plan_sql(q, grounding)
+
+    if raw_sql.strip().upper().startswith(REFUSE_PREFIX):
+        # R-5 ② — 플래너가 답변불가 규칙에 걸렸다고 선언. SQL 없이 종료 (실행·답변 생성 호출 없음)
+        why = raw_sql.strip()[len(REFUSE_PREFIX):].strip()
+        step(f"[Refuse] 답변불가 — 플래너 판정 (근거: 답변불가 규칙 블록) · 사유: {why}")
+        step("[Decision] 데이터 범위 밖 — HCX 답변 생성 없이 종료")
+        result.think_trace = "\n".join(trace)
+        result.answer = f"요청하신 내용은 제공된 데이터(기준일 {gate.DATA_CUTOFF})로 확인할 수 없습니다. {why}"
+        return result
 
     if raw_sql.strip().upper().startswith(CLARIFY_PREFIX):
         # 되묻기 — yaml clarify 규칙의 다의어에 단서가 없을 때. 추정으로 답하는 것보다 낫다 (역질문은 유효 답변)
@@ -445,12 +471,37 @@ def answer_question(
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
     err = validate_sql(sql)
-    if err:
-        step(f"[Guard] SQL 기각 — {err}")
-        result.think_trace = "\n".join(trace)
-        result.answer = "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다."
-        return result
-    step("[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 · LIMIT)")
+    violations = [] if err else guard.check_values(sql, ctx)
+    if err or violations:
+        # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
+        problem = err or "; ".join(str(v) for v in violations)
+        step(f"[Guard] {'SQL 기각' if err else '값 검사 실패'} — {problem}")
+        elapsed = time.monotonic() - t0
+        if elapsed < REGEN_BUDGET_S:
+            feedback = (grounding + "\n\n# 이전 SQL 의 문제 — 아래를 고쳐 다시 SQL 한 문장만 낸다\n"
+                        f"- 이전 SQL: {sql}\n- 문제: {problem}\n"
+                        "- 값은 'KG 개체 매핑'·'범주형 컬럼의 실제 값' 목록의 표기 그대로만 쓴다. 없는 값이면 그 조건을 빼지 말고 REFUSE: 로 답한다.")
+            step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
+            raw2 = planner.plan_sql(q, feedback)
+            if raw2.strip().upper().startswith(REFUSE_PREFIX):
+                why = raw2.strip()[len(REFUSE_PREFIX):].strip()
+                step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {why}")
+                result.think_trace = "\n".join(trace)
+                result.answer = f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
+                return result
+            sql, limited = ensure_limit(raw2)
+            result.sql = sql
+            step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
+            err = validate_sql(sql)
+            violations = [] if err else guard.check_values(sql, ctx)
+        if err or violations:
+            step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
+            step("[Decision] 값이 DB 에 없거나 SQL 이 안전하지 않아 종료 (조건을 완화하지 않는다)")
+            result.think_trace = "\n".join(trace)
+            result.answer = ("요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다." if violations
+                             else "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.")
+            return result
+    step("[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 · LIMIT · WHERE 값 사전 대조)")
 
     try:
         rows, n = _execute(sql)
@@ -463,10 +514,19 @@ def answer_question(
     result.retrieved_context = rows
 
     if n == 0:
-        # 규칙 §3 — 조회 0건이면 지어내지 않고 즉시 확인 불가
+        # 규칙 §3 — 조회 0건이면 지어내지 않고 즉시 확인 불가.
+        # R-4 — 어느 조건 때문인지 조건별 건수를 센다(SQLite 재실행뿐, HCX 0회). 조건을 완화해 다시 답하지는 않는다.
+        answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
+        try:
+            diag = guard.diagnose_zero_rows(sql)
+        except sqlite3.Error:
+            diag = None
+        if diag and diag.text():
+            step(f"[Diagnose] 0행 원인 — {diag.text()}")
+            answer += " " + diag.text()
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")
         result.think_trace = "\n".join(trace)
-        result.answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
+        result.answer = answer
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

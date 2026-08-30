@@ -82,7 +82,8 @@ def test_trace_names_grounding_blocks(ctx):
     assert "KG 개체 매핑" in plan and "도메인 규칙" in plan and "스키마" in plan
     # 블록 이름만 — 블록 안의 지시문 주석까지 긁어오면 요약이 아니다
     assert "IN 으로" not in plan
-    assert plan.split("구성: ")[1].split(" + ") == ["KG 개체 매핑", "도메인 규칙", "스키마"]
+    # 2026-08-30 R-5 — 답변불가 규칙 블록(enums/_refusal.yaml)이 항상 실린다
+    assert plan.split("구성: ")[1].split(" + ") == ["KG 개체 매핑", "도메인 규칙", "답변불가 규칙", "스키마"]
 
 
 @needs_db

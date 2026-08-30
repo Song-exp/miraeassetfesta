@@ -83,17 +83,27 @@ def ensure_limit(sql: str) -> tuple[str, bool]:
     return f"{sql.strip().rstrip(';')} LIMIT {MAX_ROWS}", True
 
 
-def _ground(question: str, ctx: RuntimeContext, tables: list[str] | None = None) -> tuple[list, list[str]]:
+def _ground(
+    question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
+) -> tuple[list, list[str]]:
     """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다.
 
-    우선순위는 ① 질의가 가리키는 테이블에 alias 가 있는 노드 ② 그 다음 긴 레이블이다.
+    우선순위는 ① 질의가 가리키는 테이블에 alias 가 있는 노드 ② 긴 레이블 ③ 값이 많은 노드(정본) 순이다.
 
     🔴 ①이 없으면 틀린다. '미래에셋자산운용' 은 채권 발행사 노드(domestic_bonds.pd_pbcm)와
        ETF 운용사 노드(domestic_etfs.cu_fund_mgmt_co, Org_00080008) 양쪽에 걸린다.
        레이블 길이만 보면 국내ETF 질의에 채권 발행사 노드를 물어와 조회가 0건이 된다
        (2026-08-26 실측: "미래에셋자산운용이 운용하는 국내 ETF" → 0행).
+
+    🔴 대상 테이블이 정해졌으면 거기에 alias 가 없는 노드는 **버린다** (2026-08-30 E).
+       예전엔 다른 테이블 alias 로 fallback 해 "한국전력 채권" 에 주식 노드의
+       ext_etf_holdings.constituent='한국전력' 이 실렸고, 플래너가 구성종목 테이블을 JOIN 하려 들었다.
+       교차질의면 ext_* 도 대상이다 — 종목 노드의 alias 는 전부 ext_* 에만 있기 때문이다.
     """
     target = set(tables or ())
+    if cross and target:
+        target |= set(EXT_TABLES)
+    relations = _asks_subsidiaries(question)
     hits, lines = [], []
     # 자동 생성 노드(Idx_a_/Idx_v_/Org_issuer_)는 수천 개라 짧은 라벨의 오매칭을 막기 위해 길이 하한을 높인다
     def _min_len(node, label):
@@ -102,34 +112,94 @@ def _ground(question: str, ctx: RuntimeContext, tables: list[str] | None = None)
             return 6 if not re.search(r"[가-힣]", label) else 4
         return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
 
+    # 후보가 수만 개라 노드당 한 번만 편다
+    _memo: dict[str, list] = {}
+
+    def _members(node) -> list:
+        if node.node_id not in _memo:
+            _memo[node.node_id] = _member_aliases(ctx, node.node_id, relations)
+        return _memo[node.node_id]
+
     def _in_target(node) -> bool:
         if not target:
             return False
-        return any(t in target for t, _, _ in ctx.kg_aliases.get(node.node_id, ()))
+        return any(t in target for t, _, _ in _members(node))
 
     candidates = sorted(
         ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node, label)),
-        key=lambda x: (not _in_target(x[1]), -len(x[0])),
+        key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))),
     )
     consumed = question
     for label, node in candidates:
-        if label in consumed:
-            hits.append(node)
-            consumed = consumed.replace(label, " ")
-            aliases = target_aliases(ctx, node, target)
-            where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
-            if len(aliases) > 4:
-                where += f" … 외 {len(aliases) - 4}종"
-            lines.append(f"'{label}' → {node.node_id} ({node.node_type}) → {where}")
+        if label not in consumed:
+            continue
+        aliases = target_aliases(ctx, node, target, relations)
+        if target and not aliases:
+            # E — 대상 테이블에 값이 없는 노드. 레이블을 소비하지 않아 같은 표기의 다른 노드가 잡힐 수 있게 둔다
+            continue
+        hits.append(node)
+        consumed = consumed.replace(label, " ")
+        members = expand_node(ctx, node.node_id, relations)
+        where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
+        if len(aliases) > 4:
+            where += f" … 외 {len(aliases) - 4}종"
+        via = ""
+        if len(members) > 1:
+            shown = ", ".join(members[1:4]) + (" …" if len(members) > 4 else "")
+            via = f" [+후손 {len(members) - 1}: {shown}]"
+        lines.append(f"'{label}' → {node.node_id} ({node.node_type}){via} → {where}")
     return hits, lines
 
 
-def target_aliases(ctx: RuntimeContext, node, target: set) -> list[tuple[str, str, str]]:
-    """노드의 alias 중 질의 대상 테이블 것만. 대상이 없으면 전부."""
-    aliases = ctx.kg_aliases.get(node.node_id, [])
+_SUBSIDIARY_HINT = re.compile(r"자회사|계열사|계열회사|종속회사")
+
+
+def _asks_subsidiaries(question: str) -> bool:
+    """질의가 관계(자회사)를 묻는가 — 관계 확장은 이때만. '에코프로 편입 ETF' 는 본체만 뜻한다."""
+    return bool(_SUBSIDIARY_HINT.search(question))
+
+
+def expand_node(ctx: RuntimeContext, node_id: str, relations: bool = False) -> list[str]:
+    """노드 하나를 실물 노드 집합으로 편다 — 자신 + kg_closure 후손 (+ 관계를 물으면 자회사와 그 후손).
+
+    kg_closure 는 build_ontology 가 이행적으로 만들어 두므로 한 단계만 읽는다.
+    2026-08-30 실측: 정본 18개(Sec_m_*) 전부 alias 0 · closure 9,919행 — 엔비디아 정본 → 주식·회사채·LEI 노드 3개,
+    투자등급 → AAA~BBB- 10종, 캠브리콘 → 펀드 보유 ISIN 노드. 이걸 안 펴면 정본에 매칭될수록 답이 비었다.
+    """
+    seeds = [node_id]
+    if relations:
+        seeds += ctx.kg_subsidiaries.get(node_id, [])
+    out: list[str] = []
+    for s in seeds:
+        for n in [s, *ctx.kg_closure.get(s, [])]:
+            if n not in out:
+                out.append(n)
+    return out
+
+
+def _member_aliases(ctx: RuntimeContext, node_id: str, relations: bool = False) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    seen: set = set()
+    for n in expand_node(ctx, node_id, relations):
+        for a in ctx.kg_aliases.get(n, ()):
+            if a not in seen:
+                seen.add(a)
+                out.append(a)
+    return out
+
+
+def target_aliases(
+    ctx: RuntimeContext, node, target: set, relations: bool = False
+) -> list[tuple[str, str, str]]:
+    """노드(와 그 후손)의 alias 중 질의 대상 테이블 것만. 대상이 없으면 전부.
+
+    🔴 다른 테이블 alias 로 fallback 하지 않는다 (2026-08-30 E). 대상에 값이 없으면 빈 목록이고,
+       호출부(_ground)가 그 노드를 버린다.
+    """
+    aliases = _member_aliases(ctx, node.node_id, relations)
     if not target:
-        return list(aliases)
-    return [a for a in aliases if a[0] in target] or list(aliases)
+        return aliases
+    return [a for a in aliases if a[0] in target]
 
 
 MAX_ALIAS_VALUES = 60   # 한 컬럼에 실을 값 상한. 병목이 rate limit 이라 토큰이 곧 처리량이다
@@ -150,7 +220,7 @@ JOIN_KEYS: list[tuple[str, str]] = [
 ]
 
 
-def _mapping_block(ctx: RuntimeContext, hits: list, target: set) -> str:
+def _mapping_block(ctx: RuntimeContext, hits: list, target: set, relations: bool = False) -> str:
     """플래너에 넘길 개체 매핑 — **DB 실제 값만** 싣는다.
 
     🔴 개체 ID(Org_…·Idx_…)를 넘기지 않는다. 넘기면 모델이 그걸 값으로 착각해
@@ -161,7 +231,7 @@ def _mapping_block(ctx: RuntimeContext, hits: list, target: set) -> str:
     for node in hits:
         name = node.label_ko or node.label_en or node.node_id
         groups: dict[tuple[str, str], list[str]] = {}
-        for t, c, raw in target_aliases(ctx, node, target):
+        for t, c, raw in target_aliases(ctx, node, target, relations):
             groups.setdefault((t, c), []).append(raw)
         for (t, c), vals in groups.items():
             uniq = sorted(set(vals), key=lambda v: (len(v), v))
@@ -179,6 +249,7 @@ def build_grounding(
     hits: list,
     tables: list[str],
     cross: bool,
+    question: str = "",
 ) -> str:
     """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
 
@@ -193,7 +264,7 @@ def build_grounding(
         target += [t for t in EXT_TABLES if t not in target]
 
     parts: list[str] = []
-    mapping = _mapping_block(ctx, hits, set(target))
+    mapping = _mapping_block(ctx, hits, set(target), _asks_subsidiaries(question))
     if mapping:
         parts.append(
             "# KG 개체 매핑 — 질의의 표기를 DB 실제 값으로 옮긴 것\n"
@@ -263,9 +334,10 @@ def answer_question(
     # 테이블 추정을 Ground 보다 먼저 한다 — 같은 표기가 여러 도메인에 걸릴 때
     # 어느 노드를 고를지가 여기서 갈린다 (_ground 의 우선순위 ①)
     tables = gate.detect_tables(q)
+    cross = gate.is_cross_query(q)
 
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다
-    hits, ground_lines = _ground(q, ctx, tables)
+    hits, ground_lines = _ground(q, ctx, tables, cross)
     if ground_lines:
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
@@ -279,7 +351,6 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = g.answer
         return result
-    cross = gate.is_cross_query(q)
     step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}"
          + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else ""))
 
@@ -289,7 +360,7 @@ def answer_question(
         result.answer = "현재 시스템 구축 중으로 이 질의에는 답변을 제공할 수 없습니다."
         return result
 
-    grounding = build_grounding(ctx, hits, tables, cross)
+    grounding = build_grounding(ctx, hits, tables, cross, q)
     result.grounding = grounding
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "

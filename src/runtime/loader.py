@@ -54,6 +54,11 @@ class RuntimeContext:
     entity_property: dict = field(default_factory=dict)  # entity -> .ttl property 이름
     kg_nodes: list[KGNode] = field(default_factory=list)
     kg_aliases: dict = field(default_factory=dict)     # node_id -> [(table, column, raw)]
+    # 계층 — 조상 -> 후손 목록 (kg_closure, 이미 이행적). 정본 노드(Sec_m_*·CG_*·Idx_a_*)는 alias 가 0개고
+    # 실물 노드가 여기 매달려 있다. 런타임이 이걸 안 읽으면 정본에 매칭돼도 SQL 에 넣을 값이 없다 (2026-08-30 ㉡).
+    kg_closure: dict = field(default_factory=dict)     # ancestor_id -> [descendant_id]
+    # 관계 — 모회사 -> 자회사 목록 (kg_edge subsidiaryOf 의 역방향). "○○의 자회사" 질의에서만 쓴다.
+    kg_subsidiaries: dict = field(default_factory=dict)  # parent_id -> [child_id]
     crd_grades: set = field(default_factory=set)       # 채권 신용등급 enum 화이트리스트
     schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
 
@@ -151,6 +156,12 @@ def load_context() -> RuntimeContext:
             "select node_id, table_name, column_name, raw_value from kg_alias"
         ):
             ctx.kg_aliases.setdefault(nid, []).append((t, c, raw))
+        for anc, desc in con.execute("select ancestor_id, descendant_id from kg_closure"):
+            ctx.kg_closure.setdefault(anc, []).append(desc)
+        for child, parent in con.execute(
+            "select src_id, dst_id from kg_edge where predicate = 'subsidiaryOf'"
+        ):
+            ctx.kg_subsidiaries.setdefault(parent, []).append(child)
 
         # 마스터 4테이블 — 한글 컬럼명은 schema_metadata 가 원천 (build_db.py 가 원본 헤더에서 만듦)
         for t, c, ko, dt in con.execute(

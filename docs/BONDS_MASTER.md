@@ -305,7 +305,10 @@ STD_PD_MCLS_NM 대분류 6종  →  STD_PD_SCLS_NM 소분류 16종  →  BD_KND 
 
 ---
 
-## 9. 2차 DB 준비 — 지금 로컬은 "규칙만 2차, 데이터는 1차"
+## 9. 2차 DB 준비 — ✅ 08-30 갱신: DB 는 2차, 원본 엑셀만 2차본 대기
+
+> 🆕 **08-30 현황** — `data/financial_products.db` 는 **2차**(`build_info`: `v2_20260824` · 기준일 2026-08-22 · 채권 21,882행, 08-27 배포본). 1차 엑셀 8개는 `1.금융상품/_v1_20260711/` 로 옮겼다.
+> 남은 것: **주최 8/24 zip(`ai-festival2026_금융상품Agent_DtataSet260824.zip`, 17MB)의 2차 엑셀 8개(`prbd01n001_data.xlsx` 등)를 `1.금융상품/` 에 넣기** → 그 뒤 `python scripts/build_db.py` 로 로컬 재빌드해 배포 DB 와 행수 일치 확인. 아래 표는 08-26 시점 기록.
 
 ```
 1.금융상품/*.xlsx  ──▶  scripts/build_db.py  ──▶  data/financial_products.db
@@ -314,8 +317,8 @@ STD_PD_MCLS_NM 대분류 6종  →  STD_PD_SCLS_NM 소분류 16종  →  BD_KND 
 
 | | 로컬 (08-26) | 판 |
 | :-- | :-- | :-: |
-| 원본 엑셀 `1.금융상품/` | `PRBD01N001_국내채권마스터_20260711_datarows.xlsx` 등 8개 | **1차** |
-| DB `data/financial_products.db` | 채권 42,394행 | **1차** |
+| 원본 엑셀 `1.금융상품/` | ~~`PRBD01N001_국내채권마스터_20260711_datarows.xlsx` 등 8개~~ → 08-30 `_v1_20260711/` 로 이동. **2차 엑셀은 아직 없음(주최 zip 필요)** | **1차 → 비어 있음** 🔴 |
+| DB `data/financial_products.db` | ~~채권 42,394행~~ → **08-27 배포본으로 교체, 채권 21,882행** | ~~1차~~ → **2차** ✅ |
 | 규칙 `ontology/enums/domestic_bonds.yaml` | 병합으로 갱신됨 | **2차** |
 
 **왜 `git pull` 해도 2차 데이터가 안 오나** — `1.금융상품/`·`data/` 는 `.gitignore` 에 들어 있어 git 이 관리하지 않는다. 팀은 **드라이브**로 공유한다. 2차 엑셀은 8/24 배포본이라 파일명도 다르다 (`prbd01n001_data.xlsx` / `prbd01n001_schema.xlsx`, 소문자 `{prefix}_data.xlsx` 형식 — `build_db.py` 는 이 이름만 찾는다).

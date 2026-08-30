@@ -61,6 +61,48 @@ def test_route(ctx, question, expected):
     assert r.decided, (question, r)
 
 
+# ── 08-30 밤 스트레스(107문항)에서 나온 약한 고리 — 수정 후 회귀 ──
+STRESS_CASES = [
+    ("국채 알려줘", {B}),                       # 2자 통칭 — yaml synonyms 는 2자 허용
+    ("물가연동국채 알려줘", {B}), ("신종자본증권 알려줘", {B}), ("후순위채 알려줘", {B}),
+    ("해외 채권 알려줘", {B}),                  # 수식어(해외)가 상품(채권)과 안 맞으면 상품을 따른다 → 외화채없음 규칙
+    ("채권이랑 펀드 중 뭐가 나아?", {B, PF}),     # 접속 조사 '이랑'
+    ("채권 또는 ETF", frozenset({B, DE, OE})),   # 접속사 '또는'
+    ("채권형 상품 추천해줘", {PF}),              # '채권형' 은 유형 수식어 — 채권이 아니다
+    ("만기 2030-12-31 채권", {B}), ("2026년 9월 만기", {B}),   # '만기' 2자 동의어로 채권
+]
+
+
+@pytest.mark.parametrize("question,expected", STRESS_CASES)
+def test_route_stress(ctx, question, expected):
+    got = set(route(question, ctx).tables)
+    if isinstance(expected, frozenset):
+        assert got and got <= expected, (question, got)
+    else:
+        assert got == expected, (question, got)
+
+
+def test_future_tokens_formats():
+    assert gate.future_tokens("만기 2030-12-31") == ["2030"]
+    assert gate.future_tokens("2027.03 만기") == ["2027"]
+    assert gate.future_tokens("20270101 이후") == ["2027"]
+    assert gate.future_tokens("2026-09 만기") == ["202609"]
+    assert gate.future_tokens("2026년 8월 상장") == []
+    assert gate.future_tokens("내년 만기 채권") == ["2027"]
+    assert gate.future_tokens("30년 만기 국채") == []          # 두 자리 연도는 만기 기간과 구분 불가 — 잡지 않는다
+
+
+def test_bond_only_query_is_never_cross(ctx):
+    # 채권엔 구성종목(ext_*) 이 없다 — '보유한' 이 있어도 교차질의가 아니고 주식 노드도 매핑하지 않는다
+    r = answer_question("S-01", "삼성전자를 보유한 채권 알려줘", ctx=ctx)
+    assert "교차질의" not in r.think_trace and "(Security)" not in r.think_trace
+
+
+def test_crd_token_ignores_typo_tail(ctx):
+    r = answer_question("S-02", "A++ 채권 알려줘", ctx=ctx)
+    assert "[Gate] 통과" in r.think_trace
+
+
 def test_route_undecided_falls_back_to_all(ctx):
     r = route("수익률 높은 상품 추천해줘", ctx)
     assert not r.decided and len(r.tables) == 4

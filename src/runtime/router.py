@@ -36,7 +36,7 @@ QUALIFIER: dict[str, frozenset[str]] = {
     "국내": frozenset({"domestic_etfs", "domestic_bonds", "public_funds"}),
 }
 _PRODUCT_TOKEN = re.compile("|".join(map(re.escape, PRODUCT)))
-_CONJ = re.compile(r"\s*(와|과|및|랑|,|/|\+)\s*")
+_CONJ = re.compile(r"\s*(이랑|랑|와|과|및|하고|이나|또는|혹은|vs\.?|,|/|\+)\s*")   # 병렬 표지 — 한국어 접속 조사·접속사
 _QUAL_WINDOW = 8          # 머리 명사 앞에서 수식어를 찾는 글자 수 ('삼성전자를 보유한 국내/해외 ETF')
 _SCORE_KEEP = 0.7         # ② 겹에서 최고점의 70% 이상인 테이블은 함께 넘긴다 (HCX 가 고르게 둔다)
 _LONG_TERM = 5            # 이 길이 이상의 값(상품명)은 공백 무시 부분 일치를 허용 ('KODEX 국고채3년')
@@ -52,7 +52,9 @@ class Route:
 
 def product_route(question: str) -> tuple[set[str], str, int]:
     """① 문장 구조. (후보 테이블, 근거, 머리 명사 수). 상품 명사가 없으면 (∅, '', 0)."""
-    toks = [(m.group(0), m.start()) for m in _PRODUCT_TOKEN.finditer(question)]
+    # '채권형'·'주식형' 의 상품 명사는 수식어(유형)다 — 머리가 아니다 ("채권형 상품 추천" 은 채권이 아니라 채권형 펀드·ETF)
+    toks = [(m.group(0), m.start()) for m in _PRODUCT_TOKEN.finditer(question)
+            if not question[m.end(): m.end() + 1] == "형"]
     if not toks:
         return set(), "", 0
     heads: list[tuple[str, int]] = []
@@ -69,8 +71,9 @@ def product_route(question: str) -> tuple[set[str], str, int]:
         for qual, ts in QUALIFIER.items():
             if qual in before:
                 quals |= ts
-        if quals:
+        if quals and cand & quals:
             cand &= quals                       # 수식어들의 합집합으로 좁힌다 ('국내/해외 ETF' → 둘 다)
+        # 수식어가 상품과 안 맞으면('해외 채권') 상품 명사를 따른다 — 채권 규칙(외화채없음)이 답할 수 있게
         tables |= cand
     groups = len({PRODUCT[w] for w, _ in heads})   # ETF·ETN 은 같은 상품군
     return tables, "머리명사 " + "/".join(w for w, _ in heads), groups

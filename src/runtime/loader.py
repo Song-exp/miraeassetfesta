@@ -251,9 +251,9 @@ def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
     """
     vocab: dict[str, dict[str, int]] = {t: {} for t in TABLES}
 
-    def add(t: str, term, w: int) -> None:
+    def add(t: str, term, w: int, min_len: int = 3) -> None:
         term = _VOCAB_STRIP.sub("", str(term or "")).strip()
-        if len(term) < 3 or _VOCAB_NUMERIC.fullmatch(term) or term in PRODUCT_NOUNS:
+        if len(term) < min_len or _VOCAB_NUMERIC.fullmatch(term) or term in PRODUCT_NOUNS:
             return
         vocab[t][term] = max(vocab[t].get(term, 0), w)
 
@@ -273,5 +273,5 @@ def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
             add(t, v, 3)
     for t in TABLES:
         for term in ((ctx.enums.get(t) or {}).get("synonyms") or {}):
-            add(t, term, 2)
+            add(t, term, 2, min_len=2)          # '국채'·'만기' 같은 2자 통칭 — yaml 이 고른 것만
     return vocab

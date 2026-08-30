@@ -362,7 +362,7 @@ def answer_question(
     r = route(q, ctx)
     tables = r.tables if r.decided else []          # 미특정이면 빈 목록 = 종전 의미(마스터 4테이블)
     step(f"[Route] 상품군 — {', '.join(tables) or '미특정'} · 근거: {r.why}")
-    cross = gate.is_cross_query(q, tables, r.groups)
+    cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]   # 채권엔 ext_* 가 없다
 
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
     hits, ground_lines = _ground(q, ctx, tables, cross)

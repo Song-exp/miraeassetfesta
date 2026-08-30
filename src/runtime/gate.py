@@ -60,14 +60,20 @@ _ENTITY_HINTS: list[tuple[str, str]] = [
 # 🔴 \b 를 쓰면 안 된다. 파이썬 re 에서 한글은 단어 문자라 'AAAA인'·'AAAA등급' 의 A 와 '인' 사이에
 #    경계가 서지 않아 토큰을 통째로 놓친다 (2026-08-26 실측: "신용등급 AAAA인 채권" 이 게이트를
 #    통과해 HCX 를 호출했다). ASCII 영숫자만 경계로 본다.
-_CRD_TOKEN = re.compile(r"(?<![A-Za-z0-9])([A-D]{1,4}[+\-0]?)(?![A-Za-z0-9])")
+_CRD_TOKEN = re.compile(r"(?<![A-Za-z0-9])([A-D]{1,4}[+\-0]?)(?![A-Za-z0-9+\-])")   # 꼬리에 +/- 가 더 붙으면(A++) 토큰이 아니라 오기
 # 등급의 '모양' — 표준표(AAA·AA+·BBB-·CCC·C …)의 구조: 같은 글자의 반복 + 선택 접미(+/-/0).
 # 목록이 아니라 표의 형태에서 온 규칙이다 — 'CB'(전환사채)·'DC'(퇴직연금형) 는 글자가 섞여 등급이 아니고,
 # 'AAAA' 는 모양은 맞지만 표에 없다. loader 가 표준표 전체가 이 모양임을 보장한다.
 _GRADE_SHAPE = re.compile(r"^([A-D])\1{0,3}[+\-0]?$")
 _RISK_GRADE = re.compile(r"(?:위험\s*등급|위험등급)\s*(\d+)\s*등급|(\d+)\s*등급")
 # 기준일 2026-08-22 — 2026년 8월은 기준일 포함 월이라 허용, 9월 이후만 미래 (2차 데이터 전환 2026-08-25)
-_FUTURE = re.compile(r"(202[7-9]|20[3-9]\d)\s*년|2026\s*년\s*(9|10|11|12)\s*월")
+# 연도: '2027년' · '2027.' · '2027-' · '2027/' · '20270101' — 월: '2026년 9월' · '2026-09' · '2026.10'
+_FUTURE = re.compile(
+    r"(?<!\d)(202[7-9]|20[3-9]\d)(?:\s*년|(?=[.\-/]\d)|(?=\d{4}(?!\d)))"
+    r"|(?<!\d)2026(?:\s*년\s*|[.\-/])(?:0?(9)|(1[0-2]))(?:\s*월|(?!\d))"
+)
+# 상대 시점 — 기준일 2026-08-22 기준. '올해' 는 미래가 아니다
+_RELATIVE_FUTURE = {"내년": "2027", "내후년": "2028", "후년": "2028"}
 _MAT_DT_WINDOW = 60      # SQL 에서 mat_dt 와 연도 사이의 허용 거리(글자) — BETWEEN·SUBSTR·CAST 어느 형태든 이 안에 든다
 
 
@@ -88,7 +94,13 @@ def future_tokens(question: str) -> list[str]:
     """질문 속 기준일 이후 시점 — 연도는 'YYYY', 2026년 9~12월은 'YYYYMM'."""
     toks: list[str] = []
     for m in _FUTURE.finditer(question):
-        toks.append(m.group(1) if m.group(1) else f"2026{int(m.group(2)):02d}")
+        if m.group(1):
+            toks.append(m.group(1))
+        else:
+            toks.append(f"2026{int(m.group(2) or m.group(3)):02d}")
+    for word, year in _RELATIVE_FUTURE.items():
+        if word in question and year not in toks:
+            toks.append(year)
     return toks
 
 

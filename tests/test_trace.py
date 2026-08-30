@@ -32,7 +32,7 @@ class FakePlanner:
         self.grounding = grounding
         return self.sql
 
-    def compose_answer(self, question, rows):
+    def compose_answer(self, question, rows, answer_rules=""):
         return "테스트 답변"
 
 

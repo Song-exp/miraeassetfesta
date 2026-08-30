@@ -23,6 +23,8 @@ from __future__ import annotations
 import os
 import re
 
+from src.runtime.pipeline import CLARIFY_PREFIX
+
 from .client import HCXClient, HCXConfig
 
 # SQL 생성은 짧게 끝납니다. 답변 생성보다 예산을 작게 잡아 rate limit 을 아낍니다.
@@ -46,7 +48,13 @@ _SQL_SYSTEM = """너는 SQLite SQL 생성기다. 주어진 스키마·도메인 
 - '도메인 규칙' 에 조건식이 있으면 그 조건식을 그대로 쓴다.
 - '교차질의 조인 키' 가 주어졌으면 그 조건으로 JOIN 한다. 구성종목·설명서 조건은 외부 테이블의 컬럼이다 — 마스터 테이블에 그 컬럼이 있는 것처럼 쓰지 않는다.
 - 값은 근거문서에 나온 것만 쓴다. 개체 식별자(Org_… · Idx_… 같은 내부 ID)를 값으로 쓰지 않는다.
-- 사람이 읽을 수 있는 상품명 컬럼을 함께 SELECT 한다."""
+- 사람이 읽을 수 있는 상품명 컬럼을 함께 SELECT 한다.
+- 근거문서에 '# 시점 주의' 가 있으면 그 연도는 만기일(mat_dt) 조건에만 쓴다. 그 시점의 가격·수익률·전망을 묻는 질문이면 연도를 SQL 에 쓰지 않는다.
+
+되묻기 (예외 출력)
+- 근거문서에 '# 되묻기 규칙' 이 있고, 질문의 낱말이 그 규칙의 다의어에 해당하며, 어느 뜻인지 정할 단서가 질문에 없을 때만
+  SQL 대신 `CLARIFY: ` 뒤에 사용자에게 되물을 한 문장(한국어, 선택지를 보여 준다)을 출력한다.
+- 단서가 있으면 되묻지 않고 SQL 을 쓴다. 되묻기는 위 경우 외에는 쓰지 않는다."""
 
 _ANSWER_SYSTEM = """너는 금융상품 데이터 질의응답 답변자다. 아래 '조회 결과' 에 있는 사실만으로 답한다.
 
@@ -55,7 +63,8 @@ _ANSWER_SYSTEM = """너는 금융상품 데이터 질의응답 답변자다. 아
 - 데이터 기준일은 2026-08-22 이다. 이후 시점을 말하지 않는다.
 - 상품명은 조회 결과의 표기를 그대로 옮긴다. 띄어쓰기·괄호·대소문자를 고치지 않는다.
 - 한국어로 3~5문장. 목록이면 최대 10개까지만 적는다.
-- 조회 결과가 질문에 답하기에 부족하면 부족하다고 말한다."""
+- 조회 결과가 질문에 답하기에 부족하면 부족하다고 말한다.
+- '# 답변 규칙' 이 주어지면 그에 따라 표현한다. 규칙은 조회 결과를 읽는 방법(빈 칸의 뜻·주의 문구·용어)이지 새 사실이 아니다."""
 
 _FENCE = re.compile(r"```(?:sql)?\s*(.*?)\s*```", re.S | re.I)
 
@@ -78,6 +87,18 @@ def extract_sql(text: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def extract_clarify(text: str) -> str:
+    """LLM 출력이 되묻기면 'CLARIFY: …' 한 줄로 정규화해 돌려주고, 아니면 빈 문자열.
+
+    코드펜스·앞머리 잡담이 붙어도 첫 CLARIFY: 부터 그 줄 끝까지를 되묻는 문장으로 본다.
+    SELECT 가 함께 있으면 SQL 로 본다 — 되묻기는 SQL 을 대신할 때만 유효하다.
+    """
+    m = re.search(rf"{CLARIFY_PREFIX}\s*(.+)", text, re.I)
+    if not m or re.search(r"\bselect\b", text, re.I):
+        return ""
+    return f"{CLARIFY_PREFIX} {m.group(1).strip().rstrip('`').strip()}"
+
+
 class HCXPlanner:
     """pipeline.Planner 구현. 호출 2회(plan_sql·compose_answer)가 한 질의의 HCX 예산이다."""
 
@@ -92,11 +113,16 @@ class HCXPlanner:
 
     # -- Planner 프로토콜 -------------------------------------------------
     def plan_sql(self, question: str, grounding: str) -> str:
-        user = f"{grounding}\n\n# 질문\n{question}\n\n# 출력\nSQL 한 문장:"
-        return extract_sql(self._sql.complete(_SQL_SYSTEM, user).text)
+        user = f"{grounding}\n\n# 질문\n{question}\n\n# 출력\nSQL 한 문장 (되묻기면 CLARIFY: 문장):"
+        text = self._sql.complete(_SQL_SYSTEM, user).text
+        clarify = extract_clarify(text)
+        if clarify:
+            return clarify                      # pipeline 이 CLARIFY_PREFIX 를 보고 되묻기로 처리한다
+        return extract_sql(text)
 
-    def compose_answer(self, question: str, rows: str) -> str:
-        user = f"# 질문\n{question}\n\n# 조회 결과 (첫 줄은 컬럼명)\n{rows}\n\n# 답변"
+    def compose_answer(self, question: str, rows: str, answer_rules: str = "") -> str:
+        rules = f"# 답변 규칙 (ontology/*.yaml answer_rules)\n{answer_rules}\n\n" if answer_rules else ""
+        user = f"# 질문\n{question}\n\n{rules}# 조회 결과 (첫 줄은 컬럼명)\n{rows}\n\n# 답변"
         return self._answer.complete(_ANSWER_SYSTEM, user).text.strip()
 
     def close(self) -> None:

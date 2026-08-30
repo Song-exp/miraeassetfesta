@@ -14,8 +14,11 @@ from typing import Callable, Protocol
 
 from . import gate
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly, load_context
+from .router import route
 
 MAX_ROWS = 30            # retrieved_context 폭주 방지 — 근거는 표본이면 충분하다
+# 플래너가 SQL 대신 되묻기를 돌려줄 때의 접두어 — yaml `clarify` 규칙이 근거. 되묻기는 답변불가 문항의 정답 형태다 (주최 8/25)
+CLARIFY_PREFIX = "CLARIFY:"
 SQL_TIMEOUT_S = 10.0
 
 
@@ -37,8 +40,8 @@ class PipelineResult:
 class Planner(Protocol):
     """SQL·답변 생성기 — HCX 구현체를 여기 꽂는다. 시그니처 외에 아무것도 가정하지 않는다."""
 
-    def plan_sql(self, question: str, grounding: str) -> str: ...
-    def compose_answer(self, question: str, rows: str) -> str: ...
+    def plan_sql(self, question: str, grounding: str) -> str: ...     # SQL 한 문장, 또는 "CLARIFY: 되물을 문장"
+    def compose_answer(self, question: str, rows: str, answer_rules: str = "") -> str: ...
 
 
 # ── SQL 사후 검사 — LLM 이 만든 SQL 을 신뢰하지 않는다 ──────────────────
@@ -250,6 +253,7 @@ def build_grounding(
     tables: list[str],
     cross: bool,
     question: str = "",
+    future: list[str] | None = None,
 ) -> str:
     """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
 
@@ -282,6 +286,18 @@ def build_grounding(
     rules = ctx.planner_context(target)
     if rules:
         parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다)\n" + rules)
+    if future:
+        # 기준일 이후 연도는 만기일 조건으로만 정당하다 (gate §③ — 사후 검사와 짝)
+        parts.append(
+            f"# 시점 주의 — 질문의 {', '.join(future)} 은(는) 데이터 기준일({gate.DATA_CUTOFF}) 이후다\n"
+            "# 데이터에서 미래 날짜는 mat_dt(만기일)에만 있다 — 만기 조건으로만 쓸 수 있고, 그 시점의 가격·수익률·전망은 없다."
+        )
+    clarify = ctx.clarify_context(target)
+    if clarify:
+        parts.append(
+            "# 되묻기 규칙 (ontology/*.yaml clarify) — 아래 낱말이 질문에 있고 어느 뜻인지 단서가 없으면 SQL 대신 CLARIFY: 로 되묻는다\n"
+            + clarify
+        )
     schema = ctx.schema_text(target)
     if schema:
         parts.append("# 스키마 — 여기 없는 컬럼은 존재하지 않는다\n" + schema)
@@ -331,41 +347,68 @@ def answer_question(
     q = question.strip()
     step(f"[Normalize] 질의 정규화 — 길이 {len(q)}")
 
-    # 테이블 추정을 Ground 보다 먼저 한다 — 같은 표기가 여러 도메인에 걸릴 때
-    # 어느 노드를 고를지가 여기서 갈린다 (_ground 의 우선순위 ①)
-    tables = gate.detect_tables(q)
-    cross = gate.is_cross_query(q)
+    # Route — 상품군을 Ground 보다 먼저 정한다. 같은 표기가 여러 도메인에 걸릴 때 어느 노드를 고를지가
+    # 여기서 갈린다. 단어 목록이 아니라 문장 구조 + 온톨로지 값으로 정한다 (router.py, 2026-08-30 F)
+    r = route(q, ctx)
+    tables = r.tables if r.decided else []          # 미특정이면 빈 목록 = 종전 의미(마스터 4테이블)
+    step(f"[Route] 상품군 — {', '.join(tables) or '미특정'} · 근거: {r.why}")
+    cross = gate.is_cross_query(q, tables, r.groups)
 
-    # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다
+    # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
     hits, ground_lines = _ground(q, ctx, tables, cross)
     if ground_lines:
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
-        step("[Ground] KG 개체 매핑 — 매칭 없음")
+        step("[Ground] KG 개체 매핑 — 매칭 없음" + (" (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)" if tables else ""))
 
     # Gate — HCX 호출 0회 기각 경로
-    g = gate.check(q, ctx)
+    g = gate.check(q, ctx, tables)
     if g.rejected:
         step(f"[Gate] 기각 — {g.reason}")
         step("[Decision] HCX 호출 없이 종료 (근거는 Gate 단계)")
         result.think_trace = "\n".join(trace)
         result.answer = g.answer
         return result
-    step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}"
-         + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else ""))
+    future = gate.future_tokens(q)
+    step(f"[Gate] 통과 — 대상 테이블 {tables or '미특정'}"
+         + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else "")
+         + (f" · 기준일 이후 시점 {future} 포함 → SQL 의 mat_dt 사용 여부로 사후 판정" if future else ""))
 
     if planner is None:
+        if future:
+            # SQL 이 없으면 해석을 검사할 수 없다 — 기준일 안내로 보수적으로 끝낸다
+            step(f"[Decision] SQL 생성기 미연결 상태에서 기준일({gate.DATA_CUTOFF}) 이후 시점 질의 — 확인 불가")
+            result.think_trace = "\n".join(trace)
+            result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+            return result
         step("[Plan] SQL 생성기 미연결 — 답변 보류 (Ground·Gate 결과는 유효)")
         result.think_trace = "\n".join(trace)
         result.answer = "현재 시스템 구축 중으로 이 질의에는 답변을 제공할 수 없습니다."
         return result
 
-    grounding = build_grounding(ctx, hits, tables, cross, q)
+    grounding = build_grounding(ctx, hits, tables, cross, q, future)
     result.grounding = grounding
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
          f"{len(grounding):,}자 · 구성: {blocks}")
     raw_sql = planner.plan_sql(q, grounding)
+
+    if raw_sql.strip().upper().startswith(CLARIFY_PREFIX):
+        # 되묻기 — yaml clarify 규칙의 다의어에 단서가 없을 때. 추정으로 답하는 것보다 낫다 (역질문은 유효 답변)
+        ask = raw_sql.strip()[len(CLARIFY_PREFIX):].strip()
+        step(f"[Clarify] 되묻기 — 플래너가 다의어에 단서가 없다고 판단 (근거: 되묻기 규칙 블록)\n{ask}")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask
+        return result
+
+    if future and not gate.sql_uses_as_maturity(raw_sql, future):
+        # ③ cutoff 사후 검사 — 연도가 mat_dt 조건에 안 쓰였으면 시점·전망 질의다 (gate §③)
+        step(f"[Guard] 기준일 이후 시점 {future} 이(가) SQL 의 mat_dt 조건에 쓰이지 않음 → 만기 질의가 아닌 시점·전망 질의로 판정")
+        result.sql = raw_sql
+        step("[Decision] HCX SQL 은 만들었으나 기준일 이후 근거가 DB 에 없어 종료")
+        result.think_trace = "\n".join(trace)
+        result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+        return result
 
     sql, limited = ensure_limit(raw_sql)
     if limited:
@@ -400,7 +443,8 @@ def answer_question(
         result.answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
         return result
 
-    result.answer = planner.compose_answer(q, rows)
-    step("[Answer] 답변 생성 완료")
+    answer_rules = ctx.answer_context(tables or list(TABLES))
+    result.answer = planner.compose_answer(q, rows, answer_rules)
+    step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

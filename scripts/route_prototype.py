@@ -1,4 +1,5 @@
 # 시제품 — 상품군 라우팅 (전수조사 §9). 리드가 gate.detect_tables 교체 시 참고. 실행: python scripts/route_prototype.py
+# ✅ 2026-08-30 밤 src/runtime/router.py 로 이관됨 (tests/test_router.py 가 이 36문항을 회귀로 든다). 이 파일은 실험 기록용.
 # 라우팅 시제품 2판 — ① 상품 명사의 문장 위치(머리 명사) ② 온톨로지 값 매칭(경계식·3자 이상) ③ 동의어는 yaml 소관
 import sqlite3, re, sys, os
 os.chdir(r"C:\Users\bella\Desktop\대학\공모전\트리플에이치\미래에셋"); sys.path.insert(0, ".")

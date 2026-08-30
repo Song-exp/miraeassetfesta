@@ -1,0 +1,196 @@
+# -*- coding: utf-8 -*-
+"""2026-08-30 전수조사 B·E·F·G·H 반영 회귀 테스트 — 전부 HCX 0회(오프라인).
+
+F  라우팅: 단어 목록 없이 문장 구조 + 온톨로지 값 (scripts/route_prototype.py 36문항 그대로)
+E  KG 매핑: 정해진 상품군 밖 노드로 fallback 하지 않는다
+B  문지기: 연도는 SQL 사후 검사 · 신용등급은 표준표로 판정 (CB 무시 · BB+ 데이터 없음 · AAAA 존재하지 않음)
+G  되묻기: 플래너가 CLARIFY: 를 돌려주면 그 문장이 답이다
+H  답변 규칙: yaml answer_rules 가 compose_answer 에 실린다
+"""
+
+import pytest
+
+from src.runtime import gate
+from src.runtime.loader import db_path, load_context
+from src.runtime.pipeline import CLARIFY_PREFIX, answer_question, build_grounding
+from src.runtime.router import route
+
+pytestmark = pytest.mark.skipif(not db_path().exists(), reason="DB 없음 — build_db.py 선행 필요")
+
+B, DE, OE, PF = "domestic_bonds", "domestic_etfs", "overseas_etfs", "public_funds"
+ETFS = {DE, OE}
+
+
+@pytest.fixture(scope="module")
+def ctx():
+    return load_context()
+
+
+# ── F 라우팅 — 시제품 36문항. 기대값: 정확히 그 집합이거나(set), 그 부분집합이면서 비어 있지 않음(frozenset) ──
+ROUTE_CASES = [
+    # 채권 19 — '채권' 글자 없는 통칭(국고채·통안채·지방채·영구채·코코본드·은행채·카드채)도 채권으로
+    ("신용등급 AA- 이상 채권 알려줘", {B}), ("국고채 수익률 알려줘", {B}), ("통안채 몇 개 있어?", {B}),
+    ("지방채 알려줘", {B}), ("은행채 중 AAA", {B}), ("MBS 채권 수익률", {B}), ("카드채 수익률", {B}),
+    ("한국전력 채권 알려줘", {B}), ("LH 채권", {B}), ("산업은행 채권", {B}), ("삼성전자 채권", {B}),
+    ("현대카드 채권 수익률", {B}), ("영구채 알려줘", {B}), ("코코본드 알려줘", {B}), ("듀레이션 짧은 채권", {B}),
+    ("표면금리 높은 채권", {B}), ("위험등급 낮은 채권", {B}), ("만기 2027년 채권", {B}), ("잔존만기 1년 이내 채권", {B}),
+    # 국내 ETF 6 — '채권형 ETF' 는 ETF 다. 국내/해외를 문장으로 못 가르면 둘 다 넘긴다
+    ("채권형 ETF 추천", frozenset(ETFS)), ("채권 ETF 중 수익률 높은 것", frozenset(ETFS)),
+    ("KODEX 국고채3년 알려줘", {DE}), ("국고채 ETF 순자산 큰 순", frozenset(ETFS)),
+    ("TIGER 미국S&P500 총보수", {DE}), ("총보수 낮은 ETF", frozenset(ETFS)),
+    # 해외 ETF 3
+    ("미국 나스닥 추종 해외 ETF", {OE}), ("QQQ 알려줘", {OE}), ("해외 채권 ETF 중 총보수 낮은 것", {OE}),
+    # 펀드 4
+    ("삼성전자 보유한 펀드 알려줘", {PF}), ("채권형 펀드 중 1년 수익률 높은 것", {PF}),
+    ("미래에셋자산운용 펀드", {PF}), ("설정액 큰 펀드", {PF}),
+    # 교차·모호 4
+    ("삼성전자를 보유한 국내/해외 ETF 와 공모펀드를 연수익률 기준 TOP10", {DE, OE, PF}),
+    ("채권과 ETF 중 뭐가 안전해?", frozenset({B, DE, OE})),
+    ("한국전력공사가 발행한 채권", {B}),
+]
+
+
+@pytest.mark.parametrize("question,expected", ROUTE_CASES)
+def test_route(ctx, question, expected):
+    r = route(question, ctx)
+    got = set(r.tables)
+    if isinstance(expected, frozenset):
+        assert got and got <= expected, (question, r)
+    else:
+        assert got == expected, (question, r)
+    assert r.decided, (question, r)
+
+
+def test_route_undecided_falls_back_to_all(ctx):
+    r = route("수익률 높은 상품 추천해줘", ctx)
+    assert not r.decided and len(r.tables) == 4
+
+
+def test_route_vocab_is_generated_not_written(ctx):
+    # 어휘는 DB·yaml 에서 온다 — 채권 어휘에 대분류·채권종류·발행사·동의어가 다 들어 있어야 한다
+    v = ctx.route_vocab[B]
+    assert "국공채" in v and "국고채권" in v          # 범주형 컬럼 값 (대분류·채권종류)
+    assert "한국전력공사" in v                       # kg_alias 발행사
+    assert "통안채" in v and "영구채" in v            # yaml synonyms
+    assert "채권" not in v                          # 상품 명사는 ① 겹 몫
+    assert sum(len(x) for x in ctx.route_vocab.values()) > 10_000
+
+
+def test_trace_shows_route(ctx):
+    r = answer_question("R-01", "국고채 수익률 알려줘", ctx=ctx)
+    assert "[Route] 상품군 — domestic_bonds" in r.think_trace
+
+
+# ── E 매핑 — 상품군 밖 노드로 fallback 금지 ─────────────────────────────
+
+def test_ground_no_fallback_to_stock_node(ctx):
+    r = answer_question("E-01", "한국전력 채권 알려줘", ctx=ctx)
+    assert "(Security)" not in r.think_trace and "ext_etf_holdings" not in r.think_trace
+    assert "[Route] 상품군 — domestic_bonds" in r.think_trace
+
+
+def test_ground_full_issuer_name_still_maps(ctx):
+    r = answer_question("E-02", "한국전력공사 채권 알려줘", ctx=ctx)
+    assert "pd_pbcm=" in r.think_trace.replace('"', "'") and "한국전력공사" in r.think_trace
+
+
+def test_ground_cross_query_keeps_security_node(ctx):
+    # 교차질의(보유한)면 구성종목 노드는 ext_* 대상이라 살아 있어야 한다
+    if not any(n.node_type == "Security" for n in ctx.kg_nodes):
+        pytest.skip("Security 노드 미빌드")
+    r = answer_question("E-03", "삼성전자를 보유한 ETF 알려줘", ctx=ctx)
+    assert "(Security)" in r.think_trace
+
+
+# ── B 문지기 — 신용등급은 표준표로 ────────────────────────────────────────
+
+def test_std_grade_table_loaded_and_shaped(ctx):
+    # 표준표는 data/external/lookups/credit_grade_scale.csv (data/ 는 git 밖 — 배포 zip 으로 공유). 없으면 게이트는 데이터 값만으로 판정한다
+    if not ctx.std_grades:
+        pytest.skip("credit_grade_scale.csv 없음 — data/ 배포본 필요")
+    assert len(ctx.std_grades) >= 20
+    for g in ctx.std_grades:
+        assert gate._GRADE_SHAPE.match(g), g      # '등급 모양' 규칙은 표의 구조에서 온다
+
+
+@pytest.mark.parametrize("q", ["CB 발행한 채권 알려줘", "DC형 퇴직연금에 편입 가능한 채권", "신용등급 AAA인 CD 채권"])
+def test_gate_ignores_non_grade_uppercase(ctx, q):
+    r = answer_question("B-01", q, ctx=ctx)
+    assert "[Gate] 통과" in r.think_trace, r.think_trace
+
+
+def test_gate_aaaa_still_rejected(ctx):
+    r = answer_question("B-02", "신용등급 AAAA 채권 있어?", ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "존재하지 않는" in r.answer
+
+
+def test_gate_bbplus_answers_no_data(ctx):
+    r = answer_question("B-03", "신용등급 BB+ 채권 알려줘", ctx=ctx)
+    assert "0건" in r.think_trace and "해당 등급의 채권이 없습니다" in r.answer
+    assert "존재하지 않는" not in r.answer
+
+
+# ── B 문지기 — 연도는 SQL 사후 검사 ────────────────────────────────────────
+
+class SQLPlanner:
+    def __init__(self, sql):
+        self.sql = sql
+        self.calls = []
+
+    def plan_sql(self, question, grounding):
+        self.grounding = grounding
+        return self.sql
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        self.calls.append(answer_rules)
+        return "답변"
+
+
+def test_future_year_as_maturity_passes(ctx):
+    p = SQLPlanner("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5")
+    r = answer_question("B-04", "2027년 만기 채권 알려줘", planner=p, ctx=ctx)
+    assert "[Execute]" in r.think_trace and "2026-08-22" not in r.answer
+    assert "# 시점 주의" in p.grounding
+
+
+def test_future_year_not_maturity_rejected(ctx):
+    p = SQLPlanner("SELECT pd_nm, applied_yield FROM domestic_bonds ORDER BY applied_yield DESC LIMIT 5")
+    r = answer_question("B-05", "2027년 채권 시장 전망 알려줘", planner=p, ctx=ctx)
+    assert "[Execute]" not in r.think_trace and "2026-08-22" in r.answer
+    assert "mat_dt 조건에 쓰이지 않음" in r.think_trace
+
+
+def test_sql_uses_as_maturity_helper():
+    assert gate.sql_uses_as_maturity("… WHERE domestic_bonds.mat_dt < 20270101 LIMIT 5", ["2027"])
+    assert gate.sql_uses_as_maturity("… WHERE mat_dt BETWEEN '2026-10-01' AND '2026-10-31'", ["202610"])
+    assert not gate.sql_uses_as_maturity("… WHERE isu_dt LIKE '2027%' LIMIT 5", ["2027"])
+    assert gate.future_tokens("2027년 만기, 2026년 12월 상환") == ["2027", "202612"]
+    assert gate.future_tokens("2026년 8월 상장") == []
+
+
+# ── G 되묻기 · H 답변 규칙 ──────────────────────────────────────────────
+
+def test_clarify_from_planner_becomes_answer(ctx):
+    p = SQLPlanner(f"{CLARIFY_PREFIX} '등급' 이 신용등급(AAA~C)인지 위험등급(1~6등급)인지 알려주시겠어요?")
+    r = answer_question("G-01", "등급 낮은 채권 알려줘", planner=p, ctx=ctx)
+    assert "[Clarify]" in r.think_trace and r.answer.startswith("'등급' 이")
+    assert not r.retrieved_context and not r.sql
+
+
+def test_grounding_carries_clarify_rules_for_bonds(ctx):
+    g = build_grounding(ctx, [], [B], cross=False)
+    assert "# 되묻기 규칙" in g and "싸다" in g
+    g2 = build_grounding(ctx, [], [DE], cross=False)
+    assert "# 되묻기 규칙" not in g2                 # 채권 yaml 에만 clarify 가 있다
+
+
+def test_answer_rules_reach_composer(ctx):
+    p = SQLPlanner("SELECT pd_nm, crd_grd FROM domestic_bonds WHERE std_pd_mcls_nm='국공채' LIMIT 3")
+    r = answer_question("H-01", "국공채 알려줘", planner=p, ctx=ctx)
+    assert "[Answer]" in r.think_trace and p.calls
+    assert "신용등급 미부여" in p.calls[0] and "## domestic_bonds" in p.calls[0]
+
+
+def test_planner_context_has_synonyms(ctx):
+    txt = ctx.planner_context([B])
+    assert "동의어" in txt and "통안채→통화안정채권" in txt

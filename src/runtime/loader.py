@@ -6,7 +6,9 @@ DB 는 read-only URI 로 연다 — 런타임이 데이터를 바꿀 수 있는 
 
 from __future__ import annotations
 
+import csv
 import os
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -17,6 +19,10 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENUMS_DIR = PROJECT_ROOT / "ontology" / "enums"
 SHARED_DIR = PROJECT_ROOT / "ontology" / "shared"
+# 신용등급 표준표 (한국기업평가 등급정의) — 게이트가 "등급인가 / 존재하는 등급인가" 를 목록이 아니라 이 표로 판정한다
+GRADE_SCALE_CSV = PROJECT_ROOT / "data" / "external" / "lookups" / "credit_grade_scale.csv"
+# 라우팅 어휘로 삼을 범주형 컬럼의 고유값 상한 — 이보다 많으면 범주가 아니라 자유 텍스트(이름 등)다
+ROUTE_CATEGORICAL_MAX = 60
 
 # 주최 측 마스터 4테이블 — SQL guard 의 화이트리스트이기도 하다
 TABLES = ("domestic_bonds", "domestic_etfs", "overseas_etfs", "public_funds")
@@ -59,7 +65,9 @@ class RuntimeContext:
     kg_closure: dict = field(default_factory=dict)     # ancestor_id -> [descendant_id]
     # 관계 — 모회사 -> 자회사 목록 (kg_edge subsidiaryOf 의 역방향). "○○의 자회사" 질의에서만 쓴다.
     kg_subsidiaries: dict = field(default_factory=dict)  # parent_id -> [child_id]
-    crd_grades: set = field(default_factory=set)       # 채권 신용등급 enum 화이트리스트
+    crd_grades: set = field(default_factory=set)       # 채권 신용등급 — 2차 데이터에 실제로 있는 값 (value_semantics)
+    std_grades: set = field(default_factory=set)       # 신용등급 표준표 (credit_grade_scale.csv, DB 표기+표준 표기)
+    route_vocab: dict = field(default_factory=dict)    # table -> {term: weight} — 라우팅 ② 겹 어휘. DB·yaml synonyms 에서 자동 생성
     schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
@@ -97,6 +105,38 @@ class RuntimeContext:
                 out.append(f"- {name}: {body}")
             if norm:
                 out.append("- normalization: " + yaml.safe_dump(norm, allow_unicode=True, sort_keys=False).strip())
+            syn = doc.get("synonyms") or {}
+            if syn:
+                # 사용자 통칭 → DB 표기. 라우팅 ② 겹과 같은 원천이라 플래너도 같은 어휘로 LIKE 를 쓴다
+                out.append("- 동의어(사용자 표기 → DB 표기): " + " · ".join(f"{k}→{v}" for k, v in syn.items()))
+        return "\n".join(out)
+
+    def answer_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+        """답변 생성기(compose_answer)에 넘길 규약 — yaml `answer_rules` (조회 결과를 **어떻게 말할지**).
+
+        query_rules 는 SQL 생성기만 본다. 국공채는 등급이 없다 · 6% 초과면 주의 문구 같은 말하기 규칙은
+        여기서 따로 꺼내 답변 단계에 싣는다 (2026-08-30 전수조사 §3-H)."""
+        out: list[str] = []
+        for t in tables or TABLES:
+            rules = (self.enums.get(t) or {}).get("answer_rules") or []
+            if not rules:
+                continue
+            out.append(f"## {t}")
+            out.extend(f"- {r}" for r in (rules if isinstance(rules, list) else [rules]))
+        return "\n".join(out)
+
+    def clarify_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+        """되묻기 규칙 — yaml `clarify` 의 다의어·사람의_선택. SQL 생성기가 '어느 뜻인지 단서가 없으면
+        CLARIFY: 로 되묻는' 근거다 (전수조사 §3-G). 해석하지 않고 yaml 문자열을 그대로 싣는다."""
+        out: list[str] = []
+        for t in tables or TABLES:
+            cl = (self.enums.get(t) or {}).get("clarify") or {}
+            if not cl:
+                continue
+            out.append(f"## {t}")
+            for group in ("다의어", "사람의_선택"):
+                for term, why in (cl.get(group) or {}).items():
+                    out.append(f"- {term}: {str(why).strip()}")
         return "\n".join(out)
 
 
@@ -146,6 +186,7 @@ def load_context() -> RuntimeContext:
     crd = (bcols.get("crd_grd") or {}).get("value_semantics") or {}
     ctx.crd_grades = set(crd)
     ctx.crd_grades |= {g.rstrip("0") for g in crd if g.endswith("0")}  # 'AA0' 의 EVCO 표기 'AA'
+    ctx.std_grades = _load_std_grades()
 
     with connect_readonly() as con:
         for nid, ntype, lko, len_ in con.execute(
@@ -174,4 +215,63 @@ def load_context() -> RuntimeContext:
             cols = [(r[1], "", r[2]) for r in con.execute(f"pragma table_info({t})")]
             if cols:
                 ctx.schema[t] = cols
+        ctx.route_vocab = _build_route_vocab(con, ctx)
     return ctx
+
+
+def _load_std_grades() -> set:
+    """신용등급 표준표 — DB 표기(AA0)와 표준 표기(AA) 둘 다. 파일이 없으면 빈 집합(게이트는 데이터 값만으로 판정)."""
+    if not GRADE_SCALE_CSV.exists():
+        return set()
+    with open(GRADE_SCALE_CSV, encoding="utf-8") as f:
+        rows = csv.DictReader(line for line in f if not line.startswith("#"))
+        grades = set()
+        for r in rows:
+            grades.add((r.get("grade_db") or "").strip())
+            grades.add((r.get("grade_std") or "").strip())
+    grades.discard("")
+    return grades
+
+
+# 라우팅 어휘에서 빼는 것 — 상품 명사는 ① 겹(문장 구조)이 다루고, 회사 표기의 군더더기는 경계 검사를 방해한다
+_VOCAB_STRIP = re.compile(r"\(주\)|주식회사|\s+")
+_VOCAB_NUMERIC = re.compile(r"[\d.\-/]+")
+PRODUCT_NOUNS = ("채권", "ETF", "ETN", "펀드")
+
+
+def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
+    """라우팅 ② 겹 어휘 — "질문에 어느 테이블의 값이 나오는가" 를 재기 위한 테이블별 {값: 가중치}.
+
+    사람이 쓴 단어 목록이 아니다. 전부 DB 와 yaml 에서 온다:
+      · kg_alias 의 raw 값(발행사·운용사·지수·종목) — 3
+      · 범주형 텍스트 컬럼(고유값 ≤ ROUTE_CATEGORICAL_MAX)의 값(대분류·소분류·채권종류·자산군 …) — 2
+      · ETF 약어명(pd_abrv_nm) — 3 ('KODEX 국고채3년' 이 채권 값 '국고채' 보다 길어 이긴다)
+      · yaml `synonyms` 의 사용자 표기(통안채·영구채 …) — 2
+    실측 1.7s (2026-08-30). 프로세스당 1회.
+    """
+    vocab: dict[str, dict[str, int]] = {t: {} for t in TABLES}
+
+    def add(t: str, term, w: int) -> None:
+        term = _VOCAB_STRIP.sub("", str(term or "")).strip()
+        if len(term) < 3 or _VOCAB_NUMERIC.fullmatch(term) or term in PRODUCT_NOUNS:
+            return
+        vocab[t][term] = max(vocab[t].get(term, 0), w)
+
+    for t, raw in con.execute("select table_name, raw_value from kg_alias"):
+        if t in vocab:
+            add(t, raw, 3)
+    for t in TABLES:
+        for _, col, typ, *_ in con.execute(f"pragma table_info({t})"):
+            if "text" not in (typ or "").lower():
+                continue
+            n = con.execute(f"select count(distinct trim({col})) from {t}").fetchone()[0]
+            if 1 < n <= ROUTE_CATEGORICAL_MAX:
+                for (v,) in con.execute(f"select distinct trim({col}) from {t} where {col} is not null"):
+                    add(t, v, 2)
+    for t in ("domestic_etfs", "overseas_etfs"):
+        for (v,) in con.execute(f"select distinct trim(pd_abrv_nm) from {t} where pd_abrv_nm is not null"):
+            add(t, v, 3)
+    for t in TABLES:
+        for term in ((ctx.enums.get(t) or {}).get("synonyms") or {}):
+            add(t, term, 2)
+    return vocab

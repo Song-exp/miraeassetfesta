@@ -54,8 +54,10 @@ def test_risk_grade_6_valid(ctx):
 
 
 def test_cutoff_future(ctx):
+    # 🔴 08-30: 연도만 보고 게이트에서 기각하지 않는다 — 플래너가 없으면 해석을 검사할 수 없어 기준일 안내로 끝낸다
     r = answer_question("T-07", "2027년 만기 예정 수익률 전망 알려줘", ctx=ctx)
-    assert "[Gate] 기각" in r.think_trace and "2026-08-22" in r.answer
+    assert "[Gate] 기각" not in r.think_trace and "2026-08-22" in r.answer
+    assert "사후 판정" in r.think_trace
 
 
 # ── KG Ground — 표기 매핑 ───────────────────────────────────────────────
@@ -87,7 +89,7 @@ class FakePlanner:
     def plan_sql(self, question, grounding):
         return "SELECT count(*) AS n FROM domestic_etfs WHERE pd_grp_no='ETF' LIMIT 1"
 
-    def compose_answer(self, question, rows):
+    def compose_answer(self, question, rows, answer_rules=""):
         return f"조회 결과: {rows.splitlines()[-1]}건"
 
 
@@ -105,7 +107,7 @@ def test_cutoff_august_allowed(ctx):
 
 def test_cutoff_october_rejected(ctx):
     r = answer_question("T-12", "2026년 10월에 상장 예정인 국내 ETF 알려줘", ctx=ctx)
-    assert "[Gate] 기각" in r.think_trace and "2026-08-22" in r.answer
+    assert "2026-08-22" in r.answer and "['202610']" in r.think_trace
 
 
 def test_planner_context_has_rules(ctx):
@@ -123,8 +125,9 @@ def test_cross_query_guard_allows_ext_join():
 
 def test_cross_query_detected(ctx):
     from src.runtime import gate
-    assert gate.is_cross_query("삼성전자를 보유한 국내/해외 ETF와 공모펀드를 연 수익률 기준 TOP10 알려줘")
-    assert not gate.is_cross_query("KODEX 200 총보수 알려줘")
+    assert gate.is_cross_query("삼성전자를 보유한 국내/해외 ETF와 공모펀드를 연 수익률 기준 TOP10 알려줘", [])
+    assert gate.is_cross_query("채권과 ETF 중 뭐가 안전해?", ["domestic_bonds", "domestic_etfs"])
+    assert not gate.is_cross_query("KODEX 200 총보수 알려줘", ["domestic_etfs"])
 
 
 def test_security_grounding_no_false_positive(ctx):

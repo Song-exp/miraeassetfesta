@@ -7,6 +7,7 @@ Ground·Gate·Guard·Execute 는 전부 동작·테스트 가능하다.
 
 from __future__ import annotations
 
+import inspect
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -42,6 +43,15 @@ class Planner(Protocol):
 
     def plan_sql(self, question: str, grounding: str) -> str: ...     # SQL 한 문장, 또는 "CLARIFY: 되물을 문장"
     def compose_answer(self, question: str, rows: str, answer_rules: str = "") -> str: ...
+
+
+def _accepts_answer_rules(planner) -> bool:
+    """compose_answer 가 세 번째 인자(answer_rules)를 받는가 — 2인자 구현체(옛 프로브)는 규칙 없이 부른다."""
+    try:
+        params = inspect.signature(planner.compose_answer).parameters
+    except (TypeError, ValueError):
+        return True
+    return len(params) >= 3 or any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params.values())
 
 
 # ── SQL 사후 검사 — LLM 이 만든 SQL 을 신뢰하지 않는다 ──────────────────
@@ -444,7 +454,11 @@ def answer_question(
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))
-    result.answer = planner.compose_answer(q, rows, answer_rules)
+    # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
+    if _accepts_answer_rules(planner):
+        result.answer = planner.compose_answer(q, rows, answer_rules)
+    else:
+        result.answer = planner.compose_answer(q, rows)
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

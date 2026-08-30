@@ -44,7 +44,7 @@ python scripts/gen_ontology_rules_doc.py 2 8    # 규칙 2·8 만
 
 | 도메인 | `query_rules` | 컬럼 판정 | 도메인 전용 블록 |
 | :-- | --: | :-- | :-- |
-| 채권 | 22 | 58/58 | `name_encoding`, `clarify`, `axis_derivation`, `workshop` |
+| 채권 | 23 | 58/58 | `name_encoding`, `clarify`, `axis_derivation`, `workshop` |
 | 국내ETF | 18 | 62/98 | `product_group`, `derivation_rules`, `axis_derivation`, `external_join` |
 | 해외ETF | 13 | 35/49 | `column_korean_names`, `product_group`, `constant_columns`, `domestic_asymmetry`, `external_join` |
 | 펀드 | 14 | 70/75 | `missing_profile`, `entities`, `class_hierarchy`, `axis_mapping`, `derivation_rules`, `attributes`, `cross_domain`, `external_facts` |

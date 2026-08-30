@@ -138,3 +138,17 @@ def test_security_grounding_no_false_positive(ctx):
     r = answer_question("T-20", "삼성전자를 보유한 ETF 알려줘", ctx=ctx)
     assert "'삼성전자'" in r.think_trace and "(Security)" in r.think_trace
     assert "삼성전기" not in r.think_trace
+
+
+def test_execute_renders_dates_as_int_and_strips_padding():
+    """REAL 로 저장된 날짜가 '20271231.0' 으로, 고정폭 pd_nm 이 꼬리 공백째로 답변에 실리던 것 (2026-08-30 밤)."""
+    from src.runtime.pipeline import _cell, _execute
+    assert _cell(20271231.0, "mat_dt") == "20271231"
+    assert _cell(7.123, "applied_yield") == "7.123"
+    assert _cell(None, "crd_grd") == ""
+    assert _cell("  국고채권 01500-2703  ", "pd_nm") == "국고채권 01500-2703"
+    rows, n = _execute("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt >= 20260822 LIMIT 3")
+    assert n == 3
+    for line in rows.splitlines()[1:]:
+        name, mat = line.split(" | ")
+        assert name == name.strip() and mat.isdigit() and len(mat) == 8

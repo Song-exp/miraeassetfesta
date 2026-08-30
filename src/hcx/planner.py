@@ -27,8 +27,10 @@ from src.runtime.pipeline import CLARIFY_PREFIX
 
 from .client import HCXClient, HCXConfig
 
-# SQL 생성은 짧게 끝납니다. 답변 생성보다 예산을 작게 잡아 rate limit 을 아낍니다.
-SQL_CONFIG = HCXConfig(model="HCX-005", max_tokens=512, temperature=0.0)
+# SQL 출력 상한. 🔴 512 는 부족하다 (2026-08-30 밤 실측) — 채권 추천 SQL 은 yaml 의 '구조'(693자)·'보강'(533자) CASE 를 그대로
+# 옮겨 적어야 해서 1,757자(추정 660~840토큰)가 되고, 512 에서 잘리면 SELECT 가 중간에 끊겨 validate/실행에서 죽는다.
+# max_tokens 는 상한이지 사용량이 아니다 — 짧은 SQL 의 비용은 그대로다. HCX-005 출력 한도(4,096) 안.
+SQL_CONFIG = HCXConfig(model="HCX-005", max_tokens=1536, temperature=0.0)
 ANSWER_CONFIG = HCXConfig(model="HCX-005", max_tokens=1024, temperature=0.0)
 
 _SQL_SYSTEM = """너는 SQLite SQL 생성기다. 주어진 스키마·도메인 규칙·개체 매핑만 사용해 질문을 SQL 한 문장으로 옮긴다.

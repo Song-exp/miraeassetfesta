@@ -328,6 +328,22 @@ def _grounding_blocks(grounding: str) -> list[str]:
     return names
 
 
+def _cell(v, col: str) -> str:
+    """조회 결과 한 칸을 답변 생성기가 읽을 글자로.
+
+    🔴 날짜 컬럼(*_dt)은 원본 엑셀이 숫자라 DB 에 REAL 로 들어 있다 — 그대로 str() 하면 '20271231.0' 이 답변에 실린다
+       (2026-08-30 밤 실측: 채권 mat_dt·isu_dt·crd_grd_dt·sale_yield_base_dt 전부). 정수값 실수는 정수로 적는다.
+    문자열은 양끝 공백을 뗀다 — pd_nm·pd_pbcm 은 고정폭 패딩(최대 98자)이라 retrieved_context 만 부풀리고 답변엔 공백이 따라붙는다.
+    """
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer() and ("_dt" in col or col.endswith("dt") or "date" in col):
+        return str(int(v))
+    if isinstance(v, str):
+        return v.strip()
+    return str(v)
+
+
 def _execute(sql: str) -> tuple[str, int]:
     con = connect_readonly()
     try:
@@ -336,7 +352,7 @@ def _execute(sql: str) -> tuple[str, int]:
         cols = [d[0] for d in cur.description]
         rows = cur.fetchmany(MAX_ROWS)
         head = " | ".join(cols)
-        body = "\n".join(" | ".join("" if v is None else str(v) for v in r) for r in rows)
+        body = "\n".join(" | ".join(_cell(v, c) for v, c in zip(r, cols)) for r in rows)
         return f"{head}\n{body}", len(rows)
     finally:
         con.close()

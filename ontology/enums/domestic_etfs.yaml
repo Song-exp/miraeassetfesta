@@ -563,6 +563,39 @@ query_rules:
   #    (정식: "미래에셋 인버스 레버리지 홍콩H 선물 상장지수증권"). 4건 전부 진짜 인버스이며 오탐 0.
   #    → 약어명 OR 정식명 OR 음수배수. 기존 225건 누락 0 확인.
   인버스: "pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0"
+  # 🆕 2026-08-30 — 키움 챗봇 대조에서 나온 두 건. 실험루프 관찰 결과다.
+  #
+  # ① 지수추종_순수 — "○○ 지수를 추종하는 ETF" 질의에서 파생·혼합형을 뺀다.
+  #    실측(S&P500): ref_base_index 에 'S&P 500' 이 든 49건 중 9건이 순수 추종이 아니다 —
+  #      · 'S&P 500 10% Daily Premium Covered Call TR USD'  (커버드콜 — 옵션 매도)
+  #      · 'Blend S&P500/Short-Term Treasury (50:50)'       (절반이 채권)
+  #      · 'S&P 500 Covered Call 1% OTM Daily TR'
+  #    🔴 상품명만 보면 못 거른다 — 전부 이름에 'S&P500' 이 들어 있다.
+  #    키움 챗봇이 여기서 틀렸다: 순자산 2위로 커버드콜(6,646억)을 올리고
+  #    진짜 2·3위인 KODEX 미국S&P500(9.95조)·ACE 미국S&P500(3.93조)을 빠뜨렸다.
+  #    → 제외 사실을 답변에 밝힌다: "커버드콜·채권혼합형은 순수 지수 추종이 아니라 제외했습니다."
+  지수추종_순수: >-
+    ref_base_index NOT LIKE '%Covered Call%' AND ref_base_index NOT LIKE '%Blend%'
+    AND ref_base_index NOT LIKE '%Premium%' AND ref_base_index NOT LIKE '%50/50%'
+  #
+  # ② 자산군_지수불일치 — 자산군 표기와 기초지수가 어긋나는 행.
+  #    실측 1건: `TIGER 우선주` 가 wu_inv_ast_type='채권' 인데 기초지수는 'KOSPI Preferred Stock'
+  #    이고 정식명도 "…증권상장지수투자신탁(주식)" 이다. 우선주는 주식이다.
+  #    🔴 영향이 크다 — "채권형 ETF 1년수익률 TOP5" 에서 74.17% 로 1위를 차지한다.
+  #    인버스까지 제외하면 진짜 채권형 1위는 메리츠 KAP 통안채 3개월 ETN 2.42% 다(한 자릿수가 정상).
+  #    → 채권형 질의에서 이 행을 제외하고, 제외 사실을 밝힌다.
+  자산군_지수불일치: >-
+    wu_inv_ast_type LIKE '%채권%' AND (ref_base_index LIKE '%Stock%'
+    OR ref_base_index LIKE '%Equity%' OR ref_base_index LIKE '%Preferred%')
+  #
+  # ③ 채권형질의 — ①②③ 을 묶은 것. "채권형 ETF 수익률" 류에 그대로 쓴다.
+  #    인버스를 안 빼면 TOP5 중 4건이 `메리츠 인버스 3X 국채30년`(159%) 류가 된다 —
+  #    금리가 올라 채권값이 떨어져야 버는 상품이라 성격이 정반대다.
+  채권형질의: >-
+    wu_inv_ast_type LIKE '%채권%'
+    AND NOT (pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0)
+    AND NOT (ref_base_index LIKE '%Stock%' OR ref_base_index LIKE '%Equity%'
+             OR ref_base_index LIKE '%Preferred%')
   운용사정규화: "ref_fund_mgmt_co (영문 정규) ↔ 코드북 asset_manager.csv 한글 약칭 — cu_fund_mgmt_co 직접 비교 금지"
   # 💡 형식 제안(SQL생성기용, 이병철/08-21): `{er_col} > -100 AND {er_col} IS NOT NULL`,
   #    치환표 {1개월:du_er_1m, 3개월:du_er_3m, 6개월:du_er_6m, 연초이후/YTD:du_er_ytd, 1년:du_er_1y}. 기간 미지정 질의는 du_er_1y 기본.

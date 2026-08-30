@@ -52,6 +52,7 @@ chk("구매가능-2", "그중 판매행 634", f"SELECT COUNT(*) {B} WHERE curr_c
 # 위험등급방향
 chk("위험등급-1", "코드 집합 11~16·00", f"SELECT GROUP_CONCAT(v) FROM (SELECT DISTINCT TRIM(pd_risk_gcd) v {B} WHERE pd_risk_gcd IS NOT NULL ORDER BY 1)", "00,11,12,13,14,15,16")
 chk("위험등급-2", "국공채 2,839/2,840 = '16'", f"SELECT SUM(pd_risk_gcd='16'), COUNT(*) {B} WHERE TRIM(std_pd_mcls_nm)='국공채'", (2839, 2840))
+chk("위험등급-4", "5등급 = AA- 이상 회사채만 · 6등급 회사채 0 · 6등급 최고 수익률 6.23 (안전 = IN 15,16 의 데이터 근거)", f"SELECT SUM(pd_risk_gcd='15' AND TRIM(crd_grd) NOT IN ('AAA','AA+','AA0','AA-')), SUM(pd_risk_gcd='15' AND TRIM(std_pd_mcls_nm)<>'회사채'), SUM(pd_risk_gcd='16' AND TRIM(std_pd_mcls_nm)='회사채'), ROUND(MAX(CASE WHEN pd_risk_gcd='16' THEN applied_yield END),2) {B} WHERE curr_cd='KRW'", (0, 0, 0, 6.23))
 chk("위험등급-3", "pd_risk_nm 11 / 16 문구", f"SELECT MIN(CASE WHEN pd_risk_gcd='11' THEN TRIM(pd_risk_nm) END), MIN(CASE WHEN pd_risk_gcd='16' THEN TRIM(pd_risk_nm) END) {B}", None)
 # 등급서열
 chk("등급-1", "데이터 등급 15종", f"SELECT COUNT(DISTINCT TRIM(crd_grd)) {B} WHERE crd_grd IS NOT NULL AND TRIM(crd_grd)<>''", 15)

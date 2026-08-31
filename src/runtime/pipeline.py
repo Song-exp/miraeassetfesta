@@ -450,6 +450,25 @@ _FUND_EXT_HINTS = re.compile(
 )
 
 
+_NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?\b(itm_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
+
+
+def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
+    """종목명 LIKE 를 **공백 무시 매칭**으로 바꾼다. (보정된 SQL, 보정했는지)
+
+    2026-08-31 밤 실측(FND-R05 후속): 사용자가 띄어 쓰면 있는 상품을 통째로 놓친다 —
+    '미래에셋 코어테크' 그대로 0행 / 공백 제거 14행. 'AI 반도체' 도 0행 / 4행.
+    종목명은 표기 공백이 제각각이라(삼성 베스트 MMF 법인 제1호) 양쪽 다 정규화해야 한다:
+    REPLACE(itm_nm,' ','') LIKE '%<공백 제거 키워드>%'. 매칭을 넓히기만 하므로 안전하고,
+    존재하지 않는 상품(FND-R05)은 여전히 0행이다.
+    """
+    def _fix(m: re.Match) -> str:
+        pat = m.group(3).replace(" ", "")
+        return f"REPLACE({m.group(1)},' ','') {m.group(2).upper()} '{pat}'"
+    fixed = _NAME_LIKE.sub(_fix, sql)
+    return fixed, fixed != sql
+
+
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
 _GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
 
@@ -1422,6 +1441,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) ->
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, space_fixed = ensure_spaceless_name_match(sql)
+    if space_fixed:
+        step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
+             "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
     sql, ev_fixed = ensure_fund_evidence_columns(sql)
     if ev_fixed:
         step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")

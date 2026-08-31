@@ -337,3 +337,20 @@ def test_ambiguous_join_column_rejected():
     assert not guard.ambiguous_columns(good, ctx)
     # 단일 테이블은 검사 대상이 아니다
     assert not guard.ambiguous_columns("SELECT itm_no FROM public_funds LIMIT 5", ctx)
+
+
+def test_spaceless_name_match():
+    """FND-R05 후속 — 종목명 LIKE 는 공백 무시 매칭으로 바꾼다.
+
+    실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다. 매칭을 넓히기만 하므로
+    존재하지 않는 상품(R05)은 여전히 0행이다."""
+    from src.runtime.pipeline import ensure_spaceless_name_match as f
+
+    s, ok = f("SELECT itm_no FROM public_funds WHERE itm_nm LIKE '%미래에셋 코어테크%' LIMIT 30")
+    assert ok and "REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%'" in s
+    assert not f(s)[1]                                  # 멱등
+    # TRIM 감싼 형태·NOT LIKE 도 처리
+    s2, ok2 = f("SELECT 1 FROM public_funds WHERE TRIM(itm_nm) NOT LIKE '%상장 지수%' LIMIT 5")
+    assert ok2 and "REPLACE(itm_nm,' ','') NOT LIKE '%상장지수%'" in s2
+    # 다른 컬럼은 건드리지 않는다
+    assert not f("SELECT 1 FROM public_funds WHERE han_clas_policies LIKE '%전문투자자%' LIMIT 5")[1]

@@ -285,3 +285,37 @@ def test_regenerated_sql_also_gets_guards():
     # 재생성 SQL 에도 근거컬럼(필터로 쓴 han_clas_policies)이 SELECT 에 실려야 한다
     assert "han_clas_policies" in r.sql.split("FROM")[0], r.sql
     assert r.retrieved_context.strip()          # 행이 실제로 조회된다
+
+
+def test_fund_prospectus_opens_ext_table():
+    """설정일·환매 질의는 ext_fund_page 를 열어야 한다 — 마스터에 없다고 거절하던 오거절 차단.
+
+    2026-08-31 밤 리드 지적 후속: 설정일은 ext_fund_page.estb_dt 에 93.7% 수록돼 있는데,
+    조인 키가 cross 질의에만 실려 단일 도메인 질의는 테이블 존재조차 몰랐다."""
+    from src.runtime.loader import load_context
+    from src.runtime.pipeline import answer_question
+
+    ctx = load_context()
+
+    class P:
+        def plan_sql(self, q, g):
+            assert "ext_fund_page" in g, "설명서 조인 키가 근거문서에 없다"
+            assert "estb_dt" in g, "설정일 컬럼 안내가 없다"
+            return ("SELECT p.itm_no, TRIM(p.itm_nm), e.estb_dt FROM public_funds p "
+                    "JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn='판매중' "
+                    "AND p.prvo_pbff_desc='공모' AND e.estb_dt IS NOT NULL ORDER BY e.estb_dt ASC LIMIT 5")
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "ok"
+
+    r = answer_question("T-EXT", "설정일이 가장 오래된 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "1999" in r.retrieved_context, r.retrieved_context[:200]
+
+
+def test_hedge_fund_rule_is_answerable_now():
+    """구 '헤지펀드없음' 규칙(오거절)이 정정됐는지 — 공모 헤지펀드는 사모투자재간접 형태로 실재한다."""
+    from src.runtime.loader import load_context
+
+    ctx = load_context()
+    g = ctx.planner_context(["public_funds"], "공모 헤지펀드 중 수익률 좋은 것 알려줘")
+    assert "사모투자재간접" in g and "글로벌헤지전략" in g
+    assert "수록되어 있지 않습니다" not in g          # 조회 없이 거절하라는 옛 지시가 사라졌다

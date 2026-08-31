@@ -443,6 +443,12 @@ def _ev_ctx():
     return load_context()
 
 
+# 설명서(ext_fund_page)에만 있는 항목을 가리키는 어휘 — 마스터 45컬럼에 없다고 거절하던 것을 연다
+_FUND_EXT_HINTS = re.compile(
+    r"설정일|설정된|언제\s*설정|설정\s*시기|오래된|신생|환매|투자설명서|설명서|모펀드|지급일"
+)
+
+
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
 _GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
 
@@ -1377,6 +1383,12 @@ def answer_question(
     tables = r.tables if r.decided else []          # 미특정이면 빈 목록 = 종전 의미(마스터 4테이블)
     step(f"[Route] 상품군 — {', '.join(tables) or '미특정'} · 근거: {r.why}")
     cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]   # 채권엔 ext_* 가 없다
+    if not cross and tables == ["public_funds"] and _FUND_EXT_HINTS.search(q):
+        # 🔴 2026-08-31 밤 — 설정일·환매조건은 마스터에 없고 ext_fund_page(설명서 수집분)에 있다.
+        #    그런데 조인 키는 cross 일 때만 근거문서에 실려서, 단일 도메인 질의는 그 테이블의 존재조차
+        #    모른 채 "확인할 수 없음" 으로 나갔다. 설명서 어휘가 있으면 외부 테이블을 열어 준다.
+        cross = True
+        step("[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함")
 
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
     hits, ground_lines = _ground(q, ctx, tables, cross)

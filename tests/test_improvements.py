@@ -153,8 +153,9 @@ def test_diagnose_zero_rows_counts_each_condition(ctx):
 def test_pipeline_zero_rows_answer_has_diagnosis(ctx):
     sql = "SELECT pd_nm FROM domestic_bonds WHERE crd_grd = 'AAA' AND srfc_irt > 99 LIMIT 5"
     r = answer_question("T-ZERO", "표면금리 99% 넘는 AAA 채권", planner=SeqPlanner(sql), ctx=ctx)
-    assert "확인되지 않습니다" in r.answer and "조건별" in r.answer
-    assert "[Diagnose]" in r.think_trace
+    # 🔄 2026-08-31 밤 — 진단('조건별 단독 조회')은 trace 전용: 사용자 답변에 노출됐던 것을 제거
+    assert "확인되지 않습니다" in r.answer and "조건별" not in r.answer
+    assert "[Diagnose]" in r.think_trace and "조건별" in r.think_trace
 
 
 # ── R-1 범주값 어휘 ─────────────────────────────────────────────────────

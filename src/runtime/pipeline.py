@@ -205,6 +205,7 @@ _GRADE_SCALE = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
 _Q_GRADE_CMP = re.compile(r"\b(AAA|AA|BBB|BB|A|B|C)\s*([+\-0])?\s*(?:등급|급)?\s*(이상|이하)", re.I)
 _SQL_GRADE_CMP = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*(=|>=|<=|>|<)\s*'([^']*)'", re.I)
 _SQL_GRADE_IN = re.compile(r"crd_grd\s*\)?\s*(?:NOT\s+)?IN\s*\(", re.I)
+_SQL_GRADE_IN_FULL = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*IN\s*\(([^)]*)\)", re.I)   # NOT IN 은 구조상 매칭 안 됨
 
 
 _FUND_TBL = re.compile(r"\bfrom\s+public_funds\b", re.I)
@@ -498,13 +499,22 @@ def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     idx = _GRADE_SCALE.index(notch)
     grades = _GRADE_SCALE[: idx + 1] if direction == "이상" else _GRADE_SCALE[idx:]
+    repl = "TRIM(crd_grd) IN (" + ", ".join(f"'{g}'" for g in grades) + ")"
     preds = list(_SQL_GRADE_CMP.finditer(sql))
-    if len(preds) != 1 or _SQL_GRADE_IN.search(sql):
+    ins = list(_SQL_GRADE_IN_FULL.finditer(sql))
+    if not preds and len(ins) == 1:
+        # 불완전 IN 목록 교정 — 2026-08-31 밤 서버 실측: 'A등급 이상' 이 IN ('AA-','AA0',…) 으로 나가
+        # 서열 확장이 어긋났고(단일 리터럴만 잡던 기존 발동 조건의 사각) 상위 표면금리 209종목이 누락됐다.
+        got = {v.strip() for v in re.findall(r"'([^']*)'", ins[0].group(1))}
+        if got == set(grades):
+            return sql, False
+        m0 = ins[0]
+        return sql[:m0.start()] + repl + sql[m0.end():], True
+    if len(preds) != 1 or ins:
         return sql, False
     if len(grades) == 1 and preds[0].group(1) == "=" and preds[0].group(2) == grades[0]:
         return sql, False                        # 'AAA 이상' = 'AAA' — 이미 맞다
     s, e = preds[0].span()
-    repl = "TRIM(crd_grd) IN (" + ", ".join(f"'{g}'" for g in grades) + ")"
     return sql[:s] + repl + sql[e:], True
 
 
@@ -598,21 +608,42 @@ _KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
                "AND TRIM(std_pd_scls_nm)='국고채'))")
 
 
-def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
-    """'국고채·국채' 질의가 대분류 국공채로 뭉개졌으면 국고채 확정식으로 교체. (보정된 SQL, 보정했는지)
+_KTB_BDKND = re.compile(r"(?:TRIM\(\s*)?bd_knd\s*\)?\s*=\s*'국고채권'", re.I)
+_PBCM_CONJ = re.compile(r"\s+AND\s+(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'"
+                        r"|(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'\s+AND\s+", re.I)
 
-    2026-08-31 저녁 서버 실측: '국고채는 총 몇 종목이야?' → std_pd_mcls_nm='국공채' COUNT(*)
-    = 2,840(지방채·통안채까지 합친 행수) 오답. 5dff69b 에서 지시문으로 승격한 종류필터가 또
-    무시됐다 — 대분류 국공채엔 지방채·국민주택·통안채가 섞인다. 확정식은 종류필터 ①(STRIPS 포함,
-    리드 결정 08-31). 발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외)가
-    있고, SQL 이 국공채 대분류로 필터하며 '국고채권' 이 어디에도 없다."""
-    if not _KTB_Q.search(question) or "국고채권" in sql:
+
+def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
+    """'국고채·국채' 질의의 종류 필터 3결함을 교정. (보정된 SQL, 보정했는지)
+
+    ① 날조 발행사 제거 — 2026-08-31 밤 서버 실측: '국고채 몇 종목' 에 TRIM(pd_pbcm)='한국은행' 이
+       붙어 0행 '미수록' 오답. 국고채권 발행사는 전부 '대한민국'(356행 실측) — 한국은행은 통안채다.
+       질문에 그 발행사 낱말이 없으면 pd_pbcm 등호 절을 제거한다(질문이 명시하면 의도 존중).
+    ② 대분류 뭉개기 교체 — 2026-08-31 저녁 실측: std_pd_mcls_nm='국공채' COUNT = 2,840(지방채·통안채
+       혼입) 오답 → 종류필터 ① 확정식으로 교체.
+    ③ STRIPS 회수 — bd_knd='국고채권' 단독은 274종목: 종류 결측 STRIPS 21종목이 빠진다(리드 결정
+       08-31: 국고채 = 295종목, gold BND-D-029) → 확정식으로 확장.
+    발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외)."""
+    if not _KTB_Q.search(question):
         return sql, False
-    m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
-    if not m:
-        return sql, False
-    s, e = m.span()
-    return sql[:s] + _KTB_FILTER + sql[e:], True
+    changed = False
+    m = _PBCM_CONJ.search(sql)
+    if m:
+        lit = (m.group(1) or m.group(2) or "").strip()
+        if lit and lit not in question:
+            sql = sql[:m.start()] + sql[m.end():]
+            changed = True
+    if "국고채권" not in sql:
+        m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
+        if not m:
+            return sql, changed
+        return sql[:m.start()] + _KTB_FILTER + sql[m.end():], True
+    if "std_pd_scls_nm" not in sql:
+        m = _KTB_BDKND.search(sql)
+        if m:
+            sql = sql[:m.start()] + _KTB_FILTER + sql[m.end():]
+            changed = True
+    return sql, changed
 
 
 _BOND_COLS = ("bd_knd", "crd_grd", "srfc_irt", "applied_yield", "std_pd_mcls_nm",
@@ -752,24 +783,30 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     로 나가 5등급 SC은행 콜옵션부 7.1% 가 1~3위 — 안전 버킷에서 가장 덜 안전한 구석이 정답을
     밀어냈다. 위험등급방향 규칙의 "'가장 안전한' 만 '16' 단독" 분기가 900자 문장에 파묻혀 미적용.
     '16' 단독이면 전 행 동급이라 수익률 정렬은 동점자 처리가 되므로 ORDER BY 는 건드리지 않는다.
-    불개입 3종 — 규칙의 IN ('15','16') 폴백·비교 답변이 정답인 영역: ① 수익률 하한 요구(6등급
-    최고 6.23%) ② 6등급이 없는 종류 지목(회사채·카드채 등 — 강제하면 0행 '확인 불가' 오답)
-    ③ 반대 방향 최상급 동반('가장 안전한 것과 가장 위험한 것') — 비교 질의.
+    불개입 2종 — 규칙의 폴백·비교 답변이 정답인 영역: ① 수익률 하한 요구(6등급 최고 6.23%)
+    ② 반대 방향 최상급 동반('가장 안전한 것과 가장 위험한 것') — 비교 질의.
+    역방향 완화 1종: 6등급이 없는 종류(회사채·카드채 등) 지목 + SQL 이 '16' 단독이면
+    IN ('15','16') 폴백으로 완화한다 — 16 강제도, 방치도 아닌 규칙의 폴백 조항 그대로.
     치환은 WHERE 절 범위에서만 — 구조표시 규칙의 SELECT CASE 에 pd_risk_gcd IN ('11','12','13')
     이 실리므로(은행 자본성증권 판정) 전문 치환은 그 CASE 를 파손한다 (2026-08-31 전수조사 실측)."""
     if "domestic_bonds" not in sql or not _TOP_SAFE_Q.search(question):
         return sql, False
     if _TOP_RISK_Q.search(question) or _YIELD_DEMAND_Q.search(question):
         return sql, False
-    if _question_kind_filters(question) - _SAFE16_KINDS:
-        return sql, False
     wm = re.search(r"\bWHERE\b", sql, re.I)
     lo = wm.end() if wm else len(sql)
     tail = _WHERE_TAIL.search(sql, lo)
     m = _RISK_POS.search(sql, lo, tail.start() if tail else len(sql))
+    vals = set(re.findall(r"\d+", m.group(1) or m.group(2))) if m else None
+    if _question_kind_filters(question) - _SAFE16_KINDS:
+        # 6등급이 없는 종류(회사채·카드채 등)를 지목 — '16' 단독이면 폴백 IN ('15','16') 으로 완화.
+        # 2026-08-31 밤 서버 실측: '가장 안전한 회사채 3개' 에 HCX 가 = '16' 을 내 0행 '확인 불가' 오답
+        # (16 단독 규칙은 따랐는데 폴백 조항을 놓침 — 정답은 5등급 3종 + '6등급엔 회사채 없음' 명시).
+        if m and vals == {"16"}:
+            return sql[:m.start()] + "pd_risk_gcd IN ('15','16')" + sql[m.end():], True
+        return sql, False
     if not m:
         return _append_exclusions(sql, ["pd_risk_gcd = '16'"])
-    vals = set(re.findall(r"\d+", m.group(1) or m.group(2)))
     if vals == {"16"}:
         return sql, False
     return sql[:m.start()] + "pd_risk_gcd = '16'" + sql[m.end():], True
@@ -1277,6 +1314,9 @@ def _cell(v, col: str) -> str:
     """
     if v is None:
         return ""
+    if col.endswith("remaining_days") and isinstance(v, (int, float)) and v > 0:
+        # 단위를 칸에 박는다 — 2026-08-31 밤 서버 실측: 답변기가 9,375(일)를 "약 93.75년" 으로 환산 환각.
+        return f"{int(v)}일(약 {v / 365:.1f}년)"
     if isinstance(v, float) and v.is_integer() and ("_dt" in col or col.endswith("dt") or "date" in col):
         return str(int(v))
     if isinstance(v, str):
@@ -1560,8 +1600,9 @@ def answer_question(
         except sqlite3.Error:
             diag = None
         if diag and diag.text():
+            # 🔴 진단은 think_trace 에만 — "조건별 단독 조회: …" 는 개발자용 텍스트라 사용자 답변에 싣지
+            #    않는다 (2026-08-31 밤 실측: 답변에 그대로 노출돼 가독성 훼손 — 채점자용 근거는 trace 로 충분).
             step(f"[Diagnose] 0행 원인 — {diag.text()}")
-            answer += " " + diag.text()
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")
         result.think_trace = "\n".join(trace)
         result.answer = answer

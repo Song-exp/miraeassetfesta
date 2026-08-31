@@ -289,8 +289,10 @@ def test_expand_grade_comparison():
     assert changed and "TRIM(crd_grd) IN (" in fixed
     # 발동 조건 밖 — 이상/이하 없음 / 이미 IN / 범위(표기 2개) / crd_grd 비교 없음 / 이미 맞는 단일 등급
     assert not expand_grade_comparison(sql, "A등급 회사채의 표면금리")[1]
-    assert not expand_grade_comparison(
-        "SELECT 1 FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA','AA+') LIMIT 1", "AA등급 이상")[1]
+    # 🔄 2026-08-31 밤 — 옛 불개입 폐기: 불완전 IN 목록('AA 이상' 인데 AA0·AA- 누락)도 서열로 교정한다
+    f_in, c_in = expand_grade_comparison(
+        "SELECT 1 FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA','AA+') LIMIT 1", "AA등급 이상")
+    assert c_in and "TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-')" in f_in
     assert not expand_grade_comparison(sql, "A등급 이상 AA등급 이하")[1]
     assert not expand_grade_comparison("SELECT 1 FROM domestic_bonds WHERE srfc_irt > 5 LIMIT 1", "A등급 이상")[1]
     assert not expand_grade_comparison("SELECT 1 FROM domestic_bonds WHERE crd_grd = 'AAA' LIMIT 1", "AAA 이상")[1]
@@ -379,6 +381,39 @@ def test_ensure_reco_exclusions():
     # 발동 조건 밖 — 랭킹 신호 없음(개수·조회) / 채권 테이블 아님
     assert not ensure_reco_exclusions(sql, "표면금리 5% 넘는 회사채 30개 보여줘")[1]
     assert not ensure_reco_exclusions("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
+
+
+def test_server_probe_fixes_20260831_night(ctx):
+    """2026-08-31 밤 서버 실측 5건 후속 — 날조 발행사·16 폴백·IN 서열·잔존일수 단위·0행 진단 노출."""
+    from src.runtime.pipeline import ensure_ktb_kind, ensure_top_safety, expand_grade_comparison, _cell
+    # ① 국고채 질의의 날조 발행사 제거 + STRIPS 회수 (실측: TRIM(pd_pbcm)='한국은행' 필터로 0행 '미수록' — 발행사는 전부 '대한민국')
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국은행' AND TRIM(bd_knd) = '국고채권' LIMIT 30"
+    fixed, changed = ensure_ktb_kind(sql, "국고채는 총 몇종목이야?")
+    assert changed and "한국은행" not in fixed and "std_pd_scls_nm)='국고채'" in fixed
+    assert "한국은행" in ensure_ktb_kind(sql, "한국은행이 보유한 국고채 몇 종목이야?")[0]   # 질문이 명시하면 의도 존중
+    # ② '가장 안전한 회사채' — 6등급 없는 종류 + '16' 단독은 IN ('15','16') 폴백으로 완화 (실측: 0행 '확인 불가' 오답)
+    s16 = "SELECT pd_no FROM domestic_bonds WHERE pd_risk_gcd = '16' AND TRIM(std_pd_mcls_nm)='회사채' ORDER BY applied_yield DESC LIMIT 3"
+    f3, c3 = ensure_top_safety(s16, "가장 안전한 회사채 3개 추천해줘")
+    assert c3 and "IN ('15','16')" in f3
+    # ③ 'A등급 이상' 불완전 IN 목록 교정 (실측: IN ('AA-','AA0',…) 으로 나가 상위 표면금리 209종목 누락)
+    sin = ("SELECT pd_nm FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AA-', 'AA0') "
+           "AND TRIM(std_pd_mcls_nm)='회사채' ORDER BY srfc_irt DESC LIMIT 5")
+    f4, c4 = expand_grade_comparison(sin, "a등급 이상 회사채 중에서 표면금리 높은 순으로 5개 추천해줘")
+    assert c4 and "'AAA'" in f4 and "'A-'" in f4 and "('AA-', 'AA0')" not in f4
+    assert not expand_grade_comparison(
+        "SELECT 1 FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA','AA+','AA0','AA-','A+','A0','A-') LIMIT 1",
+        "A등급 이상 채권 알려줘")[1]                 # 이미 맞는 목록은 불개입
+    # ④ 잔존일수 단위를 렌더 층에서 박는다 (실측: 9,375일이 '약 93.75년' 으로 환산 환각)
+    assert _cell(9375.0, "remaining_days") == "9375일(약 25.7년)"
+    # ⑤ 0행 진단('조건별 단독 조회')은 trace 에만 — 사용자 답변에서 제거
+    class ZeroPlanner:
+        def plan_sql(self, question, grounding):
+            return "SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd)='보험회사채' AND pd_risk_gcd='16' LIMIT 5"
+        def compose_answer(self, question, rows, answer_rules=""):
+            return "호출되면 안 됨"
+    r = answer_question("T-31", "위험등급 6등급 보험회사채 알려줘", planner=ZeroPlanner(), ctx=ctx)
+    assert "확인되지 않습니다" in r.answer and "조건별 단독 조회" not in r.answer
+    assert "조건별 단독 조회" in r.think_trace
 
 
 def test_ensure_maturity_sort():
@@ -470,9 +505,12 @@ def test_ensure_ktb_kind_and_distinct_count():
     assert changed and "TRIM(bd_knd)='국고채권'" in fixed and "std_pd_scls_nm)='국고채'" in fixed
     fixed2, c2 = ensure_distinct_count(fixed, q)
     assert c2 and "COUNT(DISTINCT pd_no)" in fixed2
-    # 불개입 — 합성어(미국채) / 이미 국고채권 필터 / 대분류 앵커 없음 / 종목·개수 어휘 없음
+    # bd_knd='국고채권' 단독은 STRIPS 21종목이 빠진 274종목 — 확정식으로 확장한다 (2026-08-31 밤 개선: 옛 불개입 폐기)
+    f3, c3 = ensure_ktb_kind("SELECT 1 FROM domestic_bonds WHERE TRIM(bd_knd)='국고채권' LIMIT 1", q)
+    assert c3 and "std_pd_scls_nm)='국고채'" in f3
+    # 불개입 — 합성어(미국채) / 이미 확정식(STRIPS 분기 포함) / 대분류 앵커 없음 / 종목·개수 어휘 없음
     assert not ensure_ktb_kind(sql, "미국채 금리 알려줘")[1]
-    assert not ensure_ktb_kind("SELECT 1 FROM domestic_bonds WHERE TRIM(bd_knd)='국고채권' LIMIT 1", q)[1]
+    assert not ensure_ktb_kind(f3, q)[1]
     assert not ensure_ktb_kind("SELECT COUNT(*) FROM domestic_bonds", q)[1]
     assert not ensure_distinct_count("SELECT COUNT(*) FROM domestic_bonds", "채권 데이터가 총 몇 행이야?")[1]
 

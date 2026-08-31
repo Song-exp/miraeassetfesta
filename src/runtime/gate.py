@@ -74,6 +74,9 @@ _RISK_GRADE = re.compile(r"(?:위험\s*등급|위험등급)\s*(\d+)\s*등급|(\d
 _FUTURE = re.compile(
     r"(?<!\d)(202[7-9]|20[3-9]\d)(?:\s*년|(?=[.\-/]\d)|(?=\d{4}(?!\d)))"
     r"|(?<!\d)2026(?:\s*년\s*|[.\-/])(?:0?(9)|(1[0-2]))(?:\s*월|(?!\d))"
+    # 두 자리 연도 — '28년 12월'·'28년까지'·'28년에 만기' 처럼 연도임이 분명한 꼴만.
+    # '잔존만기 28년'·'10년 만기 채권' 의 28년·10년은 기간이라 잡으면 안 된다 (2026-08-31 실측: '28년 12월까지' 를 미탐지 → 연도 오기 20291231 을 못 잡음)
+    r"|(?<!\d)(2[7-9]|[3-9]\d)\s*년(?=\s*\d{1,2}\s*월|까지|에\s*만기)"
 )
 # 상대 시점 — 기준일 2026-08-22 기준. '올해' 는 미래가 아니다
 _RELATIVE_FUTURE = {"내년": "2027", "내후년": "2028", "후년": "2028"}
@@ -99,6 +102,8 @@ def future_tokens(question: str) -> list[str]:
     for m in _FUTURE.finditer(question):
         if m.group(1):
             toks.append(m.group(1))
+        elif m.group(4):                     # 두 자리 연도 '28년' → 2028
+            toks.append(f"20{m.group(4)}")
         else:
             toks.append(f"2026{int(m.group(2) or m.group(3)):02d}")
     for word, year in _RELATIVE_FUTURE.items():

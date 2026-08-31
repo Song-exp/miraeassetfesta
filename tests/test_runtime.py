@@ -214,3 +214,46 @@ def test_planner_context_credit_rule_imperative(ctx):
     assert "정부가 책임지는" in g                      # 트리거 어휘 (실측 질문 표현)
     assert "반드시 WHERE" in g and "국공채 단독 필터는 오답" in g
     assert "TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')" in g
+
+
+# ── 두 자리 연도 감지 + 만기 연도 교정 — 2026-08-31 "28년 12월까지 국고채" 오답 회귀 ──────────
+
+def test_future_tokens_two_digit_year():
+    from src.runtime import gate
+    assert gate.future_tokens("28년 12월까지 만기가 돌아오는 국고채 알려줘") == ["2028"]
+    assert gate.future_tokens("28년까지 만기되는 채권") == ["2028"]
+    # 기간 표기는 연도가 아니다 — 오탐이 만기 질의를 기각시킨다
+    assert gate.future_tokens("잔존만기가 28년 넘는 채권") == []
+    assert gate.future_tokens("10년 만기 채권 알려줘") == []
+
+
+def test_align_maturity_year():
+    from src.runtime.pipeline import align_maturity_year
+    sql = "SELECT pd_nm FROM domestic_bonds WHERE mat_dt > 20260822 AND mat_dt <= 20291231 LIMIT 30"
+    fixed, changed = align_maturity_year(sql, ["2028"])
+    assert changed and "mat_dt <= 20281231" in fixed and "20291231" not in fixed
+    # 발동 조건 밖 — 연도 일치 / 복수 연도 / 상한 없음은 불개입
+    assert not align_maturity_year(sql, ["2029"])[1]
+    assert not align_maturity_year(sql, ["2027", "2028"])[1]
+    assert not align_maturity_year("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20270101 LIMIT 1", ["2028"])[1]
+
+
+class BuggyYearPlanner:
+    """2026-08-31 실측 오답 SQL 그대로 — 연도 오기 + 대분류 뭉개기. 연도는 파이프라인이 교정해야 한다."""
+
+    def plan_sql(self, question, grounding):
+        return ("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt > 20260822 AND mat_dt <= 20291231 "
+                "AND std_pd_mcls_nm IN ('국공채', '특수채') LIMIT 30")
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_year_typo_recovers(ctx):
+    r = answer_question("T-21", "28년 12월까지 만기가 돌아오는 국고채 알려줘",
+                        planner=BuggyYearPlanner(), ctx=ctx)
+    assert "[Guard] 만기 연도 교정" in r.think_trace
+    assert "mat_dt <= 20281231" in r.sql
+    # 🔴 교정 후 사후검사 통과 — 교정 전 SQL 로 검사하면 '2028 미사용' 으로 억울하게 기각된다
+    assert "시점·전망 질의로 판정" not in r.think_trace
+    assert "[Execute] 30행 조회" in r.think_trace

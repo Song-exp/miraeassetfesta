@@ -145,6 +145,28 @@ def ensure_maturity_lower_bound(sql: str) -> tuple[str, bool]:
     return f"{sql[:s]}(mat_dt > {CUTOFF_INT} AND {sql[s:e]}){sql[e:]}", True
 
 
+def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
+    """질문의 연도와 SQL 만기 상한의 연도가 다르면 상한 연도를 질문 연도로 교정. (보정된 SQL, 교정했는지)
+
+    2026-08-31 실측: '28년 12월까지 만기' → HCX 가 상한을 20291231 로 오기(연도 +1).
+    발동 조건(전부 만족할 때만 — 넓히면 BETWEEN·복수 연도 질의를 다친다):
+      ① 질문의 미래 연도 토큰(YYYY)이 정확히 1개  ② SQL 의 mat_dt 상한(<= / <)이 정확히 1개
+      ③ 그 상한 리터럴의 연도 ≠ 토큰 연도.
+    이 셋이 겹치면서 교정이 틀릴 상황은 없다 — '28년까지' 라고 묻고 상한이 2029 인 게 맞는 경우가 없으므로.
+    """
+    years = [t for t in tokens if len(t) == 4 and t.isdigit()]
+    if len(years) != 1:
+        return sql, False
+    uppers = list(_MAT_UPPER.finditer(sql))
+    if len(uppers) != 1:
+        return sql, False
+    lit = uppers[0].group(1)
+    if lit[:4] == years[0]:
+        return sql, False
+    s, e = uppers[0].span(1)
+    return sql[:s] + years[0] + lit[4:] + sql[e:], True
+
+
 def _ground(
     question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
 ) -> tuple[list, list[str]]:
@@ -495,18 +517,25 @@ def answer_question(
         result.answer = ask
         return result
 
-    if future and not gate.sql_uses_as_maturity(raw_sql, future):
+    sql, dates_fixed = normalize_date_literals(raw_sql)
+    if dates_fixed:
+        step("[Guard] 날짜 리터럴 보정 — 하이픈 날짜를 정수 YYYYMMDD 로 치환 (SQLite 는 2029-08-22 를 뺄셈=1999 로 계산한다)")
+    if future:
+        sql, yr_fixed = align_maturity_year(sql, future)
+        if yr_fixed:
+            step(f"[Guard] 만기 연도 교정 — 질문의 연도({', '.join(future)})와 SQL 만기 상한의 연도가 달라 상한을 질문 연도로 교정 (2026-08-31 '28년 12월'→20291231 오기 실측)")
+
+    if future and not gate.sql_uses_as_maturity(sql, future):
         # ③ cutoff 사후 검사 — 연도가 mat_dt 조건에 안 쓰였으면 시점·전망 질의다 (gate §③)
+        # 🔴 날짜 치환·연도 교정 **뒤에** 검사한다 — 교정 전 SQL 로 검사하면 두 자리 연도('28년') 질의가
+        #    "SQL 에 2028 이 없다" 며 억울하게 기각된다 (검사 대상과 실행 대상이 같은 SQL 이어야 한다)
         step(f"[Guard] 기준일 이후 시점 {future} 이(가) SQL 의 mat_dt 조건에 쓰이지 않음 → 만기 질의가 아닌 시점·전망 질의로 판정")
-        result.sql = raw_sql
+        result.sql = sql
         step("[Decision] HCX SQL 은 만들었으나 기준일 이후 근거가 DB 에 없어 종료")
         result.think_trace = "\n".join(trace)
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql, dates_fixed = normalize_date_literals(raw_sql)
-    if dates_fixed:
-        step("[Guard] 날짜 리터럴 보정 — 하이픈 날짜를 정수 YYYYMMDD 로 치환 (SQLite 는 2029-08-22 를 뺄셈=1999 로 계산한다)")
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
         step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")

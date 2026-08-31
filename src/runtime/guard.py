@@ -44,6 +44,42 @@ def sql_tables(sql: str) -> list[str]:
     return [t.lower() for t in _FROM.findall(sql) if t.lower() in TABLES or t.lower() in EXT_TABLES]
 
 
+# ── ①-b 컬럼 실존 검사 (2026-08-31 — paired v2 실측: 실행 실패 8/80 이 remaining_days·after_tax_yield·
+#     cu_last_aum 등 컬럼 환각. 스키마 서두("여기 없는 컬럼은 존재하지 않는다")를 플래너가 무시한다) ──
+_SQL_STR = re.compile(r"'(?:[^']|'')*'")
+_AS_ALIAS = re.compile(r"\bas\s+([A-Za-z_][A-Za-z0-9_]*)", re.I)
+_SNAKE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b")
+# 밑줄 든 SQLite 내장 함수 — 컬럼이 아니다
+_SQL_FUNCS = {"group_concat", "json_extract", "json_each", "last_insert_rowid", "row_number", "char_length"}
+
+
+def unknown_columns(sql: str, ctx: RuntimeContext) -> list[str]:
+    """SQL 에 등장한 테이블들의 스키마에 없는 snake_case 식별자를 찾는다 — 실행하면 어차피
+    OperationalError 로 죽으니 실행 전에 잡아 재생성 1회 기회를 준다.
+    🔴 전역 컬럼 집합이 아니라 **그 SQL 의 테이블로 한정**한다 — 실측 환각이 교차 혼동이다
+    (domestic_etfs 에 채권 컬럼 pd_risk_gcd · 해외 du_last_aum 을 cu_last_aum 으로 오기).
+    문자열 리터럴·AS 별칭·테이블명·내장함수는 제외. schema_exclude 로 숨긴 컬럼(fd_wk1_ern_r 등)도
+    걸린다 — 정책상 참조 금지이므로 의도된 동작."""
+    body = _SQL_STR.sub("''", sql)
+    used = sql_tables(body)
+    if not used:
+        return []
+    schema = getattr(ctx, "schema", {}) or {}
+    known = {c.lower() for t in used for c, _, _ in (schema.get(t) or [])}
+    if not known:
+        return []
+    aliases = {a.lower() for a in _AS_ALIAS.findall(body)}
+    known |= set(TABLES) | set(EXT_TABLES) | _SQL_FUNCS | aliases
+    out, seen = [], set()
+    for tok in _SNAKE.findall(body):
+        t = tok.lower()
+        if t in known or t in seen:
+            continue
+        seen.add(t)
+        out.append(tok)
+    return out
+
+
 def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     """값 사전이 완전한 컬럼에 한해, WHERE 리터럴이 실제 값인지 검사한다."""
     index = getattr(ctx, "value_index", None) or {}

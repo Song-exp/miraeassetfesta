@@ -642,6 +642,12 @@ def answer_question(
         result.answer = ask
         return result
 
+    # 곱슬따옴표 정규화 — HCX 가 리터럴을 '국고채권' 처럼 타이포그래피 따옴표로 낼 때가 있다
+    # (2026-08-31 paired v2 실측: BND-D-007 실행 실패). SQLite 문법 오류 = 통째로 실패라 먼저 편다.
+    if any(c in raw_sql for c in "‘’“”"):
+        raw_sql = raw_sql.replace("‘", "'").replace("’", "'").replace("“", "'").replace("”", "'")
+        step("[Guard] 따옴표 정규화 — 타이포그래피 따옴표(' ' “ ”)를 표준 작은따옴표로 치환")
+
     sql, dates_fixed = normalize_date_literals(raw_sql)
     if dates_fixed:
         step("[Guard] 날짜 리터럴 보정 — 하이픈 날짜를 정수 YYYYMMDD 로 치환 (SQLite 는 2029-08-22 를 뺄셈=1999 로 계산한다)")
@@ -682,6 +688,11 @@ def answer_question(
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
     err = validate_sql(sql)
+    if not err:
+        # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
+        unk = guard.unknown_columns(sql, ctx)
+        if unk:
+            err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
     violations = [] if err else guard.check_values(sql, ctx)
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
@@ -704,6 +715,10 @@ def answer_question(
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
             err = validate_sql(sql)
+            if not err:
+                unk = guard.unknown_columns(sql, ctx)
+                if unk:
+                    err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
             violations = [] if err else guard.check_values(sql, ctx)
         if err or violations:
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")

@@ -1292,6 +1292,70 @@ def _execute(sql: str) -> tuple[str, int]:
         con.close()
 
 
+def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) -> str:
+    """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
+
+    🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
+       금지 컬럼 기각 → 재생성이 han_clas_policies 로 정확히 고쳤는데, 재생성 경로가
+       ensure_limit 만 거쳐 근거컬럼 보강을 건너뛰었다. 필터 컬럼이 SELECT 에 없으니
+       답변기가 27행을 조회하고도 "정보를 찾을 수 없습니다" 로 버렸다.
+       가드를 한 곳에 모아 두 경로가 같은 보정을 받게 한다.
+    """
+    sql, lb = ensure_maturity_lower_bound(sql)
+    if lb:
+        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+    sql, pop_fixed = ensure_fund_base_population(sql, q)
+    if pop_fixed:
+        step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
+    sql, name_fixed = ensure_fund_name_filter(sql, name_token)
+    if name_fixed:
+        step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
+             "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
+    sql, rank_fixed = ensure_fund_rank_representative(sql)
+    if rank_fixed:
+        step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
+    sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
+    if err3_fixed:
+        step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, ev_fixed = ensure_fund_evidence_columns(sql)
+    if ev_fixed:
+        step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
+    sql, safe_fixed = ensure_fund_safe_grade_direction(sql, q)
+    if safe_fixed:
+        step("[Guard] 위험등급 방향 교정 — '안전' 질의의 등급 필터가 1·2(고위험)로 뒤집혀 6(매우 낮은 위험)으로 교체 (2026-08-31 밤 FND-C03 실측: 안전=1등급 반전 조회)")
+    sql, grades_fixed = expand_grade_comparison(sql, q)
+    if grades_fixed:
+        step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, kind_fixed = ensure_kind_filter(sql, q)
+    if kind_fixed:
+        step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
+    sql, ktb_fixed = ensure_ktb_kind(sql, q)
+    if ktb_fixed:
+        step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
+    sql, backstop_fixed = ensure_credit_backstop(sql, q)
+    if backstop_fixed:
+        step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
+    sql, reco_fixed = ensure_reco_exclusions(sql, q)
+    if reco_fixed:
+        step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
+    sql, topsafe_fixed = ensure_top_safety(sql, q)
+    if topsafe_fixed:
+        step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
+    sql, matsort_fixed = ensure_maturity_sort(sql, q)
+    if matsort_fixed:
+        step("[Guard] 만기 정렬 교정 — '만기 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체 (2026-08-31 서버 실측: 한전 만기 최장이 dur 정렬로 2049년 채권 오답 — 실제 최장 2052년. 듀레이션·만기 순위는 이표율로 역전된다)")
+    sql, distinct_fixed = ensure_distinct_count(sql, q)
+    if distinct_fixed:
+        step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")
+    sql, riskname_fixed = ensure_risk_name_column(sql)
+    if riskname_fixed:
+        step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
+    sql, limited = ensure_limit(sql)
+    if limited:
+        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    return sql
+
+
 def answer_question(
     question_id: str,
     question: str,
@@ -1414,58 +1478,7 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql, lb = ensure_maturity_lower_bound(sql)
-    if lb:
-        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
-    sql, pop_fixed = ensure_fund_base_population(sql, q)
-    if pop_fixed:
-        step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
-    sql, name_fixed = ensure_fund_name_filter(sql, name_token)
-    if name_fixed:
-        step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
-             "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
-    sql, rank_fixed = ensure_fund_rank_representative(sql)
-    if rank_fixed:
-        step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
-    sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
-    if err3_fixed:
-        step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
-    sql, ev_fixed = ensure_fund_evidence_columns(sql)
-    if ev_fixed:
-        step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
-    sql, safe_fixed = ensure_fund_safe_grade_direction(sql, q)
-    if safe_fixed:
-        step("[Guard] 위험등급 방향 교정 — '안전' 질의의 등급 필터가 1·2(고위험)로 뒤집혀 6(매우 낮은 위험)으로 교체 (2026-08-31 밤 FND-C03 실측: 안전=1등급 반전 조회)")
-    sql, grades_fixed = expand_grade_comparison(sql, q)
-    if grades_fixed:
-        step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
-    sql, kind_fixed = ensure_kind_filter(sql, q)
-    if kind_fixed:
-        step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
-    sql, ktb_fixed = ensure_ktb_kind(sql, q)
-    if ktb_fixed:
-        step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
-    sql, backstop_fixed = ensure_credit_backstop(sql, q)
-    if backstop_fixed:
-        step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
-    sql, reco_fixed = ensure_reco_exclusions(sql, q)
-    if reco_fixed:
-        step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
-    sql, topsafe_fixed = ensure_top_safety(sql, q)
-    if topsafe_fixed:
-        step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
-    sql, matsort_fixed = ensure_maturity_sort(sql, q)
-    if matsort_fixed:
-        step("[Guard] 만기 정렬 교정 — '만기 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체 (2026-08-31 서버 실측: 한전 만기 최장이 dur 정렬로 2049년 채권 오답 — 실제 최장 2052년. 듀레이션·만기 순위는 이표율로 역전된다)")
-    sql, distinct_fixed = ensure_distinct_count(sql, q)
-    if distinct_fixed:
-        step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")
-    sql, riskname_fixed = ensure_risk_name_column(sql)
-    if riskname_fixed:
-        step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
-    sql, limited = ensure_limit(sql)
-    if limited:
-        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    sql = _apply_sql_guards(sql, q, name_token, future, step)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
@@ -1495,7 +1508,10 @@ def answer_question(
                 result.think_trace = "\n".join(trace)
                 result.answer = f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
                 return result
-            sql, limited = ensure_limit(raw2)
+            # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
+            #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
+            sql, _ = normalize_date_literals(raw2)
+            sql = _apply_sql_guards(sql, q, name_token, future, step)
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
             err = validate_sql(sql) or forbidden_column_use(sql)

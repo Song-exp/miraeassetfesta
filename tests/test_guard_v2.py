@@ -256,3 +256,32 @@ def test_forbidden_column_rejected():
     s, _ = ensure_fund_evidence_columns(
         "SELECT itm_nm FROM public_funds WHERE pfiv_sale_cntl_tcd != '00' LIMIT 30")
     assert "pfiv_sale_cntl_tcd" not in s.split("FROM")[0]
+
+
+def test_regenerated_sql_also_gets_guards():
+    """FND-R09 실측 — 재생성 SQL 도 가드 체인을 타야 한다.
+
+    금지 컬럼 기각 → 재생성이 han_clas_policies 로 정확히 고쳤는데, 재생성 경로가 ensure_limit 만
+    거쳐 근거컬럼 보강을 건너뛰었다. 필터 컬럼이 SELECT 에 없어 답변기가 27행을 버렸다."""
+    from src.runtime.loader import load_context
+    from src.runtime.pipeline import answer_question
+
+    ctx = load_context()
+
+    class P:
+        def __init__(self): self.n = 0
+        def plan_sql(self, q, g):
+            self.n += 1
+            if self.n == 1:   # 1차 — 금지 컬럼
+                return ("SELECT DISTINCT itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' "
+                        "AND pfiv_sale_cntl_tcd != '00' LIMIT 30")
+            return ("SELECT DISTINCT itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' "
+                    "AND han_clas_policies LIKE '%전문투자자%' AND sale_yn = '판매중' LIMIT 30")
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "ok"
+
+    r = answer_question("T-R09", "전문투자자만 살 수 있는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "재생성" in r.think_trace
+    # 재생성 SQL 에도 근거컬럼(필터로 쓴 han_clas_policies)이 SELECT 에 실려야 한다
+    assert "han_clas_policies" in r.sql.split("FROM")[0], r.sql
+    assert r.retrieved_context.strip()          # 행이 실제로 조회된다

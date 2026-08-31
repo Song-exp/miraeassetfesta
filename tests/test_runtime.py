@@ -788,3 +788,69 @@ def test_ground_uses_yaml_synonyms(ctx):
     # 정식 표기로 물어도 같은 노드
     _, full = _ground("SK하이닉스 담은 ETF", ctx, ["domestic_etfs"], cross=True)
     assert any("Sec_kr_000660" in l for l in full), full
+
+
+# ── 라우팅 로컬 일제점검에서 나온 결함 3건 (2026-08-31 밤) ────────────────
+
+def test_route_brand_with_space(ctx):
+    """'KODEX 200' 처럼 띄어 쓴 상품명이 어휘에 안 걸리던 것.
+
+    어휘는 공백을 뗀 'KODEX200' 으로 저장되는데(loader._VOCAB_STRIP) 영문 값에는
+    한글에 있던 공백 무시 폴백이 없어 미특정 → 마스터 4테이블로 빠졌다.
+    """
+    from src.runtime.router import route
+    for q in ("KODEX 200 알려줘", "KODEX200 알려줘", "TIGER 미국S&P500 총보수"):
+        r = route(q, ctx)
+        assert set(r.tables) == {"domestic_etfs"}, (q, r.tables)
+
+
+def test_route_korean_transliteration(ctx):
+    """'이티에프' 한글 음차도 상품 명사다."""
+    from src.runtime.router import route
+    for q in ("이티에프 알려줘", "이티에프중에 좋은거", "상장지수펀드 알려줘"):
+        r = route(q, ctx)
+        assert set(r.tables) == {"domestic_etfs", "overseas_etfs"}, (q, r.tables)
+
+
+def test_route_all_tokens_are_qualifiers(ctx):
+    """상품 명사가 전부 '…형' 이면 그것이 머리다 — 'ETF형 상품' 에는 다른 머리가 없다."""
+    from src.runtime.router import route
+    assert set(route("ETF형 상품", ctx).tables) == {"domestic_etfs", "overseas_etfs"}
+    # 뒤에 진짜 머리가 있으면 종전대로 수식어로 버린다
+    assert set(route("채권형 ETF 알려줘", ctx).tables) == {"domestic_etfs", "overseas_etfs"}
+    assert set(route("주식형 펀드", ctx).tables) == {"public_funds"}
+
+
+def test_ground_short_company_names(ctx):
+    """짧은 회사명이 Sec_ 하한(한글 4·영문 6)에 통째로 걸려 있던 것.
+
+    로컬 일제점검 2026-08-31: 국내ETF 편입 상위 28종 중 8종이 매칭 0이었다 —
+    기아(170개 ETF)·현대차(168개)·카카오·테슬라·애플·네이버·NAVER·포스코홀딩스.
+    """
+    from src.runtime.pipeline import _ground
+    for name in ("기아", "현대차", "카카오", "애플", "테슬라", "네이버", "포스코홀딩스"):
+        _, lines = _ground(f"{name} 담은 ETF 알려줘", ctx, ["domestic_etfs"], cross=True)
+        assert [x for x in lines if "건너뜀" not in x], f"{name} 매칭 0"
+
+
+def test_ground_korean_josa_and_boundary(ctx):
+    """조사는 붙여 쓰고(하이닉스'가'), 낱말이 이어지면 안 붙어야 한다(기아'자동차')."""
+    from src.runtime.pipeline import _boundary_hit
+    assert _boundary_hit("하이닉스", "하이닉스가 가장 많이")
+    assert _boundary_hit("기아", "기아를 담은 ETF")
+    assert _boundary_hit("네이버", "네이버의 비중이 높은")
+    # 낱말이 이어지면 기각
+    assert not _boundary_hit("기아", "기아자동차 담은 ETF")
+    assert not _boundary_hit("나노", "나노기술 ETF")
+    assert not _boundary_hit("농심", "농심라면 ETF")     # '라' 는 조사 모양이나 뒤에 '면' 이 붙는다
+    # 영문은 영숫자 경계
+    assert _boundary_hit("NAVER", "NAVER 담은 ETF")
+    assert not _boundary_hit("Apple", "Pineapple ETF")
+
+
+def test_ground_combined_label_split(ctx):
+    """'네이버/NAVER' 처럼 한 칸에 두 표기가 든 라벨 — 한쪽으로 물어도 잡혀야 한다."""
+    from src.runtime.pipeline import _ground
+    for name in ("네이버", "NAVER", "포스코홀딩스"):
+        _, lines = _ground(f"{name} 편입 ETF", ctx, ["domestic_etfs"], cross=True)
+        assert [x for x in lines if "건너뜀" not in x], f"{name} 매칭 0"

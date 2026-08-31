@@ -911,6 +911,40 @@ def _short_label(label: str) -> str | None:
     return s if s and s != label else None
 
 
+# 한국어는 체언 뒤에 조사가 **붙어서** 온다 — '하이닉스가'·'기아를'·'삼성전자는'.
+# 그래서 "뒤에 한글이 없어야 한다" 로만 보면 정상 문장이 전부 탈락한다.
+# 조사 하나까지는 허용하되, 그 뒤에 또 한글이 오면 낱말이 이어지는 것이므로 기각한다
+# ('농심라면' → 농심+라 는 조사처럼 보이나 뒤에 '면' 이 붙어 탈락).
+_JOSA = (r"(?:이라고|이라는|이라|으로는|으로도|으로|에서는|에서도|에서|에게는|에게|한테|께서|께"
+         r"|이랑|랑|와|과|이나|나|이며|며|이고|고|까지|부터|보다|처럼|같이|밖에|조차|마저"
+         r"|이는|이가|이를|이도|이만|은|는|이|가|을|를|의|에|도|만|랑)?")
+
+
+def _boundary_hit(label: str, text: str) -> bool:
+    """라벨이 낱말로 들어 있는가.
+
+    🔴 언어를 가려야 한다 — 영숫자 경계로만 보면 '기아' 가 '기아자동차' 에 붙고,
+       한글 경계로만 보면 '하이닉스가' 의 조사 때문에 정상 질문이 탈락한다.
+    """
+    esc = re.escape(label)
+    if re.search(r"[가-힣]", label):
+        return re.search(rf"(?<![가-힣]){esc}{_JOSA}(?![가-힣])", text) is not None
+    return re.search(rf"(?<![A-Za-z0-9]){esc}(?![A-Za-z0-9])", text) is not None
+
+
+# 짧은 라벨의 하한 — 이 길이 이상이면 **단어경계 검사를 조건으로** 매칭을 허용한다.
+# 🔴 2026-08-31 로컬 Ground 일제점검: 편입 상위 28종 중 8종이 매칭 0이었다 —
+#    기아(2자)·현대차·카카오·테슬라·애플·네이버 가 Sec_ 하한(한글 4·영문 6)에 통째로 걸렸다.
+#    기아는 170개 ETF, 현대차는 168개에 편입돼 있어 질의 가능성이 매우 높다.
+#    경계 검사를 붙이면 '나노' 가 '나노기술' 에 안 붙으므로 하한을 내려도 안전하다
+#    (한글 2자 Security 라벨 107개는 전부 실재 기업명 — 경방·고영·금양·나노·남성·농심·대덕).
+#    영문은 5자까지만 내린다 — 4자는 티커류(BIDU·CXMT·DKME)라 위험하다.
+_SHORT_MIN_KO = 2
+_SHORT_MIN_EN = 5
+# 결합 라벨 — 'A/B' 한 칸에 두 표기가 들어 있다(네이버/NAVER · POSCO홀딩스/포스코홀딩스 · 테슬라/Tesla Inc).
+# Security 라벨 1,262개가 이 꼴이라 한쪽 표기로 물으면 통째로 못 잡았다.
+_LABEL_SPLIT = re.compile(r"\s*/\s*")
+
 _MATCH_KEYS: dict[int, list] = {}   # id(ctx) -> [(키, 노드, 경계검사)] · 질문과 무관해 1회만 만든다
 _SYN_KEYS: dict[int, dict] = {}     # id(ctx) -> {정식 표기: [사용자 통칭 …]}
 
@@ -1006,14 +1040,29 @@ def _ground(
 
     syn_keys = _synonym_keys(ctx)
 
+    def _short_ok(node, key: str) -> bool:
+        """하한 미만이지만 단어경계를 조건으로 허용할 만한 짧은 라벨인가 — Security 노드에만."""
+        if not node.node_id.startswith("Sec_"):
+            return False
+        lo = _SHORT_MIN_KO if re.search(r"[가-힣]", key) else _SHORT_MIN_EN
+        return len(key) >= lo
+
     def _keys(node):
-        """노드의 매칭 키 — 정식 라벨 + 법인 접미어를 뗀 보조 키 + yaml 동의어. (키, 경계검사여부)"""
+        """노드의 매칭 키 — 정식 라벨 + 접미어 제거 + 결합 라벨 조각 + yaml 동의어. (키, 경계검사여부)"""
         for label in node.labels:
             if len(label) >= _min_len(node, label):
                 yield label, False
+            elif _short_ok(node, label):
+                yield label, True          # 짧은 라벨은 경계 검사를 조건으로 허용
             short = _short_label(label)
-            if short and len(short) >= _min_len(node, short):
+            if short and (len(short) >= _min_len(node, short) or _short_ok(node, short)):
                 yield short, True
+            if "/" in label:               # '네이버/NAVER' → 네이버 · NAVER
+                for piece in _LABEL_SPLIT.split(label):
+                    piece = piece.strip()
+                    if piece and piece != label and (
+                            len(piece) >= _min_len(node, piece) or _short_ok(node, piece)):
+                        yield piece, True
             for alias in syn_keys.get(label, ()):
                 yield alias, True
 
@@ -1036,7 +1085,7 @@ def _ground(
     for label, node, bounded in candidates:
         if label not in consumed:
             continue
-        if bounded and not re.search(rf"(?<![A-Za-z0-9]){re.escape(label)}(?![A-Za-z0-9])", consumed):
+        if bounded and not _boundary_hit(label, consumed):
             # 보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙는 것을 막는다
             continue
         if drop_kr and node.node_id == "Region_Korea":

@@ -140,9 +140,10 @@ def test_grounding_falls_back_to_all_masters(ctx):
 
 @needs_db
 def test_schema_text_covers_all_masters(ctx):
-    # schema_metadata 280컬럼이 로드됐는가 — 빠지면 플래너가 컬럼을 지어낸다
+    # schema_metadata 280컬럼 - schema_exclude 4(펀드 전건결측·답변금지, 리드 결정 08-31) = 276
+    # 여기서 더 줄면 로드 누락이다 — 플래너가 컬럼을 지어낸다
     assert sum(len(ctx.schema[t]) for t in
-               ("domestic_bonds", "domestic_etfs", "overseas_etfs", "public_funds")) == 280
+               ("domestic_bonds", "domestic_etfs", "overseas_etfs", "public_funds")) == 276
 
 
 @needs_db

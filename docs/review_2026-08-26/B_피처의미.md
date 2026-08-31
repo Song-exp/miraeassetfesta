@@ -164,7 +164,7 @@
 | :-: | :-- | :-- | :-- | :-: | :-- |
 | B-4-01 | `percent` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 32개 컬럼 — 채권.`srfc_irt`, 채권.`exrt_grte_ern_r`, 채권.`exrt_rpy_r`, 채권.`applied_yield`, 채권.`exg_close_yield` | ☐ |  |
 | B-4-02 | `krw` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 10개 컬럼 — 채권.`isu_bal_amt`, 채권.`bd_tisu_a`, 채권.`eval_price`, 채권.`dirty`, 채권.`exg_close_price` | ☐ |  |
-| B-4-03 | `percent_cumulative` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 8개 컬럼 — 펀드.`fd_yr1_ern_r`, 펀드.`fd_yr3_ern_r`, 펀드.`fd_mm1_ern_r`, 펀드.`fd_mm3_ern_r`, 펀드.`fd_mm6_ern_r` | ⏸ | 보류 — 단위 어휘 enum 고정은 §12-6 결정 2(채권 컨벡시티 연² 과 함께 전 도메인 일괄). percent_cumulative 는 '누적 %' 의미 자체는 확정(answer_rules 누적수익률), 형식·어휘 통일만 남음 |
+| B-4-03 | `percent_cumulative` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 8개 컬럼 — 펀드.`fd_yr1_ern_r`, 펀드.`fd_yr3_ern_r`, 펀드.`fd_mm1_ern_r`, 펀드.`fd_mm3_ern_r`, 펀드.`fd_mm6_ern_r` | ✅ | 리드 결정 08-31 — **enum 고정하지 않음**(기각). 프리즈 전 이득 없고 unit 은 이미 소수 표기. 신규 작성 시 기존 표기 재사용만 지킨다. percent_cumulative 의 '누적 %' 의미는 answer_rules 누적수익률로 확정 |
 | B-4-04 | `grade` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 3개 컬럼 — 채권.`crd_grd`, 채권.`pd_risk_gcd`, 펀드.`zrin_fd_ivst_risk_gcd` | ☐ |  |
 | B-4-05 | `‰ (값÷10 = %, or_co_rwrd_r 참조)` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 3개 컬럼 — 펀드.`sale_co_rwrd_r`, 펀드.`trusc_rwrd_r`, 펀드.`ofwk_trus_rwrd_r` | ☐ |  |
 | B-4-06 | `yyyymmdd(REAL 저장)` | 표기를 고정 어휘(enum)로 통일할 것인가 · 형식(format)과 단위를 나눌 것인가 | 2개 컬럼 — 펀드.`fd_last_dstb_actg_bss_dt`, 펀드.`fd_daily_bas_dt` | ☐ |  |

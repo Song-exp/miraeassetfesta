@@ -241,9 +241,14 @@ def load_context() -> RuntimeContext:
             ctx.kg_subsidiaries.setdefault(parent, []).append(child)
 
         # 마스터 4테이블 — 한글 컬럼명은 schema_metadata 가 원천 (build_db.py 가 원본 헤더에서 만듦)
+        # 2026-08-31 — yaml `schema_exclude` 컬럼은 스키마 프롬프트에서 뺀다(전건 결측·답변금지).
+        # 스키마 서두가 "여기 없는 컬럼은 존재하지 않는다" 라서, 빼면 플래너가 참조 자체를 못 한다.
+        excluded = {(t, c) for t, doc in ctx.enums.items() for c in (doc.get("schema_exclude") or [])}
         for t, c, ko, dt in con.execute(
             "select table_name, column_name, korean_name, data_type from schema_metadata"
         ):
+            if (t, c) in excluded:
+                continue
             ctx.schema.setdefault(t, []).append((c, ko, dt))
         # 외부 수집 테이블 — schema_metadata 대상이 아니므로(마스터가 아님) PRAGMA 로 읽는다.
         # 교차질의에서 조인 대상이 되므로 컬럼명은 플래너가 알아야 한다.

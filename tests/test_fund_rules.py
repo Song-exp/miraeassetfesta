@@ -75,3 +75,14 @@ def test_bond_credit_grade_query_still_passes_absent(ctx):
     from src.runtime.pipeline import answer_question
     r = answer_question("T-CG2", "신용등급 AAA인 채권 알려줘", ctx=ctx)
     assert "속성이 정의되어 있지 않음" not in r.think_trace
+
+
+def test_schema_excludes_empty_and_forbidden_columns(ctx):
+    """리드 결정 2026-08-31 — 전건 결측(fd_wk1_ern_r)·답변금지(fd_prsv_r·fd_sbpr)·99.4% 결측(itm_eabrv_nm)은
+    스키마 프롬프트에서 뺀다. 스키마 서두가 "여기 없는 컬럼은 존재하지 않는다" 이므로 빼면 참조가 원천 차단된다."""
+    schema = ctx.schema_text(["public_funds"])
+    for hidden in ("fd_wk1_ern_r", "fd_prsv_r", "fd_sbpr", "itm_eabrv_nm"):
+        assert hidden not in schema, hidden
+    # 정상 컬럼은 남아 있어야 한다 — 과잉 제외 방지
+    for kept in ("fd_yr1_ern_r", "itm_nm", "itm_eng_nm", "fd_nast_suma"):
+        assert kept in schema, kept

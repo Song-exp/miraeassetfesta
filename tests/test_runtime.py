@@ -205,3 +205,12 @@ def test_full_path_buggy_date_sql_recovers(ctx):
 def test_planner_context_has_date_rules(ctx):
     g = ctx.planner_context(["domestic_bonds"])
     assert "날짜표기" in g and "만기윈도우" in g
+
+
+def test_planner_context_credit_rule_imperative(ctx):
+    # 2026-08-31 실측: '정부가 책임지는' 질의에 HCX 가 신용보강 필터를 무시하고 국공채만 조회 →
+    # 규칙을 지시문 + 복사용 완성 WHERE 로 승격 (c788893 패턴). 안내판에 그 형태로 실리는지 고정.
+    g = ctx.planner_context(["domestic_bonds"])
+    assert "정부가 책임지는" in g                      # 트리거 어휘 (실측 질문 표현)
+    assert "반드시 WHERE" in g and "국공채 단독 필터는 오답" in g
+    assert "TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')" in g

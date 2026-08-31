@@ -83,9 +83,26 @@ def main():
     p = p[p.rp.notna() & (p.rp.str.strip() != "")]
     # 🔴 위장결측 대표코드: 'KR0000000000'(5,308행) · '000000000000'(1,645행) — 대표펀드 정보 없음(사모·구형 다수).
     #    묶음이 아니므로 노드를 만들지 않는다 (만들면 운용사 69곳 5,308 클래스가 한 노드에 묶임).
-    sentinel = p.rp.str.fullmatch(r"(KR)?0+")
+    # 🔴 2026-08-30 수정 — 순서가 틀려 있었다. 원값에 그대로 fullmatch 하면 **꼬리 공백이 붙은 0계열이 새고**
+    #    (DB 실측: '0           ' 4행 · '00000       ' 2행 · 'KR000000000 ' 1행 · '0000000     ' 1행 · '00          ' 1행),
+    #    YAML normalization.dummy_as_missing 의 규칙 ④(반복문자 ^(.)\1+$)가 없어 '99999999999 ' · '222222222222' 도 샜다.
+    #    결과로 가짜 Fund 노드 8종/12행이 만들어졌고, 라벨이 무관한 펀드들의 공통접두라 그럴듯했다
+    #    (예: 'KR' → Fund_b416fa5eaf label='삼성KODEX' · '0' → Fund_ca71a0054d 에 무관한 사모 4건 병합).
+    #    ① strip 을 판정 **전에** 적용하고 ② 반복문자 패턴을 더하고 ③ 이후 groupby 도 정규화값으로 한다
+    #       (③ 이 없으면 'KR5114601019' 와 'KR5114601019 ' 가 별개 묶음이 되어 같은 결함이 재발한다).
+    #    🔴 정규식 (KR)?0+ 은 'KR'(0 이 없다)을 못 잡는다 — 실제로 'KR          ' 2행이 label='삼성KODEX' 인
+    #       가짜 노드로 남았다. 그래서 정규식을 짜지 않고 **YAML normalization.dummy_as_missing 의 규칙 ③④를 그대로** 옮긴다.
+    rp = p.rp.str.strip()
+    kr0_empty = rp.str.replace("KR", "", regex=False).str.replace("0", "", regex=False).eq("")  # 규칙 ③
+    repeated = rp.str.fullmatch(r"(.)\1+").fillna(False)                                        # 규칙 ④
+    # 🔴 2026-08-30 malformed_as_missing — rptt 는 12자 고정이다. 길이가 다르면 식별 기능이 없다.
+    #    더미 규칙(③④)을 통과하는 키보드 난타·절단 코드가 여기서 걸린다 — 실측 16행:
+    #    'wtrewrwe'(6행, 맵스/TIGER+한화아리랑이 한 노드로 뭉쳤다) · 'KR5000000'(3) · 'sdf'(2) · 11자리 숫자 2건 등.
+    #    화이트리스트는 public_funds.yaml normalization.malformed_as_missing 참조.
+    malformed = rp.str.len().ne(12)
+    sentinel = kr0_empty | repeated | malformed
     excluded = int(sentinel.sum())
-    p = p[~sentinel]
+    p = p[~sentinel].assign(rp=rp[~sentinel])
     groups = p.groupby("rp")
 
     nodes, edges = {}, []

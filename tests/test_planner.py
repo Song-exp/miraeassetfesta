@@ -79,9 +79,10 @@ def test_answer_prompt_forbids_outside_facts():
     assert "추정하지 않는다" in _ANSWER_SYSTEM and "2026-08-22" in _ANSWER_SYSTEM
 
 
-def test_sql_budget_smaller_than_answer():
-    # SQL 생성은 짧다. 예산을 답변보다 크게 잡으면 rate limit 만 먹는다
-    assert SQL_CONFIG.max_tokens < ANSWER_CONFIG.max_tokens
+def test_sql_budget_fits_case_expressions():
+    # 🔄 2026-08-30 밤 — "SQL 은 짧다" 전제가 깨졌다. 채권 추천 SQL 은 yaml '구조'(693자)·'보강'(533자) CASE 를 그대로 옮겨
+    #    1,757자(추정 660~840토큰)라 512 에서 잘린다. max_tokens 는 상한이지 사용량이 아니므로 rate limit 비용은 그대로다.
+    assert SQL_CONFIG.max_tokens >= 1024
     assert SQL_CONFIG.temperature == 0.0
 
 

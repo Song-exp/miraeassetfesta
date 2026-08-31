@@ -7,16 +7,28 @@ Ground·Gate·Guard·Execute 는 전부 동작·테스트 가능하다.
 
 from __future__ import annotations
 
+import inspect
+import os
 import re
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
-from . import gate
+from . import gate, guard
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly, load_context
+from .router import route
 
 MAX_ROWS = 30            # retrieved_context 폭주 방지 — 근거는 표본이면 충분하다
+# 플래너가 SQL 대신 되묻기를 돌려줄 때의 접두어 — yaml `clarify` 규칙이 근거. 되묻기는 답변불가 문항의 정답 형태다 (주최 8/25)
+CLARIFY_PREFIX = "CLARIFY:"
+# 플래너가 SQL 대신 답변불가를 선언할 때의 접두어 — enums/_refusal.yaml 이 근거 (2026-08-30 R-5 ② 층)
+REFUSE_PREFIX = "REFUSE:"
+# HCX 재생성 예산 — 값 검사·SQL 기각에서 **한 번만**, 누적 시간이 이 안일 때만 (agent_architecture_notes §5 누적 12초 · 호출 2회 상한).
+# 🔴 0행은 재생성 대상이 아니다 — 거절이 정답인 문항에서 조건 완화 = 환각 (PROJECT.md §9)
+REGEN_BUDGET_S = 12.0
 SQL_TIMEOUT_S = 10.0
+CUTOFF_INT = int(gate.DATA_CUTOFF.replace("-", ""))   # 20260822 — 날짜 컬럼은 정수 YYYYMMDD (REAL 적재)
 
 
 @dataclass
@@ -37,8 +49,17 @@ class PipelineResult:
 class Planner(Protocol):
     """SQL·답변 생성기 — HCX 구현체를 여기 꽂는다. 시그니처 외에 아무것도 가정하지 않는다."""
 
-    def plan_sql(self, question: str, grounding: str) -> str: ...
-    def compose_answer(self, question: str, rows: str) -> str: ...
+    def plan_sql(self, question: str, grounding: str) -> str: ...     # SQL 한 문장, 또는 "CLARIFY: 되물을 문장"
+    def compose_answer(self, question: str, rows: str, answer_rules: str = "") -> str: ...
+
+
+def _accepts_answer_rules(planner) -> bool:
+    """compose_answer 가 세 번째 인자(answer_rules)를 받는가 — 2인자 구현체(옛 프로브)는 규칙 없이 부른다."""
+    try:
+        params = inspect.signature(planner.compose_answer).parameters
+    except (TypeError, ValueError):
+        return True
+    return len(params) >= 3 or any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params.values())
 
 
 # ── SQL 사후 검사 — LLM 이 만든 SQL 을 신뢰하지 않는다 ──────────────────
@@ -83,17 +104,90 @@ def ensure_limit(sql: str) -> tuple[str, bool]:
     return f"{sql.strip().rstrip(';')} LIMIT {MAX_ROWS}", True
 
 
-def _ground(question: str, ctx: RuntimeContext, tables: list[str] | None = None) -> tuple[list, list[str]]:
+_DATE_LIT = re.compile(r"(['\"]?)\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b\1")
+
+
+def normalize_date_literals(sql: str) -> tuple[str, bool]:
+    """하이픈 날짜 리터럴을 정수 YYYYMMDD 로 치환. (보정된 SQL, 보정했는지)
+
+    🔴 SQLite 에서 따옴표 없는 2029-08-22 는 날짜가 아니라 뺄셈(=1999)이다 — 2026-08-31 실측:
+       '3년 안에 만기' 질의가 mat_dt <= 1999 가 되어 만기일 미수록(mat_dt=0) 행 4개만 통과했고,
+       답변 생성기가 그 빈칸을 종목명 숫자로 메꿔 환각 만기일('25-02-01' → 2025-02-01)이 나갔다.
+       '2029-08-22' 문자열도 금물 — mat_dt 는 REAL 이라 타입 서열(REAL < TEXT)로 전 행이 통과한다.
+       기각이 아니라 보정이다(ensure_limit 원칙): 정답 조건식을 형식 때문에 버리지 않는다.
+    """
+    def _to_int(m: re.Match) -> str:
+        y, mo, d = m.group(2), int(m.group(3)), int(m.group(4))
+        if not (1 <= mo <= 12 and 1 <= d <= 31):
+            return m.group(0)                # 날짜 모양이 아니면 산술로 존중 (실데이터엔 없다)
+        return f"{y}{mo:02d}{d:02d}"
+    fixed = _DATE_LIT.sub(_to_int, sql)
+    return fixed, fixed != sql
+
+
+_MAT_UPPER = re.compile(r"\bmat_dt\s*<=?\s*(\d{8})\b", re.I)
+_MAT_LOWER = re.compile(r"\bmat_dt\s*>=?\s*\d|\bmat_dt\s+between\b", re.I)
+
+
+def ensure_maturity_lower_bound(sql: str) -> tuple[str, bool]:
+    """만기 상한만 있는 SQL 에 기준일 하한을 주입. (보정된 SQL, 보정했는지)
+
+    'N년 안에 만기' 에 상한(mat_dt <= 미래일)만 걸면 만기일 미수록 0값 4행·만기 경과 49행이
+    통과한다 — NULL-안전 제외 규칙과 같은 계열의 결측 누수. 상한이 기준일 이후일 때만 붙인다:
+    '만기 지난 채권' 질의(상한이 과거)와 BETWEEN(자체 하한)은 건드리지 않는다.
+    """
+    if _MAT_LOWER.search(sql):
+        return sql, False
+    m = _MAT_UPPER.search(sql)
+    if not m or int(m.group(1)) <= CUTOFF_INT:
+        return sql, False
+    s, e = m.span()
+    return f"{sql[:s]}(mat_dt > {CUTOFF_INT} AND {sql[s:e]}){sql[e:]}", True
+
+
+def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
+    """질문의 연도와 SQL 만기 상한의 연도가 다르면 상한 연도를 질문 연도로 교정. (보정된 SQL, 교정했는지)
+
+    2026-08-31 실측: '28년 12월까지 만기' → HCX 가 상한을 20291231 로 오기(연도 +1).
+    발동 조건(전부 만족할 때만 — 넓히면 BETWEEN·복수 연도 질의를 다친다):
+      ① 질문의 미래 연도 토큰(YYYY)이 정확히 1개  ② SQL 의 mat_dt 상한(<= / <)이 정확히 1개
+      ③ 그 상한 리터럴의 연도 ≠ 토큰 연도.
+    이 셋이 겹치면서 교정이 틀릴 상황은 없다 — '28년까지' 라고 묻고 상한이 2029 인 게 맞는 경우가 없으므로.
+    """
+    years = [t for t in tokens if len(t) == 4 and t.isdigit()]
+    if len(years) != 1:
+        return sql, False
+    uppers = list(_MAT_UPPER.finditer(sql))
+    if len(uppers) != 1:
+        return sql, False
+    lit = uppers[0].group(1)
+    if lit[:4] == years[0]:
+        return sql, False
+    s, e = uppers[0].span(1)
+    return sql[:s] + years[0] + lit[4:] + sql[e:], True
+
+
+def _ground(
+    question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
+) -> tuple[list, list[str]]:
     """KG 개체 매핑 — 질의 문자열에서 노드 레이블을 찾는다.
 
-    우선순위는 ① 질의가 가리키는 테이블에 alias 가 있는 노드 ② 그 다음 긴 레이블이다.
+    우선순위는 ① 질의가 가리키는 테이블에 alias 가 있는 노드 ② 긴 레이블 ③ 값이 많은 노드(정본) 순이다.
 
     🔴 ①이 없으면 틀린다. '미래에셋자산운용' 은 채권 발행사 노드(domestic_bonds.pd_pbcm)와
        ETF 운용사 노드(domestic_etfs.cu_fund_mgmt_co, Org_00080008) 양쪽에 걸린다.
        레이블 길이만 보면 국내ETF 질의에 채권 발행사 노드를 물어와 조회가 0건이 된다
        (2026-08-26 실측: "미래에셋자산운용이 운용하는 국내 ETF" → 0행).
+
+    🔴 대상 테이블이 정해졌으면 거기에 alias 가 없는 노드는 **버린다** (2026-08-30 E).
+       예전엔 다른 테이블 alias 로 fallback 해 "한국전력 채권" 에 주식 노드의
+       ext_etf_holdings.constituent='한국전력' 이 실렸고, 플래너가 구성종목 테이블을 JOIN 하려 들었다.
+       교차질의면 ext_* 도 대상이다 — 종목 노드의 alias 는 전부 ext_* 에만 있기 때문이다.
     """
     target = set(tables or ())
+    if cross and target:
+        target |= set(EXT_TABLES)
+    relations = _asks_subsidiaries(question)
     hits, lines = [], []
     # 자동 생성 노드(Idx_a_/Idx_v_/Org_issuer_)는 수천 개라 짧은 라벨의 오매칭을 막기 위해 길이 하한을 높인다
     def _min_len(node, label):
@@ -112,34 +206,94 @@ def _ground(question: str, ctx: RuntimeContext, tables: list[str] | None = None)
             return 2
         return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
 
+    # 후보가 수만 개라 노드당 한 번만 편다
+    _memo: dict[str, list] = {}
+
+    def _members(node) -> list:
+        if node.node_id not in _memo:
+            _memo[node.node_id] = _member_aliases(ctx, node.node_id, relations)
+        return _memo[node.node_id]
+
     def _in_target(node) -> bool:
         if not target:
             return False
-        return any(t in target for t, _, _ in ctx.kg_aliases.get(node.node_id, ()))
+        return any(t in target for t, _, _ in _members(node))
 
     candidates = sorted(
         ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node, label)),
-        key=lambda x: (not _in_target(x[1]), -len(x[0])),
+        key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))),
     )
     consumed = question
     for label, node in candidates:
-        if label in consumed:
-            hits.append(node)
-            consumed = consumed.replace(label, " ")
-            aliases = target_aliases(ctx, node, target)
-            where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
-            if len(aliases) > 4:
-                where += f" … 외 {len(aliases) - 4}종"
-            lines.append(f"'{label}' → {node.node_id} ({node.node_type}) → {where}")
+        if label not in consumed:
+            continue
+        aliases = target_aliases(ctx, node, target, relations)
+        if target and not aliases:
+            # E — 대상 테이블에 값이 없는 노드. 레이블을 소비하지 않아 같은 표기의 다른 노드가 잡힐 수 있게 둔다
+            continue
+        hits.append(node)
+        consumed = consumed.replace(label, " ")
+        members = expand_node(ctx, node.node_id, relations)
+        where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
+        if len(aliases) > 4:
+            where += f" … 외 {len(aliases) - 4}종"
+        via = ""
+        if len(members) > 1:
+            shown = ", ".join(members[1:4]) + (" …" if len(members) > 4 else "")
+            via = f" [+후손 {len(members) - 1}: {shown}]"
+        lines.append(f"'{label}' → {node.node_id} ({node.node_type}){via} → {where}")
     return hits, lines
 
 
-def target_aliases(ctx: RuntimeContext, node, target: set) -> list[tuple[str, str, str]]:
-    """노드의 alias 중 질의 대상 테이블 것만. 대상이 없으면 전부."""
-    aliases = ctx.kg_aliases.get(node.node_id, [])
+_SUBSIDIARY_HINT = re.compile(r"자회사|계열사|계열회사|종속회사")
+
+
+def _asks_subsidiaries(question: str) -> bool:
+    """질의가 관계(자회사)를 묻는가 — 관계 확장은 이때만. '에코프로 편입 ETF' 는 본체만 뜻한다."""
+    return bool(_SUBSIDIARY_HINT.search(question))
+
+
+def expand_node(ctx: RuntimeContext, node_id: str, relations: bool = False) -> list[str]:
+    """노드 하나를 실물 노드 집합으로 편다 — 자신 + kg_closure 후손 (+ 관계를 물으면 자회사와 그 후손).
+
+    kg_closure 는 build_ontology 가 이행적으로 만들어 두므로 한 단계만 읽는다.
+    2026-08-30 실측: 정본 18개(Sec_m_*) 전부 alias 0 · closure 9,919행 — 엔비디아 정본 → 주식·회사채·LEI 노드 3개,
+    투자등급 → AAA~BBB- 10종, 캠브리콘 → 펀드 보유 ISIN 노드. 이걸 안 펴면 정본에 매칭될수록 답이 비었다.
+    """
+    seeds = [node_id]
+    if relations:
+        seeds += ctx.kg_subsidiaries.get(node_id, [])
+    out: list[str] = []
+    for s in seeds:
+        for n in [s, *ctx.kg_closure.get(s, [])]:
+            if n not in out:
+                out.append(n)
+    return out
+
+
+def _member_aliases(ctx: RuntimeContext, node_id: str, relations: bool = False) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    seen: set = set()
+    for n in expand_node(ctx, node_id, relations):
+        for a in ctx.kg_aliases.get(n, ()):
+            if a not in seen:
+                seen.add(a)
+                out.append(a)
+    return out
+
+
+def target_aliases(
+    ctx: RuntimeContext, node, target: set, relations: bool = False
+) -> list[tuple[str, str, str]]:
+    """노드(와 그 후손)의 alias 중 질의 대상 테이블 것만. 대상이 없으면 전부.
+
+    🔴 다른 테이블 alias 로 fallback 하지 않는다 (2026-08-30 E). 대상에 값이 없으면 빈 목록이고,
+       호출부(_ground)가 그 노드를 버린다.
+    """
+    aliases = _member_aliases(ctx, node.node_id, relations)
     if not target:
-        return list(aliases)
-    return [a for a in aliases if a[0] in target] or list(aliases)
+        return aliases
+    return [a for a in aliases if a[0] in target]
 
 
 MAX_ALIAS_VALUES = 60   # 한 컬럼에 실을 값 상한. 병목이 rate limit 이라 토큰이 곧 처리량이다
@@ -151,12 +305,16 @@ MAX_ALIAS_VALUES = 60   # 한 컬럼에 실을 값 상한. 병목이 rate limit 
 JOIN_KEYS: list[tuple[str, str]] = [
     ("ext_etf_holdings", "ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no"),
     ("ext_ovs_etf_holdings", "ext_ovs_etf_holdings.isin = overseas_etfs.pd_isin_cd"),
-    ("ext_fund_holdings", "ext_fund_holdings.grp = public_funds.mtco_itm_no"),
+    # 🔴 2026-08-30 A-3-03 — grp 단독 금지. grp(=mtco_itm_no)는 운용사 안에서만 유일하다.
+    #    단독 조인 시 103개 grp 가 복수 운용사에 걸려 쌍 179,333 중 5,099(2.84%) 오부착(최악 grp='00' → 운용사 34곳).
+    #    itm_no 단독으로 바꾸면 형제 클래스 확장(정당 174,234 쌍)이 사라지므로, or_co 를 더한 복합키를 쓴다.
+    ("ext_fund_holdings",
+     "ext_fund_holdings.grp = public_funds.mtco_itm_no AND ext_fund_holdings.or_co = public_funds.or_co_xtn_itt_cd"),
     ("ext_fund_page", "ext_fund_page.itm_no = public_funds.itm_no"),
 ]
 
 
-def _mapping_block(ctx: RuntimeContext, hits: list, target: set) -> str:
+def _mapping_block(ctx: RuntimeContext, hits: list, target: set, relations: bool = False) -> str:
     """플래너에 넘길 개체 매핑 — **DB 실제 값만** 싣는다.
 
     🔴 개체 ID(Org_…·Idx_…)를 넘기지 않는다. 넘기면 모델이 그걸 값으로 착각해
@@ -167,7 +325,7 @@ def _mapping_block(ctx: RuntimeContext, hits: list, target: set) -> str:
     for node in hits:
         name = node.label_ko or node.label_en or node.node_id
         groups: dict[tuple[str, str], list[str]] = {}
-        for t, c, raw in target_aliases(ctx, node, target):
+        for t, c, raw in target_aliases(ctx, node, target, relations):
             groups.setdefault((t, c), []).append(raw)
         for (t, c), vals in groups.items():
             uniq = sorted(set(vals), key=lambda v: (len(v), v))
@@ -185,6 +343,8 @@ def build_grounding(
     hits: list,
     tables: list[str],
     cross: bool,
+    question: str = "",
+    future: list[str] | None = None,
 ) -> str:
     """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
 
@@ -199,7 +359,7 @@ def build_grounding(
         target += [t for t in EXT_TABLES if t not in target]
 
     parts: list[str] = []
-    mapping = _mapping_block(ctx, hits, set(target))
+    mapping = _mapping_block(ctx, hits, set(target), _asks_subsidiaries(question))
     if mapping:
         parts.append(
             "# KG 개체 매핑 — 질의의 표기를 DB 실제 값으로 옮긴 것\n"
@@ -214,9 +374,30 @@ def build_grounding(
             "# 교차질의 조인 키 — 구성종목·설명서 조건은 아래 외부 테이블에 있다. 반드시 JOIN 해서 쓴다\n"
             + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
         )
-    rules = ctx.planner_context(target)
+    # R-2: triggered 규칙은 질문 어휘가 있을 때만. RULES_MODE=full 이면 종전처럼 전부 (eval/run_paired.py 의 대조군)
+    layered = os.environ.get("RULES_MODE", "layered") != "full"
+    rules = ctx.planner_context(target, question if (question and layered) else None)
     if rules:
-        parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다)\n" + rules)
+        parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다. 일부는 이 질문과 무관할 수 있다)\n" + rules)
+    if future:
+        # 기준일 이후 연도는 만기일 조건으로만 정당하다 (gate §③ — 사후 검사와 짝)
+        parts.append(
+            f"# 시점 주의 — 질문의 {', '.join(future)} 은(는) 데이터 기준일({gate.DATA_CUTOFF}) 이후다\n"
+            "# 데이터에서 미래 날짜는 mat_dt(만기일)에만 있다 — 만기 조건으로만 쓸 수 있고, 그 시점의 가격·수익률·전망은 없다."
+        )
+    clarify = ctx.clarify_context(target)
+    if clarify:
+        parts.append(
+            "# 되묻기 규칙 (ontology/*.yaml clarify) — 아래 낱말이 질문에 있고 어느 뜻인지 단서가 없으면 SQL 대신 CLARIFY: 로 되묻는다\n"
+            + clarify
+        )
+    refusal = ctx.refusal_context()
+    if refusal:
+        # R-5 ② 층 — 범위 밖(실시간·전망·DB 밖·인과)은 SQL 대신 REFUSE:. 가드: SQL 로 조금이라도 답할 수 있으면 SQL (PROJECT.md 모호 질의 최소)
+        parts.append(
+            "# 답변불가 규칙 (ontology/enums/_refusal.yaml) — 아래 사유에 해당하면 SQL 대신 REFUSE: <사유> 한 줄. 해당하지 않으면 SQL\n"
+            + refusal
+        )
     schema = ctx.schema_text(target)
     if schema:
         parts.append("# 스키마 — 여기 없는 컬럼은 존재하지 않는다\n" + schema)
@@ -237,6 +418,22 @@ def _grounding_blocks(grounding: str) -> list[str]:
     return names
 
 
+def _cell(v, col: str) -> str:
+    """조회 결과 한 칸을 답변 생성기가 읽을 글자로.
+
+    🔴 날짜 컬럼(*_dt)은 원본 엑셀이 숫자라 DB 에 REAL 로 들어 있다 — 그대로 str() 하면 '20271231.0' 이 답변에 실린다
+       (2026-08-30 밤 실측: 채권 mat_dt·isu_dt·crd_grd_dt·sale_yield_base_dt 전부). 정수값 실수는 정수로 적는다.
+    문자열은 양끝 공백을 뗀다 — pd_nm·pd_pbcm 은 고정폭 패딩(최대 98자)이라 retrieved_context 만 부풀리고 답변엔 공백이 따라붙는다.
+    """
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer() and ("_dt" in col or col.endswith("dt") or "date" in col):
+        return str(int(v))
+    if isinstance(v, str):
+        return v.strip()
+    return str(v)
+
+
 def _execute(sql: str) -> tuple[str, int]:
     con = connect_readonly()
     try:
@@ -245,7 +442,7 @@ def _execute(sql: str) -> tuple[str, int]:
         cols = [d[0] for d in cur.description]
         rows = cur.fetchmany(MAX_ROWS)
         head = " | ".join(cols)
-        body = "\n".join(" | ".join("" if v is None else str(v) for v in r) for r in rows)
+        body = "\n".join(" | ".join(_cell(v, c) for v, c in zip(r, cols)) for r in rows)
         return f"{head}\n{body}", len(rows)
     finally:
         con.close()
@@ -266,43 +463,93 @@ def answer_question(
     q = question.strip()
     step(f"[Normalize] 질의 정규화 — 길이 {len(q)}")
 
-    # 테이블 추정을 Ground 보다 먼저 한다 — 같은 표기가 여러 도메인에 걸릴 때
-    # 어느 노드를 고를지가 여기서 갈린다 (_ground 의 우선순위 ①)
-    tables = gate.detect_tables(q)
+    # Route — 상품군을 Ground 보다 먼저 정한다. 같은 표기가 여러 도메인에 걸릴 때 어느 노드를 고를지가
+    # 여기서 갈린다. 단어 목록이 아니라 문장 구조 + 온톨로지 값으로 정한다 (router.py, 2026-08-30 F)
+    r = route(q, ctx)
+    tables = r.tables if r.decided else []          # 미특정이면 빈 목록 = 종전 의미(마스터 4테이블)
+    step(f"[Route] 상품군 — {', '.join(tables) or '미특정'} · 근거: {r.why}")
+    cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]   # 채권엔 ext_* 가 없다
 
-    # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다
-    hits, ground_lines = _ground(q, ctx, tables)
+    # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
+    hits, ground_lines = _ground(q, ctx, tables, cross)
     if ground_lines:
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
-        step("[Ground] KG 개체 매핑 — 매칭 없음")
+        step("[Ground] KG 개체 매핑 — 매칭 없음" + (" (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)" if tables else ""))
 
     # Gate — HCX 호출 0회 기각 경로
-    g = gate.check(q, ctx)
+    g = gate.check(q, ctx, tables)
     if g.rejected:
         step(f"[Gate] 기각 — {g.reason}")
         step("[Decision] HCX 호출 없이 종료 (근거는 Gate 단계)")
         result.think_trace = "\n".join(trace)
         result.answer = g.answer
         return result
-    cross = gate.is_cross_query(q)
-    step(f"[Gate] 통과 — 대상 테이블 추정 {tables or '미특정'}"
-         + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else ""))
+    future = gate.future_tokens(q)
+    step(f"[Gate] 통과 — 대상 테이블 {tables or '미특정'}"
+         + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else "")
+         + (f" · 기준일 이후 시점 {future} 포함 → SQL 의 mat_dt 사용 여부로 사후 판정" if future else ""))
 
     if planner is None:
+        if future:
+            # SQL 이 없으면 해석을 검사할 수 없다 — 기준일 안내로 보수적으로 끝낸다
+            step(f"[Decision] SQL 생성기 미연결 상태에서 기준일({gate.DATA_CUTOFF}) 이후 시점 질의 — 확인 불가")
+            result.think_trace = "\n".join(trace)
+            result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+            return result
         step("[Plan] SQL 생성기 미연결 — 답변 보류 (Ground·Gate 결과는 유효)")
         result.think_trace = "\n".join(trace)
         result.answer = "현재 시스템 구축 중으로 이 질의에는 답변을 제공할 수 없습니다."
         return result
 
-    grounding = build_grounding(ctx, hits, tables, cross)
+    grounding = build_grounding(ctx, hits, tables, cross, q, future)
     result.grounding = grounding
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
          f"{len(grounding):,}자 · 구성: {blocks}")
+    t0 = time.monotonic()
     raw_sql = planner.plan_sql(q, grounding)
 
-    sql, limited = ensure_limit(raw_sql)
+    if raw_sql.strip().upper().startswith(REFUSE_PREFIX):
+        # R-5 ② — 플래너가 답변불가 규칙에 걸렸다고 선언. SQL 없이 종료 (실행·답변 생성 호출 없음)
+        why = raw_sql.strip()[len(REFUSE_PREFIX):].strip()
+        step(f"[Refuse] 답변불가 — 플래너 판정 (근거: 답변불가 규칙 블록) · 사유: {why}")
+        step("[Decision] 데이터 범위 밖 — HCX 답변 생성 없이 종료")
+        result.think_trace = "\n".join(trace)
+        result.answer = f"요청하신 내용은 제공된 데이터(기준일 {gate.DATA_CUTOFF})로 확인할 수 없습니다. {why}"
+        return result
+
+    if raw_sql.strip().upper().startswith(CLARIFY_PREFIX):
+        # 되묻기 — yaml clarify 규칙의 다의어에 단서가 없을 때. 추정으로 답하는 것보다 낫다 (역질문은 유효 답변)
+        ask = raw_sql.strip()[len(CLARIFY_PREFIX):].strip()
+        step(f"[Clarify] 되묻기 — 플래너가 다의어에 단서가 없다고 판단 (근거: 되묻기 규칙 블록)\n{ask}")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask
+        return result
+
+    sql, dates_fixed = normalize_date_literals(raw_sql)
+    if dates_fixed:
+        step("[Guard] 날짜 리터럴 보정 — 하이픈 날짜를 정수 YYYYMMDD 로 치환 (SQLite 는 2029-08-22 를 뺄셈=1999 로 계산한다)")
+    if future:
+        sql, yr_fixed = align_maturity_year(sql, future)
+        if yr_fixed:
+            step(f"[Guard] 만기 연도 교정 — 질문의 연도({', '.join(future)})와 SQL 만기 상한의 연도가 달라 상한을 질문 연도로 교정 (2026-08-31 '28년 12월'→20291231 오기 실측)")
+
+    if future and not gate.sql_uses_as_maturity(sql, future):
+        # ③ cutoff 사후 검사 — 연도가 mat_dt 조건에 안 쓰였으면 시점·전망 질의다 (gate §③)
+        # 🔴 날짜 치환·연도 교정 **뒤에** 검사한다 — 교정 전 SQL 로 검사하면 두 자리 연도('28년') 질의가
+        #    "SQL 에 2028 이 없다" 며 억울하게 기각된다 (검사 대상과 실행 대상이 같은 SQL 이어야 한다)
+        step(f"[Guard] 기준일 이후 시점 {future} 이(가) SQL 의 mat_dt 조건에 쓰이지 않음 → 만기 질의가 아닌 시점·전망 질의로 판정")
+        result.sql = sql
+        step("[Decision] HCX SQL 은 만들었으나 기준일 이후 근거가 DB 에 없어 종료")
+        result.think_trace = "\n".join(trace)
+        result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+        return result
+
+    sql, lb = ensure_maturity_lower_bound(sql)
+    if lb:
+        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+    sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
     result.sql = sql
@@ -311,12 +558,37 @@ def answer_question(
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
     err = validate_sql(sql)
-    if err:
-        step(f"[Guard] SQL 기각 — {err}")
-        result.think_trace = "\n".join(trace)
-        result.answer = "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다."
-        return result
-    step("[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 · LIMIT)")
+    violations = [] if err else guard.check_values(sql, ctx)
+    if err or violations:
+        # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
+        problem = err or "; ".join(str(v) for v in violations)
+        step(f"[Guard] {'SQL 기각' if err else '값 검사 실패'} — {problem}")
+        elapsed = time.monotonic() - t0
+        if elapsed < REGEN_BUDGET_S:
+            feedback = (grounding + "\n\n# 이전 SQL 의 문제 — 아래를 고쳐 다시 SQL 한 문장만 낸다\n"
+                        f"- 이전 SQL: {sql}\n- 문제: {problem}\n"
+                        "- 값은 'KG 개체 매핑'·'범주형 컬럼의 실제 값' 목록의 표기 그대로만 쓴다. 없는 값이면 그 조건을 빼지 말고 REFUSE: 로 답한다.")
+            step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
+            raw2 = planner.plan_sql(q, feedback)
+            if raw2.strip().upper().startswith(REFUSE_PREFIX):
+                why = raw2.strip()[len(REFUSE_PREFIX):].strip()
+                step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {why}")
+                result.think_trace = "\n".join(trace)
+                result.answer = f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
+                return result
+            sql, limited = ensure_limit(raw2)
+            result.sql = sql
+            step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
+            err = validate_sql(sql)
+            violations = [] if err else guard.check_values(sql, ctx)
+        if err or violations:
+            step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
+            step("[Decision] 값이 DB 에 없거나 SQL 이 안전하지 않아 종료 (조건을 완화하지 않는다)")
+            result.think_trace = "\n".join(trace)
+            result.answer = ("요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다." if violations
+                             else "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.")
+            return result
+    step("[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 · LIMIT · WHERE 값 사전 대조)")
 
     try:
         rows, n = _execute(sql)
@@ -329,13 +601,27 @@ def answer_question(
     result.retrieved_context = rows
 
     if n == 0:
-        # 규칙 §3 — 조회 0건이면 지어내지 않고 즉시 확인 불가
+        # 규칙 §3 — 조회 0건이면 지어내지 않고 즉시 확인 불가.
+        # R-4 — 어느 조건 때문인지 조건별 건수를 센다(SQLite 재실행뿐, HCX 0회). 조건을 완화해 다시 답하지는 않는다.
+        answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
+        try:
+            diag = guard.diagnose_zero_rows(sql)
+        except sqlite3.Error:
+            diag = None
+        if diag and diag.text():
+            step(f"[Diagnose] 0행 원인 — {diag.text()}")
+            answer += " " + diag.text()
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")
         result.think_trace = "\n".join(trace)
-        result.answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
+        result.answer = answer
         return result
 
-    result.answer = planner.compose_answer(q, rows)
-    step("[Answer] 답변 생성 완료")
+    answer_rules = ctx.answer_context(tables or list(TABLES))
+    # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
+    if _accepts_answer_rules(planner):
+        result.answer = planner.compose_answer(q, rows, answer_rules)
+    else:
+        result.answer = planner.compose_answer(q, rows)
+    step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

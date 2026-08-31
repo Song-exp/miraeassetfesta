@@ -6,7 +6,9 @@ DB 는 read-only URI 로 연다 — 런타임이 데이터를 바꿀 수 있는 
 
 from __future__ import annotations
 
+import csv
 import os
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -17,6 +19,10 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENUMS_DIR = PROJECT_ROOT / "ontology" / "enums"
 SHARED_DIR = PROJECT_ROOT / "ontology" / "shared"
+# 신용등급 표준표 (한국기업평가 등급정의) — 게이트가 "등급인가 / 존재하는 등급인가" 를 목록이 아니라 이 표로 판정한다
+GRADE_SCALE_CSV = PROJECT_ROOT / "data" / "external" / "lookups" / "credit_grade_scale.csv"
+# 라우팅 어휘로 삼을 범주형 컬럼의 고유값 상한 — 이보다 많으면 범주가 아니라 자유 텍스트(이름 등)다
+ROUTE_CATEGORICAL_MAX = 60
 
 # 주최 측 마스터 4테이블 — SQL guard 의 화이트리스트이기도 하다
 TABLES = ("domestic_bonds", "domestic_etfs", "overseas_etfs", "public_funds")
@@ -54,8 +60,20 @@ class RuntimeContext:
     entity_property: dict = field(default_factory=dict)  # entity -> .ttl property 이름
     kg_nodes: list[KGNode] = field(default_factory=list)
     kg_aliases: dict = field(default_factory=dict)     # node_id -> [(table, column, raw)]
-    crd_grades: set = field(default_factory=set)       # 채권 신용등급 enum 화이트리스트
+    # 계층 — 조상 -> 후손 목록 (kg_closure, 이미 이행적). 정본 노드(Sec_m_*·CG_*·Idx_a_*)는 alias 가 0개고
+    # 실물 노드가 여기 매달려 있다. 런타임이 이걸 안 읽으면 정본에 매칭돼도 SQL 에 넣을 값이 없다 (2026-08-30 ㉡).
+    kg_closure: dict = field(default_factory=dict)     # ancestor_id -> [descendant_id]
+    # 관계 — 모회사 -> 자회사 목록 (kg_edge subsidiaryOf 의 역방향). "○○의 자회사" 질의에서만 쓴다.
+    kg_subsidiaries: dict = field(default_factory=dict)  # parent_id -> [child_id]
+    crd_grades: set = field(default_factory=set)       # 채권 신용등급 — 2차 데이터에 실제로 있는 값 (value_semantics)
+    std_grades: set = field(default_factory=set)       # 신용등급 표준표 (credit_grade_scale.csv, DB 표기+표준 표기)
+    route_vocab: dict = field(default_factory=dict)    # table -> {term: weight} — 라우팅 ② 겹 어휘. DB·yaml synonyms 에서 자동 생성
     schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
+    # ── 2026-08-30 개선 (docs/research/온톨로지_개정안_2026-08-30.md) ──
+    refusal_rules: dict = field(default_factory=dict)  # R-5 ② 층 — enums/_refusal.yaml (사유명 -> 규칙 문장). 플래너가 REFUSE: 를 내는 근거
+    value_vocab: dict = field(default_factory=dict)    # R-1 — (table, column) -> [값…]  범주형 컬럼의 실제 값 목록 (enums/<domain>.vocab.yaml, 생성물)
+    value_index: dict = field(default_factory=dict)    # R-4 — (table, column) -> {정규화 값}  WHERE 리터럴 검사용. **전 값을 아는 컬럼만** 들어간다
+    gate_constants: dict = field(default_factory=dict) # R-5 ① 층 — table -> [{column, value, triggers[], answer}] 상수 컬럼 위반 (enums yaml gate_constants)
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
@@ -73,10 +91,15 @@ class RuntimeContext:
             out.append(", ".join(f"{c}({ko})" if ko else c for c, ko, _ in cols))
         return "\n".join(out)
 
-    def planner_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+    def planner_context(self, tables: list[str] | tuple[str, ...] = (), question: str | None = None) -> str:
         """플래너(HCX SQL 생성)에 넘길 도메인 규칙 텍스트 — yaml 의 query_rules·normalization 을
         테이블별로 평문화한다. 교차질의면 여러 테이블을 넘겨 한 프롬프트에 합친다.
-        (해석하지 않고 yaml 문자열을 그대로 싣는다 — 규칙의 원천은 yaml.)"""
+        (해석하지 않고 yaml 문자열을 그대로 싣는다 — 규칙의 원천은 yaml.)
+
+        2026-08-30 R-2 — 규칙 2층: 값이 `{text:, triggers:[…]}` 꼴이면 **triggered** 규칙이다. `question` 이 주어졌을 때
+        triggers 낱말이 하나라도 질문에 있어야 싣는다(없으면 뺀다). 문자열 규칙은 종전대로 always_on.
+        question 을 안 주면 전부 싣는다(호환 — 테스트·문서 생성기). 근거: 규칙 전부 주입 < 선별 주입 (DK-1 Table VI).
+        2026-08-30 R-1 — value_vocab(범주형 컬럼의 실제 값)을 같이 싣는다. 값을 모르면 HCX 가 리터럴을 추측한다."""
         out: list[str] = []
         for t in tables or TABLES:
             doc = self.enums.get(t) or {}
@@ -88,10 +111,56 @@ class RuntimeContext:
             for name, rule in rules.items():
                 if str(name).startswith("_"):
                     continue
+                if isinstance(rule, dict) and "triggers" in rule:
+                    if question is not None and not any(w in question for w in rule.get("triggers") or []):
+                        continue
+                    rule = rule.get("text", "")
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")
             if norm:
                 out.append("- normalization: " + yaml.safe_dump(norm, allow_unicode=True, sort_keys=False).strip())
+            syn = doc.get("synonyms") or {}
+            if syn:
+                # 사용자 통칭 → DB 표기. 라우팅 ② 겹과 같은 원천이라 플래너도 같은 어휘로 LIKE 를 쓴다
+                out.append("- 동의어(사용자 표기 → DB 표기): " + " · ".join(f"{k}→{v}" for k, v in syn.items()))
+            vocab = [(c, v) for (tt, c), v in self.value_vocab.items() if tt == t]
+            if vocab:
+                out.append("- 범주형 컬럼의 실제 값 (이 값 그대로 = 로 쓴다. 목록 밖 값을 만들지 않는다): "
+                           + " · ".join(f"{c}∈{{{', '.join(v)}}}" for c, v in vocab))
+        return "\n".join(out)
+
+    def refusal_context(self) -> str:
+        """R-5 ② 층 — enums/_refusal.yaml 의 답변불가 사유. 플래너가 SQL 대신 'REFUSE: <사유>' 를 내는 근거."""
+        if not self.refusal_rules:
+            return ""
+        return "\n".join(f"- {k}: {str(v).strip()}" for k, v in self.refusal_rules.items() if not str(k).startswith("_"))
+
+    def answer_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+        """답변 생성기(compose_answer)에 넘길 규약 — yaml `answer_rules` (조회 결과를 **어떻게 말할지**).
+
+        query_rules 는 SQL 생성기만 본다. 국공채는 등급이 없다 · 6% 초과면 주의 문구 같은 말하기 규칙은
+        여기서 따로 꺼내 답변 단계에 싣는다 (2026-08-30 전수조사 §3-H)."""
+        out: list[str] = []
+        for t in tables or TABLES:
+            rules = (self.enums.get(t) or {}).get("answer_rules") or []
+            if not rules:
+                continue
+            out.append(f"## {t}")
+            out.extend(f"- {r}" for r in (rules if isinstance(rules, list) else [rules]))
+        return "\n".join(out)
+
+    def clarify_context(self, tables: list[str] | tuple[str, ...] = ()) -> str:
+        """되묻기 규칙 — yaml `clarify` 의 다의어·사람의_선택. SQL 생성기가 '어느 뜻인지 단서가 없으면
+        CLARIFY: 로 되묻는' 근거다 (전수조사 §3-G). 해석하지 않고 yaml 문자열을 그대로 싣는다."""
+        out: list[str] = []
+        for t in tables or TABLES:
+            cl = (self.enums.get(t) or {}).get("clarify") or {}
+            if not cl:
+                continue
+            out.append(f"## {t}")
+            for group in ("다의어", "사람의_선택"):
+                for term, why in (cl.get(group) or {}).items():
+                    out.append(f"- {term}: {str(why).strip()}")
         return "\n".join(out)
 
 
@@ -122,8 +191,20 @@ def load_context() -> RuntimeContext:
 
     for p in sorted(ENUMS_DIR.glob("*.yaml")):
         doc = _load_yaml(p)
+        if p.name.endswith(".vocab.yaml"):
+            # R-1 — 생성물(scripts/gen_value_vocab.py). 도메인 yaml 을 덮지 않고 별도 사전으로 둔다
+            for col, spec in (doc.get("value_vocab") or {}).items():
+                ctx.value_vocab[(doc["domain"], col)] = list(spec.get("values") or [])
+            continue
+        if p.name == "_refusal.yaml":
+            ctx.refusal_rules = doc.get("refusal_rules") or {}
+            if doc.get("출력_형식"):
+                ctx.refusal_rules["_출력_형식"] = doc["출력_형식"]
+            continue
         if doc.get("domain"):
             ctx.enums[doc["domain"]] = doc
+            for item in doc.get("gate_constants") or []:
+                ctx.gate_constants.setdefault(doc["domain"], []).append(item)
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
         doc = _load_yaml(p, header_only_if_big=True)
@@ -141,6 +222,7 @@ def load_context() -> RuntimeContext:
     crd = (bcols.get("crd_grd") or {}).get("value_semantics") or {}
     ctx.crd_grades = set(crd)
     ctx.crd_grades |= {g.rstrip("0") for g in crd if g.endswith("0")}  # 'AA0' 의 EVCO 표기 'AA'
+    ctx.std_grades = _load_std_grades()
 
     with connect_readonly() as con:
         for nid, ntype, lko, len_ in con.execute(
@@ -151,6 +233,12 @@ def load_context() -> RuntimeContext:
             "select node_id, table_name, column_name, raw_value from kg_alias"
         ):
             ctx.kg_aliases.setdefault(nid, []).append((t, c, raw))
+        for anc, desc in con.execute("select ancestor_id, descendant_id from kg_closure"):
+            ctx.kg_closure.setdefault(anc, []).append(desc)
+        for child, parent in con.execute(
+            "select src_id, dst_id from kg_edge where predicate = 'subsidiaryOf'"
+        ):
+            ctx.kg_subsidiaries.setdefault(parent, []).append(child)
 
         # 마스터 4테이블 — 한글 컬럼명은 schema_metadata 가 원천 (build_db.py 가 원본 헤더에서 만듦)
         for t, c, ko, dt in con.execute(
@@ -163,4 +251,90 @@ def load_context() -> RuntimeContext:
             cols = [(r[1], "", r[2]) for r in con.execute(f"pragma table_info({t})")]
             if cols:
                 ctx.schema[t] = cols
+        ctx.route_vocab = _build_route_vocab(con, ctx)
+        ctx.value_index = _build_value_index(con, ctx)
     return ctx
+
+
+def _build_value_index(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
+    """R-4 — WHERE 리터럴 검사용 값 집합. **전 값을 아는 컬럼만**: ① kg_alias 가 그 컬럼의 distinct 를 사실상 다 덮는
+    컬럼(≥ 98%) ② value_vocab 컬럼. 부분 사전(이름·자유 텍스트)은 넣지 않는다 — 정상 값을 기각하면 안 된다.
+    키 ('_raw', table, col) 에는 힌트용 원값 몇 개를 둔다."""
+    index: dict = {}
+    by_col: dict[tuple[str, str], set] = {}
+    raw_by_col: dict[tuple[str, str], set] = {}
+    for t, c, raw in con.execute("select table_name, column_name, raw_value from kg_alias"):
+        by_col.setdefault((t, c), set()).add(str(raw).strip().casefold())
+        raw_by_col.setdefault((t, c), set()).add(str(raw).strip())
+    for (t, c), vals in by_col.items():
+        if t not in TABLES:
+            continue
+        try:
+            n = con.execute(f"select count(distinct trim({c})) from {t} where {c} is not null").fetchone()[0]
+        except sqlite3.Error:
+            continue
+        if n and len(vals) >= 0.98 * n:
+            index[(t, c)] = vals
+            index[("_raw", t, c)] = sorted(raw_by_col[(t, c)])[:12]
+    for (t, c), values in ctx.value_vocab.items():
+        index[(t, c)] = {str(v).strip().casefold() for v in values}
+        index[("_raw", t, c)] = list(values)[:12]
+    return index
+
+
+def _load_std_grades() -> set:
+    """신용등급 표준표 — DB 표기(AA0)와 표준 표기(AA) 둘 다. 파일이 없으면 빈 집합(게이트는 데이터 값만으로 판정)."""
+    if not GRADE_SCALE_CSV.exists():
+        return set()
+    with open(GRADE_SCALE_CSV, encoding="utf-8") as f:
+        rows = csv.DictReader(line for line in f if not line.startswith("#"))
+        grades = set()
+        for r in rows:
+            grades.add((r.get("grade_db") or "").strip())
+            grades.add((r.get("grade_std") or "").strip())
+    grades.discard("")
+    return grades
+
+
+# 라우팅 어휘에서 빼는 것 — 상품 명사는 ① 겹(문장 구조)이 다루고, 회사 표기의 군더더기는 경계 검사를 방해한다
+_VOCAB_STRIP = re.compile(r"\(주\)|주식회사|\s+")
+_VOCAB_NUMERIC = re.compile(r"[\d.\-/]+")
+PRODUCT_NOUNS = ("채권", "ETF", "ETN", "펀드")
+
+
+def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
+    """라우팅 ② 겹 어휘 — "질문에 어느 테이블의 값이 나오는가" 를 재기 위한 테이블별 {값: 가중치}.
+
+    사람이 쓴 단어 목록이 아니다. 전부 DB 와 yaml 에서 온다:
+      · kg_alias 의 raw 값(발행사·운용사·지수·종목) — 3
+      · 범주형 텍스트 컬럼(고유값 ≤ ROUTE_CATEGORICAL_MAX)의 값(대분류·소분류·채권종류·자산군 …) — 2
+      · ETF 약어명(pd_abrv_nm) — 3 ('KODEX 국고채3년' 이 채권 값 '국고채' 보다 길어 이긴다)
+      · yaml `synonyms` 의 사용자 표기(통안채·영구채 …) — 2
+    실측 1.7s (2026-08-30). 프로세스당 1회.
+    """
+    vocab: dict[str, dict[str, int]] = {t: {} for t in TABLES}
+
+    def add(t: str, term, w: int, min_len: int = 3) -> None:
+        term = _VOCAB_STRIP.sub("", str(term or "")).strip()
+        if len(term) < min_len or _VOCAB_NUMERIC.fullmatch(term) or term in PRODUCT_NOUNS:
+            return
+        vocab[t][term] = max(vocab[t].get(term, 0), w)
+
+    for t, raw in con.execute("select table_name, raw_value from kg_alias"):
+        if t in vocab:
+            add(t, raw, 3)
+    for t in TABLES:
+        for _, col, typ, *_ in con.execute(f"pragma table_info({t})"):
+            if "text" not in (typ or "").lower():
+                continue
+            n = con.execute(f"select count(distinct trim({col})) from {t}").fetchone()[0]
+            if 1 < n <= ROUTE_CATEGORICAL_MAX:
+                for (v,) in con.execute(f"select distinct trim({col}) from {t} where {col} is not null"):
+                    add(t, v, 2)
+    for t in ("domestic_etfs", "overseas_etfs"):
+        for (v,) in con.execute(f"select distinct trim(pd_abrv_nm) from {t} where pd_abrv_nm is not null"):
+            add(t, v, 3)
+    for t in TABLES:
+        for term in ((ctx.enums.get(t) or {}).get("synonyms") or {}):
+            add(t, term, 2, min_len=2)          # '국채'·'만기' 같은 2자 통칭 — yaml 이 고른 것만
+    return vocab

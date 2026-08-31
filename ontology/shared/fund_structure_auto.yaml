@@ -2,8 +2,8 @@
 # source=scripts/gen_fund_structure_auto.py — public_funds.rptt_ksd_itm_no 묶음 + ext_fund_page 모펀드 텍스트 (2026-08-25)
 # as_of=2026-08-22
 # 키 구조 실측·설계 근거는 생성 스크립트 상단 docstring 참조.
-# Fund 노드 6883 (rptt_ksd_itm_no 단위 · all_closed 3706 · 복수클래스 1918 · FoFs 450 · 자펀드 1605)
-# 제외: rptt 위장결측('KR0000000000'·'000000000000') 6953행 — 대표펀드 정보 없음, 노드 없음 (클래스 단독 조회는 마스터로)
+# Fund 노드 6867 (rptt_ksd_itm_no 단위 · all_closed 3690 · 복수클래스 1917 · FoFs 449 · 자펀드 1603)
+# 제외: rptt 위장결측('KR0000000000'·'000000000000') 6982행 — 대표펀드 정보 없음, 노드 없음 (클래스 단독 조회는 마스터로)
 # MotherFund 노드 717 · feedsInto edge 1704 (모펀드 후보 6598 · 마스터 내 매칭 0)
 # classOf(클래스→묶음) 는 edge 로 만들지 않는다 — public_funds.rptt_ksd_itm_no 컬럼이 그 관계 자체.
 # representedBy 는 만들 수 없다 — 대표 클래스가 마스터 행인 경우 0.1%. rptt 가 노드 키로 그 역할을 흡수.
@@ -14,43 +14,6 @@ generated: true
 source: "scripts/gen_fund_structure_auto.py — public_funds.rptt_ksd_itm_no 묶음 + ext_fund_page 모펀드 텍스트 (2026-08-25)"
 as_of: '2026-08-22'
 nodes:
-  Fund_ca71a0054d:
-    label_ko: "Asset backed Short Term Bond, 대출채권유동화 전자단기사채"
-    auto: true
-    n_classes: 4
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "0           ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 4"}
-  Fund_477d749a05:
-    label_ko: "하이외화표시후순위채권사모증권투자신탁[채권]"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "00          ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_a7f6367dbd:
-    label_ko: "피델리티 재팬 증권 자투자신탁(주식)"
-    auto: true
-    n_classes: 2
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    structure: "FoFs|자펀드"
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "00000       ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 2"}
-  Fund_2e514aeb17:
-    label_ko: "현대시스템absolute사모2채혼파A"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "0000000     ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
   Fund_205f6ba9ff:
     label_ko: "교보증권 케이와이 금융대체 일반사모투자신탁[재간접형]"
     auto: true
@@ -11540,15 +11503,6 @@ nodes:
     all_closed: true
     aliases:
     - {table: public_funds, column: rptt_ksd_itm_no, raw: "03023000CME5", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_326859a6f1:
-    label_ko: "KB KBSTAR 단기 국공채 액티브 증권 상장지수 투자신탁(채권)"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "03023004460 ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
   Fund_ee50674f18:
     label_ko: "키움프런티어장기주택마련증권자투자신탁[채권]"
     auto: true
@@ -37286,15 +37240,6 @@ nodes:
     all_closed: true
     aliases:
     - {table: public_funds, column: rptt_ksd_itm_no, raw: "03228009001L", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_0a4d607d37:
-    label_ko: "한국투자KINDEX단기자금증권상장지수투자신탁(채권)"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "0322800900M ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
   Fund_d943a24dee:
     label_ko: "한국민간투자풀사모증권투자신탁3호(주식-재간접형)"
     auto: true
@@ -37407,15 +37352,6 @@ nodes:
     all_closed: true
     aliases:
     - {table: public_funds, column: rptt_ksd_itm_no, raw: "032300015001", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_287a23b1f1:
-    label_ko: "KB뱅크론목표전환사모특별자산투자신탁1호[대출채권-재간접형]"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "03230001969 ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
   Fund_0f158c369d:
     label_ko: "KTB세이프사모증권투자신탁제19호[채권]"
     auto: true
@@ -62314,33 +62250,6 @@ nodes:
     offer_type: "사모"
     aliases:
     - {table: public_funds, column: rptt_ksd_itm_no, raw: "20662190225A", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_a8e6dc0e0c:
-    label_ko: "삼성글로벌Water증권자투자신탁1호[주식-재간접형]"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "222222222222", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_85f7f521b6:
-    label_ko: "동부지수연계사모증권투자신탁제111호(ELS-파생형)"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "30190022011 ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_55fdad0102:
-    label_ko: "신영사모증권투자신탁ML-1호(채권)"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "30290008931 ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
   Fund_b89652c95a:
     label_ko: "헤리티지 프라이어리티 일반 사모부동산투자신탁 제1호"
     auto: true
@@ -62357,44 +62266,6 @@ nodes:
     offer_type: "사모"
     aliases:
     - {table: public_funds, column: rptt_ksd_itm_no, raw: "421040000001", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_8be12507ef:
-    label_ko: "JB이천CK전문투자형사모부동산투자신탁4호"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "99999999999 ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_b416fa5eaf:
-    label_ko: "삼성KODEX"
-    auto: true
-    n_classes: 2
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "KR          ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 2"}
-  Fund_f0558e6582:
-    label_ko: "동부진주찾기증권투자신탁 1[채권혼합]"
-    auto: true
-    n_classes: 1
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "KR000000000 ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_e440412692:
-    label_ko: "산은대표기업지수시스템주식혼C1"
-    auto: true
-    n_classes: 3
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    structure: "자펀드"
-    multi_class: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "KR5000000   ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 3"}
   Fund_f6305b8915:
     label_ko: "산은마스터사모특별38호"
     auto: true
@@ -62448,24 +62319,6 @@ nodes:
     all_closed: true
     aliases:
     - {table: public_funds, column: rptt_ksd_itm_no, raw: "kr0000000000", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 1"}
-  Fund_c88122cd5e:
-    label_ko: "KTB스마트RCPS사모증권투자신탁제1호[주식]"
-    auto: true
-    n_classes: 2
-    n_selling: 0
-    offer_type: "사모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "sdf         ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 2"}
-  Fund_d46bdc5a39:
-    label_ko: "맵스TIGER인버스국채3Y"
-    auto: true
-    n_classes: 6
-    n_selling: 0
-    offer_type: "공모"
-    all_closed: true
-    aliases:
-    - {table: public_funds, column: rptt_ksd_itm_no, raw: "wtrewrwe    ", source: rule, evidence: "대표펀드 KSD 코드 · 클래스 6"}
   MotherFund_3a23290c6f:
     label_ko: "미래에셋아시아퍼시픽소비성장증권모투자신탁(주식)"
     auto: true

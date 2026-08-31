@@ -124,7 +124,7 @@ yaml 판정 근거로만 인용돼 있다.
 
 | 사유 | 컬럼 |
 | :--- | :--- |
-| **시계열 (7/11 위반)** | `NASST_SUM` · `M1/M3/M6/M12_BNFR` — 8/18 기준 + `-999` 센티넬 |
+| **시계열 (🔄 8/24 기준 — 8/18 수집값은 발행일 기준 허용, 마스터 기준일 8/22 와 병기)** | `NASST_SUM` · `M1/M3/M6/M12_BNFR` — 8/18 기준 + `-999` 센티넬 |
 | **마스터 중복** | `std_itm_no` · `itm_abrv_nm` · `or_co_xtn_itt_cd` · `fd_set_pcd` · `pfiv_sale_cntl_tcd` · `or_attr_desc` · `fd_nast_suma` · `sale_yn` · `thco_sale_yn` |
 | **미해독 코드** | `ESTP` · `PD_CLSS` · `PD_TYP_CD` · `fdStcCd` · `spcDvCd` · `unibusYn` · `dms_fo_dv_cd` · `fdClssLv` |
 | **상수** | `page_ok`(True) · `feeYn`(N) |

@@ -105,3 +105,6 @@ logs/
 
 # 주최 배포본 압축해제 폴더 — data/ 로 옮겨 쓰는 임시 스테이징 (실물은 드라이브 공유)
 mirae_data_*/
+
+# 선행연구 PDF — arXiv 에서 재다운로드 가능 (docs/research/notes/INDEX.md 에 ID)
+docs/research/papers/

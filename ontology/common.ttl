@@ -31,7 +31,7 @@ fp:manages a owl:ObjectProperty ; owl:inverseOf fp:hasManager ; rdfs:comment "�
 fp:issues a owl:ObjectProperty ; owl:inverseOf fp:hasIssuer ; rdfs:comment "발행사 → 상품 (fp:hasIssuer 의 역)"@ko .
 fp:isHeldBy a owl:ObjectProperty ; owl:inverseOf fp:holds ; rdfs:comment "종목 → 그 종목을 편입한 상품 (fp:holds 의 역) — '삼성전자 편입 ETF' 질의의 탐색 방향"@ko .
 
-# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 24.6%·0등급 존재) ──
+# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 40.8%(2차)·0등급 '00' 19행 존재 — 원본은 문자 코드, 정수는 shared/risk_grade.yaml 매핑값) ──
 fp:riskGradeValue a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf ( fp:DomesticBond fp:DomesticETF fp:PublicFund ) ] ;  # 해외ETF 는 위험등급 컬럼 자체가 없음(ABSENT — etf_gl.ttl)
     rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;
@@ -122,10 +122,6 @@ fp:belongsToFund a owl:ObjectProperty ;
     rdfs:domain [ owl:unionOf ( fp:PublicFund ) ] ;
     rdfs:range fp:Fund ;
     rdfs:comment "공모펀드 묶음(대표펀드 KSD 코드 단위) 및 모펀드 — 클래스 행(itm_no)은 rptt_ksd_itm_no 로 이 노드에 매달린다"@ko .
-fp:Fund_ca71a0054d a fp:Fund ; skos:prefLabel "Asset backed Short Term Bond, 대출채권유동화 전자단기사채"@ko .
-fp:Fund_477d749a05 a fp:Fund ; skos:prefLabel "하이외화표시후순위채권사모증권투자신탁[채권]"@ko .
-fp:Fund_a7f6367dbd a fp:Fund ; skos:prefLabel "피델리티 재팬 증권 자투자신탁(주식)"@ko .
-fp:Fund_2e514aeb17 a fp:Fund ; skos:prefLabel "현대시스템absolute사모2채혼파A"@ko .
 fp:Fund_205f6ba9ff a fp:Fund ; skos:prefLabel "교보증권 케이와이 금융대체 일반사모투자신탁[재간접형]"@ko .
 fp:Fund_0b8b95a582 a fp:Fund ; skos:prefLabel "교보 엔베스터 금융대체 일반사모투자신탁[재간접형]"@ko .
 fp:Fund_0c9ade290d a fp:Fund ; skos:prefLabel "교보증권Royal-Class레포Plus채권투자형6M전문사모투자신탁KB-1호"@ko .
@@ -1383,7 +1379,6 @@ fp:Fund_323b323d28 a fp:Fund ; skos:prefLabel "KB 한국 단기채 프리미엄 
 fp:Fund_1e882c1139 a fp:Fund ; skos:prefLabel "KB 한국 단기채 프리미엄 일반 사모 증권 투자신탁 제41호(USD)(채권)(전문)"@ko .
 fp:Fund_8182fd89b6 a fp:Fund ; skos:prefLabel "KB 한국 단기채 프리미엄 일반 사모 증권 투자신탁 제42호(USD)(채권)(전문)"@ko .
 fp:Fund_f1e9aa3e61 a fp:Fund ; skos:prefLabel "KB 한국 단기채 프리미엄 일반 사모 증권 투자신탁 제46호(USD)(채권)(전문)"@ko .
-fp:Fund_326859a6f1 a fp:Fund ; skos:prefLabel "KB KBSTAR 단기 국공채 액티브 증권 상장지수 투자신탁(채권)"@ko .
 fp:Fund_ee50674f18 a fp:Fund ; skos:prefLabel "키움프런티어장기주택마련증권자투자신탁[채권]"@ko .
 fp:Fund_89d0f09203 a fp:Fund ; skos:prefLabel "키움프런티어장기주택마련증권투자신탁[채권혼합]"@ko .
 fp:Fund_6c83fc8ccd a fp:Fund ; skos:prefLabel "키움프런티어뉴인덱스플러스α증권투자신탁F-1[주식-파생형]"@ko .
@@ -4164,7 +4159,6 @@ fp:Fund_67b1400ed2 a fp:Fund ; skos:prefLabel "한국투자KINDEX일본Nikkei225
 fp:Fund_bf05615599 a fp:Fund ; skos:prefLabel "한국투자KINDEX중장기국공채액티브증권상장지수투자신탁(채권)"@ko .
 fp:Fund_74d19802b1 a fp:Fund ; skos:prefLabel "한국투자KINDEX국채선물3년인버스증권상장지수투자신탁(채권-파생형)"@ko .
 fp:Fund_fae4c5ad0d a fp:Fund ; skos:prefLabel "한국투자KINDEX국채선물10년인버스증권상장지수투자신탁(채권-파생형)"@ko .
-fp:Fund_0a4d607d37 a fp:Fund ; skos:prefLabel "한국투자KINDEX단기자금증권상장지수투자신탁(채권)"@ko .
 fp:Fund_d943a24dee a fp:Fund ; skos:prefLabel "한국민간투자풀사모증권투자신탁3호(주식-재간접형)"@ko .
 fp:Fund_23033601fd a fp:Fund ; skos:prefLabel "한국민간투자풀사모증권투자신탁4호(주식-재간접형)"@ko .
 fp:Fund_b562421be2 a fp:Fund ; skos:prefLabel "한국투자고양덕은전문투자형사모부동산투자신탁1호"@ko .
@@ -4177,7 +4171,6 @@ fp:Fund_b945f525b6 a fp:Fund ; skos:prefLabel "스팍스본재팬증권자투자
 fp:Fund_f928cb42fc a fp:Fund ; skos:prefLabel "스팍스본재팬증권자투자신탁UH(주식)"@ko .
 fp:Fund_c4bc488442 a fp:Fund ; skos:prefLabel "스팍스본재팬연금저축증권자투자신탁H(주식)"@ko .
 fp:Fund_999e7d5649 a fp:Fund ; skos:prefLabel "스팍스법인용MMF제1호(국공채)"@ko .
-fp:Fund_287a23b1f1 a fp:Fund ; skos:prefLabel "KB뱅크론목표전환사모특별자산투자신탁1호[대출채권-재간접형]"@ko .
 fp:Fund_0f158c369d a fp:Fund ; skos:prefLabel "KTB세이프사모증권투자신탁제19호[채권]"@ko .
 fp:Fund_e12a635b75 a fp:Fund ; skos:prefLabel "KTB스마트30사모증권투자신탁제12호(채권혼합)"@ko .
 fp:Fund_5d29188e18 a fp:Fund ; skos:prefLabel "KTB하이브리드ABCP사모증권투자신탁제3호[신탁수익권]"@ko .
@@ -6988,23 +6981,14 @@ fp:Fund_d34b23eee5 a fp:Fund ; skos:prefLabel "마스터 IPO PLUS 일반 사모�
 fp:Fund_461aa573af a fp:Fund ; skos:prefLabel "마스터 IPO SPAC 일반 사모투자신탁"@ko .
 fp:Fund_5452062c78 a fp:Fund ; skos:prefLabel "크리에이트제7호일반사모투자회사"@ko .
 fp:Fund_8bafad459b a fp:Fund ; skos:prefLabel "코르사 일반사모투자신탁 1호"@ko .
-fp:Fund_a8e6dc0e0c a fp:Fund ; skos:prefLabel "삼성글로벌Water증권자투자신탁1호[주식-재간접형]"@ko .
-fp:Fund_85f7f521b6 a fp:Fund ; skos:prefLabel "동부지수연계사모증권투자신탁제111호(ELS-파생형)"@ko .
-fp:Fund_55fdad0102 a fp:Fund ; skos:prefLabel "신영사모증권투자신탁ML-1호(채권)"@ko .
 fp:Fund_b89652c95a a fp:Fund ; skos:prefLabel "헤리티지 프라이어리티 일반 사모부동산투자신탁 제1호"@ko .
 fp:Fund_b948953b00 a fp:Fund ; skos:prefLabel "으뜸 IPO 일반사모투자신탁 제1호"@ko .
-fp:Fund_8be12507ef a fp:Fund ; skos:prefLabel "JB이천CK전문투자형사모부동산투자신탁4호"@ko .
-fp:Fund_b416fa5eaf a fp:Fund ; skos:prefLabel "삼성KODEX"@ko .
-fp:Fund_f0558e6582 a fp:Fund ; skos:prefLabel "동부진주찾기증권투자신탁 1[채권혼합]"@ko .
-fp:Fund_e440412692 a fp:Fund ; skos:prefLabel "산은대표기업지수시스템주식혼C1"@ko .
 fp:Fund_f6305b8915 a fp:Fund ; skos:prefLabel "산은마스터사모특별38호"@ko .
 fp:Fund_82cc6494a2 a fp:Fund ; skos:prefLabel "신한 BNPP SMART MSCI 선진국 증권상장지수투자신탁[주식-파생형](합성 H)"@ko .
 fp:Fund_882faebd6d a fp:Fund ; skos:prefLabel "알파에셋분리과세하이일드사모증권투자신탁1호[채권혼합]"@ko .
 fp:Fund_d8fd4be23e a fp:Fund ; skos:prefLabel "교보악사Tomorrow장기우량증권투자신탁MH-1호[채권]"@ko .
 fp:Fund_91fc293059 a fp:Fund ; skos:prefLabel "아크사모혼합형일호펀드"@ko .
 fp:Fund_0e7830801d a fp:Fund ; skos:prefLabel "하나배당60증권1주식C"@ko .
-fp:Fund_c88122cd5e a fp:Fund ; skos:prefLabel "KTB스마트RCPS사모증권투자신탁제1호[주식]"@ko .
-fp:Fund_d46bdc5a39 a fp:Fund ; skos:prefLabel "맵스TIGER인버스국채3Y"@ko .
 fp:MotherFund_3a23290c6f a fp:Fund ; skos:prefLabel "미래에셋아시아퍼시픽소비성장증권모투자신탁(주식)"@ko .
 fp:MotherFund_d1f81c3298 a fp:Fund ; skos:prefLabel "삼성통일코리아모투자신탁"@ko .
 fp:MotherFund_0ed01fb0f0 a fp:Fund ; skos:prefLabel "삼성통일코리아증권모투자신탁"@ko .
@@ -20968,9 +20952,7 @@ fp:Org_fund_00130015 a fp:Organization ; skos:prefLabel "씨타델"@ko .
 fp:Org_fund_00130017 a fp:Organization ; skos:prefLabel "거캐피탈"@ko .
 fp:Org_fund_00130018 a fp:Organization ; skos:prefLabel "퍼세우스알파펀드"@ko .
 fp:Org_fund_00130026 a fp:Organization ; skos:prefLabel "블랙록월드광업주"@ko .
-fp:Org_fund_0040106 a fp:Organization ; skos:prefLabel "0040106"@ko .
-fp:Org_fund_99999999 a fp:Organization ; skos:prefLabel "현대와이즈03사"@ko .
-fp:Org_trustee_00000000 a fp:Organization ; skos:prefLabel "00000000"@ko .
+fp:Org_fund_00040106 a fp:Organization ; skos:prefLabel "00040106"@ko .
 fp:Org_trustee_00020002 a fp:Organization ; skos:prefLabel "한국산업은행"@ko .
 fp:Org_trustee_00020003 a fp:Organization ; skos:prefLabel "중소기업은행"@ko .
 fp:Org_trustee_00020004 a fp:Organization ; skos:prefLabel "국민은행"@ko .
@@ -21019,7 +21001,6 @@ fp:Org_trustee_00160030 a fp:Organization ; skos:prefLabel "00160030"@ko .
 fp:Org_trustee_00160036 a fp:Organization ; skos:prefLabel "NH투자증권"@ko .
 fp:Org_trustee_00160037 a fp:Organization ; skos:prefLabel "삼성증권"@ko .
 fp:Org_trustee_0016022 a fp:Organization ; skos:prefLabel "미래에셋증권"@ko .
-fp:Org_trustee_99999999 a fp:Organization ; skos:prefLabel "99999999"@ko .
 
 # ── Region (shared/region.yaml) ──
 fp:Region a owl:Class .

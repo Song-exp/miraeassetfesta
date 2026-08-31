@@ -55,6 +55,7 @@ python -m src.chat --no-hcx -q "질문"        # Ground·Gate 만 (HCX 호출 0�
 
 # 반영
 python scripts/build_ontology.py             # yaml → kg_* + ttl 5분할
+python scripts/gen_value_vocab.py            # DB distinct → enums/<domain>.vocab.yaml (범주값 어휘 · DB 를 다시 만든 뒤에, 2026-08-30 R-1)
 python scripts/build_ontology.py --check     # 검증만 (산출물 생성 안 함)
 python scripts/check_yaml_dupkeys.py         # yaml 중복키
 

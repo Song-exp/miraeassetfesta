@@ -6980,8 +6980,8 @@ nodes:
       raw: '00130026'
       source: rule
       evidence: asset_manager.csv derived · 8행
-  Org_fund_0040106:
-    label_ko: '0040106'
+  Org_fund_00040106:
+    label_ko: '00040106'
     role: manager
     auto: true
     note: asset_manager.csv status=unknown — 법인명 미확정(브랜드/코드 라벨)
@@ -6991,28 +6991,6 @@ nodes:
       raw: '0040106'
       source: rule
       evidence: asset_manager.csv unknown · 2행
-  Org_fund_99999999:
-    label_ko: 현대와이즈03사
-    role: manager
-    auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
-    aliases:
-    - table: public_funds
-      column: or_co_xtn_itt_cd
-      raw: '99999999'
-      source: rule
-      evidence: asset_manager.csv derived · 27행
-  Org_trustee_00000000:
-    label_ko: '00000000'
-    role: trustee
-    auto: true
-    note: 센티넬 코드 — 수탁사 미지정/미상
-    aliases:
-    - table: public_funds
-      column: trusc_xtn_itt_cd
-      raw: '00000000'
-      source: rule
-      evidence: 수탁사 코드 · 74행
   Org_trustee_00020002:
     label_ko: 한국산업은행
     role: trustee
@@ -7541,17 +7519,6 @@ nodes:
       raw: '0016022'
       source: rule
       evidence: 수탁사 코드 · 202행
-  Org_trustee_99999999:
-    label_ko: '99999999'
-    role: trustee
-    auto: true
-    note: 센티넬 코드 — 수탁사 미지정/미상
-    aliases:
-    - table: public_funds
-      column: trusc_xtn_itt_cd
-      raw: '99999999'
-      source: rule
-      evidence: 수탁사 코드 · 598행
 alias_extensions:
   Org_00040024:
   - table: domestic_etfs

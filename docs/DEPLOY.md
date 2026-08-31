@@ -89,6 +89,7 @@ ontology/shared/*.yaml   (개체 · alias · 계층)      ── build_ontology.
 | :-- | :-- | :-- | :-- |
 | `enums/*.yaml` | (없음) | `deploy.sh --yaml-only` | 마운트된 파일을 런타임이 직접 읽는다 |
 | `shared/*.yaml` · `codebooks/*.csv` | `python scripts/build_ontology.py` | `deploy.sh --db-only` | `kg_node·kg_alias·kg_edge·kg_closure` 가 **DB 안에** 있다 |
+| `enums/<domain>.vocab.yaml` · `enums/_refusal.yaml` · `gate_constants`/`triggers` 블록 | (`gen_value_vocab.py` 는 DB 재생성 뒤에만) | `deploy.sh --yaml-only` | 런타임이 파일로 읽는다 (2026-08-30 R-1·R-5·R-2). 단 **로더 코드가 같이 바뀐 첫 배포는 `--code-only`** |
 | 코드 (`src/`) | `pytest` · `run_gold_check` | `deploy.sh --code-only` | 이미지 재빌드가 필요하다 |
 | 위 둘 이상 | 위와 같음 | `deploy.sh` (전체) | — |
 

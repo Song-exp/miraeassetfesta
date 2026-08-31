@@ -1,4 +1,4 @@
-"""파이프라인 오케스트레이터 — 단계별 실행 + think_trace 조립.
+﻿"""파이프라인 오케스트레이터 — 단계별 실행 + think_trace 조립.
 
 think_trace 는 각 단계가 **실제로 한 일**의 로그다 (LLM 생성물 아님 — hcx/client.py 원칙).
 Plan(SQL 생성)·Answer(문장 생성)는 planner 인터페이스 뒤에 있다 — HCX 미연결 환경에서도
@@ -508,7 +508,7 @@ _TOP_SAFE_Q = re.compile(
 _TOP_RISK_Q = re.compile(                                # 반대 방향 최상급 — 동반되면 비교 질의라 불개입
     rf"{_SUP}\s*위험한|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*높|{_SUP}\s*안\s*좋")
 _YIELD_DEMAND_Q = re.compile(r"[\d.]+\s*(?:%|퍼센트|프로)\s*(?:이상|넘|초과)")
-_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 확정식 — 2026-09-01 전수 실측 (구매가능 모수 기준 16등급 행수)
+_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 확정식 — 2026-08-31 전수 실측 (구매가능 모수 기준 16등급 행수)
     _KTB_FILTER,                                                   # 377 (전부 16)
     "TRIM(std_pd_mcls_nm)='국공채'",                                # 2,838
     "TRIM(std_pd_mcls_nm)='특수채'",                                # 6,077
@@ -532,7 +532,7 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     최고 6.23%) ② 6등급이 없는 종류 지목(회사채·카드채 등 — 강제하면 0행 '확인 불가' 오답)
     ③ 반대 방향 최상급 동반('가장 안전한 것과 가장 위험한 것') — 비교 질의.
     치환은 WHERE 절 범위에서만 — 구조표시 규칙의 SELECT CASE 에 pd_risk_gcd IN ('11','12','13')
-    이 실리므로(은행 자본성증권 판정) 전문 치환은 그 CASE 를 파손한다 (2026-09-01 전수조사 실측)."""
+    이 실리므로(은행 자본성증권 판정) 전문 치환은 그 CASE 를 파손한다 (2026-08-31 전수조사 실측)."""
     if "domestic_bonds" not in sql or not _TOP_SAFE_Q.search(question):
         return sql, False
     if _TOP_RISK_Q.search(question) or _YIELD_DEMAND_Q.search(question):

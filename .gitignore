@@ -108,3 +108,6 @@ mirae_data_*/
 
 # 선행연구 PDF — arXiv 에서 재다운로드 가능 (docs/research/notes/INDEX.md 에 ID)
 docs/research/papers/
+
+# Claude Code 개인 설정
+.claude/settings.local.json

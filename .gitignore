@@ -111,3 +111,10 @@ docs/research/papers/
 
 # Claude Code 개인 설정
 .claude/settings.local.json
+
+# 🔴 주최 배포본 압축파일·과제설명 PDF — 저장소가 public 이라 원문을 올리면 안 된다.
+#    2026-08-31 사고: 머지 커밋에서 git add -A 로 external.zip(3.4GB)·mirae_data_*.zip(105MB)·
+#    데이터셋 zip(18MB)·과제설명 PDF 가 통째로 커밋돼 push 가 770MB 를 올리다 끊겼다.
+#    실물은 드라이브 공유로 받는다.
+*.zip
+AI페스티벌_*.pdf

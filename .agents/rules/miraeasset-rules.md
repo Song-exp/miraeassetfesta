@@ -19,7 +19,7 @@
 - 소스코드 제출 시 `ontology.ttl` 등 Turtle/RDF 형식의 온톨로지 정의 파일이 필수 포함되어야 합니다.
 - 온톨로지 세부 제약 작성: `DisjointWith` (ETF vs ETN 구분), `Constraint` (**riskGrade 0~6**), `inverseOf` (운용사 ↔ 상품 운용 관계).
   - ⚠️ **riskGrade는 1~5가 아니라 0~6입니다.** 실데이터(2차, 기준일 2026-08-22) 확인 결과 6등급이 국내채권 8,929행/7,803종목(40.8%)·국내ETF 21건 존재하고, `0`(해당없음 `'00'`)이 국내채권 19행 있습니다(1차엔 58건). 원본 표기는 채권 `pd_risk_gcd` 문자 `'11'~'16'`·`'00'`, ETF `pd_risk_cd` `'PD_RISK_GCD_11'~'16'` 이며 ttl 의 정수 0~6 은 `ontology/shared/risk_grade.yaml` 매핑 후의 값입니다. 1~5로 제약하면 정상 데이터를 가드레일이 차단합니다.
-  - ⚠️ **ETF/ETN 구분은 실제 필터로 동작해야 합니다.** 국내ETF마스터에 ETN 532건(30.7%, `pd_grp_no`), 해외ETF마스터에 59건(`cu_etn_yn`)이 혼입되어 있습니다.
+  - ⚠️ **ETF/ETN 구분은 실제 필터로 동작해야 합니다.** 국내ETF마스터에 ETN 545건(30.6%, `pd_grp_no`), 해외ETF마스터에 65건(`cu_etn_yn`)이 혼입되어 있습니다. (🔄 2026-08-31 실측 정정 — 옛 532·59는 이전 스냅샷 수치)
 - Federated Search Architecture (RDB SQLite + Knowledge Graph + Vector DB) 기반으로 다단계 관계 질의를 처리합니다.
 
 ## 5. API 응답 속도, 배점 및 JSON 규격 (SLA)

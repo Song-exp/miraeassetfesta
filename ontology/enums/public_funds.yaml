@@ -816,10 +816,11 @@ query_rules:
   판매중만: sale_yn = '판매중'
   구매가능: sale_yn = '판매중'          # 🆕 주최 공지 — 상폐/리스팅종료 외 전부 구매가능. 펀드는 판매완료가 그 경계
   공모만: prvo_pbff_desc = '공모'       # 🔴 2차엔 사모 8,960행 — 공모 질의 필수 필터
-  기본모수: sale_yn = '판매중' AND prvo_pbff_desc = '공모'   # 집계·Top-N 기본. 모수 8,969 를 답변에 밝힐 것
+  기본모수: "sale_yn = '판매중' AND prvo_pbff_desc = '공모'  # 집계·Top-N 은 이 조건을 반드시 WHERE 에 넣는다. 모수 8,969 를 답변에 밝힐 것"
   집계_TopN_필수: >-
-    🔴 집계·Top-N 은 기본모수(판매중 AND 공모)로 한정한다 — 판매완료 12,714행은 평가 컬럼 99% 결측, 사모는 질의 대상 아님.
-    정렬 컬럼에 'IS NOT NULL AND <> 0'(zero_is_value 컬럼 제외) + 수익률정상. 결과에 모수·기준일(fd_daily_bas_dt) 병기.
+    🔴 집계·Top-N SQL 은 반드시 WHERE 에 sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND <정렬 컬럼> IS NOT NULL AND <정렬 컬럼> <> 0
+    을 포함한다(zero_is_value 컬럼은 0 조건 제외 · 수익률 컬럼이면 수익률정상 추가) — 이 조건이 빠진 집계·Top-N 은 오답이다.
+    판매완료 12,714행은 평가 컬럼 99% 결측, 사모는 질의 대상 아님. 결과에 모수·기준일(fd_daily_bas_dt) 병기.
   대표행: >-
     🔴 랭킹·Top-N·집계는 클래스(행)가 아니라 펀드 단위다 — 펀드단위 키(or_co_xtn_itt_cd + zero-pad mtco_itm_no)로 GROUP BY 하고
     펀드당 1행(정렬 컬럼 MAX 인 클래스)만 낸다. 2026-08-30 실측: 한화2.2배레버리지인덱스 A·C1~C4·Ce 6클래스가 grp '0166750' 하나 →

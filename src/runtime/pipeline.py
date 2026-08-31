@@ -10,6 +10,7 @@ from __future__ import annotations
 import inspect
 import os
 import re
+from functools import lru_cache
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -499,6 +500,45 @@ def ensure_risk_name_column(sql: str) -> tuple[str, bool]:
     return sql[: m.end()] + ", pd_risk_nm" + sql[m.end():], True
 
 
+# ── 엣지케이스 가드 2건 (리드 서버 실검증 2026-08-31 · ask_lead_2026-08-31_reply.md) ─────────
+_CORP_SUFFIX = re.compile(
+    r"(?:[\s,]+(?:Inc|Corp|Corporation|Company|Co|Ltd|Limited|PLC|LLC|LP|Holdings?|"
+    r"Group|ADR|Class\s+[A-C]|Cl\s+[A-C])\.?)+$",
+    re.I,
+)
+
+
+@lru_cache(maxsize=None)
+def _short_label(label: str) -> str | None:
+    """법인 접미어를 뗀 보조 키 — 'Li Auto Inc' → 'Li Auto'.
+
+    🔴 매칭은 `label in question` 방향이라 사람이 짧게 부르면 통째로 놓친다
+       (리드 실검증: "Li Auto를 담은 국내 ETF" → 라벨 'Li Auto Inc' 미매칭 → Ground 0건).
+    접미어를 뗀 형태를 **보조 키로만** 추가한다. 정식 라벨은 그대로 두므로 기존 매칭은 영향 없다.
+    실측(2026-08-31): 전체 라벨 40,171 중 접미어 보유 7,861. 뗀 형태가 다른 노드와 겹치는 것이
+    1,762건 있으나 전부 같은 회사의 주식·회사채·지수라 정렬(대상 alias > 긴 라벨 > 값 많은 노드)이
+    정본을 고른다. SA·AG·NV·NA 는 회사명 본체와 헷갈려 **일부러 뺐다**(예: 'Visa' 계열 오탐).
+    """
+    s = _CORP_SUFFIX.sub("", label).strip(" .,")
+    return s if s and s != label else None
+
+
+_MATCH_KEYS: dict[int, list] = {}   # id(ctx) -> [(키, 노드, 경계검사)] · 질문과 무관해 1회만 만든다
+# '국내' 가 **상장 시장**을 뜻하는 자리 — 투자지역(wu_inv_rgn)이 아니다.
+# 리드 실검증: "Li Auto를 담은 국내 ETF" 에서 '국내' 가 Region_Korea 로 잡혀 wu_inv_rgn='국내' 필터가 붙었다.
+# 그러면 중국 기업을 담은 상품이 전부 빠진다. clarify.국내 에 기록돼 있으나 그건 플래너용이라 Ground 엔 안 걸린다.
+_KR_LISTING = re.compile(r"국내\s*(?:상장|증시|시장)?\s*(?:ETF|ETN|etf|etn|상품|종목)")
+
+
+def _region_korea_is_listing(question: str) -> bool:
+    """'국내 ETF'·'국내 상장 ETF' 처럼 국내가 상장 시장을 가리키면 True.
+
+    domestic_etfs 는 이미 전건이 국내 상장이라 별도 필터가 필요 없다.
+    '국내에 투자하는'·'국내 주식' 처럼 투자 대상을 가리키는 자리는 걸리지 않는다.
+    """
+    return bool(_KR_LISTING.search(question))
+
+
 def _ground(
     question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
 ) -> tuple[list, list[str]]:
@@ -551,13 +591,41 @@ def _ground(
             return False
         return any(t in target for t, _, _ in _members(node))
 
-    candidates = sorted(
-        ((label, node) for node in ctx.kg_nodes for label in node.labels if len(label) >= _min_len(node, label)),
-        key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))),
-    )
+    def _keys(node):
+        """노드의 매칭 키 — 정식 라벨 + 법인 접미어를 뗀 보조 키. (키, 경계검사여부)"""
+        for label in node.labels:
+            if len(label) >= _min_len(node, label):
+                yield label, False
+            short = _short_label(label)
+            if short and len(short) >= _min_len(node, short):
+                yield short, True
+
+    drop_kr = _region_korea_is_listing(question)
+    # (키, 노드, 경계검사) 목록은 질문과 무관하다 — 프로세스당 1회만 만든다.
+    # 정렬만 질문마다 다시 한다(_in_target 이 대상 테이블에 걸려 있어서).
+    pairs = _MATCH_KEYS.get(id(ctx))
+    if pairs is None:
+        seen_keys: set = set()
+        pairs = []
+        for node in ctx.kg_nodes:
+            for key, bounded in _keys(node):
+                if (node.node_id, key) in seen_keys:
+                    continue
+                seen_keys.add((node.node_id, key))
+                pairs.append((key, node, bounded))
+        _MATCH_KEYS[id(ctx)] = pairs
+    candidates = sorted(pairs, key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))))
     consumed = question
-    for label, node in candidates:
+    for label, node, bounded in candidates:
         if label not in consumed:
+            continue
+        if bounded and not re.search(rf"(?<![A-Za-z0-9]){re.escape(label)}(?![A-Za-z0-9])", consumed):
+            # 보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙는 것을 막는다
+            continue
+        if drop_kr and node.node_id == "Region_Korea":
+            # '국내 ETF' 의 '국내' 는 상장 시장이다. 라벨은 소비해 같은 자리에서 다시 잡히지 않게 둔다
+            consumed = consumed.replace(label, " ")
+            lines.append(f"'{label}' → (건너뜀) 국내 = 상장 시장 · 투자지역 필터로 쓰지 않는다")
             continue
         aliases = target_aliases(ctx, node, target, relations)
         if target and not aliases:

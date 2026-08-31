@@ -525,3 +525,60 @@ def test_full_path_backstop_recovers(ctx):
     # 원 사고의 누락 1위(C층 5.859%)가 복귀하고, 사모/1등급 14.05% 는 제외된다
     assert "토지주택채권 330(변)" in r.retrieved_context
     assert "14.053" not in r.retrieved_context
+
+
+# ── 엣지케이스 가드 2건 (리드 서버 실검증 2026-08-31) ──────────────────────
+
+def test_short_label_strips_corp_suffix():
+    """'Li Auto Inc' 라벨이 'Li Auto' 질문에 안 걸리던 것 — 보조 키로 복구."""
+    from src.runtime.pipeline import _short_label
+    assert _short_label("Li Auto Inc") == "Li Auto"
+    assert _short_label("Amazon.com Inc.") == "Amazon.com"
+    assert _short_label("Taiwan Semiconductor Manufacturing Co Ltd") == "Taiwan Semiconductor Manufacturing"
+    assert _short_label("NVIDIA Corp") == "NVIDIA"
+    # 접미어가 없으면 보조 키를 만들지 않는다
+    assert _short_label("Samsung Electronics") is None
+    # SA·AG·NV 는 일부러 제외 — 회사명 본체와 헷갈린다
+    assert _short_label("TotalEnergies SE") is None
+
+
+def test_ground_partial_company_name(ctx):
+    """'Li Auto' 처럼 짧게 불러도 매칭돼야 한다 (리드 실검증 엣지케이스 ①)."""
+    from src.runtime.pipeline import _ground
+    if not [n for n in ctx.kg_nodes if any("Li Auto" in l for l in n.labels)]:
+        pytest.skip("Li Auto 노드 미빌드 — build_ontology.py 선행 필요")
+    _, lines = _ground("Li Auto 담은 ETF", ctx, ["domestic_etfs"], cross=True)
+    assert any("Li Auto" in l for l in lines), lines
+
+
+def test_ground_partial_name_word_boundary(ctx):
+    """보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙으면 안 된다."""
+    from src.runtime.pipeline import _short_label
+    import re
+    short = _short_label("Apple Inc")
+    assert short == "Apple"
+    assert re.search(rf"(?<![A-Za-z0-9]){short}(?![A-Za-z0-9])", "Pineapple ETF") is None
+
+
+def test_region_korea_is_listing_not_filter():
+    """'국내 ETF' 의 '국내' 는 상장 시장 — wu_inv_rgn 필터로 쓰면 안 된다 (엣지케이스 ②)."""
+    from src.runtime.pipeline import _region_korea_is_listing as f
+    assert f("Li Auto를 담은 국내 ETF")
+    assert f("국내 상장 ETF 중 미국에 투자하는 것")
+    assert f("채권형 국내 ETF")
+    assert f("국내ETF 알려줘")
+    # 투자 대상을 가리키는 자리는 걸리지 않는다
+    assert not f("국내에 투자하는 ETF")
+    assert not f("국내 주식형 ETF")
+    assert not f("국내 채권 알려줘")
+
+
+def test_ground_drops_region_korea_for_listing(ctx):
+    """'국내 상장 ETF 중 미국에 투자하는' — 국내는 빠지고 미국은 남아야 한다."""
+    from src.runtime.pipeline import _ground
+    _, lines = _ground("국내 상장 ETF 중 미국에 투자하는 것", ctx, ["domestic_etfs"], cross=True)
+    assert any("Region_US" in l for l in lines), lines
+    assert not any("Region_Korea (Region)" in l for l in lines), lines
+    # 투자 대상 자리면 그대로 남는다
+    _, lines2 = _ground("국내에 투자하는 ETF", ctx, ["domestic_etfs"], cross=True)
+    assert any("Region_Korea" in l and "건너뜀" not in l for l in lines2), lines2

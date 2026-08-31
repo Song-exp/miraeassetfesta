@@ -278,6 +278,10 @@ def load_context() -> RuntimeContext:
                 ctx.schema[t] = cols
         ctx.route_vocab = _build_route_vocab(con, ctx)
         ctx.value_index = _build_value_index(con, ctx)
+    # validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사할 수 있게 색인을 넘긴다
+    # (ctx 를 못 받는 순수 함수라 모듈 캐시로 준다 — 2026-08-31 'domestic_etfs.weight_pct' 실측)
+    from .pipeline import set_column_index
+    set_column_index(ctx.schema)
     return ctx
 
 

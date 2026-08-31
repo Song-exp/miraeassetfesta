@@ -729,7 +729,7 @@ def test_guard_rejects_undeclared_table_reference():
 def test_guard_allows_declared_join_and_alias():
     """정상 JOIN·별칭은 그대로 통과해야 한다 — 기각 규칙이 과잉이면 정답 SQL 을 버린다."""
     ok_join = ("SELECT pd_nm FROM domestic_etfs JOIN ext_etf_holdings "
-               "ON ext_etf_holdings.etf_ticker = domestic_etfs.pd_itm_no "
+               "ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no "
                "WHERE ext_etf_holdings.constituent = '삼성전자' LIMIT 30")
     assert validate_sql(ok_join) is None
     ok_alias = ("SELECT e.pd_nm FROM domestic_etfs e JOIN ext_etf_holdings h "
@@ -854,3 +854,22 @@ def test_ground_combined_label_split(ctx):
     for name in ("네이버", "NAVER", "포스코홀딩스"):
         _, lines = _ground(f"{name} 편입 ETF", ctx, ["domestic_etfs"], cross=True)
         assert [x for x in lines if "건너뜀" not in x], f"{name} 매칭 0"
+
+
+def test_guard_rejects_wrong_table_qualifier(ctx):
+    """선언된 테이블이어도 그 테이블에 없는 컬럼을 수식자로 붙이면 기각해야 한다.
+
+    서버 실측 2026-08-31: SUM(domestic_etfs.weight_pct) — weight_pct 는 ext_etf_holdings 컬럼인데
+    domestic_etfs 에 붙였고 Guard 가 '검사 통과' 를 찍었다(SQL 안 다른 테이블에 있어서).
+    """
+    bad = ("SELECT domestic_etfs.pd_abrv_nm, SUM(domestic_etfs.weight_pct) FROM domestic_etfs "
+           "JOIN ext_etf_holdings ON domestic_etfs.pd_itm_no = ext_etf_holdings.etf_code "
+           "WHERE ext_etf_holdings.constituent='SK하이닉스' GROUP BY 1 LIMIT 1")
+    err = validate_sql(bad)
+    assert err and "weight_pct" in err and "ext_etf_holdings" in err, err
+    # 올바른 수식자·별칭은 통과
+    ok = bad.replace("SUM(domestic_etfs.weight_pct)", "SUM(ext_etf_holdings.weight_pct)")
+    assert validate_sql(ok) is None
+    alias = ("SELECT e.pd_abrv_nm, SUM(h.weight_pct) FROM domestic_etfs e "
+             "JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no GROUP BY 1 LIMIT 5")
+    assert validate_sql(alias) is None

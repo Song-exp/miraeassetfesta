@@ -699,7 +699,14 @@ def normalize_table_names(sql: str) -> tuple[str, bool]:
     return sql, changed
 
 
-_PADDED_COLS = ("bd_knd", "pd_pbcm")   # 2026-08-31 전수 실측: 이 둘만 고정폭 패딩(21,682·21,282행) — 나머지 범주 컬럼 9종은 패딩 0
+# 2026-08-31 전수 실측 — 고정폭 패딩(뒤 공백)이 있어 무TRIM 등호 비교가 0행이 되는 컬럼.
+# 채권: bd_knd 21,682 · pd_pbcm 21,282.
+# 🔴 펀드도 같은 문제가 있었다(밤 실측 FND-030): KG 가 준 값 '0016022' 로 = 비교하면 0행,
+#    DB 원값은 '0016022 '(8자, 202행)이라 TRIM 해야 맞는다. yaml normalization.trim_columns 에
+#    적혀 있어도 플래너가 적용하지 않는다 — 결정 층으로 내린다.
+_PADDED_COLS = ("bd_knd", "pd_pbcm",
+                "trusc_xtn_itt_cd", "or_co_xtn_itt_cd", "std_itm_no", "ksd_itm_no",
+                "rptt_ksd_itm_no", "kofia_fd_ccd", "itm_abrv_nm", "han_clas_nm")
 
 
 def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:

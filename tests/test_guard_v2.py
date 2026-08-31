@@ -365,3 +365,25 @@ def test_prospectus_hint_not_triggered_by_공모펀드():
     assert H.search("이 펀드의 모펀드가 뭐야?")
     assert H.search("설정일이 가장 오래된 공모펀드 알려줘")
     assert H.search("환매 수수료가 없는 펀드 알려줘")
+
+
+def test_fund_padded_columns_trimmed():
+    """FND-030 실측 — 펀드 코드 컬럼도 패딩이 있어 무TRIM 등호가 0행이 된다.
+
+    KG 가 준 '0016022' 로 = 비교하면 0행, DB 원값은 '0016022 '(8자, 202행)."""
+    from src.runtime.pipeline import ensure_trimmed_compare as f
+
+    s, ok = f("SELECT COUNT(*) FROM public_funds WHERE trusc_xtn_itt_cd = '0016022' LIMIT 30")
+    assert ok and "TRIM(trusc_xtn_itt_cd) = '0016022'" in s
+    assert not f(s)[1]                                    # 멱등
+    # LIKE 는 % 가 패딩을 흡수하므로 불개입
+    assert not f("SELECT 1 FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 5")[1]
+
+
+def test_sales_company_rule_grounded():
+    """FND-030 — '미래에셋증권에서 살 수 있는' 은 판매사 질의(thco_sale_yn)여야 한다."""
+    from src.runtime.loader import load_context
+
+    ctx = load_context()
+    g = ctx.planner_context(["public_funds"], "미래에셋증권에서 살 수 있는 공모펀드는 몇 개야?")
+    assert "thco_sale_yn" in g and "수탁사" in g

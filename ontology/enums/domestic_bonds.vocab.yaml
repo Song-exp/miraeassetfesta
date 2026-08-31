@@ -101,6 +101,14 @@ value_vocab:
     counts:
       공모: 19875
       사모: 2007
+  curr_cd:
+    korean_name: 통화코드
+    values:
+    - KRW
+    - '000'
+    counts:
+      KRW: 21881
+      '000': 1
   exrt_grte_ern_r_tcd:
     korean_name: 만기보장수익률구분코드
     values:

@@ -34,10 +34,17 @@ class ValueViolation:
     column: str
     literal: str
     hint: list[str]
+    owner: str = ""      # 이 값이 실제로 속한 다른 컬럼 (있으면) — 2026-08-31 밤 FND-026
 
     def __str__(self) -> str:
         ex = " · ".join(h[:40] for h in self.hint[:_MAX_HINT])
-        return f"{self.table}.{self.column} = '{self.literal}' 은(는) DB 에 없는 값" + (f" (실제 값 예: {ex})" if ex else "")
+        msg = f"{self.table}.{self.column} = '{self.literal}' 은(는) DB 에 없는 값"
+        if self.owner:
+            # 🔴 컬럼을 잘못 고른 것이지 값이 없는 게 아니다 — 이 구분이 없으면 재생성이 같은 실수를 반복하고
+            #    파이프라인이 답변 가능한 질의를 거절한다 (FND-026 실측: '해외주식형' 은 zrin_btyp_nm 의 값인데
+            #    or_attr_desc 에 써서 기각 → 재생성도 같은 값 유지 → 중국 펀드 560행이 있는데 '확인 불가' 응답).
+            return msg + f" — 이 값은 같은 테이블의 **{self.owner}** 컬럼 값이다. 컬럼을 {self.owner} 로 바꾸거나 그 조건을 다른 축으로 다시 세워라"
+        return msg + (f" (실제 값 예: {ex})" if ex else "")
 
 
 def sql_tables(sql: str) -> list[str]:
@@ -80,6 +87,55 @@ def unknown_columns(sql: str, ctx: RuntimeContext) -> list[str]:
     return out
 
 
+def _owner_column(index: dict, table: str, column: str, literal: str) -> str:
+    """이 리터럴이 같은 테이블의 **다른** 컬럼 값이면 그 컬럼명 — 아니면 빈 문자열.
+
+    2026-08-31 밤 FND-026 실측 처방: 값 위반의 태반이 '없는 값' 이 아니라 **컬럼 오선택**이다
+    ('해외주식형' 은 zrin_btyp_nm 의 값인데 or_attr_desc 에 썼다). 사유에 이걸 적어야 재생성이
+    같은 값을 되풀이하지 않는다 — 실측에서는 재생성도 실패해 답변 가능한 질의가 거절로 나갔다."""
+    n = _norm(literal)
+    for key, vals in index.items():
+        if len(key) != 2 or key[0] != table or key[1] == column:
+            continue
+        if n in vals:
+            return key[1]
+    return ""
+
+
+_QUALIFIED = re.compile(r"[A-Za-z_]\w*\s*\.\s*([A-Za-z_]\w*)")
+
+
+def ambiguous_columns(sql: str, ctx: RuntimeContext) -> list[str]:
+    """JOIN 질의에서 **한정되지 않은** 채 여러 테이블에 존재하는 컬럼 — 실행하면 ambiguous 오류다.
+
+    2026-08-31 밤 실측(설정일 질의): public_funds JOIN ext_fund_page 에서 SELECT itm_no 가
+    양쪽에 있어 "ambiguous column name: itm_no" 로 죽었다. 실행 오류는 재생성 경로가 없어
+    그대로 "조회 중 오류" 응답이 나간다 — 실행 전에 잡아 재생성 1회를 준다.
+    """
+    body = _SQL_STR.sub("''", sql)
+    used = sql_tables(body)
+    if len(used) < 2:
+        return []
+    schema = getattr(ctx, "schema", {}) or {}
+    owners: dict[str, set] = {}
+    for t in used:
+        for c, *_ in (schema.get(t) or ()):
+            owners.setdefault(c.lower(), set()).add(t)
+    shared = {c for c, ts in owners.items() if len(ts) > 1}
+    if not shared:
+        return []
+    aliases = {a.lower() for a in _AS_ALIAS.findall(body)}
+    out = []
+    for c in sorted(shared):
+        if c in aliases:
+            continue
+        # 🔴 이름이 아니라 **등장 위치**로 판정한다 — `public_funds.itm_no` 가 한 번 있다고 해서
+        #    SELECT 의 맨 itm_no 가 한정된 것은 아니다(앞의 점 없는 등장이 곧 모호 컬럼이다).
+        if re.search(rf"(?<![\w.]){c}\b", body, re.I):
+            out.append(c)
+    return out
+
+
 def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     """값 사전이 완전한 컬럼에 한해, WHERE 리터럴이 실제 값인지 검사한다."""
     index = getattr(ctx, "value_index", None) or {}
@@ -103,7 +159,7 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
             if _norm(lit) in vals:
                 break
             hint = sorted(v for v in index.get(("_raw", t, col_l), ()) )[:_MAX_HINT]
-            out.append(ValueViolation(t, col_l, lit, hint))
+            out.append(ValueViolation(t, col_l, lit, hint, _owner_column(index, t, col_l, lit)))
             break
     return out
 

@@ -205,6 +205,7 @@ _GRADE_SCALE = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
 _Q_GRADE_CMP = re.compile(r"\b(AAA|AA|BBB|BB|A|B|C)\s*([+\-0])?\s*(?:등급|급)?\s*(이상|이하)", re.I)
 _SQL_GRADE_CMP = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*(=|>=|<=|>|<)\s*'([^']*)'", re.I)
 _SQL_GRADE_IN = re.compile(r"crd_grd\s*\)?\s*(?:NOT\s+)?IN\s*\(", re.I)
+_SQL_GRADE_IN_FULL = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*IN\s*\(([^)]*)\)", re.I)   # NOT IN 은 구조상 매칭 안 됨
 
 
 _FUND_TBL = re.compile(r"\bfrom\s+public_funds\b", re.I)
@@ -248,6 +249,230 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     return f"{sql[:s]}WHERE {cond} {sql[s:]}", True
 
 
+# ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
+#    docs/question_design_public_funds_2026-08-31.md §4. 프롬프트에 실려도 무시되는 규칙의 결정 층) ──
+_FUND_RANK_COLS = ("fd_mm1_ern_r", "fd_mm3_ern_r", "fd_mm6_ern_r", "fd_mm18_ern_r",
+                   "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r", "fd_nast_suma")
+_FUND_RETURN_COLS = _FUND_RANK_COLS[:-1]
+_FUND_LONGTERM_COLS = ("fd_mm18_ern_r", "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r")
+_RETURN_ERR_ITM = ("KR5157450126", "KR5153450511", "KR5119470012")   # 기준가 기점 오류 검증 3클래스 (리드 확정 08-31)
+_ORDER_BY_HEAD = re.compile(r"\border\s+by\s+([^,]+?)(?:\s+(asc|desc))?\s*(?:,|\blimit\b|$)", re.I | re.S)
+
+
+def _split_select_items(head: str) -> list[str]:
+    """SELECT 목록을 최상위 쉼표로만 나눈다 — TRIM(..)·CASE..END·substr(..) 안의 쉼표는 건너뛴다."""
+    items, depth, buf = [], 0, []
+    for ch in head:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            items.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        items.append("".join(buf))
+    return items
+
+
+def _fund_sort_target(sql: str) -> tuple[str, str] | None:
+    """ORDER BY 첫 키가 가리키는 펀드 랭킹 컬럼과 방향 — (컬럼, 'DESC'|'ASC') 또는 None.
+
+    위치 표기(ORDER BY 3)는 SELECT 목록을 최상위 쉼표로 갈라 그 자리 항목에서 컬럼을 찾는다
+    (실측 SQL 두 건 모두 ORDER BY 3 위치 표기였다)."""
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    m = _ORDER_BY_HEAD.search(sql)
+    if not frm or not m:
+        return None
+    expr, direction = m.group(1).strip(), (m.group(2) or "ASC").upper()
+    if expr.isdigit():
+        sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+        items = _split_select_items(sel)
+        idx = int(expr) - 1
+        if not (0 <= idx < len(items)):
+            return None
+        expr = items[idx]
+    for col in _FUND_RANK_COLS:
+        if re.search(rf"\b{col}\b", expr, re.I):
+            return col, direction
+    return None
+
+
+def ensure_fund_rank_representative(sql: str) -> tuple[str, bool]:
+    """펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감싼다. (보정된 SQL, 보정했는지)
+
+    2026-08-31 밤 실측(FND-015 채점): 펀드단위 GROUP BY 는 했는데 SELECT 가 bare fd_mm6_ern_r 라
+    펀드당 대표값이 **임의 클래스 행** — TOP5 값 5건 전부 MAX 클래스가 아니었고 5위는 6위와 동점까지 갔다.
+    대표행 규칙("정렬 컬럼 MAX 인 클래스")이 프롬프트에 실려도 재현이 안 된다 — ensure_limit 원칙의 보정.
+    MAX/MIN 하나만 있는 집계에서 bare 컬럼(itm_no·itm_nm)이 그 행의 값을 따라오는 SQLite 특성까지 겸사 —
+    대표 클래스 itm_no 도 함께 맞는다. 발동 조건: ① public_funds 단독(JOIN·UNION 없음)
+    ② GROUP BY 에 or_co_xtn_itt_cd(펀드단위 키 신호) ③ ORDER BY 첫 키가 랭킹 컬럼(수익률 8종·순자산)
+    ④ 그 컬럼이 SELECT 에 bare 로 있다(집계 미포장). DESC 는 MAX, ASC(하위 랭킹)는 MIN.
+    별칭 AS <컬럼> 을 붙여 이름·위치 ORDER BY 둘 다 살린다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
+        return sql, False
+    target = _fund_sort_target(sql)
+    if not target:
+        return sql, False
+    col, direction = target
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+        return sql, False
+    m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
+    if not m:
+        return sql, False
+    agg = "MAX" if direction == "DESC" else "MIN"
+    alias = m.group(1) or f" AS {col}"
+    fixed_head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
+    return fixed_head + sql[frm.start():], True
+
+
+def ensure_fund_return_error_exclusion(sql: str) -> tuple[str, bool]:
+    """18개월+ 수익률 랭킹 SQL 에 기점오류 검증 3클래스 제외를 주입. (보정된 SQL, 보정했는지)
+
+    수익률기점오류_제외 규칙이 근거문서에 실려도 SQL 에 반영되지 않는다 — FND-019 실측에서
+    위험등급 3 모수에 신한농산물 C2(KR5119470012)가 실재, 18개월+ 랭킹이면 오답 확정이었다.
+    발동 조건: ① public_funds 단독 ② ORDER BY 첫 키가 18개월+ 수익률 컬럼 ③ 제외 코드가 SQL 에 없음
+    ④ itm_nm LIKE 필터 없음(개별 조회·이름 검색엔 규칙상 미적용). 단기(1·3·6개월) 정렬은
+    _fund_sort_target 컬럼 판정에서 걸러진다 — 규칙의 적용 경계(FND-015 검증 목적) 그대로.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    if any(c in sql for c in _RETURN_ERR_ITM) or re.search(r"\bitm_nm\s+(?:not\s+)?like\b", sql, re.I):
+        return sql, False
+    target = _fund_sort_target(sql)
+    if not target or target[0] not in _FUND_LONGTERM_COLS:
+        return sql, False
+    codes = ", ".join(f"'{c}'" for c in _RETURN_ERR_ITM)
+    return _append_exclusions(sql, [f"itm_no NOT IN ({codes})"])
+
+
+def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
+    """펀드 SQL 의 SELECT 에 답변 근거 컬럼을 보강. (보정된 SQL, 보정했는지)
+
+    FND-019·015 실측: 등급명·태그가 SELECT 에 없으면 답변 생성기가 방향 서술·주의 문구를 붙일
+    **재료 자체가 없다** — ensure_risk_name_column(채권)의 펀드판. ① 위험등급 코드가 SQL 에 쓰였으면
+    zrin_fd_ivst_risk_grd_nm 병기(등급 방향·이름 서술 근거) ② 정렬이 수익률 컬럼이면 zrin_attr_nms
+    병기(100% 초과·레버리지 주의 문구 근거 — 수익률극단값 규칙의 SELECT 요건). COUNT 집계 질의(건수)는
+    출력 형태를 바꾸지 않도록 불개입. SELECT 끝에 붙이므로 위치 ORDER BY 번호는 안 흔들린다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head = sql[:frm.start()]
+    if re.search(r"\bcount\s*\(", head, re.I) and not re.search(r"\bgroup\s+by\b", sql, re.I):
+        return sql, False        # 단일 건수 질의 — 열 추가가 출력 의미를 바꾼다
+    add = []
+    # 🔴 식별 컬럼이 없으면 답변기가 **이름을 지어낸다** — 2026-08-31 밤 배포 직후 실측:
+    #    SELECT fd_yr1_ern_r 만 한 SQL(값 30개)에 답변기가 "종류A 17.41% · 종류B 17.36% · 종류C 17.26%"
+    #    라고 클래스명을 붙여 냈다. 실제 그 값들은 글로벌코어테크EMP 의 것이고 종류A/B/C 라는 클래스도 없다.
+    #    이름 필터(가드 5호)로 조회 범위는 맞췄는데 답변 층에서 다시 환각이 난 것 — 값만 있는 결과는
+    #    "어느 상품의 값인지" 를 답변기가 복원할 수 없다. COUNT 집계는 출력 의미가 바뀌므로 제외.
+    # 🔴 `head`(SELECT 목록)만 본다 — WHERE 의 `itm_nm LIKE` 를 SELECT 에 있는 것으로 오판하면
+    #    바로 이 사고(값만 조회 → 이름 환각)를 놓친다. 실제로 첫 구현이 그렇게 새어 배포본에서 재현됐다.
+    if "itm_nm" not in head and "itm_no" not in head and not re.search(r"\bcount\s*\(", head, re.I):
+        add.append("itm_no")
+        add.append("TRIM(itm_nm) AS itm_nm")
+    if "zrin_fd_ivst_risk_gcd" in sql and "zrin_fd_ivst_risk_grd_nm" not in sql:
+        add.append("zrin_fd_ivst_risk_grd_nm")
+    target = _fund_sort_target(sql)
+    if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
+        add.append("zrin_attr_nms")
+    # 🔴 **조건에 쓴 서술 컬럼이 결과에 없으면 답변기가 결과를 해석하지 못한다** — 2026-08-31 밤 실측(FND-R09):
+    #    WHERE han_clas_policies LIKE '%전문투자자%' 로 27행을 정확히 조회하고도 SELECT 에 그 컬럼이 없어
+    #    (itm_nm·mtco_itm_no·기준일만), 답변기가 "정보를 찾을 수 없습니다" 로 **조회 결과를 통째로 버렸다**.
+    #    FND-016(이름 소실 → 환각)과 같은 뿌리다: 답변기는 SELECT 에 실린 것만 볼 수 있다.
+    #    필터 근거를 답에 쓰려면 그 컬럼이 결과에 있어야 한다 — 최대 3개까지만 붙여 폭을 제한한다.
+    where = re.search(r"\bwhere\b(.*?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if where:
+        known = {c.lower() for c, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ())}
+        for col in dict.fromkeys(re.findall(r"\b[a-z][a-z0-9_]{3,}\b", where.group(1), re.I)):
+            c = col.lower()
+            if len(add) >= 3:
+                break
+            if c in known and c not in _EVIDENCE_SKIP and c not in head.lower() and c not in " ".join(add).lower():
+                add.append(c)
+    if not add:
+        return sql, False
+    return head.rstrip() + ", " + ", ".join(add) + " " + sql[frm.start():], True
+
+
+# 결과에 다시 실을 필요가 없는 컬럼 — 기본모수·식별자·이미 다루는 축·결측 판정용
+_EVIDENCE_SKIP = {
+    "sale_yn", "prvo_pbff_desc", "itm_no", "itm_nm", "itm_abrv_nm", "mtco_itm_no",
+    "or_co_xtn_itt_cd", "null", "not", "and", "or", "like", "select", "from", "where",
+    "trim", "coalesce", "cast", "substr", "length", "case", "when", "then", "else", "end",
+    "zrin_fd_ivst_risk_gcd",   # 이름 컬럼(grd_nm)을 위에서 이미 붙인다
+    "pfiv_sale_cntl_tcd",      # 사용 금지 컬럼 — 결과에 실어 주면 금지를 거드는 꼴이다 (아래 _FORBIDDEN_COLS)
+}
+
+
+# ── 사용 금지 컬럼 — 규칙(query_rules)에 적어도 플래너가 쓴다. 기각해서 재생성 사유로 돌려준다 ──
+# 2026-08-31 밤 FND-R09 실측: 같은 질문에 1차는 han_clas_policies(정답 경로), 2차는
+# pfiv_sale_cntl_tcd != '00'(금지 컬럼)이 나왔다 — HCX 비결정성이라 프롬프트 규칙만으론 못 막는다.
+_FORBIDDEN_COLS = {
+    "pfiv_sale_cntl_tcd":
+        "pfiv_sale_cntl_tcd 는 코드 의미가 제공되지 않아 어떤 질의에도 조건·정렬로 쓸 수 없다"
+        " — 전문투자자 조건은 han_clas_policies LIKE '%전문투자자%' 로 푼다"
+        " (값: '전문투자자'·'전문투자자,펀드'·'기관,전문투자자' 등)",
+    "fd_wk1_ern_r":
+        "fd_wk1_ern_r 은 전건 결측이라 쓸 수 없다 — 1주 수익률은 수록되지 않았다고 답한다"
+        " (대체로 1개월 fd_mm1_ern_r 안내는 가능)",
+}
+
+
+def forbidden_column_use(sql: str) -> str | None:
+    """사용 금지 컬럼을 쓴 SQL 의 기각 사유 — 없으면 None."""
+    for col, why in _FORBIDDEN_COLS.items():
+        if re.search(rf"\b{col}\b", sql, re.I):
+            return why
+    return None
+
+
+@lru_cache(maxsize=1)
+def _ev_ctx():
+    """스키마 조회용 컨텍스트 — 가드가 ctx 를 인자로 받지 않으므로 여기서 한 번만 로드한다."""
+    from .loader import load_context
+    return load_context()
+
+
+# 설명서(ext_fund_page)에만 있는 항목을 가리키는 어휘 — 마스터 45컬럼에 없다고 거절하던 것을 연다
+_FUND_EXT_HINTS = re.compile(
+    r"설정일|설정된|언제\s*설정|설정\s*시기|오래된|신생|환매|투자설명서|설명서|모펀드|지급일"
+)
+
+
+_SAFE_Q = re.compile(r"안전|안정적|안정형")
+_GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
+
+
+def ensure_fund_safe_grade_direction(sql: str, question: str) -> tuple[str, bool]:
+    """'안전' 질의의 위험등급 필터가 1·2(고위험)로 뒤집혔으면 6(매우 낮은 위험)으로 교정.
+
+    2026-08-31 밤 실측(FND-C03 "안전한 펀드 추천해줘"): 플래너가 안전=1등급으로 방향 반전한 SQL 을 내
+    '매우 높은 위험' 5행이 조회됐고, 답변 생성기는 그 5행만 보고 "모든 펀드가 매우 높은 위험" 이라는
+    거짓 전칭 서술로 도망갔다. 등급 방향(1=위험·6=안전)은 answer_rules 에 실려도 SQL 층에서 뒤집힌다.
+    발동 조건: ① public_funds ② 질문에 '안전' 계열 어휘 ③ 질문이 등급 숫자를 명시하지 않음
+    ('1등급 알려줘' 는 모델 의도 존중 — FND-002 회귀 보호) ④ SQL 의 등급 등호 필터가 1 또는 2.
+    """
+    if not _FUND_TBL.search(sql) or not _SAFE_Q.search(question):
+        return sql, False
+    if re.search(r"[1-6]\s*등급|등급\s*[1-6]", question):
+        return sql, False
+    m = _GCD_HIGHRISK.search(sql)
+    if not m:
+        return sql, False
+    return sql[:m.start()] + "zrin_fd_ivst_risk_gcd = 6" + sql[m.end():], True
+
+
 def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
     """질문의 '등급 이상/이하' 를 crd_grd 서열 IN 목록으로 확장. (보정된 SQL, 보정했는지)
 
@@ -274,13 +499,22 @@ def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     idx = _GRADE_SCALE.index(notch)
     grades = _GRADE_SCALE[: idx + 1] if direction == "이상" else _GRADE_SCALE[idx:]
+    repl = "TRIM(crd_grd) IN (" + ", ".join(f"'{g}'" for g in grades) + ")"
     preds = list(_SQL_GRADE_CMP.finditer(sql))
-    if len(preds) != 1 or _SQL_GRADE_IN.search(sql):
+    ins = list(_SQL_GRADE_IN_FULL.finditer(sql))
+    if not preds and len(ins) == 1:
+        # 불완전 IN 목록 교정 — 2026-08-31 밤 서버 실측: 'A등급 이상' 이 IN ('AA-','AA0',…) 으로 나가
+        # 서열 확장이 어긋났고(단일 리터럴만 잡던 기존 발동 조건의 사각) 상위 표면금리 209종목이 누락됐다.
+        got = {v.strip() for v in re.findall(r"'([^']*)'", ins[0].group(1))}
+        if got == set(grades):
+            return sql, False
+        m0 = ins[0]
+        return sql[:m0.start()] + repl + sql[m0.end():], True
+    if len(preds) != 1 or ins:
         return sql, False
     if len(grades) == 1 and preds[0].group(1) == "=" and preds[0].group(2) == grades[0]:
         return sql, False                        # 'AAA 이상' = 'AAA' — 이미 맞다
     s, e = preds[0].span()
-    repl = "TRIM(crd_grd) IN (" + ", ".join(f"'{g}'" for g in grades) + ")"
     return sql[:s] + repl + sql[e:], True
 
 
@@ -374,21 +608,42 @@ _KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
                "AND TRIM(std_pd_scls_nm)='국고채'))")
 
 
-def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
-    """'국고채·국채' 질의가 대분류 국공채로 뭉개졌으면 국고채 확정식으로 교체. (보정된 SQL, 보정했는지)
+_KTB_BDKND = re.compile(r"(?:TRIM\(\s*)?bd_knd\s*\)?\s*=\s*'국고채권'", re.I)
+_PBCM_CONJ = re.compile(r"\s+AND\s+(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'"
+                        r"|(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'\s+AND\s+", re.I)
 
-    2026-08-31 저녁 서버 실측: '국고채는 총 몇 종목이야?' → std_pd_mcls_nm='국공채' COUNT(*)
-    = 2,840(지방채·통안채까지 합친 행수) 오답. 5dff69b 에서 지시문으로 승격한 종류필터가 또
-    무시됐다 — 대분류 국공채엔 지방채·국민주택·통안채가 섞인다. 확정식은 종류필터 ①(STRIPS 포함,
-    리드 결정 08-31). 발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외)가
-    있고, SQL 이 국공채 대분류로 필터하며 '국고채권' 이 어디에도 없다."""
-    if not _KTB_Q.search(question) or "국고채권" in sql:
+
+def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
+    """'국고채·국채' 질의의 종류 필터 3결함을 교정. (보정된 SQL, 보정했는지)
+
+    ① 날조 발행사 제거 — 2026-08-31 밤 서버 실측: '국고채 몇 종목' 에 TRIM(pd_pbcm)='한국은행' 이
+       붙어 0행 '미수록' 오답. 국고채권 발행사는 전부 '대한민국'(356행 실측) — 한국은행은 통안채다.
+       질문에 그 발행사 낱말이 없으면 pd_pbcm 등호 절을 제거한다(질문이 명시하면 의도 존중).
+    ② 대분류 뭉개기 교체 — 2026-08-31 저녁 실측: std_pd_mcls_nm='국공채' COUNT = 2,840(지방채·통안채
+       혼입) 오답 → 종류필터 ① 확정식으로 교체.
+    ③ STRIPS 회수 — bd_knd='국고채권' 단독은 274종목: 종류 결측 STRIPS 21종목이 빠진다(리드 결정
+       08-31: 국고채 = 295종목, gold BND-D-029) → 확정식으로 확장.
+    발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외)."""
+    if not _KTB_Q.search(question):
         return sql, False
-    m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
-    if not m:
-        return sql, False
-    s, e = m.span()
-    return sql[:s] + _KTB_FILTER + sql[e:], True
+    changed = False
+    m = _PBCM_CONJ.search(sql)
+    if m:
+        lit = (m.group(1) or m.group(2) or "").strip()
+        if lit and lit not in question:
+            sql = sql[:m.start()] + sql[m.end():]
+            changed = True
+    if "국고채권" not in sql:
+        m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
+        if not m:
+            return sql, changed
+        return sql[:m.start()] + _KTB_FILTER + sql[m.end():], True
+    if "std_pd_scls_nm" not in sql:
+        m = _KTB_BDKND.search(sql)
+        if m:
+            sql = sql[:m.start()] + _KTB_FILTER + sql[m.end():]
+            changed = True
+    return sql, changed
 
 
 _BOND_COLS = ("bd_knd", "crd_grd", "srfc_irt", "applied_yield", "std_pd_mcls_nm",
@@ -497,6 +752,109 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     if len(filters) != 1:
         return sql, False
     return _append_exclusions(sql, [next(iter(filters))])
+
+
+_SUP = r"(?:가장|제일|젤|최고로?)"                       # 최상급 수식어
+_RISKW = r"(?:위험|리스크)(?:도|성)?[이가은는]?"           # 위험 명사 + 조사 ('위험도가' 꼴 포함)
+_TOP_SAFE_Q = re.compile(
+    rf"{_SUP}\s*안전|안전(?:성|도)?[이가은는]?\s*{_SUP}\s*높|{_SUP}\s*덜\s*위험"
+    rf"|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*낮|{_SUP}\s*{_RISKW}\s*낮"
+    rf"|매우\s*낮은\s*위험|{_RISKW}\s*최소|원금\s*(?:이\s*)?최우선|안정형")
+_TOP_RISK_Q = re.compile(                                # 반대 방향 최상급 — 동반되면 비교 질의라 불개입
+    rf"{_SUP}\s*위험한|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*높|{_SUP}\s*안\s*좋")
+_YIELD_DEMAND_Q = re.compile(r"[\d.]+\s*(?:%|퍼센트|프로)\s*(?:이상|넘|초과)")
+_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 확정식 — 2026-08-31 전수 실측 (구매가능 모수 기준 16등급 행수)
+    _KTB_FILTER,                                                   # 377 (전부 16)
+    "TRIM(std_pd_mcls_nm)='국공채'",                                # 2,838
+    "TRIM(std_pd_mcls_nm)='특수채'",                                # 6,077
+    "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')",        # 2,239 (전부 16)
+    "TRIM(bd_knd)='통화안정채권'",                                   # 33 (전부 16)
+    "TRIM(bd_knd)='MBS'",                                          # 1,394
+    "TRIM(bd_knd) IN ('일반은행채','특수은행채')",                     # 1,241 (특수은행채 몫 — '가장 안전한 은행채' 는 16 강제가 맞다)
+    "TRIM(bd_knd)='특수은행채'",                                     # 1,241
+}   # 밖에 남는 것(16 = 0 실측): 회사채·일반회사채·일반은행채·신용카드채·할부금융채·보험회사채·투자매매.중개채
+_RISK_POS = re.compile(r"pd_risk_gcd\s*(?:IN\s*\(([^)]*)\)|=\s*'(\d+)')", re.I)
+
+
+def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
+    """'가장 안전한' 류 최상급 질의의 위험등급 필터를 '16' 단독으로 교정·주입. (보정된 SQL, 보정했는지)
+
+    2026-08-31 실측: '가장 안전한 채권 3개 추천' 이 IN ('15','16') + ORDER BY applied_yield DESC
+    로 나가 5등급 SC은행 콜옵션부 7.1% 가 1~3위 — 안전 버킷에서 가장 덜 안전한 구석이 정답을
+    밀어냈다. 위험등급방향 규칙의 "'가장 안전한' 만 '16' 단독" 분기가 900자 문장에 파묻혀 미적용.
+    '16' 단독이면 전 행 동급이라 수익률 정렬은 동점자 처리가 되므로 ORDER BY 는 건드리지 않는다.
+    불개입 2종 — 규칙의 폴백·비교 답변이 정답인 영역: ① 수익률 하한 요구(6등급 최고 6.23%)
+    ② 반대 방향 최상급 동반('가장 안전한 것과 가장 위험한 것') — 비교 질의.
+    역방향 완화 1종: 6등급이 없는 종류(회사채·카드채 등) 지목 + SQL 이 '16' 단독이면
+    IN ('15','16') 폴백으로 완화한다 — 16 강제도, 방치도 아닌 규칙의 폴백 조항 그대로.
+    치환은 WHERE 절 범위에서만 — 구조표시 규칙의 SELECT CASE 에 pd_risk_gcd IN ('11','12','13')
+    이 실리므로(은행 자본성증권 판정) 전문 치환은 그 CASE 를 파손한다 (2026-08-31 전수조사 실측)."""
+    if "domestic_bonds" not in sql or not _TOP_SAFE_Q.search(question):
+        return sql, False
+    if _TOP_RISK_Q.search(question) or _YIELD_DEMAND_Q.search(question):
+        return sql, False
+    wm = re.search(r"\bWHERE\b", sql, re.I)
+    lo = wm.end() if wm else len(sql)
+    tail = _WHERE_TAIL.search(sql, lo)
+    m = _RISK_POS.search(sql, lo, tail.start() if tail else len(sql))
+    vals = set(re.findall(r"\d+", m.group(1) or m.group(2))) if m else None
+    if _question_kind_filters(question) - _SAFE16_KINDS:
+        # 6등급이 없는 종류(회사채·카드채 등)를 지목 — '16' 단독이면 폴백 IN ('15','16') 으로 완화.
+        # 2026-08-31 밤 서버 실측: '가장 안전한 회사채 3개' 에 HCX 가 = '16' 을 내 0행 '확인 불가' 오답
+        # (16 단독 규칙은 따랐는데 폴백 조항을 놓침 — 정답은 5등급 3종 + '6등급엔 회사채 없음' 명시).
+        if m and vals == {"16"}:
+            return sql[:m.start()] + "pd_risk_gcd IN ('15','16')" + sql[m.end():], True
+        return sql, False
+    if not m:
+        return _append_exclusions(sql, ["pd_risk_gcd = '16'"])
+    if vals == {"16"}:
+        return sql, False
+    return sql[:m.start()] + "pd_risk_gcd = '16'" + sql[m.end():], True
+
+
+_MAT_SORT_Q = re.compile(r"만기[가는이도]?\s*(?:까지)?\s*(?:가장|제일|젤)?\s*(?:긴|길|멀|먼|늦|짧|빠(?:른|르)|오래)"
+                         r"|(?:가장|제일|젤)\s*(?:긴|짧은|빠른|늦은|먼)\s*만기")
+_ORDER_DUR = re.compile(r"(ORDER\s+BY\s+)(?:\w+\.)?(?:ndy_)?dur\b", re.I)
+
+
+def ensure_maturity_sort(sql: str, question: str) -> tuple[str, bool]:
+    """'만기가 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체. (보정된 SQL, 보정했는지)
+
+    2026-08-31 서버 실측: '한전 채권 중 만기가 가장 긴' 이 ORDER BY dur DESC 로 나가
+    한국전력공사채권999(만기 2049-10-24)를 답함 — 실제 최장은 1184(2052-04-21). 이표율 차이로
+    듀레이션 순위와 만기 순위는 역전된다(dur 은 잔존일수도 만기도 아니다 — 만기윈도우 규칙).
+    교체 후 mat_dt 하한이 없으면 mat_dt > 기준일 을 주입 — 만기 짧은 순(ASC)에서 만기일
+    미수록 0값 4행·만기 경과 49행이 1위로 오는 것을 막는다(만기 긴 순에도 무해)."""
+    if "domestic_bonds" not in sql or not _MAT_SORT_Q.search(question):
+        return sql, False
+    new = _ORDER_DUR.sub(r"\1mat_dt", sql)
+    if new == sql:
+        return sql, False
+    if not re.search(r"mat_dt\s*>=?\s*\d", new):
+        new, _ = _append_exclusions(new, [f"mat_dt > {CUTOFF_INT}"])
+    return new, True
+
+
+_CHEAP_Q = re.compile(r"저렴|(?<![가-힣])비?[싸싼]")
+_CHEAP_CUE = re.compile(r"가격|단가|평가|수익률|금리|이자|비용|보수|수수료")
+CHEAP_CLARIFY = ("'싸다'는 채권에서 두 가지 뜻으로 해석될 수 있어 확인이 필요합니다. "
+                 "① 가격(민평 평가단가)이 낮은 채권 — 만기가 먼 할인채가 상위에 옵니다. "
+                 "② 수익률이 높아 같은 금액으로 더 높은 이자를 받는 채권 — 위험이 큰 채권이 상위에 옵니다. "
+                 "두 해석은 정반대 목록이 됩니다. 가격 기준과 수익률 기준 중 어느 쪽으로 찾아드릴까요?")
+
+
+def price_ambiguity_clarify(question: str, tables: list[str]) -> str | None:
+    """'싸다·저렴·비싸다' 채권 질의의 결정층 되묻기 — 해당하면 되묻는 문장, 아니면 None.
+
+    2026-08-31 서버 실측: '제일 싼 채권' 에 HCX 가 되묻지 않고 가격 해석으로 단정
+    (근거 없는 15·16 필터까지 끼움) — clarify.다의어.싸다 는 🔴 기본값 금지·되묻기 대상이고
+    되묻기는 유효 답변이다(주최 8/25). 프롬프트 층(플래너 CLARIFY:)만으로 재현이 안 되므로
+    결정층이 받는다. 가격·수익률 등 단서 낱말이 질문에 있으면 되묻지 않는다(규칙 그대로)."""
+    if "domestic_bonds" not in tables or not _CHEAP_Q.search(question):
+        return None
+    if _CHEAP_CUE.search(question):
+        return None
+    return CHEAP_CLARIFY
 
 
 def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
@@ -704,6 +1062,64 @@ def _ground(
     return hits, lines
 
 
+# ── 잔여 고유명 검출 (2026-08-31 밤 — FND-016 실측, §6-2d) ────────────────────
+# 🔴 최악 등급 사고: "미래에셋코어테크 펀드 1년 수익률" 에서 KG 가 '미래에셋'(운용사)만 잡고
+#    '코어테크' 는 소실 → 플래너가 운용사 코드만 필터한 SQL(모수 1,512행)에 LIMIT 1 을 걸어
+#    **무관한 펀드(미래에셋인디아솔로몬 -9.73%)의 값을 코어테크의 값으로 단언**했다.
+#    실제 코어테크는 187~190%. 문법·테이블·값 검사는 전부 통과 — 질문의 고유명사가 SQL 에
+#    반영됐는지 보는 검사가 없었다.
+# 발동을 '라벨에 **붙어 있는**(공백 없는) 잔여 토큰' 으로 좁힌 이유: 브랜드+상품명 합성어가
+# 정확히 이 사고의 형태이고, '삼성 펀드 보수'(FND-C02 · 되묻기가 정답)처럼 띄어 쓴 질의는
+# 건드리면 안 되기 때문이다.
+_PARTICLE = re.compile(r"(?:에서|으로|에게|까지|부터|이라는|라는|이란|란|은|는|이|가|을|를|의|에|로|와|과|도|만|의)$")
+_GENERIC_NAME_TOKEN = {          # 상품 고유명이 아니라 도메인 일반어 — 이름 검색에 쓰면 모수가 통째로 걸린다
+    "증권", "투자신탁", "자산운용", "운용사", "판매사", "수익률", "순자산", "위험등급", "신용등급",
+    "클래스", "종류", "보수", "총보수", "수수료", "분배금", "분배율", "벤치마크", "기준가", "설정일",
+    "환매", "펀드", "상품", "종목", "주식형", "채권형", "혼합형", "재간접", "파생형", "레버리지",
+    "연금", "퇴직연금", "개인연금", "온라인", "오프라인", "공모", "사모", "국내", "해외", "판매중",
+}
+
+
+def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
+    """KG 라벨에 붙어 있는데 매핑되지 않은 상품 고유명 — 이름 검색을 강제할 토큰.
+
+    ground_lines 의 각 줄은 `'라벨' → …` 형태라 소비된 라벨을 그대로 읽을 수 있다.
+    라벨 **바로 뒤에 공백 없이** 이어지는 한글·영숫자 덩어리에서 조사를 떼고, 길이 3 이상 ·
+    도메인 일반어가 아닌 것만 돌려준다. 없으면 None (대부분의 질의가 여기 해당 — 불개입).
+    """
+    for line in ground_lines:
+        m = re.match(r"'([^']+)'\s*→", line)
+        if not m:
+            continue
+        label = m.group(1)
+        for tail in re.findall(rf"{re.escape(label)}([0-9A-Za-z가-힣]+)", question):
+            tok = _PARTICLE.sub("", tail).strip()
+            if len(tok) >= 3 and tok not in _GENERIC_NAME_TOKEN:
+                return tok
+    return None
+
+
+_ITM_NM_LIKE = re.compile(r"\bitm_nm\b[^)]{0,40}?\blike\b", re.I)
+
+
+def ensure_fund_name_filter(sql: str, token: str | None) -> tuple[str, bool]:
+    """질문의 상품 고유명이 SQL 에 반영되지 않았으면 itm_nm LIKE 를 주입. (보정된 SQL, 보정했는지)
+
+    FND-016 사고의 결정 층 처방. 발동 조건: ① 잔여 고유명 토큰이 있고 ② public_funds 조회이며
+    ③ SQL 에 itm_nm LIKE 가 전혀 없다(모델이 이미 이름으로 풀었으면 존중).
+    0행이 나오면 그것이 정답이다 — 없는 상품을 물었으면 '없음' 이 맞고(FND-R05 계열),
+    조건을 완화해 아무 행이나 집어오는 것이 바로 이 사고였다.
+    """
+    if not token or not _FUND_TBL.search(sql) or _ITM_NM_LIKE.search(sql):
+        return sql, False
+    sql, _ = _append_exclusions(sql, [f"itm_nm LIKE '%{token}%'"])
+    # 🔴 LIMIT 1 도 함께 푼다 — 이름으로 좁힌 개별 조회는 클래스가 여럿이다(코어테크 10클래스).
+    #    1행만 보면 답변이 "클래스 n개" 를 말할 수 없고, 어느 클래스인지도 임의가 된다.
+    if re.search(r"\blimit\s+1\s*$", sql, re.I) and not re.search(r"\bcount\s*\(", sql, re.I):
+        sql = re.sub(r"\blimit\s+1\s*$", f"LIMIT {MAX_ROWS}", sql, flags=re.I)
+    return sql, True
+
+
 _SUBSIDIARY_HINT = re.compile(r"자회사|계열사|계열회사|종속회사")
 
 
@@ -807,6 +1223,7 @@ def build_grounding(
     cross: bool,
     question: str = "",
     future: list[str] | None = None,
+    name_token: str | None = None,
 ) -> str:
     """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
 
@@ -827,6 +1244,14 @@ def build_grounding(
             "# KG 개체 매핑 — 질의의 표기를 DB 실제 값으로 옮긴 것\n"
             "# 한 개체에 값이 여럿이면 전부 같은 개체다. 하나만 고르지 말고 IN 으로 모두 넣는다.\n"
             + mapping
+        )
+    if name_token:
+        # 🔴 FND-016 사고(§6-2d) — KG 가 브랜드만 잡고 상품 고유명을 흘리면, 위 매핑(운용사 코드)만으로
+        #    SQL 이 만들어져 **무관한 펀드의 값**이 답으로 나간다. 매핑 블록 바로 뒤에 둬서 같은 무게로 읽히게 한다.
+        parts.append(
+            f"# 🔴 상품 고유명 — 질문의 '{name_token}' 은 위 개체 매핑에 없는 **상품 이름**이다\n"
+            f"# 위 매핑(운용사·지역 등)만으로 풀지 말 것. WHERE 에 itm_nm LIKE '%{name_token}%' 를 반드시 함께 넣는다.\n"
+            f"# 이름으로 좁히면 클래스가 여럿 나온다 — LIMIT 1 로 한 행만 고르지 말고 전부 조회한다."
         )
     if cross:
         # 구성종목·설명서 조건은 ext_* 에 있고 마스터에는 없다. 조인 키를 주지 않으면
@@ -889,6 +1314,9 @@ def _cell(v, col: str) -> str:
     """
     if v is None:
         return ""
+    if col.endswith("remaining_days") and isinstance(v, (int, float)) and v > 0:
+        # 단위를 칸에 박는다 — 2026-08-31 밤 서버 실측: 답변기가 9,375(일)를 "약 93.75년" 으로 환산 환각.
+        return f"{int(v)}일(약 {v / 365:.1f}년)"
     if isinstance(v, float) and v.is_integer() and ("_dt" in col or col.endswith("dt") or "date" in col):
         return str(int(v))
     if isinstance(v, str):
@@ -908,6 +1336,70 @@ def _execute(sql: str) -> tuple[str, int]:
         return f"{head}\n{body}", len(rows)
     finally:
         con.close()
+
+
+def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) -> str:
+    """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
+
+    🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
+       금지 컬럼 기각 → 재생성이 han_clas_policies 로 정확히 고쳤는데, 재생성 경로가
+       ensure_limit 만 거쳐 근거컬럼 보강을 건너뛰었다. 필터 컬럼이 SELECT 에 없으니
+       답변기가 27행을 조회하고도 "정보를 찾을 수 없습니다" 로 버렸다.
+       가드를 한 곳에 모아 두 경로가 같은 보정을 받게 한다.
+    """
+    sql, lb = ensure_maturity_lower_bound(sql)
+    if lb:
+        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+    sql, pop_fixed = ensure_fund_base_population(sql, q)
+    if pop_fixed:
+        step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
+    sql, name_fixed = ensure_fund_name_filter(sql, name_token)
+    if name_fixed:
+        step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
+             "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
+    sql, rank_fixed = ensure_fund_rank_representative(sql)
+    if rank_fixed:
+        step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
+    sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
+    if err3_fixed:
+        step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, ev_fixed = ensure_fund_evidence_columns(sql)
+    if ev_fixed:
+        step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
+    sql, safe_fixed = ensure_fund_safe_grade_direction(sql, q)
+    if safe_fixed:
+        step("[Guard] 위험등급 방향 교정 — '안전' 질의의 등급 필터가 1·2(고위험)로 뒤집혀 6(매우 낮은 위험)으로 교체 (2026-08-31 밤 FND-C03 실측: 안전=1등급 반전 조회)")
+    sql, grades_fixed = expand_grade_comparison(sql, q)
+    if grades_fixed:
+        step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, kind_fixed = ensure_kind_filter(sql, q)
+    if kind_fixed:
+        step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
+    sql, ktb_fixed = ensure_ktb_kind(sql, q)
+    if ktb_fixed:
+        step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
+    sql, backstop_fixed = ensure_credit_backstop(sql, q)
+    if backstop_fixed:
+        step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
+    sql, reco_fixed = ensure_reco_exclusions(sql, q)
+    if reco_fixed:
+        step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
+    sql, topsafe_fixed = ensure_top_safety(sql, q)
+    if topsafe_fixed:
+        step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
+    sql, matsort_fixed = ensure_maturity_sort(sql, q)
+    if matsort_fixed:
+        step("[Guard] 만기 정렬 교정 — '만기 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체 (2026-08-31 서버 실측: 한전 만기 최장이 dur 정렬로 2049년 채권 오답 — 실제 최장 2052년. 듀레이션·만기 순위는 이표율로 역전된다)")
+    sql, distinct_fixed = ensure_distinct_count(sql, q)
+    if distinct_fixed:
+        step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")
+    sql, riskname_fixed = ensure_risk_name_column(sql)
+    if riskname_fixed:
+        step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
+    sql, limited = ensure_limit(sql)
+    if limited:
+        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    return sql
 
 
 def answer_question(
@@ -931,6 +1423,12 @@ def answer_question(
     tables = r.tables if r.decided else []          # 미특정이면 빈 목록 = 종전 의미(마스터 4테이블)
     step(f"[Route] 상품군 — {', '.join(tables) or '미특정'} · 근거: {r.why}")
     cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]   # 채권엔 ext_* 가 없다
+    if not cross and tables == ["public_funds"] and _FUND_EXT_HINTS.search(q):
+        # 🔴 2026-08-31 밤 — 설정일·환매조건은 마스터에 없고 ext_fund_page(설명서 수집분)에 있다.
+        #    그런데 조인 키는 cross 일 때만 근거문서에 실려서, 단일 도메인 질의는 그 테이블의 존재조차
+        #    모른 채 "확인할 수 없음" 으로 나갔다. 설명서 어휘가 있으면 외부 테이블을 열어 준다.
+        cross = True
+        step("[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함")
 
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
     hits, ground_lines = _ground(q, ctx, tables, cross)
@@ -952,6 +1450,14 @@ def answer_question(
          + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else "")
          + (f" · 기준일 이후 시점 {future} 포함 → SQL 의 mat_dt 사용 여부로 사후 판정" if future else ""))
 
+    ask = price_ambiguity_clarify(q, tables)
+    if ask:
+        # 결정층 되묻기 — '싸다' 는 기본값 금지 다의어 (가격 낮음/수익률 높음 정반대). HCX 호출 없이 즉시.
+        step("[Clarify] 되묻기(결정층) — '싸다·저렴' 은 기본값 금지 다의어(clarify.다의어.싸다: 가격 낮음/수익률 높음 정반대) · 질문에 단서 없음 → HCX 호출 없이 되묻는다 (역질문은 유효 답변 — 주최 8/25)")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask
+        return result
+
     if planner is None:
         if future:
             # SQL 이 없으면 해석을 검사할 수 없다 — 기준일 안내로 보수적으로 끝낸다
@@ -964,7 +1470,11 @@ def answer_question(
         result.answer = "현재 시스템 구축 중으로 이 질의에는 답변을 제공할 수 없습니다."
         return result
 
-    grounding = build_grounding(ctx, hits, tables, cross, q, future)
+    name_token = residual_name_token(q, ground_lines) if tables == ["public_funds"] else None
+    if name_token:
+        step(f"[Ground] 잔여 상품 고유명 '{name_token}' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 "
+             "(2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)")
+    grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token)
     result.grounding = grounding
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
@@ -1020,47 +1530,24 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql, lb = ensure_maturity_lower_bound(sql)
-    if lb:
-        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
-    sql, pop_fixed = ensure_fund_base_population(sql, q)
-    if pop_fixed:
-        step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
-    sql, grades_fixed = expand_grade_comparison(sql, q)
-    if grades_fixed:
-        step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
-    sql, kind_fixed = ensure_kind_filter(sql, q)
-    if kind_fixed:
-        step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
-    sql, ktb_fixed = ensure_ktb_kind(sql, q)
-    if ktb_fixed:
-        step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
-    sql, backstop_fixed = ensure_credit_backstop(sql, q)
-    if backstop_fixed:
-        step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
-    sql, reco_fixed = ensure_reco_exclusions(sql, q)
-    if reco_fixed:
-        step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
-    sql, distinct_fixed = ensure_distinct_count(sql, q)
-    if distinct_fixed:
-        step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")
-    sql, riskname_fixed = ensure_risk_name_column(sql)
-    if riskname_fixed:
-        step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
-    sql, limited = ensure_limit(sql)
-    if limited:
-        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    sql = _apply_sql_guards(sql, q, name_token, future, step)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
-    err = validate_sql(sql)
+    err = validate_sql(sql) or forbidden_column_use(sql)
     if not err:
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
         if unk:
             err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
+    if not err:
+        # 🔴 JOIN 의 모호 컬럼 — 실행 오류는 재생성 경로가 없어 그대로 "조회 중 오류" 가 나간다
+        amb = guard.ambiguous_columns(sql, ctx)
+        if amb:
+            err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
+                   + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
     violations = [] if err else guard.check_values(sql, ctx)
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
@@ -1079,14 +1566,19 @@ def answer_question(
                 result.think_trace = "\n".join(trace)
                 result.answer = f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
                 return result
-            sql, limited = ensure_limit(raw2)
+            # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
+            #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
+            sql, _ = normalize_date_literals(raw2)
+            sql = _apply_sql_guards(sql, q, name_token, future, step)
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
-            err = validate_sql(sql)
+            err = validate_sql(sql) or forbidden_column_use(sql)
             if not err:
                 unk = guard.unknown_columns(sql, ctx)
                 if unk:
                     err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
+                elif guard.ambiguous_columns(sql, ctx):
+                    err = "한정되지 않은 모호 컬럼: " + ", ".join(guard.ambiguous_columns(sql, ctx)[:5])
             violations = [] if err else guard.check_values(sql, ctx)
         if err or violations:
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
@@ -1116,8 +1608,9 @@ def answer_question(
         except sqlite3.Error:
             diag = None
         if diag and diag.text():
+            # 🔴 진단은 think_trace 에만 — "조건별 단독 조회: …" 는 개발자용 텍스트라 사용자 답변에 싣지
+            #    않는다 (2026-08-31 밤 실측: 답변에 그대로 노출돼 가독성 훼손 — 채점자용 근거는 trace 로 충분).
             step(f"[Diagnose] 0행 원인 — {diag.text()}")
-            answer += " " + diag.text()
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")
         result.think_trace = "\n".join(trace)
         result.answer = answer

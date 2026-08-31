@@ -788,3 +788,34 @@ def test_ground_uses_yaml_synonyms(ctx):
     # 정식 표기로 물어도 같은 노드
     _, full = _ground("SK하이닉스 담은 ETF", ctx, ["domestic_etfs"], cross=True)
     assert any("Sec_kr_000660" in l for l in full), full
+
+
+# ── 라우팅 로컬 일제점검에서 나온 결함 3건 (2026-08-31 밤) ────────────────
+
+def test_route_brand_with_space(ctx):
+    """'KODEX 200' 처럼 띄어 쓴 상품명이 어휘에 안 걸리던 것.
+
+    어휘는 공백을 뗀 'KODEX200' 으로 저장되는데(loader._VOCAB_STRIP) 영문 값에는
+    한글에 있던 공백 무시 폴백이 없어 미특정 → 마스터 4테이블로 빠졌다.
+    """
+    from src.runtime.router import route
+    for q in ("KODEX 200 알려줘", "KODEX200 알려줘", "TIGER 미국S&P500 총보수"):
+        r = route(q, ctx)
+        assert set(r.tables) == {"domestic_etfs"}, (q, r.tables)
+
+
+def test_route_korean_transliteration(ctx):
+    """'이티에프' 한글 음차도 상품 명사다."""
+    from src.runtime.router import route
+    for q in ("이티에프 알려줘", "이티에프중에 좋은거", "상장지수펀드 알려줘"):
+        r = route(q, ctx)
+        assert set(r.tables) == {"domestic_etfs", "overseas_etfs"}, (q, r.tables)
+
+
+def test_route_all_tokens_are_qualifiers(ctx):
+    """상품 명사가 전부 '…형' 이면 그것이 머리다 — 'ETF형 상품' 에는 다른 머리가 없다."""
+    from src.runtime.router import route
+    assert set(route("ETF형 상품", ctx).tables) == {"domestic_etfs", "overseas_etfs"}
+    # 뒤에 진짜 머리가 있으면 종전대로 수식어로 버린다
+    assert set(route("채권형 ETF 알려줘", ctx).tables) == {"domestic_etfs", "overseas_etfs"}
+    assert set(route("주식형 펀드", ctx).tables) == {"public_funds"}

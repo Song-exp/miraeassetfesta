@@ -23,10 +23,17 @@ from .loader import TABLES, RuntimeContext
 
 # ① 상품 명사 → 후보 테이블. 원천은 주최 마스터 파일 라벨 — 국내채권마스터·국내ETF마스터·해외ETF마스터·공모펀드마스터.
 #    ETN 은 국내ETF마스터 안의 상품구분(pd_grp_no) 값이라 ETF 와 같은 테이블이다.
+#    🔴 한글 음차 표기도 넣는다 — 사람이 '이티에프' 라고 쓰면 상품 명사로 안 잡혀
+#       미특정 → 4테이블이 됐다(2026-08-31 로컬 일제점검).
+_ETF_TABLES = frozenset({"domestic_etfs", "overseas_etfs"})
 PRODUCT: dict[str, frozenset[str]] = {
     "채권": frozenset({"domestic_bonds"}),
-    "ETF": frozenset({"domestic_etfs", "overseas_etfs"}),
-    "ETN": frozenset({"domestic_etfs", "overseas_etfs"}),
+    "ETF": _ETF_TABLES,
+    "ETN": _ETF_TABLES,
+    "이티에프": _ETF_TABLES,
+    "이티엔": _ETF_TABLES,
+    "상장지수펀드": _ETF_TABLES,
+    "상장지수증권": _ETF_TABLES,
     "펀드": frozenset({"public_funds"}),
 }
 # 머리 명사 바로 앞의 지역 수식어 — 마스터 파일 이름의 '국내/해외' 그대로. '미국' 은 해외ETF 의 투자지역 값.
@@ -38,7 +45,8 @@ QUALIFIER: dict[str, frozenset[str]] = {
 # 🔴 대소문자를 가리지 않는다 — 사람은 'etf' 라고 쓴다.
 #    2026-08-31 서버 실측: "안전한 etf상품 추천좀" 이 소문자라 상품 명사로 안 잡혀 '미특정 → 4테이블' 이 됐고,
 #    근거문서가 39,403자로 불어나 HCX 가 펀드 컬럼(zrin_*)을 domestic_etfs 에 써서 재생성까지 실패했다.
-_PRODUCT_TOKEN = re.compile("|".join(map(re.escape, PRODUCT)), re.I)
+# 긴 이름을 먼저 — '상장지수펀드' 가 '펀드' 로 잘리면 안 된다
+_PRODUCT_TOKEN = re.compile("|".join(re.escape(w) for w in sorted(PRODUCT, key=len, reverse=True)), re.I)
 # 병렬 표지 — 한국어 접속 조사·접속사.
 # 🔴 받침 없는 체언 뒤의 `나` 를 빼먹고 있었다 (`이나` 만 있었다).
 #    2026-08-31 서버 실측: "삼성전자가 들어 있는 ETF나 펀드 중에…" 가 'ETF나' 를 병렬로 못 읽어
@@ -67,8 +75,15 @@ def product_route(question: str) -> tuple[set[str], str, int]:
     """① 문장 구조. (후보 테이블, 근거, 머리 명사 수). 상품 명사가 없으면 (∅, '', 0)."""
     # '채권형'·'주식형' 의 상품 명사는 수식어(유형)다 — 머리가 아니다 ("채권형 상품 추천" 은 채권이 아니라 채권형 펀드·ETF)
     # 매칭은 대소문자 무시로 하되, 표는 정본 표기(ETF·ETN)로 찾는다 — 한글 키는 upper() 가 항등이다
-    toks = [(_canon(m.group(0)), m.start()) for m in _PRODUCT_TOKEN.finditer(question)
-            if not question[m.end(): m.end() + 1] == "형"]
+    hits = [(_canon(m.group(0)), m.start(), question[m.end(): m.end() + 1] == "형")
+            for m in _PRODUCT_TOKEN.finditer(question)]
+    toks = [(w, p) for w, p, is_qual in hits if not is_qual]
+    # 🔴 'ETF형 상품' 은 ETF 를 뜻한다 — 다른 상품 명사가 없으면 이걸 머리로 쓴다.
+    #    단 '채권형'·'주식형' 은 **자산 유형** 수식어라 여기 해당하지 않는다
+    #    ("채권형 상품 추천" 은 채권이 아니라 채권형 펀드·ETF — tests/test_router.py:71).
+    #    포장(ETF·ETN)을 가리키는 말만 예외로 둔다. (2026-08-31 로컬 일제점검)
+    if not toks:
+        toks = [(w, p) for w, p, _ in hits if PRODUCT[w] == _ETF_TABLES]
     if not toks:
         return set(), "", 0
     heads: list[tuple[str, int]] = []
@@ -99,7 +114,14 @@ def _bound_in(term: str, question: str, squeezed: str) -> bool:
     if term not in question and not (len(term) >= _LONG_TERM and term in squeezed):
         return False
     if not re.search(r"[가-힣]", term):
-        return re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", question) is not None
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", question):
+            return True
+        # 🔴 영문 값에도 한글과 같은 공백 무시 폴백을 준다. 어휘는 공백을 뗀 형태로 저장되는데
+        #    (loader._VOCAB_STRIP) 사람은 띄어서 쓴다 — 'KODEX 200 알려줘' 가 어휘 'KODEX200' 에
+        #    안 걸려 라우팅이 미특정으로 빠졌다(2026-08-31 로컬 일제점검).
+        #    경계 검사는 squeezed 에서도 유지해 짧은 토큰의 오탐을 막는다.
+        return len(term) >= _LONG_TERM and re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", squeezed) is not None
     if re.search(rf"(?<![가-힣]){re.escape(term)}(?![가-힣])", question):
         return True
     return len(term) >= _LONG_TERM and term in squeezed   # 긴 값(상품명)은 공백 무시 부분 일치 허용

@@ -72,6 +72,22 @@ _FORBIDDEN = re.compile(
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
 
 
+def _name_owners(cols: list[str], ctx) -> str:
+    """없는 컬럼마다 '어느 테이블 것인지' 를 붙인다 — 재생성 1회가 같은 실수를 반복하지 않게.
+
+    🔴 2026-08-31 서버 실측 — "안전한 etf상품 추천좀" 이 라우팅 미특정으로 4테이블 규칙을 전부 싣자
+       HCX 가 펀드 컬럼(zrin_fd_ivst_risk_gcd 등)을 domestic_etfs 에 썼다. Guard 가 기각했으나
+       피드백이 "스키마에 없는 컬럼" 뿐이라 재생성도 같은 컬럼을 다시 써서 답변이 통째로 실패했다.
+       '그건 public_funds 컬럼이다' 를 알려주면 모델이 테이블을 바꾸거나 그 조건을 뺄 수 있다.
+    """
+    schema = getattr(ctx, "schema", {}) or {}
+    out = []
+    for col in cols:
+        owner = next((t for t in schema if any(c.lower() == col.lower() for c, *_ in schema[t])), None)
+        out.append(f"{col}(→ {owner} 컬럼이다. 이 테이블에는 없다)" if owner else col)
+    return ", ".join(out)
+
+
 def validate_sql(sql: str) -> str | None:
     """위반 사유를 반환. None 이면 통과."""
     s = sql.strip().rstrip(";")
@@ -538,6 +554,31 @@ def _short_label(label: str) -> str | None:
 
 
 _MATCH_KEYS: dict[int, list] = {}   # id(ctx) -> [(키, 노드, 경계검사)] · 질문과 무관해 1회만 만든다
+_SYN_KEYS: dict[int, dict] = {}     # id(ctx) -> {정식 표기: [사용자 통칭 …]}
+
+
+def _synonym_keys(ctx) -> dict:
+    """yaml `synonyms` 를 Ground 의 보조 매칭 키로. {DB 표기: [통칭 …]}.
+
+    🔴 `synonyms` 는 여태 planner_context(프롬프트)와 라우팅 어휘에만 쓰이고 **Ground 에서는 쓰이지 않았다.**
+       그래서 '하이닉스'·'삼전'·'곱버스' 를 yaml 에 적어 두고도 개체 매핑이 0건이었다
+       (2026-08-31 서버 실측: "국내 etf중 하이닉스가 가장많이 편입된상품" → KG 매칭 없음 →
+        HCX 가 컬럼명을 추측해 holding_nm 을 만들어 냄. ext_etf_holdings 의 실제 컬럼은 constituent 다).
+
+    🔴 접두사를 기계적으로 떼는 방식은 **채택하지 않았다.** 실측 결과 위험하다 —
+       Sec_ 노드 한글 라벨 309건에서 GS글로벌→'글로벌'(다른 라벨로 실재) · 한화손해보험→'손해보험'(일반명사) ·
+       HLB글로벌→'B글로벌'(깨짐) · 현대차증권→'차증권'(무의미)이 나온다.
+       사람이 고른 통칭만 쓴다 — 그게 yaml synonyms 가 있는 이유다.
+    """
+    out = _SYN_KEYS.get(id(ctx))
+    if out is None:
+        out = {}
+        for doc in (ctx.enums or {}).values():
+            for term, canon in ((doc or {}).get("synonyms") or {}).items():
+                if isinstance(canon, str) and canon and canon != term and len(term) >= 2:
+                    out.setdefault(canon, []).append(term)
+        _SYN_KEYS[id(ctx)] = out
+    return out
 # '국내' 가 **상장 시장**을 뜻하는 자리 — 투자지역(wu_inv_rgn)이 아니다.
 # 리드 실검증: "Li Auto를 담은 국내 ETF" 에서 '국내' 가 Region_Korea 로 잡혀 wu_inv_rgn='국내' 필터가 붙었다.
 # 그러면 중국 기업을 담은 상품이 전부 빠진다. clarify.국내 에 기록돼 있으나 그건 플래너용이라 Ground 엔 안 걸린다.
@@ -605,14 +646,18 @@ def _ground(
             return False
         return any(t in target for t, _, _ in _members(node))
 
+    syn_keys = _synonym_keys(ctx)
+
     def _keys(node):
-        """노드의 매칭 키 — 정식 라벨 + 법인 접미어를 뗀 보조 키. (키, 경계검사여부)"""
+        """노드의 매칭 키 — 정식 라벨 + 법인 접미어를 뗀 보조 키 + yaml 동의어. (키, 경계검사여부)"""
         for label in node.labels:
             if len(label) >= _min_len(node, label):
                 yield label, False
             short = _short_label(label)
             if short and len(short) >= _min_len(node, short):
                 yield short, True
+            for alias in syn_keys.get(label, ()):
+                yield alias, True
 
     drop_kr = _region_korea_is_listing(question)
     # (키, 노드, 경계검사) 목록은 질문과 무관하다 — 프로세스당 1회만 만든다.
@@ -1015,7 +1060,7 @@ def answer_question(
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
         if unk:
-            err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
+            err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
     violations = [] if err else guard.check_values(sql, ctx)
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.

@@ -618,3 +618,55 @@ def test_guard_allows_declared_join_and_alias():
                 "ON h.etf_ticker = e.pd_itm_no WHERE h.constituent = '삼성전자' LIMIT 30")
     assert validate_sql(ok_alias) is None
     assert validate_sql("SELECT d.pd_nm FROM domestic_etfs d WHERE d.pd_grp_no='ETF' LIMIT 5") is None
+
+
+# ── 라우팅 결함 2건 (서버 실측 2026-08-31 저녁) ─────────────────────────
+
+def test_route_lowercase_product_noun(ctx):
+    """'etf' 소문자도 상품 명사로 잡혀야 한다.
+
+    서버 실측: "안전한 etf상품 추천좀" 이 미특정 → 4테이블이 되어 근거문서가 39,403자로 불었고,
+    HCX 가 펀드 컬럼(zrin_*)을 domestic_etfs 에 써서 재생성까지 실패했다.
+    """
+    from src.runtime.router import route
+    for q in ("안전한 etf상품 추천좀", "etf 알려줘", "Etf 추천", "etn 알려줘"):
+        r = route(q, ctx)
+        assert r.decided, q
+        assert set(r.tables) == {"domestic_etfs", "overseas_etfs"}, (q, r.tables)
+
+
+def test_route_conjunction_na(ctx):
+    """받침 없는 체언 뒤의 '나' 도 병렬 표지다 — 'ETF나 펀드' 에서 ETF 가 빠지면 안 된다.
+
+    서버 실측: "삼성전자가 들어 있는 ETF나 펀드 중에 1년 수익률 좋은 걸 알려줘" 가
+    머리명사를 '펀드' 하나로 잡아 public_funds 만 조회했다(ETF 통째로 누락).
+    """
+    from src.runtime.router import route
+    r = route("삼성전자가 들어 있는 ETF나 펀드 중에 1년 수익률 좋은 걸 알려줘", ctx)
+    assert set(r.tables) == {"domestic_etfs", "overseas_etfs", "public_funds"}, r.tables
+    assert r.groups == 2, r.groups
+    # '와' 로 이었을 때와 같아야 한다
+    r2 = route("삼성전자가 들어 있는 ETF와 펀드 중에 1년 수익률 좋은 걸 알려줘", ctx)
+    assert set(r.tables) == set(r2.tables)
+
+
+def test_unknown_column_feedback_names_owner(ctx):
+    """없는 컬럼이 어느 테이블 것인지 알려줘야 재생성이 같은 실수를 반복하지 않는다."""
+    from src.runtime.pipeline import _name_owners
+    msg = _name_owners(["zrin_fd_ivst_risk_gcd"], ctx)
+    assert "public_funds" in msg
+
+
+def test_ground_uses_yaml_synonyms(ctx):
+    """yaml synonyms 가 Ground 매칭 키로도 쓰여야 한다 (서버 실측 2026-08-31 저녁).
+
+    "국내 etf중 하이닉스가 가장많이 편입된상품" 이 KG 매칭 0건이라
+    HCX 가 컬럼명을 추측해 holding_nm 을 만들어 냈다(실제 컬럼은 constituent).
+    """
+    from src.runtime.pipeline import _ground, _synonym_keys
+    assert "하이닉스" in _synonym_keys(ctx).get("SK하이닉스", [])
+    _, lines = _ground("국내 etf중 하이닉스가 가장많이 편입된상품은 무어야", ctx, ["domestic_etfs"], cross=True)
+    assert any("Sec_kr_000660" in l for l in lines), lines
+    # 정식 표기로 물어도 같은 노드
+    _, full = _ground("SK하이닉스 담은 ETF", ctx, ["domestic_etfs"], cross=True)
+    assert any("Sec_kr_000660" in l for l in full), full

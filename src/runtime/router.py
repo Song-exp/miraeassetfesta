@@ -35,8 +35,16 @@ QUALIFIER: dict[str, frozenset[str]] = {
     "미국": frozenset({"overseas_etfs"}),
     "국내": frozenset({"domestic_etfs", "domestic_bonds", "public_funds"}),
 }
-_PRODUCT_TOKEN = re.compile("|".join(map(re.escape, PRODUCT)))
-_CONJ = re.compile(r"\s*(이랑|랑|와|과|및|하고|이나|또는|혹은|vs\.?|,|/|\+)\s*")   # 병렬 표지 — 한국어 접속 조사·접속사
+# 🔴 대소문자를 가리지 않는다 — 사람은 'etf' 라고 쓴다.
+#    2026-08-31 서버 실측: "안전한 etf상품 추천좀" 이 소문자라 상품 명사로 안 잡혀 '미특정 → 4테이블' 이 됐고,
+#    근거문서가 39,403자로 불어나 HCX 가 펀드 컬럼(zrin_*)을 domestic_etfs 에 써서 재생성까지 실패했다.
+_PRODUCT_TOKEN = re.compile("|".join(map(re.escape, PRODUCT)), re.I)
+# 병렬 표지 — 한국어 접속 조사·접속사.
+# 🔴 받침 없는 체언 뒤의 `나` 를 빼먹고 있었다 (`이나` 만 있었다).
+#    2026-08-31 서버 실측: "삼성전자가 들어 있는 ETF나 펀드 중에…" 가 'ETF나' 를 병렬로 못 읽어
+#    머리명사를 '펀드' 하나로 잡았고, ETF 가 통째로 빠진 채 public_funds 만 조회했다.
+#    여기 쓰이는 자리는 '상품 명사 바로 뒤 3글자' 뿐이라 `나` 단독을 넣어도 오탐 위험이 없다.
+_CONJ = re.compile(r"\s*(이랑|랑|와|과|및|하고|이나|나|또는|혹은|vs\.?|,|/|\+)\s*")
 _QUAL_WINDOW = 8          # 머리 명사 앞에서 수식어를 찾는 글자 수 ('삼성전자를 보유한 국내/해외 ETF')
 _SCORE_KEEP = 0.7         # ② 겹에서 최고점의 70% 이상인 테이블은 함께 넘긴다 (HCX 가 고르게 둔다)
 _LONG_TERM = 5            # 이 길이 이상의 값(상품명)은 공백 무시 부분 일치를 허용 ('KODEX 국고채3년')
@@ -50,10 +58,16 @@ class Route:
     groups: int = 0        # 서로 다른 상품군의 수 — '채권과 ETF' 2 · '채권형 ETF'(국내/해외 미결) 1 · 미특정 0. 교차질의 판정용
 
 
+def _canon(word: str) -> str:
+    """질문에 나온 상품 명사를 PRODUCT 표의 정본 표기로. 'etf'·'Etf' → 'ETF'."""
+    return word.upper() if word.upper() in PRODUCT else word
+
+
 def product_route(question: str) -> tuple[set[str], str, int]:
     """① 문장 구조. (후보 테이블, 근거, 머리 명사 수). 상품 명사가 없으면 (∅, '', 0)."""
     # '채권형'·'주식형' 의 상품 명사는 수식어(유형)다 — 머리가 아니다 ("채권형 상품 추천" 은 채권이 아니라 채권형 펀드·ETF)
-    toks = [(m.group(0), m.start()) for m in _PRODUCT_TOKEN.finditer(question)
+    # 매칭은 대소문자 무시로 하되, 표는 정본 표기(ETF·ETN)로 찾는다 — 한글 키는 upper() 가 항등이다
+    toks = [(_canon(m.group(0)), m.start()) for m in _PRODUCT_TOKEN.finditer(question)
             if not question[m.end(): m.end() + 1] == "형"]
     if not toks:
         return set(), "", 0

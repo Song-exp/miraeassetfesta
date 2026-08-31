@@ -152,3 +152,56 @@ def test_execute_renders_dates_as_int_and_strips_padding():
     for line in rows.splitlines()[1:]:
         name, mat = line.split(" | ")
         assert name == name.strip() and mat.isdigit() and len(mat) == 8
+
+
+# ── 날짜 리터럴·만기 하한 보정 — 2026-08-31 "3년 안에 만기되는 안전한 채권" 오답 회귀 ──────────
+
+def test_normalize_date_literals_arithmetic_bomb():
+    from src.runtime.pipeline import normalize_date_literals
+    sql = "SELECT pd_nm FROM domestic_bonds WHERE mat_dt <= 2029-08-22 AND pd_risk_gcd IN ('15','16') LIMIT 30"
+    fixed, changed = normalize_date_literals(sql)
+    assert changed and "20290822" in fixed and "2029-08-22" not in fixed
+
+
+def test_normalize_date_literals_quoted_and_noop():
+    from src.runtime.pipeline import normalize_date_literals
+    fixed, changed = normalize_date_literals("SELECT 1 FROM domestic_bonds WHERE mat_dt <= '2029-8-2' LIMIT 1")
+    assert changed and "20290802" in fixed
+    same, changed2 = normalize_date_literals("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20290822 LIMIT 1")
+    assert not changed2
+
+
+def test_maturity_lower_bound_injection():
+    from src.runtime.pipeline import ensure_maturity_lower_bound
+    fixed, changed = ensure_maturity_lower_bound("SELECT pd_nm FROM domestic_bonds WHERE mat_dt <= 20290822 LIMIT 5")
+    assert changed and "(mat_dt > 20260822 AND mat_dt <= 20290822)" in fixed
+    # BETWEEN(자체 하한)·과거 상한("만기 지난")·하한 보유 SQL 은 건드리지 않는다
+    assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 1")[1]
+    assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260821 LIMIT 1")[1]
+    assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20260822 AND mat_dt <= 20290822 LIMIT 1")[1]
+
+
+class BuggyMaturityPlanner:
+    """2026-08-31 챗봇 실측 오답을 낸 SQL 그대로 — 파이프라인이 스스로 복구해야 한다."""
+
+    def plan_sql(self, question, grounding):
+        return ("SELECT pd_nm, pd_risk_gcd, mat_dt, dur FROM domestic_bonds "
+                "WHERE mat_dt <= 2029-08-22 AND pd_risk_gcd IN ('15', '16') ORDER BY applied_yield DESC LIMIT 30")
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_buggy_date_sql_recovers(ctx):
+    r = answer_question("T-20", "만기까지 들고 갈 건데, 3년 안에 만기되는 안전한 채권 몇 개만 골라줘",
+                        planner=BuggyMaturityPlanner(), ctx=ctx)
+    assert "[Guard] 날짜 리터럴 보정" in r.think_trace
+    assert "[Guard] 만기 하한 보정" in r.think_trace
+    assert "(mat_dt > 20260822 AND mat_dt <= 20290822)" in r.sql
+    assert "산금채 1706복10A" not in r.retrieved_context   # 만기일 미수록(mat_dt=0) 행이 더는 새지 않는다
+    assert "[Execute] 30행 조회" in r.think_trace
+
+
+def test_planner_context_has_date_rules(ctx):
+    g = ctx.planner_context(["domestic_bonds"])
+    assert "날짜표기" in g and "만기윈도우" in g

@@ -28,6 +28,7 @@ REFUSE_PREFIX = "REFUSE:"
 # 🔴 0행은 재생성 대상이 아니다 — 거절이 정답인 문항에서 조건 완화 = 환각 (PROJECT.md §9)
 REGEN_BUDGET_S = 12.0
 SQL_TIMEOUT_S = 10.0
+CUTOFF_INT = int(gate.DATA_CUTOFF.replace("-", ""))   # 20260822 — 날짜 컬럼은 정수 YYYYMMDD (REAL 적재)
 
 
 @dataclass
@@ -101,6 +102,47 @@ def ensure_limit(sql: str) -> tuple[str, bool]:
     if re.search(r"\blimit\s+\d+", sql, re.I):
         return sql, False
     return f"{sql.strip().rstrip(';')} LIMIT {MAX_ROWS}", True
+
+
+_DATE_LIT = re.compile(r"(['\"]?)\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b\1")
+
+
+def normalize_date_literals(sql: str) -> tuple[str, bool]:
+    """하이픈 날짜 리터럴을 정수 YYYYMMDD 로 치환. (보정된 SQL, 보정했는지)
+
+    🔴 SQLite 에서 따옴표 없는 2029-08-22 는 날짜가 아니라 뺄셈(=1999)이다 — 2026-08-31 실측:
+       '3년 안에 만기' 질의가 mat_dt <= 1999 가 되어 만기일 미수록(mat_dt=0) 행 4개만 통과했고,
+       답변 생성기가 그 빈칸을 종목명 숫자로 메꿔 환각 만기일('25-02-01' → 2025-02-01)이 나갔다.
+       '2029-08-22' 문자열도 금물 — mat_dt 는 REAL 이라 타입 서열(REAL < TEXT)로 전 행이 통과한다.
+       기각이 아니라 보정이다(ensure_limit 원칙): 정답 조건식을 형식 때문에 버리지 않는다.
+    """
+    def _to_int(m: re.Match) -> str:
+        y, mo, d = m.group(2), int(m.group(3)), int(m.group(4))
+        if not (1 <= mo <= 12 and 1 <= d <= 31):
+            return m.group(0)                # 날짜 모양이 아니면 산술로 존중 (실데이터엔 없다)
+        return f"{y}{mo:02d}{d:02d}"
+    fixed = _DATE_LIT.sub(_to_int, sql)
+    return fixed, fixed != sql
+
+
+_MAT_UPPER = re.compile(r"\bmat_dt\s*<=?\s*(\d{8})\b", re.I)
+_MAT_LOWER = re.compile(r"\bmat_dt\s*>=?\s*\d|\bmat_dt\s+between\b", re.I)
+
+
+def ensure_maturity_lower_bound(sql: str) -> tuple[str, bool]:
+    """만기 상한만 있는 SQL 에 기준일 하한을 주입. (보정된 SQL, 보정했는지)
+
+    'N년 안에 만기' 에 상한(mat_dt <= 미래일)만 걸면 만기일 미수록 0값 4행·만기 경과 49행이
+    통과한다 — NULL-안전 제외 규칙과 같은 계열의 결측 누수. 상한이 기준일 이후일 때만 붙인다:
+    '만기 지난 채권' 질의(상한이 과거)와 BETWEEN(자체 하한)은 건드리지 않는다.
+    """
+    if _MAT_LOWER.search(sql):
+        return sql, False
+    m = _MAT_UPPER.search(sql)
+    if not m or int(m.group(1)) <= CUTOFF_INT:
+        return sql, False
+    s, e = m.span()
+    return f"{sql[:s]}(mat_dt > {CUTOFF_INT} AND {sql[s:e]}){sql[e:]}", True
 
 
 def _ground(
@@ -462,7 +504,13 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql, limited = ensure_limit(raw_sql)
+    sql, dates_fixed = normalize_date_literals(raw_sql)
+    if dates_fixed:
+        step("[Guard] 날짜 리터럴 보정 — 하이픈 날짜를 정수 YYYYMMDD 로 치환 (SQLite 는 2029-08-22 를 뺄셈=1999 로 계산한다)")
+    sql, lb = ensure_maturity_lower_bound(sql)
+    if lb:
+        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+    sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
     result.sql = sql

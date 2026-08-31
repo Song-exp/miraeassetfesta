@@ -83,7 +83,8 @@ def test_trace_names_grounding_blocks(ctx):
     # 블록 이름만 — 블록 안의 지시문 주석까지 긁어오면 요약이 아니다
     assert "IN 으로" not in plan
     # 2026-08-30 R-5 — 답변불가 규칙 블록(enums/_refusal.yaml)이 항상 실린다
-    assert plan.split("구성: ")[1].split(" + ") == ["KG 개체 매핑", "도메인 규칙", "답변불가 규칙", "스키마"]
+    # 2026-08-31 — ETF clarify 블록 신설(557eb3a)로 되묻기 규칙도 실린다
+    assert plan.split("구성: ")[1].split(" + ") == ["KG 개체 매핑", "도메인 규칙", "되묻기 규칙", "답변불가 규칙", "스키마"]
 
 
 @needs_db

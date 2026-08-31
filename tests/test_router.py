@@ -223,7 +223,7 @@ def test_grounding_carries_clarify_rules_for_bonds(ctx):
     g = build_grounding(ctx, [], [B], cross=False)
     assert "# 되묻기 규칙" in g and "싸다" in g
     g2 = build_grounding(ctx, [], [DE], cross=False)
-    assert "# 되묻기 규칙" not in g2                 # 채권 yaml 에만 clarify 가 있다
+    assert "# 되묻기 규칙" in g2 and "안전한" in g2  # 2026-08-31 ETF 에도 clarify 블록 신설 (557eb3a)
 
 
 def test_answer_rules_reach_composer(ctx):

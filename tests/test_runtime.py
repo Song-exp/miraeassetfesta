@@ -353,6 +353,67 @@ class BuggyBackstopPlanner:
         return "ok"
 
 
+def test_ensure_reco_exclusions():
+    from src.runtime.pipeline import ensure_reco_exclusions
+    sql = ("SELECT pd_nm, srfc_irt, applied_yield FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='회사채' "
+           "AND TRIM(crd_grd) IN ('AAA','AA+','AA0','AA-') ORDER BY srfc_irt DESC LIMIT 5")
+    q = "AA등급 이상 회사채 중에서 표면금리 높은 순으로 5개 추천해줘"
+    # 2026-08-31 저녁 실측 — 추천인데 사모 3건이 1~3위 혼입 → 제외 절 주입
+    fixed, changed = ensure_reco_exclusions(sql, q)
+    assert changed
+    assert "bd_ofr_tcd <> '사모'" in fixed and "pd_risk_gcd <> '11'" in fixed and "applied_yield > 0" in fixed
+    assert fixed.index("<> '사모'") < fixed.index("ORDER BY")
+    # 범주 명시 우회 — '사모' 를 콕 집은 질문엔 사모 제외를 넣지 않는다
+    f2, _ = ensure_reco_exclusions(sql, "AA등급 이상 사모 회사채 표면금리 높은 순 5개")
+    assert "bd_ofr_tcd" not in f2
+    # 발동 조건 밖 — 랭킹 신호 없음(개수·조회) / 채권 테이블 아님
+    assert not ensure_reco_exclusions(sql, "표면금리 5% 넘는 회사채 30개 보여줘")[1]
+    assert not ensure_reco_exclusions("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
+
+
+def test_ensure_ktb_kind_and_distinct_count():
+    from src.runtime.pipeline import ensure_ktb_kind, ensure_distinct_count
+    # 2026-08-31 저녁 실측 — '국고채 몇 종목' 이 대분류 국공채 COUNT(*) = 2,840 행수로 나감
+    sql = "SELECT COUNT(*) FROM domestic_bonds WHERE std_pd_mcls_nm='국공채'"
+    q = "국고채는 총 몇 종목이야?"
+    fixed, changed = ensure_ktb_kind(sql, q)
+    assert changed and "TRIM(bd_knd)='국고채권'" in fixed and "std_pd_scls_nm)='국고채'" in fixed
+    fixed2, c2 = ensure_distinct_count(fixed, q)
+    assert c2 and "COUNT(DISTINCT pd_no)" in fixed2
+    # 불개입 — 합성어(미국채) / 이미 국고채권 필터 / 대분류 앵커 없음 / 종목·개수 어휘 없음
+    assert not ensure_ktb_kind(sql, "미국채 금리 알려줘")[1]
+    assert not ensure_ktb_kind("SELECT 1 FROM domestic_bonds WHERE TRIM(bd_knd)='국고채권' LIMIT 1", q)[1]
+    assert not ensure_ktb_kind("SELECT COUNT(*) FROM domestic_bonds", q)[1]
+    assert not ensure_distinct_count("SELECT COUNT(*) FROM domestic_bonds", "채권 데이터가 총 몇 행이야?")[1]
+
+
+def test_validate_sql_relaxations():
+    from src.runtime.pipeline import validate_sql
+    # 2026-08-31 저녁 — 읽기 전용인데 기각되던 형태 2종 허용
+    assert validate_sql("SELECT REPLACE(pd_nm,' ','') FROM domestic_bonds LIMIT 5") is None
+    assert validate_sql("WITH b AS (SELECT pd_nm FROM domestic_bonds) SELECT * FROM b LIMIT 5") is None
+    # 위험 형태는 그대로 차단
+    assert validate_sql("REPLACE INTO domestic_bonds VALUES (1)") is not None
+    assert validate_sql("SELECT 1 FROM secret_table LIMIT 1") is not None
+
+
+class BuggyKtbCountPlanner:
+    """2026-08-31 저녁 실측 오답 SQL — '국고채' 를 대분류 국공채 행수로 뭉갬."""
+
+    def plan_sql(self, question, grounding):
+        return "SELECT COUNT(*) FROM domestic_bonds WHERE std_pd_mcls_nm='국공채'"
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_ktb_count_recovers(ctx):
+    r = answer_question("T-24", "국고채는 총 몇 종목이야?", planner=BuggyKtbCountPlanner(), ctx=ctx)
+    assert "[Guard] 국고채 종류 교정" in r.think_trace
+    assert "[Guard] 종목 수 교정" in r.think_trace
+    assert "295" in r.retrieved_context and "2840" not in r.retrieved_context
+
+
 def test_full_path_backstop_recovers(ctx):
     r = answer_question("T-23", "정부가 책임지는채권 중에서 수익률 높은 순으로 5개 알려줘",
                         planner=BuggyBackstopPlanner(), ctx=ctx)

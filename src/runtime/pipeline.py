@@ -64,8 +64,8 @@ def _accepts_answer_rules(planner) -> bool:
 
 # ── SQL 사후 검사 — LLM 이 만든 SQL 을 신뢰하지 않는다 ──────────────────
 _FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|alter|create|attach|pragma|vacuum|replace)\b", re.I
-)
+    r"\b(insert|update|delete|drop|alter|create|attach|pragma|vacuum|replace\s+into)\b", re.I
+)   # 🔧 2026-08-31 저녁: replace → replace into 만 금지. REPLACE(pd_nm,' ','') 문자열 함수는 정당한 읽기 연산인데 기각되고 있었다
 
 
 def validate_sql(sql: str) -> str | None:
@@ -73,7 +73,8 @@ def validate_sql(sql: str) -> str | None:
     s = sql.strip().rstrip(";")
     if ";" in s:
         return "다중 문장 금지"
-    if not re.match(r"^\s*select\b", s, re.I):
+    if not re.match(r"^\s*(?:select|with)\b", s, re.I):
+        # WITH(CTE)도 읽기 전용 단일문 — FROM/JOIN 테이블 검사는 CTE 본문까지 훑는다 (2026-08-31 저녁 오탐 방지)
         return "SELECT 만 허용"
     if _FORBIDDEN.search(s):
         return "금지 키워드 포함"
@@ -82,8 +83,9 @@ def validate_sql(sql: str) -> str | None:
         m = re.search(r"\bfrom\s+([\w.]+)", s, re.I)
         return f"허용 테이블 밖: {m.group(1) if m else '?'}"
     # FROM/JOIN 에 등장하는 모든 테이블이 마스터 4 + 외부 ext_* 안에 있어야 한다 (교차질의 조인 허용, 그 외 차단)
+    ctes = {n.lower() for n in re.findall(r"\b([A-Za-z_]\w*)\s+as\s*\(", s, re.I)}  # WITH 별칭은 테이블이 아니다
     for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", s, re.I):
-        if t.lower() not in TABLES and t.lower() not in EXT_TABLES:
+        if t.lower() not in TABLES and t.lower() not in EXT_TABLES and t.lower() not in ctes:
             return f"허용 테이블 밖: {t}"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
@@ -245,21 +247,87 @@ def ensure_credit_backstop(sql: str, question: str) -> tuple[str, bool]:
         sql = f"{sql[:s]}({sql[s:e]} OR " + " OR ".join(missing) + f"){sql[e:]}"
         changed = True
     if _RANK_Q.search(question):
-        excl = []
-        if re.search(r"applied_yield", sql, re.I) and not re.search(r"applied_yield\s*>\s*0", sql):
-            excl.append("applied_yield > 0")
-        if "'11'" not in sql:
-            excl.append("pd_risk_gcd <> '11'")
-        if "C0" not in sql:
-            excl.append("COALESCE(TRIM(crd_grd),'') <> 'C0'")
-        if "사모" not in sql:
-            excl.append("bd_ofr_tcd <> '사모'")
-        if excl:
-            t = _WHERE_TAIL.search(sql)
-            pos = t.start() if t else len(sql)
-            sql = sql[:pos].rstrip() + " AND " + " AND ".join(excl) + " " + sql[pos:]
-            changed = True
+        sql, excl_changed = _append_exclusions(sql, _rank_exclusions(sql, question))
+        changed = changed or excl_changed
     return sql, changed
+
+
+def _rank_exclusions(sql: str, question: str) -> list[str]:
+    """고위험제외·수익률정상 중 SQL 에 빠진 절 — 질문이 그 범주를 명시하면 그 절은 건너뛴다.
+
+    '사모 채권 추천'·'위험 높은 채권 순위'·'C0 등급' 처럼 사용자가 제외 대상을 콕 집으면
+    그 절을 주입하는 순간 정답 모수가 통째로 사라진다 — 범주 언급 = 우회."""
+    excl = []
+    if re.search(r"applied_yield", sql, re.I) and not re.search(r"applied_yield\s*>\s*0", sql):
+        excl.append("applied_yield > 0")
+    if "'11'" not in sql and not re.search(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
+        excl.append("pd_risk_gcd <> '11'")
+    if "C0" not in sql and not re.search(r"C0|투기|부실", question, re.I):
+        excl.append("COALESCE(TRIM(crd_grd),'') <> 'C0'")
+    if "사모" not in sql and "사모" not in question:
+        excl.append("bd_ofr_tcd <> '사모'")
+    return excl
+
+
+def _append_exclusions(sql: str, excl: list[str]) -> tuple[str, bool]:
+    """WHERE 끝(GROUP/ORDER/LIMIT 앞)에 AND 로 잇는다 — 최상위 결합이라 기존 OR 그룹을 깨지 않는다."""
+    if not excl:
+        return sql, False
+    t = _WHERE_TAIL.search(sql)
+    pos = t.start() if t else len(sql)
+    joiner = " AND " if re.search(r"\bWHERE\b", sql, re.I) else " WHERE "
+    return sql[:pos].rstrip() + joiner + " AND ".join(excl) + " " + sql[pos:], True
+
+
+_RECO_Q = re.compile(r"추천|랭킹|순위|톱|top|(?:높은|낮은)\s*순", re.I)
+
+
+def ensure_reco_exclusions(sql: str, question: str) -> tuple[str, bool]:
+    """추천·랭킹 채권 질의 SQL 에 고위험제외·수익률정상을 주입. (보정된 SQL, 보정했는지)
+
+    2026-08-31 저녁 서버 실측: 'AA등급 이상 회사채 표면금리 높은 순 5개 추천' 에 사모 3건이
+    1~3위로 혼입 — 고위험제외 규칙이 또 무시됐다(신용보강 가드는 정부보강 질의만 커버).
+    발동 조건: ① SQL 이 domestic_bonds 단독 조회 ② 질문에 추천·랭킹 신호(추천/순위/높은·낮은 순).
+    개수 요청('5개')만으로는 발동하지 않는다 — 조회·사실확인 질의는 제외하지 않는다는 규칙 유지.
+    범주를 명시한 질문(사모·C0·투기·위험 높은)은 해당 절을 건너뛴다 (_rank_exclusions)."""
+    if "domestic_bonds" not in sql or not _RECO_Q.search(question):
+        return sql, False
+    return _append_exclusions(sql, _rank_exclusions(sql, question))
+
+
+_KTB_Q = re.compile(r"국고채|(?<![가-힣])국채")
+_MCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*=\s*'국공채'", re.I)
+_MCLS_IN = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\([^)]*'국공채'[^)]*\)", re.I)
+_KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
+               "AND TRIM(std_pd_scls_nm)='국고채'))")
+
+
+def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
+    """'국고채·국채' 질의가 대분류 국공채로 뭉개졌으면 국고채 확정식으로 교체. (보정된 SQL, 보정했는지)
+
+    2026-08-31 저녁 서버 실측: '국고채는 총 몇 종목이야?' → std_pd_mcls_nm='국공채' COUNT(*)
+    = 2,840(지방채·통안채까지 합친 행수) 오답. 5dff69b 에서 지시문으로 승격한 종류필터가 또
+    무시됐다 — 대분류 국공채엔 지방채·국민주택·통안채가 섞인다. 확정식은 종류필터 ①(STRIPS 포함,
+    리드 결정 08-31). 발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외)가
+    있고, SQL 이 국공채 대분류로 필터하며 '국고채권' 이 어디에도 없다."""
+    if not _KTB_Q.search(question) or "국고채권" in sql:
+        return sql, False
+    m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
+    if not m:
+        return sql, False
+    s, e = m.span()
+    return sql[:s] + _KTB_FILTER + sql[e:], True
+
+
+def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
+    """종목 수 질의의 COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교정. (보정된 SQL, 보정했는지)
+
+    채권은 1,078종목이 장내·장외 2~4행이라 COUNT(*) 는 종목 수가 아니다(대표행 규칙).
+    2026-08-31 저녁 실측: '국고채 몇 종목' 에 행수가 나감. 질문에 종목·몇 개·개수가 있을 때만."""
+    if "domestic_bonds" not in sql or not re.search(r"종목|몇\s*개|개수", question):
+        return sql, False
+    fixed = re.sub(r"COUNT\(\s*\*\s*\)", "COUNT(DISTINCT pd_no)", sql, flags=re.I)
+    return (fixed, fixed != sql)
 
 
 def ensure_risk_name_column(sql: str) -> tuple[str, bool]:
@@ -673,9 +741,18 @@ def answer_question(
     sql, grades_fixed = expand_grade_comparison(sql, q)
     if grades_fixed:
         step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, ktb_fixed = ensure_ktb_kind(sql, q)
+    if ktb_fixed:
+        step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
     sql, backstop_fixed = ensure_credit_backstop(sql, q)
     if backstop_fixed:
         step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
+    sql, reco_fixed = ensure_reco_exclusions(sql, q)
+    if reco_fixed:
+        step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
+    sql, distinct_fixed = ensure_distinct_count(sql, q)
+    if distinct_fixed:
+        step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")
     sql, riskname_fixed = ensure_risk_name_column(sql)
     if riskname_fixed:
         step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")

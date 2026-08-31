@@ -238,3 +238,21 @@ def test_country_tag_rule_is_grounded():
     assert "fd_ivst_rgn_desc 로 풀 수 없다" in g
     # 국가 어휘가 없는 질의엔 실리지 않는다 (triggered 규칙)
     assert "CHN" not in ctx.planner_context(["public_funds"], "순자산 큰 펀드 5개 알려줘")
+
+
+def test_forbidden_column_rejected():
+    """FND-R09 — 금지 컬럼(pfiv_sale_cntl_tcd)을 쓴 SQL 은 기각해 재생성 사유로 돌려준다.
+
+    같은 질문에 1차는 han_clas_policies(정답 경로), 2차는 pfiv_sale_cntl_tcd 가 나온 실측 —
+    HCX 비결정성이라 프롬프트 규칙만으로는 못 막는다."""
+    from src.runtime.pipeline import forbidden_column_use as f, ensure_fund_evidence_columns
+
+    why = f("SELECT itm_nm FROM public_funds WHERE pfiv_sale_cntl_tcd != '00' LIMIT 30")
+    assert why and "han_clas_policies" in why          # 대안 경로를 사유에 담아야 재생성이 고친다
+    assert f("SELECT itm_nm FROM public_funds WHERE fd_wk1_ern_r > 0 LIMIT 5")
+    # 정상 SQL 은 통과
+    assert f("SELECT itm_nm FROM public_funds WHERE han_clas_policies LIKE '%전문투자자%' LIMIT 30") is None
+    # 근거컬럼 가드가 금지 컬럼을 SELECT 에 실어 주지 않는다 (금지를 거드는 꼴)
+    s, _ = ensure_fund_evidence_columns(
+        "SELECT itm_nm FROM public_funds WHERE pfiv_sale_cntl_tcd != '00' LIMIT 30")
+    assert "pfiv_sale_cntl_tcd" not in s.split("FROM")[0]

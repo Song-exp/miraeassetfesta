@@ -410,7 +410,30 @@ _EVIDENCE_SKIP = {
     "or_co_xtn_itt_cd", "null", "not", "and", "or", "like", "select", "from", "where",
     "trim", "coalesce", "cast", "substr", "length", "case", "when", "then", "else", "end",
     "zrin_fd_ivst_risk_gcd",   # 이름 컬럼(grd_nm)을 위에서 이미 붙인다
+    "pfiv_sale_cntl_tcd",      # 사용 금지 컬럼 — 결과에 실어 주면 금지를 거드는 꼴이다 (아래 _FORBIDDEN_COLS)
 }
+
+
+# ── 사용 금지 컬럼 — 규칙(query_rules)에 적어도 플래너가 쓴다. 기각해서 재생성 사유로 돌려준다 ──
+# 2026-08-31 밤 FND-R09 실측: 같은 질문에 1차는 han_clas_policies(정답 경로), 2차는
+# pfiv_sale_cntl_tcd != '00'(금지 컬럼)이 나왔다 — HCX 비결정성이라 프롬프트 규칙만으론 못 막는다.
+_FORBIDDEN_COLS = {
+    "pfiv_sale_cntl_tcd":
+        "pfiv_sale_cntl_tcd 는 코드 의미가 제공되지 않아 어떤 질의에도 조건·정렬로 쓸 수 없다"
+        " — 전문투자자 조건은 han_clas_policies LIKE '%전문투자자%' 로 푼다"
+        " (값: '전문투자자'·'전문투자자,펀드'·'기관,전문투자자' 등)",
+    "fd_wk1_ern_r":
+        "fd_wk1_ern_r 은 전건 결측이라 쓸 수 없다 — 1주 수익률은 수록되지 않았다고 답한다"
+        " (대체로 1개월 fd_mm1_ern_r 안내는 가능)",
+}
+
+
+def forbidden_column_use(sql: str) -> str | None:
+    """사용 금지 컬럼을 쓴 SQL 의 기각 사유 — 없으면 None."""
+    for col, why in _FORBIDDEN_COLS.items():
+        if re.search(rf"\b{col}\b", sql, re.I):
+            return why
+    return None
 
 
 @lru_cache(maxsize=1)
@@ -1448,7 +1471,7 @@ def answer_question(
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
-    err = validate_sql(sql)
+    err = validate_sql(sql) or forbidden_column_use(sql)
     if not err:
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
@@ -1475,7 +1498,7 @@ def answer_question(
             sql, limited = ensure_limit(raw2)
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
-            err = validate_sql(sql)
+            err = validate_sql(sql) or forbidden_column_use(sql)
             if not err:
                 unk = guard.unknown_columns(sql, ctx)
                 if unk:

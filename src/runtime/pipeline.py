@@ -1308,6 +1308,18 @@ def build_grounding(
         # (2026-08-26 실측: "삼성전자를 보유한 국내 ETF" → OperationalError).
         parts.append(
             "# 교차질의 조인 키 — 구성종목·설명서 조건은 아래 외부 테이블에 있다. 반드시 JOIN 해서 쓴다\n"
+            "# 🔴 조인 키는 **짝이 정해져 있다.** 아래 줄의 왼쪽 ext_ 테이블은 오른쪽 마스터에만 붙는다 —\n"
+            "#    다른 마스터에 갖다 쓰면 없는 컬럼이 되어 실행이 깨진다\n"
+            "#    (2026-08-31 실측: public_funds.pd_itm_no 로 ext_etf_holdings 를 조인하려다 두 번 기각).\n"
+            "# 🔴 상품군이 둘 이상이면(\"ETF나 펀드\", \"ETF와 공모펀드\") **한 테이블에 뭉치지 말고\n"
+            "#    상품군별 SELECT 를 UNION ALL 로 합친다.** 상품군마다 마스터·조인키·수익률 컬럼이 다르다:\n"
+            "#      SELECT '국내ETF' AS 구분, e.pd_abrv_nm, e.du_er_1y FROM domestic_etfs e\n"
+            "#        JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent='…'\n"
+            "#      UNION ALL\n"
+            "#      SELECT '공모펀드', p.itm_nm, p.fd_yr1_ern_r FROM public_funds p\n"
+            "#        JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd\n"
+            "#        WHERE f.holding_nm='…'\n"
+            "#    정렬·LIMIT 은 UNION 전체를 감싼 바깥에서 한 번만 건다. 답변에는 구분 열을 함께 밝힌다.\n"
             + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
         )
     # R-2: triggered 규칙은 질문 어휘가 있을 때만. RULES_MODE=full 이면 종전처럼 전부 (eval/run_paired.py 의 대조군)

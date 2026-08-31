@@ -194,6 +194,16 @@ def _ground(
         if node.node_id.startswith("Sec_"):
             # Security(종목) 자동 노드 수만 개 — 영문 라벨은 6자 이상만 (AAPL·NVDA 류 짧은 토큰 오탐 방지), 한글은 4자
             return 6 if not re.search(r"[가-힣]", label) else 4
+        # 🔴 2026-08-30 — 한국어 지역·통화·신용등급은 2자가 정상이라 3자 하한에 통째로 걸렸다.
+        #    실측: '미국' '중국' '일본' '인도' '국내' '북미' '남미' '유럽' '영국' '대만' … Region 16개 ·
+        #    Curr 2개(원화·유로) · CG 18개(AA·A+·BB…) 가 매칭 자체에서 제외돼 있었다.
+        #    → "미국에 투자하는 레버리지 ETF" 에서 Region_US 가 안 잡혔다(로컬 Ground 실측).
+        #    이 셋은 **사람이 관리하는 닫힌 목록**(합 36개)이라 하한을 2자로 내려도 오탐이 없다 —
+        #    Sec_/Org_ 자동 노드와 라벨이 겹치는 것은 0건으로 확인했다.
+        #    ⚠️ AssetClass_ 는 **일부러 제외**했다. '기타'(AssetClass_Other)가 '기타비용'(수수료 항목)에
+        #       부분일치해 오탐이 난다. '주식'·'채권' 은 맞는 매칭이나 '기타' 하나 때문에 통째로 뺀다.
+        if node.node_id.startswith(("Region_", "Curr_", "CG_")):
+            return 2
         return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
 
     # 후보가 수만 개라 노드당 한 번만 편다

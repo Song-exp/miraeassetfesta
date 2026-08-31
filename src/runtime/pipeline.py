@@ -480,6 +480,26 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
     return fixed, fixed != sql
 
 
+def ensure_enum_value_fix(sql: str, ctx) -> tuple[str, bool]:
+    """WHERE 리터럴이 실제 enum 값과 접미사·공백만 다르면 실제 값으로 치환. (보정된 SQL, 보정했는지)
+
+    FND-024 실측 처방 — 값 검사 기각 → 재생성 실패 → 거절 경로를 애초에 없앤다.
+    guard.nearest_enum_value 가 유일 후보일 때만 값을 돌려주므로 의미가 갈리는 치환은 일어나지 않는다.
+    """
+    index = getattr(ctx, "value_index", None) or {}
+    if not index:
+        return sql, False
+    changed = False
+    for v in guard.check_values(sql, ctx):
+        if v.owner:                      # 컬럼 오선택은 재생성 사유로 넘긴다 (§6-2e)
+            continue
+        near = guard.nearest_enum_value(index, v.table, v.column, v.literal)
+        if near and near != v.literal:
+            sql = re.sub(rf"'{re.escape(v.literal)}'", f"'{near}'", sql)
+            changed = True
+    return sql, changed
+
+
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
 _GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
 
@@ -1477,6 +1497,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) ->
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, enum_fixed = ensure_enum_value_fix(sql, ctx)
+    if enum_fixed:
+        step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "
+             "(2026-08-31 밤 FND-024 실측: '재간접형' → 실제 값 '재간접'. 기각·재생성으로는 못 고쳐 거절로 나갔다)")
     sql, space_fixed = ensure_spaceless_name_match(sql)
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "

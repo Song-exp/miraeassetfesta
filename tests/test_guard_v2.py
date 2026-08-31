@@ -394,3 +394,20 @@ def test_sales_company_rule_grounded():
     ctx = load_context()
     g = ctx.planner_context(["public_funds"], "미래에셋증권에서 살 수 있는 공모펀드는 몇 개야?")
     assert "thco_sale_yn" in g and "수탁사" in g
+
+
+def test_enum_value_suffix_fix():
+    """FND-024 실측 — '재간접형' 처럼 접미사만 다른 표기를 실제 값으로 흡수한다.
+
+    값 검사 기각 → 재생성이 사유의 '실제 값 예' 4개를 그대로 IN 에 넣는 오작동 → 거절로 나갔다.
+    답변 가능한 질의(2,594행)가 거절되던 경로를 없앤다."""
+    from src.runtime.loader import load_context
+    from src.runtime.pipeline import ensure_enum_value_fix as f
+
+    ctx = load_context()
+    s, ok = f("SELECT COUNT(*) FROM public_funds WHERE or_attr_desc = '재간접형' LIMIT 30", ctx)
+    assert ok and "'재간접'" in s and "재간접형" not in s
+    assert not f(s, ctx)[1]                                # 멱등
+    # 불개입 — 이미 실제 값 · 컬럼 오선택(재생성 사유로 넘긴다)
+    assert not f("SELECT 1 FROM public_funds WHERE or_attr_desc='재간접' LIMIT 5", ctx)[1]
+    assert not f("SELECT 1 FROM public_funds WHERE or_attr_desc='해외주식형' LIMIT 5", ctx)[1]

@@ -136,6 +136,35 @@ def ambiguous_columns(sql: str, ctx: RuntimeContext) -> list[str]:
     return out
 
 
+_SUFFIX_NOISE = ("형", "型", "펀드", " ")
+
+
+def nearest_enum_value(index: dict, table: str, column: str, literal: str) -> str | None:
+    """리터럴과 **접미사·공백만 다른** 실제 값이 유일하면 그 값 — 아니면 None.
+
+    2026-08-31 밤 FND-024 실측: 플래너가 '재간접형' 을 썼는데 실제 값은 '재간접'(형 없음).
+    값 검사가 기각하고 사유에 "실제 값 예: MMF · 기타 · 임대형 · 재간접" 을 보여줬는데도
+    재생성은 '재간접형' 을 유지한 채 **예시 4개를 그대로 IN 에 넣었다** — 예시 나열이
+    정답 후보로 오해된 것이다. 답변 가능한 질의(2,594행)가 거절로 나갔다.
+    사람이 '재간접형·주식형' 처럼 부르는 것은 자연스러우므로, 명백한 표기 차이는 기계가 흡수한다.
+    🔴 후보가 둘 이상이면 손대지 않는다 — 의미가 갈리는 치환은 값 검사에 맡긴다.
+    """
+    raw = index.get(("_raw", table, column)) or ()
+    if not raw:
+        return None
+    base = _norm(literal)
+    for s in _SUFFIX_NOISE:
+        base = base.removesuffix(s)
+    base = base.strip()
+    if not base:
+        return None
+    cands = {v for v in raw if _norm(v).strip() == base}
+    if not cands:                       # 반대 방향 — 사람이 짧게 부르고 실제 값에 접미사가 붙은 경우
+        cands = {v for v in raw
+                 if any(_norm(v).strip() == base + s for s in _SUFFIX_NOISE if s.strip())}
+    return next(iter(cands)) if len(cands) == 1 else None
+
+
 def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     """값 사전이 완전한 컬럼에 한해, WHERE 리터럴이 실제 값인지 검사한다."""
     index = getattr(ctx, "value_index", None) or {}

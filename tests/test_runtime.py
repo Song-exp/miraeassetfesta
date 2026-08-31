@@ -655,3 +655,18 @@ def test_unknown_column_feedback_names_owner(ctx):
     from src.runtime.pipeline import _name_owners
     msg = _name_owners(["zrin_fd_ivst_risk_gcd"], ctx)
     assert "public_funds" in msg
+
+
+def test_ground_uses_yaml_synonyms(ctx):
+    """yaml synonyms 가 Ground 매칭 키로도 쓰여야 한다 (서버 실측 2026-08-31 저녁).
+
+    "국내 etf중 하이닉스가 가장많이 편입된상품" 이 KG 매칭 0건이라
+    HCX 가 컬럼명을 추측해 holding_nm 을 만들어 냈다(실제 컬럼은 constituent).
+    """
+    from src.runtime.pipeline import _ground, _synonym_keys
+    assert "하이닉스" in _synonym_keys(ctx).get("SK하이닉스", [])
+    _, lines = _ground("국내 etf중 하이닉스가 가장많이 편입된상품은 무어야", ctx, ["domestic_etfs"], cross=True)
+    assert any("Sec_kr_000660" in l for l in lines), lines
+    # 정식 표기로 물어도 같은 노드
+    _, full = _ground("SK하이닉스 담은 ETF", ctx, ["domestic_etfs"], cross=True)
+    assert any("Sec_kr_000660" in l for l in full), full

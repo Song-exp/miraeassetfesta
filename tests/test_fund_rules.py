@@ -86,3 +86,23 @@ def test_schema_excludes_empty_and_forbidden_columns(ctx):
     # 정상 컬럼은 남아 있어야 한다 — 과잉 제외 방지
     for kept in ("fd_yr1_ern_r", "itm_nm", "itm_eng_nm", "fd_nast_suma"):
         assert kept in schema, kept
+
+
+def test_benchmark_component_aliases_reach_grounding(ctx):
+    """E-3-12 (2026-08-31) — 복합 벤치마크 성분 alias: 'KOSPI200 추종 펀드' 의 대상 값에
+    복합식('KOSPI200 25% + 종합채권01Y 75%' 류)이 포함돼야 한다. 종전엔 정확일치 1,522행만 잡히고
+    복합식 1,367행(판매중 951)이 통째로 빠졌다."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        g = ""
+        def plan_sql(self, q, g):
+            P.g = g
+            return "SELECT itm_no FROM public_funds WHERE bmrk_nm = 'KOSPI200' LIMIT 5"
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "t"
+
+    answer_question("T-BMK", "KOSPI200을 벤치마크로 하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    lines = [ln for ln in P.g.splitlines() if "KOSPI200" in ln and "bmrk_nm" in ln]
+    assert lines, "KOSPI200 → bmrk_nm 값 매핑 줄이 근거문서에 없다"
+    assert any("+" in ln and "%" in ln for ln in lines), "복합식 성분 alias 가 안 실렸다 (KG 재생성 필요?)"

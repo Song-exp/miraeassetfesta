@@ -3,6 +3,7 @@
 # as_of=2026-08-22
 # Index 자동 등록: domestic_etfs.ref_base_index(ETF) · overseas_etfs.cu_base_index(센티넬 제외) · public_funds.bmrk_nm
 # 노드 3151 (패밀리 70 · 변형 157 · 단독 2924) · alias 3121 · 수동 노드 확장 1 · 수동 중복 제외 19 · 센티넬 제외 3
+# 복합식 성분 alias 279 (복합식 211종 · 미매칭 성분 105종: 종합채권01Y · KIS채권종합01Y · KIS채권종합 · KIS국공채01Y · 국공채01Y · KIS국공채3Y)
 # edge 5707 (coversRegion 미적중 637 · hasAssetClass 기본값(Equity) 593)
 # 수동 index.yaml 과 같은 entity 를 선언한다 — build_ontology 가 class/property 중복 선언을 억제한다.
 entity: Index
@@ -645,7 +646,17 @@ nodes:
     auto: true
   Idx_a_3e3f0bedc6:
     label_ko: CSI 300
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI 300 KRW 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CSI 300 KRW' — E-3-12 · 16행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI300 Index(CNY) 28% + 종합채권2Y 62% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CSI300 Index(CNY)' — E-3-12 · 4행
     auto: true
     family: true
   Idx_v_701ec2fb05:
@@ -979,7 +990,17 @@ nodes:
     auto: true
   Idx_a_ad1fb262c1:
     label_ko: EURO STOXX 50
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: EURO STOXX 50 40% + 국채 1Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'EURO STOXX 50' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: EURO STOXX 50 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'EURO STOXX 50' — E-3-12 · 2행
     auto: true
     family: true
   Idx_v_f12479079a:
@@ -4493,6 +4514,11 @@ nodes:
       raw: KOSDAQ
       source: rule
       evidence: public_funds.bmrk_nm distinct · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSDAQ 70% + KOSPI 30%
+      source: rule_component
+      evidence: 복합식 성분 'KOSDAQ' — E-3-12 · 12행
     auto: true
   Idx_a_d99ddcf618:
     label_ko: KOSDAQ 150
@@ -5795,7 +5821,77 @@ nodes:
     auto: true
   Idx_a_c2f932ab65:
     label_ko: MSCI EM (Emerging Markets)
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 12% + MSCI EM(USD) 6% + Rogers International Commodity TR 2% + KIS국공채3Y 80%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM(USD)' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 24% + MSCI EM(USD) 12% + Rogers International Commodity TR 4% + KIS국공채3Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM(USD)' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 36% + MSCI EM(USD) 18% + Rogers International Commodity TR 6% + KIS국공채3Y 40%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM(USD)' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 48% + MSCI EM(USD) 24% + Rogers International Commodity TR 8% + KIS국공채3Y 20%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM(USD)' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM 40% + KIS국공채3Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 25% + KOSPI 25% + KIS채권종합 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 25% + 종합채권01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 40% + KIS채권종합 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 40% + KOBI30 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 40% + 종합채권 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 50% + KIS채권종합01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 13행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 50% + KOSPI 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 50% + 종합채권01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 13행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM CR' — E-3-12 · 1행
     auto: true
     family: true
   Idx_v_bf293055a6:
@@ -6001,7 +6097,12 @@ nodes:
     auto: true
   Idx_a_953e474110:
     label_ko: MSCI USA
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI USA(Local) 47.5% + MSCI China(Local) 47.5% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI USA(Local)' — E-3-12 · 3행
     auto: true
     family: true
   Idx_v_e83a212217:
@@ -6722,6 +6823,36 @@ nodes:
       raw: S&P 500
       source: rule
       evidence: public_funds.bmrk_nm distinct · 98행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CALL x 10% + S&P500  x 36% + KOBI120 x 54%
+      source: rule_component
+      evidence: 복합식 성분 'S&P500' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: FTSE AW ex US 36% + S&P 500 54% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'S&P 500' — E-3-12 · 12행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P 500 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'S&P 500' — E-3-12 · 11행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 45% + KOSPI 45% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'S&P500' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'S&P500' — E-3-12 · 14행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 지수 40% + 국채 1Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'S&P500 지수' — E-3-12 · 2행
     auto: true
     family: true
   Idx_v_62149b542b:
@@ -6738,6 +6869,16 @@ nodes:
       raw: S&P 500 CR
       source: rule
       evidence: overseas_etfs.cu_base_index distinct · 66행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 CR 25% + MSCI EUROPE CR 25% + MSCI JAPAN VALUE 25% + MSCI AC ASIA PACIFIC ex JAPAN CR 25%
+      source: rule_component
+      evidence: 복합식 성분 'S&P500 CR' — E-3-12 · 13행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 CR 60% + MSCI EUROPE CR 40%
+      source: rule_component
+      evidence: 복합식 성분 'S&P500 CR' — E-3-12 · 6행
     auto: true
   Idx_a_05ce26e466:
     label_ko: S&P 500 Covered Call 1% OTM Daily TR
@@ -7951,6 +8092,21 @@ nodes:
       raw: TOPIX CR
       source: rule
       evidence: public_funds.bmrk_nm distinct · 39행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI ZHONG HUA CR 33.3% + TOPIX CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'TOPIX CR' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 50% + TOPIX CR 50%
+      source: rule_component
+      evidence: 복합식 성분 'TOPIX CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: TOPIX CR 35% + 국공채01Y 65%
+      source: rule_component
+      evidence: 복합식 성분 'TOPIX CR' — E-3-12 · 2행
     auto: true
   Idx_a_e380320e99:
     label_ko: Utilities Select Sector
@@ -7975,6 +8131,11 @@ nodes:
       raw: VN30
       source: rule
       evidence: domestic_etfs.ref_base_index distinct · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: VN30(VND) 40% + KIS 국채1Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'VN30(VND)' — E-3-12 · 4행
     auto: true
   Idx_a_377cd2ad36:
     label_ko: WISE Cosmetics
@@ -15372,6 +15533,21 @@ nodes:
       raw: MSCI AC ASIA ex JAPAN
       source: rule
       evidence: public_funds.bmrk_nm distinct · 56행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA ex JAPAN 50% + KIS채권종합02Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA ex JAPAN' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA ex JAPAN 50% + 종합채권02Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA ex JAPAN' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA ex JAPAN(원화환산) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA ex JAPAN(원화환산)' — E-3-12 · 10행
     auto: true
     family: true
   Idx_v_c9621dbdde:
@@ -15414,7 +15590,12 @@ nodes:
     auto: true
   Idx_a_83b9b8edb8:
     label_ko: MSCI AC World
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 30% + MSCI AC World 30% + KIS국채(1년~2년) 40%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC World' — E-3-12 · 3행
     auto: true
     family: true
   Idx_v_c3db096933:
@@ -16451,6 +16632,16 @@ nodes:
       raw: MSCI INDIA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 94행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA CR 15% + MSCI INDIA CR 15% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI INDIA CR' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI INDIA(원화환산) 36% + KOBI120 54% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI INDIA(원화환산)' — E-3-12 · 2행
     auto: true
     family: true
   Idx_v_bb4025299c:
@@ -16526,6 +16717,21 @@ nodes:
       raw: MSCI JAPAN
       source: rule
       evidence: public_funds.bmrk_nm distinct · 34행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI JAPAN CR 25% + KIS채권종합01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI JAPAN CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI JAPAN(Local) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI JAPAN(Local)' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI JAPAN(원화환산) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI JAPAN(원화환산)' — E-3-12 · 5행
     auto: true
     family: true
   Idx_v_10e75c3f19:
@@ -25218,7 +25424,22 @@ nodes:
     composite: true
   Idx_a_8578d60689:
     label_ko: Bloomberg GLOBAL AGGREGATE
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE' — E-3-12 · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg Global Aggregate Index(KRW Unhedged) X 95% + Call 금리 X 5%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg Global Aggregate Index(KRW Unhedged)' — E-3-12 · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg Global Aggregate Index(KRW hedged) X 95% + Call 금리 X 5%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg Global Aggregate Index(KRW hedged)' — E-3-12 · 6행
     auto: true
     family: true
   Idx_v_df8e54fa7e:
@@ -25230,6 +25451,56 @@ nodes:
       raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED)
       source: rule
       evidence: public_funds.bmrk_nm distinct · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) + Call 6%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 50% + JACI Sovereign 50%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 70% + 종합채권 30%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 90% + CALL(KRW) 10%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI CR 25% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 45% +  JP Morgan GBI-EM Global Diversified 30%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI CR 25% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 75%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 36행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI CR 40% + Bloomberg  GLOBAL AGGREGATE(KRW HEDGED) 60%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI CR 50% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 50%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 39행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI CR 75% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 25%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA CR 15% + MSCI INDIA CR 15% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 70%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(KRW HEDGED)' — E-3-12 · 8행
     auto: true
   Idx_a_ce56668cf1:
     label_ko: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) + Call 6%
@@ -25290,6 +25561,16 @@ nodes:
       raw: Bloomberg GLOBAL AGGREGATE(USD HEDGED)
       source: rule
       evidence: public_funds.bmrk_nm distinct · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(USD HEDGED) (KRW) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(USD HEDGED) (KRW)' — E-3-12 · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(USD HEDGED) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg GLOBAL AGGREGATE(USD HEDGED)' — E-3-12 · 23행
     auto: true
   Idx_a_756eee826b:
     label_ko: Bloomberg GLOBAL AGGREGATE(USD HEDGED) (KRW) 95% + CALL 5%
@@ -25429,6 +25710,11 @@ nodes:
       raw: Bloomberg U.S. AGGREGATE IN KRW
       source: rule
       evidence: public_funds.bmrk_nm distinct · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg U.S. AGGREGATE IN KRW 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Bloomberg U.S. AGGREGATE IN KRW' — E-3-12 · 8행
     auto: true
   Idx_v_0bd6a0b56a:
     label_ko: Bloomberg U.S. AGGREGATE IN KRW 90%
@@ -25516,6 +25802,291 @@ nodes:
       raw: CALL
       source: rule
       evidence: public_funds.bmrk_nm distinct · 218행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) + Call 6%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 90% + CALL(KRW) 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL(KRW)' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(USD HEDGED) (KRW) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg GLOBAL AGGREGATE(USD HEDGED) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 23행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg Global High Yield Excl CMBS & EMG 2% Cap(원화환산) 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg Global High Yield Excl CMBS &amp; EMG 2% Cap(USD Hedged) 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg U.S. AGGREGATE IN KRW 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg U.S. High Yeild 2% Issuer cap 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 18행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg U.S. High Yeild 2% Issuer cap(원화환산) 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg U.S. High Yield 2% Issuer cap 94% + Call 6%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 18행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CALL x 10% + S&P500  x 36% + KOBI120 x 54%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI 300 KRW 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 16행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI 300 LOCAL 85% + CALL 15%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI 300 LOCAL 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 55행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI 500  LOCAL 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 11행
+    - table: public_funds
+      column: bmrk_nm
+      raw: CSI300 Index(CNY) 28% + 종합채권2Y 62% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 4행
+    - table: public_funds
+      column: bmrk_nm
+      raw: EURO STOXX 50 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: FTSE AW ex US 36% + S&P 500 54% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 12행
+    - table: public_funds
+      column: bmrk_nm
+      raw: FTSE Xinhua A200 45% + 항셍H주 CR 45% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: JP Morgan EMBI Global Diversified Index(KRW) 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 17행
+    - table: public_funds
+      column: bmrk_nm
+      raw: JP Morgan EMBI Global Diversified Index(USD) 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 19행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 27% + MSCI ACWI CR 63% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN NR USD 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 13행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA ex JAPAN(원화환산) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 10행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI  90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 47행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI (KRW) ×90% + Call ×10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 38행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI IT 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 12행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI(USD) 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI(USD) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA 45% + CSI 300 LOCAL 45% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 4행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA 85% + Call 15%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 14행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 29행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA USD in KRW 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI China A 80% + Call 20%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI INDIA(원화환산) 36% + KOBI120 54% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI JAPAN(Local) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI JAPAN(원화환산) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia Index(KRW) 50% + VN Index(KRW) 35% + CALL 15%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 11행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia USD Index 50% + VN Index(USD) 35% + CALL 15%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia(USD) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia(원화환산) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 12행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI USA(Local) 47.5% + MSCI China(Local) 47.5% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI (KRW) ×90% + Call ×10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI (USD) ×90% + Call ×10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 44행
+    - table: public_funds
+      column: bmrk_nm
+      raw: NYSE FactSet Gbl Atnms Drvng and Elec Vhcl 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 12행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P 500 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 11행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P 500(KRW) 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P 500(KRW) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 11행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 45% + KOSPI 45% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 14행
+    - table: public_funds
+      column: bmrk_nm
+      raw: TOPIX TR 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: VN 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: '[MSCI ASEAN Index 75%+MSCI India Index 25%]*90%+CALL 10%'
+      source: rule_component
+      evidence: 복합식 성분 'CALL' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 멕시코 IPC 22.5% + 인도네시아 JKSE 22.5% + KOSPI200 22.5% + 터키 ISE100 22.5% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 항셍 50% + Call 50%
+      source: rule_component
+      evidence: 복합식 성분 'Call' — E-3-12 · 10행
     auto: true
   Idx_a_71d4e53d88:
     label_ko: CALL x 10% + S&P500  x 36% + KOBI120 x 54%
@@ -25819,6 +26390,11 @@ nodes:
       raw: JP Morgan EMBI Global(KRW Hedged)
       source: rule
       evidence: public_funds.bmrk_nm distinct · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: Bloomberg U.S. High Yeild 2% Issuer cap 33% + JP Morgan GBI-EM(Local) 33% + JP Morgan EMBI Global(KRW Hedged) 33%
+      source: rule_component
+      evidence: 복합식 성분 'JP Morgan EMBI Global(KRW Hedged)' — E-3-12 · 2행
     auto: true
   Idx_v_5364fe8224:
     label_ko: JP Morgan EMBI Global(KRW Hedged) 90%
@@ -25856,6 +26432,21 @@ nodes:
       raw: JP Morgan GBI-EM Global Diversified
       source: rule
       evidence: public_funds.bmrk_nm distinct · 15행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI CR 25% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 45% +  JP Morgan GBI-EM Global Diversified 30%
+      source: rule_component
+      evidence: 복합식 성분 'JP Morgan GBI-EM Global Diversified' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRAZIL CR 30% +  JP Morgan GBI-EM Global Diversified 70%
+      source: rule_component
+      evidence: 복합식 성분 'JP Morgan GBI-EM Global Diversified' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI CR 30% +  JP Morgan GBI-EM Global Diversified 70%
+      source: rule_component
+      evidence: 복합식 성분 'JP Morgan GBI-EM Global Diversified' — E-3-12 · 4행
     auto: true
   Idx_v_b1dc48c81b:
     label_ko: JP Morgan GBI-EM Global Diversified 90%
@@ -25939,6 +26530,76 @@ nodes:
       raw: KOSPI
       source: rule
       evidence: public_funds.bmrk_nm distinct · 4행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSDAQ 70% + KOSPI 30%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 12행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 27% + MSCI ACWI CR 63% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 30% + MSCI AC ASIA PACIFIC ex JAPAN CR 10% + 국공채01Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 30% + MSCI AC World 30% + KIS국채(1년~2년) 40%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI BRAZIL CR 33.3% + MSCI RUSSIA CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI CHINA CR 33.3% + BSE30 CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI ZHONG HUA CR 33.3% + TOPIX CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 50% + TOPIX CR 50%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 70% + MSCI AC ASIA PACIFIC ex JAPAN CR 30%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 75% + CD 25%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC South East Asia Index (70%) + KOSPI(20%) + Call rate (10%)
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI( )' — E-3-12 · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 25% + KOSPI 25% + KIS채권종합 50%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM CR 50% + KOSPI 50%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 45% + KOSPI 45% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'KOSPI' — E-3-12 · 2행
     auto: true
   Idx_a_be936d978e:
     label_ko: KOSPI 27% + MSCI ACWI CR 63% + Call 10%
@@ -26354,6 +27015,16 @@ nodes:
       raw: MSCI AC ASIA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 48행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA CR 10% + KIS국공채01Y 90%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA CR' — E-3-12 · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA CR 25% + 국공채01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA CR' — E-3-12 · 8행
     auto: true
   Idx_a_f6b708c4d5:
     label_ko: MSCI AC ASIA CR 10% + KIS국공채01Y 90%
@@ -26383,6 +27054,11 @@ nodes:
       raw: MSCI AC ASIA PACIFIC
       source: rule
       evidence: public_funds.bmrk_nm distinct · 29행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC CR 50% + 종합채권01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC CR' — E-3-12 · 7행
     auto: true
   Idx_a_744d665f9f:
     label_ko: MSCI AC ASIA PACIFIC CR 50% + 종합채권01Y 50%
@@ -26402,6 +27078,61 @@ nodes:
       raw: MSCI AC ASIA PACIFIC ex JAPAN
       source: rule
       evidence: public_funds.bmrk_nm distinct · 103행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 30% + MSCI AC ASIA PACIFIC ex JAPAN CR 10% + 국공채01Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 70% + MSCI AC ASIA PACIFIC ex JAPAN CR 30%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 25% + JACI IG 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 25% + KIS채권종합01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 25% + 종합채권01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 40% + KIS국공채01Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 40% + KIS채권종합4Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 40% + 국공채01Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN CR 50% + 종합채권01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI AC ASIA PACIFIC ex JAPAN NR USD 90% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN NR USD' — E-3-12 · 13행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 CR 25% + MSCI EUROPE CR 25% + MSCI JAPAN VALUE 25% + MSCI AC ASIA PACIFIC ex JAPAN CR 25%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI AC ASIA PACIFIC ex JAPAN CR' — E-3-12 · 13행
     auto: true
   Idx_a_40d42c63bb:
     label_ko: MSCI AC ASIA PACIFIC ex JAPAN CR 25% + JACI IG 75%
@@ -26879,6 +27610,11 @@ nodes:
       raw: MSCI ACWI Energy
       source: rule
       evidence: public_funds.bmrk_nm distinct · 81행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI Energy CR 25% + MSCI ACWI Materials CR 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI ACWI Energy CR' — E-3-12 · 1행
     auto: true
   Idx_a_0e292d013a:
     label_ko: MSCI ACWI Energy CR 25% + MSCI ACWI Materials CR 75%
@@ -26936,6 +27672,11 @@ nodes:
       raw: MSCI ACWI Materials
       source: rule
       evidence: public_funds.bmrk_nm distinct · 35행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ACWI Energy CR 25% + MSCI ACWI Materials CR 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI ACWI Materials CR' — E-3-12 · 1행
     auto: true
   Idx_a_336668c738:
     label_ko: MSCI ACWI Utilities
@@ -26983,6 +27724,41 @@ nodes:
       raw: MSCI BRAZIL
       source: rule
       evidence: public_funds.bmrk_nm distinct · 30행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI BRAZIL CR 33.3% + MSCI RUSSIA CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL CR' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 'MSCI BRAZIL 40% + Bloomberg EMERGING AMERICAS: BRAZIL 60%'
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL' — E-3-12 · 6행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRAZIL CR 30% +  JP Morgan GBI-EM Global Diversified 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRAZIL CR 30% + EMBI Global(KRW Hedged) 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRAZIL CR 50% + MSCI RUSSIA CR 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL CR' — E-3-12 · 21행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 'MSCI BRAZIL(원화환산) 40% + Bloomberg EMERGING AMERICAS: BRAZIL(원화환산) 60%'
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL(원화환산)' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA 50% + MSCI BRAZIL 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRAZIL' — E-3-12 · 10행
     auto: true
   Idx_a_8a534ad4b8:
     label_ko: 'MSCI BRAZIL 40% + Bloomberg EMERGING AMERICAS: BRAZIL 60%'
@@ -27042,6 +27818,31 @@ nodes:
       raw: MSCI BRIC
       source: rule
       evidence: public_funds.bmrk_nm distinct · 46행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRIC (USD) 40% + 종합채권 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRIC (USD)' — E-3-12 · 4행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRIC 30% + KIS채권종합 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRIC' — E-3-12 · 5행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRIC 40% + KIS국공채3Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRIC' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRIC CR 30% + KIS국공채01Y 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRIC CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRIC CR 60% + KIS채권종합 40%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI BRIC CR' — E-3-12 · 1행
     auto: true
   Idx_a_f63cf9372b:
     label_ko: MSCI BRIC (USD) 40% + 종합채권 60%
@@ -27171,6 +27972,26 @@ nodes:
       raw: MSCI CHINA A
       source: rule
       evidence: public_funds.bmrk_nm distinct · 35행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA A 40% + 종합2Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI CHINA A' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA A 50% + 종합채권01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI CHINA A' — E-3-12 · 4행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI CHINA A CR 30% + KOBI120 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI CHINA A CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI China A 80% + Call 20%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI China A' — E-3-12 · 7행
     auto: true
   Idx_a_d882f7ed48:
     label_ko: MSCI CHINA A (USD)*90% + 콜금리*10%
@@ -27325,6 +28146,21 @@ nodes:
       raw: MSCI EM ASIA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 3행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM ASIA CR 25% + KIS채권종합01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM ASIA CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM ASIA CR 25% + 종합채권01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM ASIA CR' — E-3-12 · 24행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM ASIA CR 50% + 종합채권01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM ASIA CR' — E-3-12 · 12행
     auto: true
   Idx_a_a947472e62:
     label_ko: MSCI EM ASIA CR 25% + KIS채권종합01Y 75%
@@ -27454,6 +28290,11 @@ nodes:
       raw: MSCI EM EMEA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 30행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM EMEA CR 40% + KIS채권종합 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM EMEA CR' — E-3-12 · 1행
     auto: true
   Idx_a_2a0b4e642c:
     label_ko: MSCI EM EMEA CR 40% + KIS채권종합 60%
@@ -27473,6 +28314,16 @@ nodes:
       raw: MSCI EM EUROPE
       source: rule
       evidence: public_funds.bmrk_nm distinct · 20행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM EUROPE CR 40% + 종합채권 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM EUROPE CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM EUROPE CR 50% + MSCI CHINA CR 25% + MSCI INDIA CR USD in KRW 25%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM EUROPE CR' — E-3-12 · 8행
     auto: true
   Idx_a_719d5b2778:
     label_ko: MSCI EM EUROPE CR 40% + 종합채권 60%
@@ -27531,6 +28382,16 @@ nodes:
       raw: MSCI EM LATIN AMERICA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 21행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM LATIN AMERICA CR 40% + KIS채권종합 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM LATIN AMERICA CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EM LATIN AMERICA CR 40% + 종합채권 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EM LATIN AMERICA CR' — E-3-12 · 1행
     auto: true
   Idx_a_34df676e5a:
     label_ko: MSCI EM LATIN AMERICA CR 40% + KIS채권종합 60%
@@ -27579,6 +28440,21 @@ nodes:
       raw: MSCI EUROPE
       source: rule
       evidence: public_funds.bmrk_nm distinct · 88행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI EUROPE CR 25% + 종합채권01Y 75%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EUROPE CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 CR 25% + MSCI EUROPE CR 25% + MSCI JAPAN VALUE 25% + MSCI AC ASIA PACIFIC ex JAPAN CR 25%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EUROPE CR' — E-3-12 · 13행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 CR 60% + MSCI EUROPE CR 40%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI EUROPE CR' — E-3-12 · 6행
     auto: true
   Idx_a_4b9d48e167:
     label_ko: MSCI EUROPE CR 25% + 종합채권01Y 75%
@@ -27690,6 +28566,11 @@ nodes:
       raw: MSCI JAPAN VALUE
       source: rule
       evidence: public_funds.bmrk_nm distinct · 15행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P500 CR 25% + MSCI EUROPE CR 25% + MSCI JAPAN VALUE 25% + MSCI AC ASIA PACIFIC ex JAPAN CR 25%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI JAPAN VALUE' — E-3-12 · 13행
     auto: true
   Idx_a_ef0349c275:
     label_ko: MSCI JAPAN(Local) 95% + Call 5%
@@ -27757,6 +28638,21 @@ nodes:
       raw: MSCI RUSSIA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 44행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI BRAZIL CR 33.3% + MSCI RUSSIA CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI RUSSIA CR' — E-3-12 · 7행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI BRAZIL CR 50% + MSCI RUSSIA CR 50%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI RUSSIA CR' — E-3-12 · 21행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI RUSSIA 40% + 국공채3Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI RUSSIA' — E-3-12 · 2행
     auto: true
   Idx_a_15a7305ae3:
     label_ko: MSCI RUSSIA 40% + 국공채3Y 60%
@@ -27776,6 +28672,21 @@ nodes:
       raw: MSCI SOUTH EAST ASIA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia Index(KRW) 50% + VN Index(KRW) 35% + CALL 15%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI South East Asia Index(KRW)' — E-3-12 · 11행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia(USD) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI South East Asia(USD)' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI South East Asia(원화환산) 95% + Call 5%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI South East Asia(원화환산)' — E-3-12 · 12행
     auto: true
   Idx_a_36250a2580:
     label_ko: MSCI South East Asia Index(KRW) 50% + VN Index(KRW) 35% + CALL 15%
@@ -27844,6 +28755,26 @@ nodes:
       raw: MSCI WI
       source: rule
       evidence: public_funds.bmrk_nm distinct · 51행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI (KRW) ×90% + Call ×10%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI WI (KRW)' — E-3-12 · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI (USD) ×90% + Call ×10%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI WI (USD)' — E-3-12 · 44행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI CR 30% +  JP Morgan GBI-EM Global Diversified 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI WI CR' — E-3-12 · 4행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI WI CR 30% + MSCI EM CR USD in KRW 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI WI CR' — E-3-12 · 6행
     auto: true
   Idx_a_a68dfc42ff:
     label_ko: MSCI WI (KRW) ×90% + Call ×10%
@@ -27929,6 +28860,21 @@ nodes:
       raw: MSCI ZHONG HUA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI 33.3% + MSCI ZHONG HUA CR 33.3% + TOPIX CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI ZHONG HUA CR' — E-3-12 · 9행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ZHONG HUA CR 15% + BSE30 CR 15% + KIS국공채01Y 70%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI ZHONG HUA CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: MSCI ZHONG HUA CR 40%+ 통안증권01Y 60%
+      source: rule_component
+      evidence: 복합식 성분 'MSCI ZHONG HUA CR' — E-3-12 · 2행
     auto: true
   Idx_a_03201b4357:
     label_ko: MSCI ZHONG HUA CR 15% + BSE30 CR 15% + KIS국공채01Y 70%
@@ -27958,6 +28904,21 @@ nodes:
       raw: NIKKEI 225
       source: rule
       evidence: public_funds.bmrk_nm distinct · 8행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 33.3% + 항셍H주 CR 33.3% + NIKKEI225 CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 'NIKKEI225 CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 50% + NIKKEI225 CR 50%
+      source: rule_component
+      evidence: 복합식 성분 'NIKKEI225 CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: TOPIX 60% + NIKKEI225 CR 40%
+      source: rule_component
+      evidence: 복합식 성분 'NIKKEI225 CR' — E-3-12 · 2행
     auto: true
   Idx_a_4898332fee:
     label_ko: NYSE FactSet Gbl Atnms Drvng and Elec Vhcl 90% + CALL 10%
@@ -28063,6 +29024,16 @@ nodes:
       raw: S&P 500(KRW)
       source: rule
       evidence: public_funds.bmrk_nm distinct · 23행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P 500(KRW) 90% + CALL 10%
+      source: rule_component
+      evidence: 복합식 성분 'S&P 500(KRW)' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: S&P 500(KRW) 95% + CALL 5%
+      source: rule_component
+      evidence: 복합식 성분 'S&P 500(KRW)' — E-3-12 · 11행
     auto: true
   Idx_a_0650b9cb16:
     label_ko: S&P 500(KRW) 90% + CALL 10%
@@ -28417,6 +29388,16 @@ nodes:
       raw: 베트남 호치민(KRW)
       source: rule
       evidence: public_funds.bmrk_nm distinct · 32행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 베트남 호치민 CR 50% + KIS국공채 01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 '베트남 호치민 CR' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 베트남 호치민 CR 50% + 국공채 01Y 50%
+      source: rule_component
+      evidence: 복합식 성분 '베트남 호치민 CR' — E-3-12 · 33행
     auto: true
   Idx_a_8494815314:
     label_ko: 베트남 호치민(LOCAL)
@@ -28435,6 +29416,11 @@ nodes:
       raw: 브라질 BOVESPA
       source: rule
       evidence: public_funds.bmrk_nm distinct · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 브라질 BOVESPA 40% + 국공채3Y 60%
+      source: rule_component
+      evidence: 복합식 성분 '브라질 BOVESPA' — E-3-12 · 1행
     auto: true
   Idx_a_166aabac3e:
     label_ko: 브라질 BOVESPA 40% + 국공채3Y 60%
@@ -28499,6 +29485,16 @@ nodes:
       raw: 인도네시아 JKSE
       source: rule
       evidence: public_funds.bmrk_nm distinct · 14행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 말레이시아 KLSE 50% + 인도네시아 JKSE 50%
+      source: rule_component
+      evidence: 복합식 성분 '인도네시아 JKSE' — E-3-12 · 2행
+    - table: public_funds
+      column: bmrk_nm
+      raw: 멕시코 IPC 22.5% + 인도네시아 JKSE 22.5% + KOSPI200 22.5% + 터키 ISE100 22.5% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 '인도네시아 JKSE' — E-3-12 · 1행
     auto: true
   Idx_a_8569d41dbf:
     label_ko: 제로인 Bloomberg GLOBAL HIGH YIELD
@@ -28655,7 +29651,22 @@ nodes:
     auto: true
   Idx_a_27adecaccb:
     label_ko: 항셍H주
-    aliases: []
+    aliases:
+    - table: public_funds
+      column: bmrk_nm
+      raw: FTSE Xinhua A200 45% + 항셍H주 CR 45% + Call 10%
+      source: rule_component
+      evidence: 복합식 성분 '항셍H주 CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 33.3% + 항셍H주 CR 33.3% + NIKKEI225 CR 33.3%
+      source: rule_component
+      evidence: 복합식 성분 '항셍H주 CR' — E-3-12 · 1행
+    - table: public_funds
+      column: bmrk_nm
+      raw: KOSPI200 70% + 항셍H주 CR 30%
+      source: rule_component
+      evidence: 복합식 성분 '항셍H주 CR' — E-3-12 · 2행
     auto: true
     family: true
   Idx_v_cc1422986d:
@@ -28694,6 +29705,397 @@ alias_extensions:
     raw: S&P 500 TR
     source: rule
     evidence: 수동 노드와 표기 완전일치 · 13행
+  Idx_MSCI_ACWI:
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI 27% + MSCI ACWI CR 63% + Call 10%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI  90% + Call 10%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI' — E-3-12 · 47행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI (KRW) ×90% + Call ×10%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI (KRW)' — E-3-12 · 38행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI 20% + 종합채권1Y 80%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI 40% + 종합채권1Y 60%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 15% + KIS채권종합01Y 85%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 25% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 45% +  JP Morgan GBI-EM Global Diversified 30%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 6행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 25% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 75%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 36행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 25% + GBI Global(KRW Hedged) 75%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 12행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 25% + KIS채권종합01Y 75%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 25% + 종합채권01Y 75%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 309행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 30% + GBI Global(KRW Hedged) 70%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 3행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 30% + KIS국공채01Y 70%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 3행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 35% + 국공채01Y 65%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 3행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 40% + Bloomberg  GLOBAL AGGREGATE(KRW HEDGED) 60%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 10행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 40% + GBI Global(KRW Hedged) 60%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 40% + 종합채권 02Y 60%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 11행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 42% + KIS국공채02Y 58%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 42% + 국공채02Y 58%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 50% + Bloomberg GLOBAL AGGREGATE EX-JPY 25% + DW GLOBAL REIT TR 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 12행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 50% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 39행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 50% + GBI Global(KRW Hedged) 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 50% + KIS채권종합01Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 19행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 75% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 3행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 75% + KIS채권종합01Y 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 26행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 75% + 종합채권01Y 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 83행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR(KRW) 25% + 종합채권01Y 75%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR(KRW)' — E-3-12 · 7행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR(KRW) 75% + KIS채권종합01Y 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR(KRW)' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR(KRW) 75% + 종합채권01Y 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR(KRW)' — E-3-12 · 11행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR(in KRW) 50% + 종합채권01Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR(in KRW)' — E-3-12 · 27행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI(USD) 90% + CALL 10%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI(USD)' — E-3-12 · 9행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI(USD) 95% + CALL 5%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI(USD)' — E-3-12 · 9행
+  - table: public_funds
+    column: bmrk_nm
+    raw: 바클레이 하이일드 35% + JP 회사채 25% + MSCI ACWI 25% + JP 이머징 15%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI' — E-3-12 · 9행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI CR 50% + 종합채권01Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI CR' — E-3-12 · 0행
+  Idx_MSCI_China:
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI 33.3% + MSCI CHINA CR 33.3% + BSE30 CR 33.3%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA CR' — E-3-12 · 9행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 30% + KIS채권종합 70%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 5행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 45% + CSI 300 LOCAL 45% + CALL 10%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 4행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 50% + MSCI BRAZIL 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 10행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 50% + 종합채권1Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 50% + 채권종합1Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 85% + Call 15%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 14행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA 90% + Call 10%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA' — E-3-12 · 29행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA CR 15% + MSCI INDIA CR 15% + Bloomberg GLOBAL AGGREGATE(KRW HEDGED) 70%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA CR' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA CR 40% + 국공채01Y 60%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA CR' — E-3-12 · 4행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI CHINA CR 50% + MSCI INDIA CR USD in KRW 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA CR' — E-3-12 · 37행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI EM EUROPE CR 50% + MSCI CHINA CR 25% + MSCI INDIA CR USD in KRW 25%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI CHINA CR' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI USA(Local) 47.5% + MSCI China(Local) 47.5% + Call 5%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI China(Local)' — E-3-12 · 3행
+  - table: public_funds
+    column: bmrk_nm
+    raw: 종합채권01Y 63% + MSCI China 37%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI China' — E-3-12 · 3행
+  Idx_KOSPI200:
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 10% + KIS종합채권 01Y 90%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 42행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 10% + 종합채권 01Y 90%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 157행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 12% + MSCI EM(USD) 6% + Rogers International Commodity TR 2% + KIS국공채3Y 80%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 24% + MSCI EM(USD) 12% + Rogers International Commodity TR 4% + KIS국공채3Y 60%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 25% + KIS채권종합01Y 75%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 99행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 25% + 종합채권01Y 75%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 564행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 30% + TSE REIT TR 35% + DWGRTT 35%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 33.3% + 항셍H주 CR 33.3% + NIKKEI225 CR 33.3%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 36% + MSCI EM(USD) 18% + Rogers International Commodity TR 6% + KIS국공채3Y 40%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 48% + MSCI EM(USD) 24% + Rogers International Commodity TR 8% + KIS국공채3Y 20%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 5% +  회사채I-BBB종합 02Y  95%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 48행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 5% + KIS종합채권 01Y 95%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 52행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 5% + 종합채권 01Y 95%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 68행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 5% + 회사채BBB(공모무보증)02Y 95%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 8행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 50% + KIS채권종합01Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 71행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 50% + NIKKEI225 CR 50%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 50% + 종합채권01Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 167행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 70% + 항셍H주 CR 30%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 70% + 항셍H주 CR in KRW 30%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: 멕시코 IPC 22.5% + 인도네시아 JKSE 22.5% + KOSPI200 22.5% + 터키 ISE100 22.5% + Call 10%
+    source: rule_component
+    evidence: 복합식 성분 'KOSPI200' — E-3-12 · 1행
+  Idx_RogersIntlCommodity:
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 12% + MSCI EM(USD) 6% + Rogers International Commodity TR 2% + KIS국공채3Y 80%
+    source: rule_component
+    evidence: 복합식 성분 'Rogers International Commodity TR' — E-3-12 · 2행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 24% + MSCI EM(USD) 12% + Rogers International Commodity TR 4% + KIS국공채3Y 60%
+    source: rule_component
+    evidence: 복합식 성분 'Rogers International Commodity TR' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 36% + MSCI EM(USD) 18% + Rogers International Commodity TR 6% + KIS국공채3Y 40%
+    source: rule_component
+    evidence: 복합식 성분 'Rogers International Commodity TR' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: KOSPI200 48% + MSCI EM(USD) 24% + Rogers International Commodity TR 8% + KIS국공채3Y 20%
+    source: rule_component
+    evidence: 복합식 성분 'Rogers International Commodity TR' — E-3-12 · 1행
+  - table: public_funds
+    column: bmrk_nm
+    raw: Rogers International Commodity TR 90% + CD 10%
+    source: rule_component
+    evidence: 복합식 성분 'Rogers International Commodity TR' — E-3-12 · 5행
+  - table: public_funds
+    column: bmrk_nm
+    raw: Rogers International Commodity TR(원화환산) 90% + CD 10%
+    source: rule_component
+    evidence: 복합식 성분 'Rogers International Commodity TR(원화환산)' — E-3-12 · 5행
+  Idx_MSCI_ACWI_HC:
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI ACWI Health Care 40% + 종합2Y 60%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI ACWI Health Care' — E-3-12 · 2행
+  Idx_MSCI_NA:
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI NORTH AMERICA CR 25% + 종합채권01Y 75%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI NORTH AMERICA CR' — E-3-12 · 17행
+  - table: public_funds
+    column: bmrk_nm
+    raw: MSCI NORTH AMERICA CR 50% + 종합채권01Y 50%
+    source: rule_component
+    evidence: 복합식 성분 'MSCI NORTH AMERICA CR' — E-3-12 · 27행
   AssetClass_MoneyMarket:
   - table: public_funds
     column: zrin_btyp_nm

@@ -277,6 +277,65 @@ def build_index(con):
                                 "evidence": f"{table}.{col} distinct · {n}행"})
         stats["node_alias"] += 1
 
+    # ── 복합 벤치마크 성분 alias (2026-08-31 R-7/P1-4 · E-3-12: KOSPI200 47%·MSCI ACWI 83% 손실) ──
+    # 복합식 raw("KOSPI200 25% + 종합채권01Y 75%")를 성분 지수 노드에도 매달아, "KOSPI200 추종 펀드" 의
+    # target_aliases 가 복합식 행을 덮게 한다.
+    # 🔴 한 raw 가 여러 노드에 달리는 **의도적** 다중 매핑 — source='rule_component' 로 표시하고
+    #    build_ontology V2(raw 충돌) 검증에서 면제한다.
+    # 🔴 대상은 public_funds.bmrk_nm 만 — ETF 의 Blend·Covered Call 류는 지수추종_순수 규칙이
+    #    일부러 배제하는 설계라(키움 대조 #6) 성분 부착이 그 설계와 충돌한다.
+    def _comp_key(s):
+        return re.sub(r"\s+", "", norm(s)).casefold()
+
+    comp_lookup = {}
+    for mid, mnode in (manual.get("nodes") or {}).items():
+        for lab in (mnode.get("label_ko"), mnode.get("label_en")):
+            if lab:
+                comp_lookup.setdefault(_comp_key(lab), mid)
+    for (_t, _c, _r), mid in m_key.items():
+        comp_lookup.setdefault(_comp_key(_r), mid)
+    for _nid, _node in nodes.items():
+        if not _node.get("composite"):
+            comp_lookup.setdefault(_comp_key(_node["label_ko"]), _nid)
+            # 'MSCI EM (Emerging Markets)' 를 'MSCI EM' 키로도 — 성분 표기는 괄호 부연을 뺀 짧은 쪽이 많다
+            _short = re.sub(r"\([^)]*\)", " ", _node["label_ko"]).strip()
+            if _short and _short != _node["label_ko"]:
+                comp_lookup.setdefault(_comp_key(_short), _nid)
+
+    _WEIGHT = re.compile(r"[×xX]?\s*\d+(?:\.\d+)?\s*%")
+    comp_seen, comp_unmatched = set(), collections.Counter()
+    # 자동 경로(pending) + 🔴 수동 index.yaml 에 자기 노드로 등록된 복합식(Idx_Composite_* — 'MSCI ACWI CR 50%
+    # + 종합채권01Y 50%' 816행처럼 대형 건이 이쪽이다. m_key 에 걸려 pending 을 안 타므로 따로 돈다)
+    comp_candidates = [(t, c, r, n) for t, c, r, n in pending]
+    for _mid, _mnode in (manual.get("nodes") or {}).items():
+        for _mal in (_mnode.get("aliases") or []):
+            if (_mal.get("table"), _mal.get("column")) == ("public_funds", "bmrk_nm"):
+                comp_candidates.append(("public_funds", "bmrk_nm", norm(_mal.get("raw") or ""), 0))
+    for table, col, r, n in comp_candidates:
+        if (table, col) != ("public_funds", "bmrk_nm") or not is_composite(r) or r in comp_seen:
+            continue
+        comp_seen.add(r)
+        for part in (r.split("+") if "+" in r else r.split("/")):
+            name = re.sub(r"\s+", " ", _WEIGHT.sub(" ", part)).strip(" ·,-")   # 괄호는 벗기지 않는다 — '(KRW HEDGED)' 가 이름의 일부
+            if not name:
+                continue
+            # 매칭 사다리: 표기 그대로 → 패밀리 라벨('MSCI ACWI CR'→'MSCI ACWI') → 꼬리 괄호 제거 → 그 패밀리
+            target = None
+            for cand in (name, family_label(name),
+                         re.sub(r"\([^)]*\)\s*$", "", name).strip(),
+                         family_label(re.sub(r"\([^)]*\)\s*$", "", name).strip())):
+                if cand:
+                    target = comp_lookup.get(_comp_key(cand))
+                    if target:
+                        break
+            if not target:
+                comp_unmatched[name] += 1
+                continue
+            al = {"table": table, "column": col, "raw": r, "source": "rule_component",
+                  "evidence": f"복합식 성분 '{name}' — E-3-12 · {n}행"}
+            (nodes[target]["aliases"] if target in nodes else ext[target]).append(al)
+            stats["component_alias"] += 1
+
     # edge — 자동 노드 전부 (패밀리 포함)
     edges, miss_region, miss_asset_default = [], 0, 0
     # 수동 index.yaml 노드에도 같은 규칙/override 로 edge 를 만든다 (2026-08-25 검수 B — 상위 BM 대부분이 수동 노드였음)
@@ -317,6 +376,8 @@ def build_index(con):
         "# Index 자동 등록: domestic_etfs.ref_base_index(ETF) · overseas_etfs.cu_base_index(센티넬 제외) · public_funds.bmrk_nm\n"
         f"# 노드 {len(nodes)} (패밀리 {fam_n} · 변형 {var_n} · 단독 {len(nodes)-fam_n-var_n}) · alias {stats['node_alias']} · "
         f"수동 노드 확장 {stats['extension']} · 수동 중복 제외 {stats['manual_exists']} · 센티넬 제외 {stats['sentinel']}\n"
+        f"# 복합식 성분 alias {stats['component_alias']} (복합식 {len(comp_seen)}종 · 미매칭 성분 {len(comp_unmatched)}종: "
+        + " · ".join(f"{k}" for k, _ in comp_unmatched.most_common(6)) + ")\n"
         f"# edge {len(edges)} (coversRegion 미적중 {miss_region} · hasAssetClass 기본값(Equity) {miss_asset_default})\n"
         "# 수동 index.yaml 과 같은 entity 를 선언한다 — build_ontology 가 class/property 중복 선언을 억제한다.\n"
     )

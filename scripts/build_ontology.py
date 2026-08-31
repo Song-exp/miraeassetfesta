@@ -202,6 +202,10 @@ def validate(con, enums, shared, codebooks):
         if nraw not in distinct(t, c):
             msg = f"[V1] 죽은 alias — DB distinct 에 없는 값: {where}"
             (warnings if status == "pending" else errors).append(msg)
+        if al.get("source") == "rule_component":
+            # 복합 벤치마크 성분 부착(2026-08-31) — 한 raw 를 성분 노드 여럿에 다는 **의도적** 다중 매핑.
+            # V1(실존)·V5(컬럼)는 위에서 이미 검사했고, V2(판정 충돌)만 면제한다.
+            continue
         seen.setdefault((t, c, nraw), []).append(f"{entity}.{node_id}")
 
     # V2: 한 raw 값이 두 노드에 매달림 (판정 충돌)

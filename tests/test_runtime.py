@@ -257,3 +257,49 @@ def test_full_path_year_typo_recovers(ctx):
     # 🔴 교정 후 사후검사 통과 — 교정 전 SQL 로 검사하면 '2028 미사용' 으로 억울하게 기각된다
     assert "시점·전망 질의로 판정" not in r.think_trace
     assert "[Execute] 30행 조회" in r.think_trace
+
+
+def test_expand_grade_comparison():
+    from src.runtime.pipeline import expand_grade_comparison
+    sql = "SELECT pd_nm, srfc_irt FROM domestic_bonds WHERE crd_grd='A-' AND srfc_irt > 5 LIMIT 30"
+    # 2026-08-31 실측 사고 — 'a등급 이상'(소문자) 이 단일 등급 '=' 로 좁혀짐 → 7종 IN 확장
+    fixed, changed = expand_grade_comparison(sql, "a등급 이상 회사채 중 표면금리가 5% 넘는 것을 알려줘")
+    assert changed
+    assert "TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-', 'A+', 'A0', 'A-')" in fixed
+    assert "crd_grd='A-'" not in fixed
+    # 명시 접미사는 그 표기부터 — 'AA- 이상' = 4종
+    fixed, changed = expand_grade_comparison(sql, "AA- 이상 채권만")
+    assert changed and "TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-')" in fixed
+    # 이하 — 접미사 없는 통칭은 그 급 최상단부터 (BBB 이하 = BBB+ 부터 8종)
+    fixed, changed = expand_grade_comparison(sql, "BBB등급 이하인 채권")
+    assert changed and "TRIM(crd_grd) IN ('BBB+', 'BBB0', 'BBB-', 'BB0', 'BB-', 'B+', 'B-', 'C0')" in fixed
+    # 부등호 문자열 비교(사전순 ≠ 서열)도 치환 대상
+    fixed, changed = expand_grade_comparison(
+        "SELECT 1 FROM domestic_bonds WHERE crd_grd >= 'A0' LIMIT 1", "A등급 이상 채권")
+    assert changed and "TRIM(crd_grd) IN (" in fixed
+    # 발동 조건 밖 — 이상/이하 없음 / 이미 IN / 범위(표기 2개) / crd_grd 비교 없음 / 이미 맞는 단일 등급
+    assert not expand_grade_comparison(sql, "A등급 회사채의 표면금리")[1]
+    assert not expand_grade_comparison(
+        "SELECT 1 FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA','AA+') LIMIT 1", "AA등급 이상")[1]
+    assert not expand_grade_comparison(sql, "A등급 이상 AA등급 이하")[1]
+    assert not expand_grade_comparison("SELECT 1 FROM domestic_bonds WHERE srfc_irt > 5 LIMIT 1", "A등급 이상")[1]
+    assert not expand_grade_comparison("SELECT 1 FROM domestic_bonds WHERE crd_grd = 'AAA' LIMIT 1", "AAA 이상")[1]
+
+
+class BuggyGradePlanner:
+    """2026-08-31 실측 오답 SQL 그대로 — 'A등급 이상' 을 crd_grd='A-' 단일 등급으로 좁힘(모수 599 → 49).
+    파이프라인이 서열 IN 으로 확장해야 한다. 종류 조건 부재는 규칙(종류필터·동의어 대분류)이 막는다."""
+
+    def plan_sql(self, question, grounding):
+        return "SELECT pd_nm, bd_intp_tcd, srfc_irt FROM domestic_bonds WHERE crd_grd='A-' AND srfc_irt > 5 LIMIT 30"
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_grade_floor_expands(ctx):
+    r = answer_question("T-22", "A등급 이상 회사채 중 표면금리가 5% 넘는 것을 알려줘",
+                        planner=BuggyGradePlanner(), ctx=ctx)
+    assert "[Guard] 등급 서열 확장" in r.think_trace
+    assert "TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-', 'A+', 'A0', 'A-')" in r.sql
+    assert "[Execute] 30행 조회" in r.think_trace

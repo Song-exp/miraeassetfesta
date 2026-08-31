@@ -167,6 +167,49 @@ def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
     return sql[:s] + years[0] + lit[4:] + sql[e:], True
 
 
+_GRADE_SCALE = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
+                "BBB+", "BBB0", "BBB-", "BB0", "BB-", "B+", "B-", "C0"]
+_Q_GRADE_CMP = re.compile(r"\b(AAA|AA|BBB|BB|A|B|C)\s*([+\-0])?\s*(?:등급|급)?\s*(이상|이하)", re.I)
+_SQL_GRADE_CMP = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*(=|>=|<=|>|<)\s*'([^']*)'", re.I)
+_SQL_GRADE_IN = re.compile(r"crd_grd\s*\)?\s*(?:NOT\s+)?IN\s*\(", re.I)
+
+
+def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
+    """질문의 '등급 이상/이하' 를 crd_grd 서열 IN 목록으로 확장. (보정된 SQL, 보정했는지)
+
+    2026-08-31 서버 실측: 'A등급 이상 회사채 중 표면금리 5% 넘는' 질의가 crd_grd='A-' 단일
+    등급으로 나가 모수 599종목 중 49행만 조회됐다(등급서열 규칙은 실렸으나 무시됨 — c788893 계열).
+    발동 조건(전부 만족할 때만 — align_maturity_year 원칙):
+      ① 질문의 등급+이상/이하 표기가 정확히 1개 ('A 이상 AA 이하' 범위 질의는 제외)
+      ② SQL 의 crd_grd 리터럴 비교(=·부등호)가 정확히 1개이고 IN 은 없다
+    부등호도 치환 대상이다 — crd_grd >= 'A-' 는 문자열 사전순이지 서열이 아니다.
+    접미사 없는 통칭(A등급)은 그 급 전체를 포함한다: 'A 이상' = A- 부터 위로 7종 (등급서열 규칙).
+    """
+    hits = _Q_GRADE_CMP.findall(question)
+    if len(hits) != 1:
+        return sql, False
+    letter, suffix, direction = hits[0]
+    letter = letter.upper()
+    if suffix:
+        notch = letter + suffix
+    elif direction == "이상":                    # 급 전체 포함 — 그 급의 최하단 표기부터
+        notch = next((g for g in reversed(_GRADE_SCALE) if g in (letter + "-", letter + "0", letter)), None)
+    else:                                        # 이하 — 그 급의 최상단 표기부터
+        notch = next((g for g in _GRADE_SCALE if g in (letter + "+", letter + "0", letter)), None)
+    if notch not in _GRADE_SCALE:
+        return sql, False
+    idx = _GRADE_SCALE.index(notch)
+    grades = _GRADE_SCALE[: idx + 1] if direction == "이상" else _GRADE_SCALE[idx:]
+    preds = list(_SQL_GRADE_CMP.finditer(sql))
+    if len(preds) != 1 or _SQL_GRADE_IN.search(sql):
+        return sql, False
+    if len(grades) == 1 and preds[0].group(1) == "=" and preds[0].group(2) == grades[0]:
+        return sql, False                        # 'AAA 이상' = 'AAA' — 이미 맞다
+    s, e = preds[0].span()
+    repl = "TRIM(crd_grd) IN (" + ", ".join(f"'{g}'" for g in grades) + ")"
+    return sql[:s] + repl + sql[e:], True
+
+
 def _ground(
     question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
 ) -> tuple[list, list[str]]:
@@ -549,6 +592,9 @@ def answer_question(
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
         step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+    sql, grades_fixed = expand_grade_comparison(sql, q)
+    if grades_fixed:
+        step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")

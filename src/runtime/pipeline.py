@@ -319,6 +319,91 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
     return sql[:s] + _KTB_FILTER + sql[e:], True
 
 
+_BOND_COLS = ("bd_knd", "crd_grd", "srfc_irt", "applied_yield", "std_pd_mcls_nm",
+              "pd_risk_gcd", "bd_intp_tcd", "bd_ofr_tcd", "pd_pbcm", "remaining_days", "mat_dt")
+
+
+def normalize_table_names(sql: str) -> tuple[str, bool]:
+    """화이트리스트 밖 테이블명이 채권 전용 컬럼과 함께 쓰였으면 domestic_bonds 로 교정.
+
+    2026-08-31 저녁 서버 실측: '은행채 top5' 가 존재하지 않는 bonds_master 로 나가
+    validate_sql 기각 → 재생성도 실패 → 무응답. 조건식(bd_knd 2종 IN)은 정확했다 —
+    테이블 이름 하나 때문에 정답을 버리는 것은 기각이 아니라 보정 대상(ensure_limit 원칙)."""
+    ctes = {n.lower() for n in re.findall(r"\b([A-Za-z_]\w*)\s+as\s*\(", sql, re.I)}
+    changed = False
+    for t in set(re.findall(r"\b(?:from|join)\s+([A-Za-z_]\w*)", sql, re.I)):
+        if t.lower() in TABLES or t.lower() in EXT_TABLES or t.lower() in ctes:
+            continue
+        if any(c in sql for c in _BOND_COLS):
+            sql = re.sub(rf"\b{re.escape(t)}\b", "domestic_bonds", sql)
+            changed = True
+    return sql, changed
+
+
+_PADDED_COLS = ("bd_knd", "pd_pbcm")   # 2026-08-31 전수 실측: 이 둘만 고정폭 패딩(21,682·21,282행) — 나머지 범주 컬럼 9종은 패딩 0
+
+
+def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:
+    """패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 등호·IN 비교를 TRIM 비교로 교정.
+
+    2026-08-31 저녁 서버 실측: bd_knd IN ('일반은행채','특수은행채') 무TRIM 이 16행만 통과
+    (TRIM 시 2,031행) — 문자열비교 규칙 무시. LIKE 는 % 와일드카드가 패딩을 흡수하므로 불개입."""
+    changed = False
+    for col in _PADDED_COLS:
+        pat = re.compile(rf"(?<!TRIM\()\b{col}\b(\s*(?:=|<>|IN)\s*)", re.I)
+        new = pat.sub(rf"TRIM({col})\1", sql)
+        if new != sql:
+            sql, changed = new, True
+    return sql, changed
+
+
+_KIND_FILTERS = [   # 질문 낱말(긴 것부터 소진 탐색) → 확정 필터. 같은 필터로 모이는 낱말은 dedupe
+    ("일반회사채", "TRIM(bd_knd)='일반회사채'"),
+    ("일반은행채", "TRIM(bd_knd)='일반은행채'"),
+    ("특수은행채", "TRIM(bd_knd)='특수은행채'"),
+    ("통화안정채권", "TRIM(bd_knd)='통화안정채권'"),
+    ("통화안정증권", "TRIM(bd_knd)='통화안정채권'"),
+    ("통안채", "TRIM(bd_knd)='통화안정채권'"),
+    ("신용카드채", "TRIM(bd_knd)='신용카드채'"),
+    ("카드채", "TRIM(bd_knd)='신용카드채'"),
+    ("국고채", _KTB_FILTER),
+    ("국공채", "TRIM(std_pd_mcls_nm)='국공채'"),
+    ("특수채", "TRIM(std_pd_mcls_nm)='특수채'"),
+    ("지방채", "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')"),
+    ("은행채", "TRIM(bd_knd) IN ('일반은행채','특수은행채')"),
+    ("회사채", "TRIM(std_pd_mcls_nm)='회사채'"),
+    ("MBS", "TRIM(bd_knd)='MBS'"),
+]
+
+
+def _question_kind_filters(question: str) -> set[str]:
+    q = question
+    found = set()
+    for tok, flt in _KIND_FILTERS:
+        if tok in q:
+            found.add(flt)
+            q = q.replace(tok, "◌")        # 긴 낱말 소진 — '일반은행채' 뒤에 '은행채' 가 또 걸리지 않게
+    if re.search(r"(?<![가-힣])국채", q):   # 단독 '국채' 만 — 미국채·한국채권 등 합성어 제외
+        found.add(_KTB_FILTER)
+    return found
+
+
+def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
+    """질문의 종류 낱말이 SQL 에 전혀 필터되지 않았으면 동의어 확정식을 주입. (보정된 SQL, 보정했는지)
+
+    2026-08-31 저녁 서버 실측: 'AA등급 이상 회사채 top5' 에 종류 조건 통째 부재 —
+    'A등급 이상 회사채' 사고 ②(617160d)와 동일 결함의 재발. 등급 보유 채권이 우연히
+    대부분 회사채라 티가 덜 났을 뿐, 특수채 AA 가 섞일 수 있는 모수다.
+    발동 조건: ① domestic_bonds 조회 ② SQL 에 종류 컬럼(bd_knd·대분류·소분류)이 전혀 없음
+    ③ 질문의 종류 낱말이 정확히 한 가지('국고채와 회사채 비교' 류 복수 종류는 불개입)."""
+    if "domestic_bonds" not in sql or re.search(r"bd_knd|std_pd_mcls_nm|std_pd_scls_nm", sql, re.I):
+        return sql, False
+    filters = _question_kind_filters(question)
+    if len(filters) != 1:
+        return sql, False
+    return _append_exclusions(sql, [next(iter(filters))])
+
+
 def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     """종목 수 질의의 COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교정. (보정된 SQL, 보정했는지)
 
@@ -719,6 +804,12 @@ def answer_question(
     sql, dates_fixed = normalize_date_literals(raw_sql)
     if dates_fixed:
         step("[Guard] 날짜 리터럴 보정 — 하이픈 날짜를 정수 YYYYMMDD 로 치환 (SQLite 는 2029-08-22 를 뺄셈=1999 로 계산한다)")
+    sql, table_fixed = normalize_table_names(sql)
+    if table_fixed:
+        step("[Guard] 테이블명 교정 — 화이트리스트 밖 테이블이 채권 전용 컬럼과 함께 쓰여 domestic_bonds 로 교체 (2026-08-31 저녁 'bonds_master' 환각으로 기각→무응답 실측)")
+    sql, trim_fixed = ensure_trimmed_compare(sql)
+    if trim_fixed:
+        step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교를 TRIM 비교로 교체 (무TRIM IN 은 16행 vs TRIM 2,031행 실측)")
     if future:
         sql, yr_fixed = align_maturity_year(sql, future)
         if yr_fixed:
@@ -741,6 +832,9 @@ def answer_question(
     sql, grades_fixed = expand_grade_comparison(sql, q)
     if grades_fixed:
         step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, kind_fixed = ensure_kind_filter(sql, q)
+    if kind_fixed:
+        step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
     sql, ktb_fixed = ensure_ktb_kind(sql, q)
     if ktb_fixed:
         step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")

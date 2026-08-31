@@ -397,6 +397,92 @@ def test_validate_sql_relaxations():
     assert validate_sql("SELECT 1 FROM secret_table LIMIT 1") is not None
 
 
+def test_normalize_table_names():
+    from src.runtime.pipeline import normalize_table_names
+    # 2026-08-31 저녁 실측 — 존재하지 않는 bonds_master 환각 (조건식은 정확)
+    sql = "SELECT pd_nm, applied_yield FROM bonds_master WHERE bd_knd IN ('일반은행채', '특수은행채') ORDER BY applied_yield DESC LIMIT 5"
+    fixed, changed = normalize_table_names(sql)
+    assert changed and "FROM domestic_bonds" in fixed and "bonds_master" not in fixed
+    # 불개입 — 정상 테이블 / 채권 컬럼 없는 미지 테이블(추정 금지) / CTE 별칭
+    assert not normalize_table_names("SELECT pd_nm FROM domestic_bonds LIMIT 5")[1]
+    assert not normalize_table_names("SELECT x FROM etf_master WHERE du_er_1y > 0 LIMIT 5")[1]
+    assert not normalize_table_names("WITH b AS (SELECT bd_knd FROM domestic_bonds) SELECT * FROM b LIMIT 5")[1]
+
+
+def test_ensure_trimmed_compare():
+    from src.runtime.pipeline import ensure_trimmed_compare
+    # 2026-08-31 저녁 실측 — 무TRIM IN 은 16행만 통과 (TRIM 2,031행)
+    fixed, changed = ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE bd_knd IN ('일반은행채','특수은행채') LIMIT 5")
+    assert changed and "TRIM(bd_knd) IN" in fixed
+    fixed2, c2 = ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE pd_pbcm = '한국산업은행' LIMIT 5")
+    assert c2 and "TRIM(pd_pbcm) =" in fixed2
+    # 불개입 — 이미 TRIM / LIKE(와일드카드가 패딩 흡수) / 무패딩 컬럼
+    assert not ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE TRIM(bd_knd)='국고채권' LIMIT 1")[1]
+    assert not ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE pd_pbcm LIKE '%한국%' LIMIT 1")[1]
+    assert not ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE crd_grd = 'AAA' LIMIT 1")[1]
+
+
+def test_ensure_kind_filter():
+    from src.runtime.pipeline import ensure_kind_filter
+    # 2026-08-31 저녁 실측 — 'AA등급 이상 회사채' 인데 종류 조건 통째 부재
+    sql = ("SELECT pd_nm, srfc_irt FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-') "
+           "ORDER BY srfc_irt DESC LIMIT 5")
+    fixed, changed = ensure_kind_filter(sql, "AA등급 이상 회사채 중에서 표면금리 높은 순으로 5개 추천해줘")
+    assert changed and "TRIM(std_pd_mcls_nm)='회사채'" in fixed
+    assert fixed.index("회사채'") < fixed.index("ORDER BY")
+    # 은행채 → 2종 IN · 긴 낱말 소진('일반은행채' 가 '은행채' 로 이중 매칭되지 않음)
+    f2, c2 = ensure_kind_filter(sql, "은행채 중 수익률 높은 것")
+    assert c2 and "IN ('일반은행채','특수은행채')" in f2
+    f3, c3 = ensure_kind_filter(sql, "일반은행채만 보여줘")
+    assert c3 and "TRIM(bd_knd)='일반은행채'" in f3 and "특수은행채" not in f3
+    # 불개입 — 복수 종류(비교) / SQL 에 이미 종류 컬럼 / 종류 낱말 없음 / 합성어 국채
+    assert not ensure_kind_filter(sql, "국고채와 회사채 수익률 비교")[1]
+    assert not ensure_kind_filter("SELECT 1 FROM domestic_bonds WHERE TRIM(bd_knd)='MBS' LIMIT 1", "MBS 알려줘")[1]
+    assert not ensure_kind_filter(sql, "수익률 높은 채권 5개")[1]
+    assert not ensure_kind_filter(sql, "미국채 금리 어때")[1]
+
+
+class BuggyNoKindRecoPlanner:
+    """2026-08-31 저녁 서버 실측 SQL ① 그대로 — 등급 IN 은 맞췄으나 회사채 필터 부재 + 제외 없음."""
+
+    def plan_sql(self, question, grounding):
+        return ("SELECT pd_nm, bd_intp_tcd, bd_inrt_tcd, srfc_irt, applied_yield FROM domestic_bonds "
+                "WHERE TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-') ORDER BY srfc_irt DESC LIMIT 5")
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_kind_and_reco(ctx):
+    r = answer_question("T-25", "AA등급 이상 회사채 중에서 표면금리 높은 순으로 5개 추천해줘",
+                        planner=BuggyNoKindRecoPlanner(), ctx=ctx)
+    assert "[Guard] 종류 조건 주입" in r.think_trace
+    assert "[Guard] 추천 제외 주입" in r.think_trace
+    assert "우리금융캐피탈458" in r.retrieved_context      # 정답 1위 복귀
+    assert "뉴스텔라" not in r.retrieved_context           # 사모 혼입 차단
+
+
+class BuggyBankTablePlanner:
+    """2026-08-31 저녁 서버 실측 SQL ② 그대로 — bonds_master 환각 + 무TRIM IN."""
+
+    def plan_sql(self, question, grounding):
+        return ("SELECT pd_nm, applied_yield FROM bonds_master WHERE bd_knd IN ('일반은행채', '특수은행채') "
+                "ORDER BY applied_yield DESC LIMIT 5")
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_bank_table_recovers(ctx):
+    r = answer_question("T-26", "은행채 중에서 수익률 높은 순으로 5개 알려줘",
+                        planner=BuggyBankTablePlanner(), ctx=ctx)
+    assert "[Guard] 테이블명 교정" in r.think_trace
+    assert "[Guard] TRIM 보정" in r.think_trace
+    assert "질의를 안전하게 실행할 수 없" not in r.answer   # 기각 대신 실행
+    assert "[Execute] 5행 조회" in r.think_trace
+    assert "한국수출입금융" in r.retrieved_context          # 특수은행채(4위) 포함 — 무TRIM 16행 풀이면 불가능
+
+
 class BuggyKtbCountPlanner:
     """2026-08-31 저녁 실측 오답 SQL — '국고채' 를 대분류 국공채 행수로 뭉갬."""
 

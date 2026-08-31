@@ -428,3 +428,16 @@ def test_public_only_narrowing_and_type_rule():
 
     g = load_context().planner_context(["public_funds"], "공모펀드는 유형별로 몇 개씩 있어?")
     assert "zrin_btyp_nm" in g and "제로인 미수록" in g and "모집 방식" in g
+
+
+def test_group_null_label():
+    """FND-038 실측 — 분포 집계의 NULL 그룹에 라벨을 줘야 답변이 그 행을 빠뜨리지 않는다."""
+    from src.runtime.pipeline import ensure_group_null_label as f
+
+    s, ok = f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds WHERE sale_yn='판매중' "
+              "GROUP BY zrin_btyp_nm LIMIT 30")
+    assert ok and "COALESCE(zrin_btyp_nm,'(미수록)')" in s
+    assert not f(s)[1]                                     # 멱등
+    # 불개입 — GROUP BY 없음 · 축이 서술 컬럼이 아님 · 이미 COALESCE
+    assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1")[1]
+    assert not f("SELECT itm_no, COUNT(*) FROM public_funds GROUP BY itm_no LIMIT 5")[1]

@@ -507,6 +507,36 @@ def ensure_enum_value_fix(sql: str, ctx) -> tuple[str, bool]:
     return sql, changed
 
 
+# 분포 집계의 GROUP BY 축이 될 수 있는 서술 컬럼 — NULL 이 정상적으로 존재한다
+_NULLABLE_GROUP_COLS = ("zrin_btyp_nm", "zrin_ptn_nm", "or_attr_desc", "fd_ivst_rgn_desc",
+                        "ovrs_fd_desc", "pers_corp_desc", "han_clas_nm", "han_clas_fee_type",
+                        "han_clas_sales_channel", "bmrk_nm", "curr_cd")
+
+
+def ensure_group_null_label(sql: str) -> tuple[str, bool]:
+    """분포 집계의 GROUP BY 축이 NULL 일 때 이름을 붙인다. (보정된 SQL, 보정했는지)
+
+    2026-09-01 실측(FND-038): `GROUP BY zrin_btyp_nm` 결과에 NULL 그룹(418행·308펀드)이 나왔지만
+    라벨이 빈칸이라 답변기가 그 행을 **통째로 빠뜨렸다**(합계가 8,469 로 500 부족).
+    이름이 없으면 말할 수 없다 — FND-016(이름 소실)·R09(근거 컬럼 부재)와 같은 뿌리다.
+    COALESCE 로 '(미수록)' 라벨을 주어 결측도 하나의 범주로 답에 실리게 한다.
+    """
+    if not _FUND_TBL.search(sql) or "COALESCE" in sql.upper():
+        return sql, False
+    m = re.search(r"\bgroup\s+by\s+([A-Za-z_]\w*)", sql, re.I)
+    if not m or m.group(1).lower() not in _NULLABLE_GROUP_COLS:
+        return sql, False
+    col = m.group(1)
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head = sql[:frm.start()]
+    fixed = re.sub(rf"(?<![.\w(]){col}\b(?!\s*\))", f"COALESCE({col},'(미수록)')", head, count=1)
+    if fixed == head:
+        return sql, False
+    return fixed + sql[frm.start():], True
+
+
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
 _GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
 
@@ -1504,6 +1534,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, gnull_fixed = ensure_group_null_label(sql)
+    if gnull_fixed:
+        step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "
+             "(2026-09-01 FND-038 실측: 라벨이 빈칸이라 답변기가 418행 그룹을 통째로 빠뜨렸다)")
     sql, enum_fixed = ensure_enum_value_fix(sql, ctx)
     if enum_fixed:
         step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "

@@ -23,6 +23,9 @@
 
 규모 제한: 어느 상품에서든 편입 비중 상위 TOP_RANK(50) 안에 한 번이라도 든 종목 + 수동 코드북 종목만 노드화.
            나머지는 노드 없이도 ext_* 조인으로 조회 가능.
+           🆕 2026-08-31 리드 확답(ask_lead §4) — **국내ETF 구성종목만 rank 제한 해제**(+1,772 노드 실측).
+           주최 공식 예시(에코프로 자회사·캠브리콘)가 국내 구성종목-상품 유형이라 소액 편입도 grounding 되어야 한다.
+           해외는 전체 해제 시 +239,280 노드(실측)로 KG 가 4배 커져 50 유지 — 희귀 종목은 ext_* LIKE 폴백.
 
 사용: python scripts/gen_security_auto.py
 """
@@ -94,8 +97,8 @@ def main():
             return
         n["alias_set"].add(key); n["aliases"].append(key)
 
-    # ── 1. 국내 ETF 구성종목 (TOP_RANK 내) ──
-    dom = q("select ticker, constituent, count(*) n from ext_etf_holdings where rank<=? and ticker is not null and ticker<>'' group by 1,2", TOP_RANK)
+    # ── 1. 국내 ETF 구성종목 — rank 제한 없음 (2026-08-31 리드 확답, 상단 '규모 제한' 참조) ──
+    dom = q("select ticker, constituent, count(*) n from ext_etf_holdings where ticker is not null and ticker<>'' group by 1,2")
     kr_ids = {}
     for tk, nm, n in dom:
         tk = tk.strip()
@@ -167,6 +170,8 @@ def main():
                  note=f"수동 정본 — {r.get('source','')}")
         targets = []
         if r.get("kr_ticker"): targets.append(f"Sec_kr_{r['kr_ticker'].strip()}")
+        for dt in (r.get("dom_ticker") or "").split("|"):   # ㉢ 2026-08-31 승인 — 블룸버그식 티커('2015 HK') → Sec_d_ 노드. 빈 값 무동작
+            if dt.strip(): targets.append(f"Sec_d_{sha(dt.strip())}")
         if r.get("isin"): targets.append(f"Sec_f_{re.sub(r'[^A-Za-z0-9]', '', r['isin'])}")
         for cu in (r.get("cusip") or "").split("|"):
             if cu.strip(): targets.append(f"Sec_o_{cu.strip()}")

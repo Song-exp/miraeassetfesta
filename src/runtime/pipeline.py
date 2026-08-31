@@ -72,6 +72,22 @@ _FORBIDDEN = re.compile(
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
 
 
+def _name_owners(cols: list[str], ctx) -> str:
+    """없는 컬럼마다 '어느 테이블 것인지' 를 붙인다 — 재생성 1회가 같은 실수를 반복하지 않게.
+
+    🔴 2026-08-31 서버 실측 — "안전한 etf상품 추천좀" 이 라우팅 미특정으로 4테이블 규칙을 전부 싣자
+       HCX 가 펀드 컬럼(zrin_fd_ivst_risk_gcd 등)을 domestic_etfs 에 썼다. Guard 가 기각했으나
+       피드백이 "스키마에 없는 컬럼" 뿐이라 재생성도 같은 컬럼을 다시 써서 답변이 통째로 실패했다.
+       '그건 public_funds 컬럼이다' 를 알려주면 모델이 테이블을 바꾸거나 그 조건을 뺄 수 있다.
+    """
+    schema = getattr(ctx, "schema", {}) or {}
+    out = []
+    for col in cols:
+        owner = next((t for t in schema if any(c.lower() == col.lower() for c, *_ in schema[t])), None)
+        out.append(f"{col}(→ {owner} 컬럼이다. 이 테이블에는 없다)" if owner else col)
+    return ", ".join(out)
+
+
 def validate_sql(sql: str) -> str | None:
     """위반 사유를 반환. None 이면 통과."""
     s = sql.strip().rstrip(";")
@@ -1015,7 +1031,7 @@ def answer_question(
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
         if unk:
-            err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
+            err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
     violations = [] if err else guard.check_values(sql, ctx)
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.

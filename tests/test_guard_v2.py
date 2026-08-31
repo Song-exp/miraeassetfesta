@@ -411,3 +411,20 @@ def test_enum_value_suffix_fix():
     # 불개입 — 이미 실제 값 · 컬럼 오선택(재생성 사유로 넘긴다)
     assert not f("SELECT 1 FROM public_funds WHERE or_attr_desc='재간접' LIMIT 5", ctx)[1]
     assert not f("SELECT 1 FROM public_funds WHERE or_attr_desc='해외주식형' LIMIT 5", ctx)[1]
+
+
+def test_public_only_narrowing_and_type_rule():
+    """FND-038 실측 — '공모펀드는 유형별로' 질의에 사모가 섞이면 좁히고, '유형'=자산유형 규칙이 실린다."""
+    from src.runtime.pipeline import ensure_fund_base_population as f
+    from src.runtime.loader import load_context
+
+    s, ok = f("SELECT prvo_pbff_desc, COUNT(*) FROM public_funds WHERE sale_yn='판매중' "
+              "AND prvo_pbff_desc IN ('공모','사모') GROUP BY 1 LIMIT 2",
+              "공모펀드는 유형별로 몇 개씩 있어?")
+    assert ok and "prvo_pbff_desc = '공모'" in s and "'사모'" not in s
+    # 사모를 물으면 건드리지 않는다 (_POP_WIDEN)
+    assert not f("SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc IN ('공모','사모') LIMIT 5",
+                 "사모까지 포함해서 몇 개야?")[1]
+
+    g = load_context().planner_context(["public_funds"], "공모펀드는 유형별로 몇 개씩 있어?")
+    assert "zrin_btyp_nm" in g and "제로인 미수록" in g and "모집 방식" in g

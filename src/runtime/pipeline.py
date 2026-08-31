@@ -233,6 +233,13 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     if any(t in question for t in _POP_WIDEN):
         return sql, False
+    # 🔴 질문이 '공모' 를 명시했는데 SQL 이 사모까지 포함하면 좁힌다 — 2026-09-01 FND-038 실측:
+    #    "공모펀드는 유형별로 몇 개씩?" 에 prvo_pbff_desc IN ('공모','사모') 가 나가 사모 1,993개가
+    #    답에 실렸다. 위 _POP_WIDEN 이 이미 '사모' 질문을 걸러내므로 여기 오는 것은 공모 질의뿐이다.
+    m_in = re.search(r"\bprvo_pbff_desc\s+IN\s*\([^)]*'사모'[^)]*\)", sql, re.I)
+    if m_in and "공모" in question:
+        sql = sql[:m_in.start()] + "prvo_pbff_desc = '공모'" + sql[m_in.end():]
+        return sql, True
     # 🔴 **빠진 쪽만** 주입한다 — 예전엔 둘 중 하나라도 있으면 통째로 건너뛰어서, 한쪽만 쓴 SQL 이
     #    반쪽 모수로 나갔다(2026-08-31 밤 FND-030 실측: prvo_pbff_desc 만 있고 sale_yn 누락).
     #    모수를 넓히는 질의는 위 _POP_WIDEN 이 이미 막으므로 모델 의도를 해치지 않는다.

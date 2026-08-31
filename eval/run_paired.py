@@ -50,12 +50,33 @@ def mcnemar_exact_p(b: int, c: int) -> float:
     return min(1.0, 2 * p)
 
 
-def result_set(con: sqlite3.Connection, sql: str) -> frozenset | None:
+def _norm(v) -> str:
+    """숫자 표기 정규화 — 8969 와 8969.0 은 같은 값이다."""
+    s = str(v).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def result_rows(con: sqlite3.Connection, sql: str) -> list | None:
     try:
-        rows = con.execute(sql).fetchmany(200)
+        return con.execute(sql).fetchmany(200)
     except sqlite3.Error:
         return None
-    return frozenset(str(r[0]).strip() for r in rows)
+
+
+def rows_match(got_rows: list, want_rows: list) -> bool:
+    """관대 결과집합 비교 (2026-08-31 정정 — 1차 paired 의 answer 2/62 는 '첫 컬럼' 비교 인공물이었다:
+    HCX 가 gold 와 다른 컬럼(이름·코드)을 첫 자리에 놓으면 의미가 맞아도 불일치가 났다).
+    ① 첫 컬럼 값 집합이 같으면 정답. ② 아니면: 행 수가 같고, gold 첫 컬럼 값 전부가
+    생성 결과의 **어느 컬럼에든** 등장하면 정답 (식별자를 다른 자리에 뒀을 뿐)."""
+    want = frozenset(_norm(r[0]) for r in want_rows)
+    if frozenset(_norm(r[0]) for r in got_rows) == want:
+        return True
+    if len(got_rows) != len(want_rows):
+        return False
+    got_all = {_norm(v) for r in got_rows for v in r}
+    return want <= got_all
 
 
 def judge(q: dict, r, con) -> bool:
@@ -63,8 +84,8 @@ def judge(q: dict, r, con) -> bool:
     if beh == "answer":
         if not q.get("gold_sql") or not r.sql:
             return False
-        got, want = result_set(con, r.sql), result_set(con, q["gold_sql"])
-        return got is not None and want is not None and got == want
+        got, want = result_rows(con, r.sql), result_rows(con, q["gold_sql"])
+        return got is not None and want is not None and rows_match(got, want)
     # 거절형 — 답변이 거절/되묻기이고 조회 결과를 근거로 내지 않았어야 한다
     return any(m in r.answer for m in REFUSAL_MARKERS) and not r.retrieved_context.strip().count("\n")
 
@@ -90,17 +111,20 @@ def main() -> int:
         os.environ["RULES_MODE"] = m
         for q in qs:
             r = answer_question(q["qid"], q["question"], planner=planner, ctx=ctx)
-            outcome.setdefault(q["qid"], {})[m] = judge(q, r, con)
-            print(f"[{m}] {q['qid']} {'✅' if outcome[q['qid']][m] else '❌'} {q['question'][:40]}")
+            ok = judge(q, r, con)
+            # 원시 산출물도 남긴다 — 1차(08-31)는 bool 만 남겨 오프라인 재채점이 불가능했다
+            outcome.setdefault(q["qid"], {})[m] = {"ok": ok, "sql": r.sql, "answer": (r.answer or "")[:300]}
+            print(f"[{m}] {q['qid']} {'✅' if ok else '❌'} {q['question'][:40]}")
     n = len(qs)
+    ok_ = lambda v, m: bool((v.get(m) or {}).get("ok"))
     for m in modes:
-        k = sum(1 for v in outcome.values() if v.get(m))
+        k = sum(1 for v in outcome.values() if ok_(v, m))
         lo, hi = wilson(k, n)
         print(f"{m}: {k}/{n} = {k / n:.1%}  Wilson95 [{lo:.1%}, {hi:.1%}]")
     if len(modes) == 2:
         A, B = modes
-        b = sum(1 for v in outcome.values() if v.get(A) and not v.get(B))
-        c = sum(1 for v in outcome.values() if v.get(B) and not v.get(A))
+        b = sum(1 for v in outcome.values() if ok_(v, A) and not ok_(v, B))
+        c = sum(1 for v in outcome.values() if ok_(v, B) and not ok_(v, A))
         print(f"McNemar {A}-only {b} · {B}-only {c} · exact p = {mcnemar_exact_p(b, c):.4f}"
               + ("  (CI 겹침 — 차이 없음으로 기록)" if abs(b - c) < 3 else ""))
     Path(a.out).write_text(json.dumps(outcome, ensure_ascii=False, indent=1), encoding="utf-8")

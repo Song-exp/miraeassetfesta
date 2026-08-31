@@ -51,12 +51,27 @@ class GoldPlanner:
         return f"[fake] rows={'yes' if rows.strip() else 'no'}"
 
 
-def result_set(con, sql):
+def _norm(v) -> str:
+    s = str(v).strip()
+    return s[:-2] if s.endswith(".0") else s
+
+
+def result_rows(con, sql):
     try:
-        rows = con.execute(sql).fetchmany(200)
+        return con.execute(sql).fetchmany(200)
     except sqlite3.Error:
         return None
-    return frozenset(str(r[0]).strip() for r in rows)
+
+
+def rows_match(got_rows, want_rows) -> bool:
+    """관대 결과집합 비교 — run_paired.rows_match 와 동일 (첫 컬럼 일치, 아니면 행 수 동일 +
+    gold 첫 컬럼 값 전부가 생성 결과 어느 컬럼에든 등장). 1차 paired 의 '첫 컬럼' 인공물 정정."""
+    want = frozenset(_norm(r[0]) for r in want_rows)
+    if frozenset(_norm(r[0]) for r in got_rows) == want:
+        return True
+    if len(got_rows) != len(want_rows):
+        return False
+    return want <= {_norm(v) for r in got_rows for v in r}
 
 
 def score_one(q: dict, r, con, hcx: bool) -> tuple[bool, str]:
@@ -68,11 +83,11 @@ def score_one(q: dict, r, con, hcx: bool) -> tuple[bool, str]:
             return False, "gold_sql 없음(answer 문항)"
         if not r.sql:
             return False, f"SQL 미생성 — trace 말미: {r.think_trace.splitlines()[-1][:80] if r.think_trace else ''}"
-        got, want = result_set(con, r.sql), result_set(con, q["gold_sql"])
+        got, want = result_rows(con, r.sql), result_rows(con, q["gold_sql"])
         if got is None:
             return False, "생성 SQL 실행 실패"
-        if got != want:
-            return False, f"결과 집합 불일치 (생성 {len(got)} vs gold {len(want or ())})"
+        if want is None or not rows_match(got, want):
+            return False, f"결과 집합 불일치 (생성 {len(got)}행 vs gold {len(want or ())}행)"
     else:  # reject / clarify / reject_or_clarify / reject_or_partial …
         refused = any(m in ans for m in REFUSAL_MARKERS)
         grounded_rows = bool(r.retrieved_context.strip()) if getattr(r, "retrieved_context", "") else False

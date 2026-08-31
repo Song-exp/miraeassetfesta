@@ -136,6 +136,16 @@ def test_fund_evidence_columns():
     # 단일 건수 질의(COUNT, GROUP BY 없음) — 출력 의미가 바뀌므로 불개입
     assert not f("SELECT COUNT(*) FROM public_funds WHERE zrin_fd_ivst_risk_gcd IS NULL LIMIT 1")[1]
 
+    # 🔴 식별 컬럼 없는 값-only SQL — 답변기가 이름을 지어낸 배포 실측(§6-2d 후속) 대응
+    valonly = ("SELECT fd_yr1_ern_r FROM public_funds WHERE or_co_xtn_itt_cd = '00080008' "
+               "AND itm_nm LIKE '%코어테크%' AND sale_yn = '판매중' LIMIT 30")
+    s2, ok2 = f(valonly)
+    assert ok2 and "itm_no" in s2 and "TRIM(itm_nm) AS itm_nm" in s2
+    assert s2.index("itm_no") < s2.upper().index("FROM")
+    # 분포 집계(COUNT + GROUP BY)에는 식별 컬럼을 붙이지 않는다 — 행 의미가 바뀐다
+    dist = "SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY zrin_btyp_nm LIMIT 30"
+    assert "itm_no" not in f(dist)[0]
+
 
 def test_fund_safe_grade_direction():
     """FND-C03 실측 — '안전' 질의의 등급 필터가 1·2 로 뒤집혔으면 6 으로 교정."""

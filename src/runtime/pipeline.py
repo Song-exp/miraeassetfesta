@@ -370,6 +370,16 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     if re.search(r"\bcount\s*\(", head, re.I) and not re.search(r"\bgroup\s+by\b", sql, re.I):
         return sql, False        # 단일 건수 질의 — 열 추가가 출력 의미를 바꾼다
     add = []
+    # 🔴 식별 컬럼이 없으면 답변기가 **이름을 지어낸다** — 2026-08-31 밤 배포 직후 실측:
+    #    SELECT fd_yr1_ern_r 만 한 SQL(값 30개)에 답변기가 "종류A 17.41% · 종류B 17.36% · 종류C 17.26%"
+    #    라고 클래스명을 붙여 냈다. 실제 그 값들은 글로벌코어테크EMP 의 것이고 종류A/B/C 라는 클래스도 없다.
+    #    이름 필터(가드 5호)로 조회 범위는 맞췄는데 답변 층에서 다시 환각이 난 것 — 값만 있는 결과는
+    #    "어느 상품의 값인지" 를 답변기가 복원할 수 없다. COUNT 집계는 출력 의미가 바뀌므로 제외.
+    # 🔴 `head`(SELECT 목록)만 본다 — WHERE 의 `itm_nm LIKE` 를 SELECT 에 있는 것으로 오판하면
+    #    바로 이 사고(값만 조회 → 이름 환각)를 놓친다. 실제로 첫 구현이 그렇게 새어 배포본에서 재현됐다.
+    if "itm_nm" not in head and "itm_no" not in head and not re.search(r"\bcount\s*\(", head, re.I):
+        add.append("itm_no")
+        add.append("TRIM(itm_nm) AS itm_nm")
     if "zrin_fd_ivst_risk_gcd" in sql and "zrin_fd_ivst_risk_grd_nm" not in sql:
         add.append("zrin_fd_ivst_risk_grd_nm")
     target = _fund_sort_target(sql)

@@ -606,6 +606,10 @@ _MCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*=\s*'국공채'", r
 _MCLS_IN = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\([^)]*'국공채'[^)]*\)", re.I)
 _KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
                "AND TRIM(std_pd_scls_nm)='국고채'))")
+_KTB_PLAIN = "TRIM(bd_knd)='국고채권'"
+# STRIPS 인지 신호 — 이 낱말이 질문에 있으면 사용자가 그 개념을 알고 콕 집은 것: STRIPS 주입을 물린다.
+# '제외·빼고' 같은 일반 낱말은 신호로 쓰지 않는다 — '사모 빼고 국고채' 가 오폭당한다 (2026-08-31 리드 결정).
+_STRIPS_Q = re.compile(r"스트립|STRIPS|원금이자분리", re.I)
 
 
 _KTB_BDKND = re.compile(r"(?:TRIM\(\s*)?bd_knd\s*\)?\s*=\s*'국고채권'", re.I)
@@ -623,9 +627,15 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
        혼입) 오답 → 종류필터 ① 확정식으로 교체.
     ③ STRIPS 회수 — bd_knd='국고채권' 단독은 274종목: 종류 결측 STRIPS 21종목이 빠진다(리드 결정
        08-31: 국고채 = 295종목, gold BND-D-029) → 확정식으로 확장.
-    발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외)."""
+    발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외).
+    STRIPS 탈출구(리드 결정 08-31 밤): 질문에 스트립·STRIPS·원금이자분리가 등장하면 ③을 건너뛰고
+    ②도 bd_knd 단독식으로만 교체 — 'STRIPS 제외' 초정밀 질의에서 가드가 넘겨짚지 않는다.
+    ⚠ 알려진 한계(감수 결정): '국고채를 포함한 국공채 전체 몇 종목' 류 — 질문에 국고채가 언급되면
+       정당한 국공채 대분류 필터도 ②가 국고채로 좁힌다. 뭉개기 오답은 실측(2,840), 이 질의형은 가설이라
+       현행 유지 (docs/review_2026-08-26/채권_프로브10_실측_2026-08-31_밤.md §4-3)."""
     if not _KTB_Q.search(question):
         return sql, False
+    strips_aware = bool(_STRIPS_Q.search(question))
     changed = False
     m = _PBCM_CONJ.search(sql)
     if m:
@@ -637,8 +647,8 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
         m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
         if not m:
             return sql, changed
-        return sql[:m.start()] + _KTB_FILTER + sql[m.end():], True
-    if "std_pd_scls_nm" not in sql:
+        return sql[:m.start()] + (_KTB_PLAIN if strips_aware else _KTB_FILTER) + sql[m.end():], True
+    if "std_pd_scls_nm" not in sql and not strips_aware:
         m = _KTB_BDKND.search(sql)
         if m:
             sql = sql[:m.start()] + _KTB_FILTER + sql[m.end():]
@@ -1657,9 +1667,13 @@ def answer_question(
         except sqlite3.Error:
             diag = None
         if diag and diag.text():
-            # 🔴 진단은 think_trace 에만 — "조건별 단독 조회: …" 는 개발자용 텍스트라 사용자 답변에 싣지
-            #    않는다 (2026-08-31 밤 실측: 답변에 그대로 노출돼 가독성 훼손 — 채점자용 근거는 trace 로 충분).
+            # 개발자용 진단("조건별 단독 조회: …")은 think_trace 에만 남긴다 (2026-08-31 밤 실측:
+            # 답변에 그대로 노출돼 가독성 훼손). 사용자 답변에는 같은 진단의 자연어 사유만 붙인다
+            # — 리드 결정: 사유는 넣되 개발자 표기 금지 (guard.ZeroRowDiagnosis.user_text).
             step(f"[Diagnose] 0행 원인 — {diag.text()}")
+            reason = diag.user_text()
+            if reason:
+                answer += " " + reason
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")
         result.think_trace = "\n".join(trace)
         result.answer = answer

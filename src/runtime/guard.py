@@ -209,6 +209,101 @@ class ZeroRowDiagnosis:
             return head + ". 각 조건은 존재하나 동시에 만족하는 상품이 없습니다."
         return head
 
+    def user_text(self) -> str | None:
+        """사용자 답변에 붙일 자연어 사유 한 문장 — 개발자 표기(SQL 조각) 금지.
+
+        2026-08-31 밤 리드 결정: 0행 사유는 답변에 싣되 '조건별 단독 조회: …' 류 개발자
+        텍스트로는 내보내지 않는다. SQL 조각을 한국어로 옮기지 못하는 조건이 하나라도 끼면
+        구체 서술을 포기하고 일반 문장으로 낮춘다 — 어색한 반역(半譯)보다 안전하다.
+        <> 제외절(고위험제외·수익률정상 주입분)은 사용자가 물은 조건이 아니므로 열거에서 뺀다."""
+        if not self.counts:
+            return None
+        dead = [c for c, n in self.counts if n == 0]
+        if dead:
+            descs = [_humanize_cond(c) for c in dead]
+            if all(descs):
+                return "수록된 데이터에는 " + " · ".join(f"{d}인 상품" for d in descs) + " 자체가 없습니다."
+            return "조건 중 일부는 수록된 데이터에 해당하는 상품 자체가 없습니다."
+        pos = [(c, n) for c, n in self.counts if "<>" not in c]
+        descs = [(_humanize_cond(c), n) for c, n in pos]
+        if pos and len(pos) <= 3 and all(d for d, _ in descs):
+            joined = " · ".join(f"{d}인 상품 {n:,}건" for d, n in descs)
+            return joined + "은 각각 수록되어 있으나, 질문의 조건을 모두 동시에 만족하는 상품은 없습니다."
+        return "조건 각각에 해당하는 상품은 있으나, 모든 조건을 동시에 만족하는 상품은 없습니다."
+
+
+# ── ②-b 0행 사유 한국어화 — LLM 호출 0회, 옮길 수 있는 패턴만 (못 옮기면 None → 일반 문장) ──
+
+_COL_KO = {
+    "bd_knd": "채권 종류", "std_pd_mcls_nm": "상품 대분류", "std_pd_scls_nm": "상품 소분류",
+    "crd_grd": "신용등급", "pd_risk_gcd": "위험등급", "pd_risk_nm": "위험등급",
+    "srfc_irt": "표면금리", "applied_yield": "수익률", "mat_dt": "만기일",
+    "remaining_days": "잔존일수", "pd_pbcm": "발행기관", "bd_intp_tcd": "이자지급방식",
+    "bd_inrt_tcd": "금리유형", "bd_ofr_tcd": "공모/사모 구분", "pd_nm": "상품명", "curr_cd": "통화",
+}
+_RISK_KO = {"11": "1등급(매우높은위험)", "12": "2등급(높은위험)", "13": "3등급(다소높은위험)",
+            "14": "4등급(보통위험)", "15": "5등급(낮은위험)", "16": "6등급(매우낮은위험)",
+            "00": "해당없음"}
+_DATE_COLS = {"mat_dt"}
+_CMP_KO = {">": "초과", ">=": "이상", "<": "미만", "<=": "이하"}
+_CMP_DATE_KO = {">": "이후", ">=": "이후", "<": "이전", "<=": "이전"}
+
+_H_TRIM = re.compile(r"TRIM\(\s*([A-Za-z_]\w*)\s*\)", re.I)
+_H_COAL = re.compile(r"COALESCE\(\s*([A-Za-z_]\w*)\s*,\s*''\s*\)", re.I)
+_H_EQ = re.compile(r"^([A-Za-z_]\w*)\s*=\s*'((?:[^']|'')*)'$")
+_H_IN = re.compile(r"^([A-Za-z_]\w*)\s+IN\s*\(([^)]*)\)$", re.I)
+_H_CMP = re.compile(r"^([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*('?)([\w.\-]+)\3$")
+_H_LIKE = re.compile(r"^([A-Za-z_]\w*)\s+LIKE\s+'%((?:[^']|'')*)%'$", re.I)
+
+
+def _risk_or_quote(col: str, val: str) -> str:
+    if col == "pd_risk_gcd" and val in _RISK_KO:
+        return _RISK_KO[val]
+    return f"'{val}'"
+
+
+def _ga(word: str) -> str:
+    """이/가 조사 — 마지막 글자 받침 유무로. 한글 아닌 끝글자는 '이(가)' 로 둔다."""
+    ch = word[-1]
+    if "가" <= ch <= "힣":
+        return "이" if (ord(ch) - 0xAC00) % 28 else "가"
+    return "이(가)"
+
+
+def _humanize_cond(cond: str) -> str | None:
+    """최상위 AND 조건 하나를 '위험등급이 6등급(매우낮은위험)' 꼴로. 못 옮기면 None."""
+    c = _H_COAL.sub(r"\1", _H_TRIM.sub(r"\1", cond.strip()))
+    if c.startswith("(") and c.endswith(")"):
+        return None                                    # OR 그룹 — 한 문장으로 못 옮긴다
+    m = _H_EQ.match(c)
+    if m:
+        col = m.group(1).lower()
+        if col not in _COL_KO:
+            return None
+        lab = _COL_KO[col]
+        return f"{lab}{_ga(lab)} {_risk_or_quote(col, m.group(2))}"
+    m = _H_IN.match(c)
+    if m:
+        col = m.group(1).lower()
+        vals = re.findall(r"'((?:[^']|'')*)'", m.group(2))
+        if col not in _COL_KO or not vals:
+            return None
+        lab = _COL_KO[col]
+        return f"{lab}{_ga(lab)} {'·'.join(_risk_or_quote(col, v) for v in vals)} 중 하나"
+    m = _H_CMP.match(c)
+    if m:
+        col, op, val = m.group(1).lower(), m.group(2), m.group(4)
+        if col not in _COL_KO:
+            return None
+        lab = _COL_KO[col]
+        word = (_CMP_DATE_KO if col in _DATE_COLS else _CMP_KO)[op]
+        return f"{lab}{_ga(lab)} {val} {word}"
+    m = _H_LIKE.match(c)
+    if m:
+        col = m.group(1).lower()
+        return f"{_COL_KO[col]}에 '{m.group(2)}' 포함" if col in _COL_KO else None
+    return None
+
 
 def diagnose_zero_rows(sql: str, con: sqlite3.Connection | None = None) -> ZeroRowDiagnosis | None:
     """단순 SELECT(서브쿼리·UNION·HAVING 없음)만. 조건이 하나면 진단할 게 없다(None)."""

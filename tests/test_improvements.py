@@ -153,9 +153,37 @@ def test_diagnose_zero_rows_counts_each_condition(ctx):
 def test_pipeline_zero_rows_answer_has_diagnosis(ctx):
     sql = "SELECT pd_nm FROM domestic_bonds WHERE crd_grd = 'AAA' AND srfc_irt > 99 LIMIT 5"
     r = answer_question("T-ZERO", "표면금리 99% 넘는 AAA 채권", planner=SeqPlanner(sql), ctx=ctx)
-    # 🔄 2026-08-31 밤 — 진단('조건별 단독 조회')은 trace 전용: 사용자 답변에 노출됐던 것을 제거
+    # 🔄 2026-08-31 밤 리드 결정 — 답변에는 자연어 사유만, 개발자 진단('조건별 단독 조회')은 trace 전용
     assert "확인되지 않습니다" in r.answer and "조건별" not in r.answer
+    assert "표면금리" in r.answer and "99 초과" in r.answer          # 사유가 사용자 문장으로
     assert "[Diagnose]" in r.think_trace and "조건별" in r.think_trace
+
+
+def test_user_text_dead_condition_named_in_korean(ctx):
+    sql = "SELECT pd_nm FROM domestic_bonds WHERE crd_grd = 'AAA' AND srfc_irt > 99 LIMIT 5"
+    d = guard.diagnose_zero_rows(sql)
+    t = d.user_text()
+    assert "표면금리가 99 초과인 상품" in t and "없습니다" in t
+    assert "srfc_irt" not in t                                       # SQL 조각 노출 금지
+
+
+def test_user_text_alive_conditions_explains_no_intersection(ctx):
+    # Q10 류 — 보험회사채(99건)·6등급 각각은 있으나 교집합 0 (보험회사채는 전부 1등급)
+    sql = ("SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) = '보험회사채' "
+           "AND pd_risk_gcd = '16' LIMIT 5")
+    d = guard.diagnose_zero_rows(sql)
+    t = d.user_text()
+    assert "보험회사채" in t and "6등급(매우낮은위험)" in t and "동시에 만족하는 상품은 없습니다" in t
+    assert "bd_knd" not in t and "pd_risk_gcd" not in t and "'16'" not in t
+
+
+def test_user_text_falls_back_to_generic_on_untranslatable(ctx):
+    # OR 그룹은 한 문장으로 못 옮긴다 — 구체 열거를 포기하고 일반 문장으로 낮추되 None 은 아니다
+    sql = ("SELECT pd_nm FROM domestic_bonds WHERE (crd_grd = 'AAA' OR crd_grd = 'AA+') "
+           "AND srfc_irt > -1 LIMIT 5")
+    d = guard.diagnose_zero_rows(sql)
+    t = d.user_text()
+    assert t == "조건 각각에 해당하는 상품은 있으나, 모든 조건을 동시에 만족하는 상품은 없습니다."
 
 
 # ── R-1 범주값 어휘 ─────────────────────────────────────────────────────

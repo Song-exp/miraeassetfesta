@@ -515,6 +515,22 @@ def test_ensure_ktb_kind_and_distinct_count():
     assert not ensure_distinct_count("SELECT COUNT(*) FROM domestic_bonds", "채권 데이터가 총 몇 행이야?")[1]
 
 
+def test_ensure_ktb_kind_strips_escape():
+    """STRIPS 탈출구 (2026-08-31 밤 리드 결정) — 질문이 스트립을 콕 집으면 가드가 넘겨짚지 않는다."""
+    from src.runtime.pipeline import ensure_ktb_kind
+    plain = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(bd_knd)='국고채권' LIMIT 30"
+    # ③ 스킵 — 'STRIPS 제외' 정밀 질의에서 bd_knd 단독식을 확장하지 않는다 (한글·영문 표기 모두)
+    for q in ("스트립 채권 제외하고 국고채만 몇 종목이야?", "STRIPS 빼고 국고채 개수 알려줘",
+              "원금이자분리채권 제외 국고채는?"):
+        assert not ensure_ktb_kind(plain, q)[1], q
+    # ② 는 여전히 교정하되 bd_knd 단독식으로만 — 대분류 뭉개기(2,840)는 STRIPS 질의에서도 오답이다
+    mcls = "SELECT COUNT(*) FROM domestic_bonds WHERE std_pd_mcls_nm='국공채'"
+    fixed, changed = ensure_ktb_kind(mcls, "스트립 제외한 국고채 몇 종목이야?")
+    assert changed and "TRIM(bd_knd)='국고채권'" in fixed and "std_pd_scls_nm" not in fixed
+    # 낱말이 없으면 종전대로 확정식(STRIPS 포함) 확장 — 회귀 방지
+    assert "std_pd_scls_nm)='국고채'" in ensure_ktb_kind(plain, "국고채 몇 종목이야?")[0]
+
+
 def test_validate_sql_relaxations():
     from src.runtime.pipeline import validate_sql
     # 2026-08-31 저녁 — 읽기 전용인데 기각되던 형태 2종 허용

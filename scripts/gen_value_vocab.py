@@ -29,18 +29,27 @@ SKIP_COLS = {"pd_isin_cd", "pd_itm_no", "pd_itm_no_ma", "pd_grp_no_ma"}
 
 def main() -> None:
     con = sqlite3.connect(f"{DB.resolve().as_uri()}?mode=ro", uri=True)
-    aliased = {(t, c) for t, c in con.execute("select distinct table_name, column_name from kg_alias")}
+    # 🔴 2026-08-31 — alias 가 '있다' 는 이유만으로 빼지 않는다. confirmed alias 가 distinct 를 98% 이상
+    #    덮는 컬럼만 제외(그건 kg_alias 경로가 value_index 를 채운다 — loader._build_value_index 와 같은 문턱).
+    #    부분 커버 컬럼이 양쪽에서 다 빠지는 틈새로 curr_cd(alias 는 KRW 뿐, '000' 은 pending)가 검사 밖이 됐고,
+    #    서버 실측에서 curr_cd='XS'(ISIN 접두사를 통화로 환각)가 check_values 를 통과했다.
+    alias_vals: dict[tuple[str, str], set] = {}
+    for t, c, raw in con.execute("select table_name, column_name, raw_value from kg_alias"):
+        alias_vals.setdefault((t, c), set()).add(str(raw).strip())
     meta = {(t, c): ko for t, c, ko in con.execute("select table_name, column_name, korean_name from schema_metadata")}
     for t in TABLES:
         vocab: dict[str, dict] = {}
         for _, col, typ, *_ in con.execute(f"pragma table_info({t})"):
-            if "text" not in (typ or "").lower() or (t, col) in aliased or col in SKIP_COLS or col.endswith("_no"):
+            if "text" not in (typ or "").lower() or col in SKIP_COLS or col.endswith("_no"):
                 continue
             rows = con.execute(
                 f"select trim({col}), count(*) from {t} where {col} is not null and trim({col})<>'' group by 1 order by 2 desc"
             ).fetchall()
             if not 2 <= len(rows) <= MAX_DISTINCT:
                 continue
+            covered = alias_vals.get((t, col), set()) & {v for v, _ in rows}
+            if len(covered) >= 0.98 * len(rows):
+                continue                        # kg_alias 가 사실상 전부 덮음 — value_index 의 alias 경로 몫
             vocab[col] = {
                 "korean_name": meta.get((t, col), ""),
                 "values": [v for v, _ in rows],

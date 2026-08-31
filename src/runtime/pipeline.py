@@ -716,6 +716,51 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     return sql[:m.start()] + "pd_risk_gcd = '16'" + sql[m.end():], True
 
 
+_MAT_SORT_Q = re.compile(r"만기[가는이도]?\s*(?:까지)?\s*(?:가장|제일|젤)?\s*(?:긴|길|멀|먼|늦|짧|빠(?:른|르)|오래)"
+                         r"|(?:가장|제일|젤)\s*(?:긴|짧은|빠른|늦은|먼)\s*만기")
+_ORDER_DUR = re.compile(r"(ORDER\s+BY\s+)(?:\w+\.)?(?:ndy_)?dur\b", re.I)
+
+
+def ensure_maturity_sort(sql: str, question: str) -> tuple[str, bool]:
+    """'만기가 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체. (보정된 SQL, 보정했는지)
+
+    2026-08-31 서버 실측: '한전 채권 중 만기가 가장 긴' 이 ORDER BY dur DESC 로 나가
+    한국전력공사채권999(만기 2049-10-24)를 답함 — 실제 최장은 1184(2052-04-21). 이표율 차이로
+    듀레이션 순위와 만기 순위는 역전된다(dur 은 잔존일수도 만기도 아니다 — 만기윈도우 규칙).
+    교체 후 mat_dt 하한이 없으면 mat_dt > 기준일 을 주입 — 만기 짧은 순(ASC)에서 만기일
+    미수록 0값 4행·만기 경과 49행이 1위로 오는 것을 막는다(만기 긴 순에도 무해)."""
+    if "domestic_bonds" not in sql or not _MAT_SORT_Q.search(question):
+        return sql, False
+    new = _ORDER_DUR.sub(r"\1mat_dt", sql)
+    if new == sql:
+        return sql, False
+    if not re.search(r"mat_dt\s*>=?\s*\d", new):
+        new, _ = _append_exclusions(new, [f"mat_dt > {CUTOFF_INT}"])
+    return new, True
+
+
+_CHEAP_Q = re.compile(r"저렴|(?<![가-힣])비?[싸싼]")
+_CHEAP_CUE = re.compile(r"가격|단가|평가|수익률|금리|이자|비용|보수|수수료")
+CHEAP_CLARIFY = ("'싸다'는 채권에서 두 가지 뜻으로 해석될 수 있어 확인이 필요합니다. "
+                 "① 가격(민평 평가단가)이 낮은 채권 — 만기가 먼 할인채가 상위에 옵니다. "
+                 "② 수익률이 높아 같은 금액으로 더 높은 이자를 받는 채권 — 위험이 큰 채권이 상위에 옵니다. "
+                 "두 해석은 정반대 목록이 됩니다. 가격 기준과 수익률 기준 중 어느 쪽으로 찾아드릴까요?")
+
+
+def price_ambiguity_clarify(question: str, tables: list[str]) -> str | None:
+    """'싸다·저렴·비싸다' 채권 질의의 결정층 되묻기 — 해당하면 되묻는 문장, 아니면 None.
+
+    2026-08-31 서버 실측: '제일 싼 채권' 에 HCX 가 되묻지 않고 가격 해석으로 단정
+    (근거 없는 15·16 필터까지 끼움) — clarify.다의어.싸다 는 🔴 기본값 금지·되묻기 대상이고
+    되묻기는 유효 답변이다(주최 8/25). 프롬프트 층(플래너 CLARIFY:)만으로 재현이 안 되므로
+    결정층이 받는다. 가격·수익률 등 단서 낱말이 질문에 있으면 되묻지 않는다(규칙 그대로)."""
+    if "domestic_bonds" not in tables or not _CHEAP_Q.search(question):
+        return None
+    if _CHEAP_CUE.search(question):
+        return None
+    return CHEAP_CLARIFY
+
+
 def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     """종목 수 질의의 COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교정. (보정된 SQL, 보정했는지)
 
@@ -1236,6 +1281,14 @@ def answer_question(
          + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else "")
          + (f" · 기준일 이후 시점 {future} 포함 → SQL 의 mat_dt 사용 여부로 사후 판정" if future else ""))
 
+    ask = price_ambiguity_clarify(q, tables)
+    if ask:
+        # 결정층 되묻기 — '싸다' 는 기본값 금지 다의어 (가격 낮음/수익률 높음 정반대). HCX 호출 없이 즉시.
+        step("[Clarify] 되묻기(결정층) — '싸다·저렴' 은 기본값 금지 다의어(clarify.다의어.싸다: 가격 낮음/수익률 높음 정반대) · 질문에 단서 없음 → HCX 호출 없이 되묻는다 (역질문은 유효 답변 — 주최 8/25)")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask
+        return result
+
     if planner is None:
         if future:
             # SQL 이 없으면 해석을 검사할 수 없다 — 기준일 안내로 보수적으로 끝낸다
@@ -1348,6 +1401,9 @@ def answer_question(
     sql, topsafe_fixed = ensure_top_safety(sql, q)
     if topsafe_fixed:
         step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
+    sql, matsort_fixed = ensure_maturity_sort(sql, q)
+    if matsort_fixed:
+        step("[Guard] 만기 정렬 교정 — '만기 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체 (2026-08-31 서버 실측: 한전 만기 최장이 dur 정렬로 2049년 채권 오답 — 실제 최장 2052년. 듀레이션·만기 순위는 이표율로 역전된다)")
     sql, distinct_fixed = ensure_distinct_count(sql, q)
     if distinct_fixed:
         step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")

@@ -381,6 +381,45 @@ def test_ensure_reco_exclusions():
     assert not ensure_reco_exclusions("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
 
 
+def test_ensure_maturity_sort():
+    from src.runtime.pipeline import ensure_maturity_sort
+    # 2026-08-31 서버 실측 — '한전 만기 최장' 이 ORDER BY dur DESC 로 2049년 채권 오답 (실제 최장 2052년)
+    sql = "SELECT pd_nm, mat_dt, dur FROM domestic_bonds WHERE TRIM(pd_pbcm)= '한국전력공사(주)' ORDER BY dur DESC LIMIT 1"
+    q = "한전 채권 중 만기가 가장 긴 건 뭐야?"
+    fixed, changed = ensure_maturity_sort(sql, q)
+    assert changed and "ORDER BY mat_dt DESC" in fixed and "mat_dt > 20260822" in fixed
+    # 만기 짧은 순(ASC)에도 하한 주입 — 만기일 0값 4행·만기 경과 49행이 1위로 오는 것 차단
+    f2, c2 = ensure_maturity_sort("SELECT pd_nm FROM domestic_bonds ORDER BY dur ASC LIMIT 5", "만기 짧은 채권 5개 알려줘")
+    assert c2 and "ORDER BY mat_dt ASC" in f2 and "mat_dt > 20260822" in f2
+    # 불개입 — 듀레이션을 직접 물음 / 이미 mat_dt 정렬 / 채권 테이블 아님
+    assert not ensure_maturity_sort(sql, "한전 채권 중 듀레이션 가장 긴 것")[1]
+    assert not ensure_maturity_sort("SELECT pd_nm FROM domestic_bonds ORDER BY mat_dt DESC LIMIT 1", q)[1]
+    assert not ensure_maturity_sort("SELECT pd_abrv_nm FROM domestic_etfs ORDER BY dur DESC LIMIT 1", q)[1]
+
+
+def test_price_ambiguity_clarify(ctx):
+    from src.runtime.pipeline import price_ambiguity_clarify
+    # 2026-08-31 서버 실측 — '제일 싼 채권' 에 되묻지 않고 가격 해석 단정 (싸다 = 🔴 기본값 금지 다의어)
+    assert price_ambiguity_clarify("제일 싼 채권 알려줘", ["domestic_bonds"])
+    assert price_ambiguity_clarify("저렴한 채권 추천해줘", ["domestic_bonds"])
+    assert price_ambiguity_clarify("가장 비싼 채권은 뭐야?", ["domestic_bonds"])
+    # 단서 낱말이 있으면 되묻지 않는다 · 채권 밖 상품군 불개입
+    assert price_ambiguity_clarify("가격이 제일 싼 채권", ["domestic_bonds"]) is None
+    assert price_ambiguity_clarify("수익률 기준으로 제일 싼 채권", ["domestic_bonds"]) is None
+    assert price_ambiguity_clarify("보수가 제일 싼 ETF", ["domestic_etfs"]) is None
+    # 풀패스 — HCX 미연결이어도 결정층이 되묻는다 (역질문은 유효 답변)
+    r = answer_question("T-30", "제일 싼 채권 알려줘", ctx=ctx)
+    assert "[Clarify] 되묻기(결정층)" in r.think_trace and "어느 쪽" in r.answer
+
+
+def test_check_values_currency(ctx):
+    from src.runtime import guard
+    # 2026-08-31 서버 실측 — curr_cd='XS'(ISIN 접두사 환각)가 값 검사를 통과. vocab 등재 후 차단 확인
+    v = guard.check_values("SELECT pd_no FROM domestic_bonds WHERE curr_cd = 'XS' LIMIT 30", ctx)
+    assert v and "curr_cd" in str(v[0]) and "XS" in str(v[0])
+    assert not guard.check_values("SELECT pd_no FROM domestic_bonds WHERE curr_cd = 'KRW' LIMIT 30", ctx)
+
+
 def test_ensure_top_safety():
     from src.runtime.pipeline import ensure_top_safety
     # 2026-08-31 실측 — '가장 안전한 채권 3개' 가 IN ('15','16') + 수익률 내림차순으로 나가

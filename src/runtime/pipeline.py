@@ -1472,7 +1472,7 @@ def _execute(sql: str) -> tuple[str, int]:
         con.close()
 
 
-def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) -> str:
+def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
 
     🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
@@ -1672,7 +1672,7 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql = _apply_sql_guards(sql, q, name_token, future, step)
+    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
@@ -1711,7 +1711,7 @@ def answer_question(
             # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
             #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
             sql, _ = normalize_date_literals(raw2)
-            sql = _apply_sql_guards(sql, q, name_token, future, step)
+            sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
             err = validate_sql(sql) or forbidden_column_use(sql)

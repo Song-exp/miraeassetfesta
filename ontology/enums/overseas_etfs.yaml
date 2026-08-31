@@ -431,6 +431,9 @@ query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
   기초지수유효: "cu_base_index NOT LIKE '%not provided%' AND cu_base_index NOT LIKE '%not available%'"
+  ISIN조인금지: >-
+    🔴 pd_isin_cd·pd_lipper_id 는 단독 조인·단건 조회 키로 쓰지 않는다 — 각각 63종이 2개 상품에 걸린다(같은 ISIN 이 OEUR.K/OEFA.K 둘 다).
+    조인·단건 조회 키는 pd_itm_no. ISIN 검색 결과가 복수면 티커를 병기해 모두 제시한다. (리드 확답 2026-08-31, B-3)
   # 🔴 2026-08-27 C절 검토 — 플래그만 믿으면 인버스를 놓친다.
   #    실측: cu_inverse_short_yn 이 NULL 인데 cu_lev_fector < 0 (인버스 확정) 3건
   #          — SSPC·SKDD·SPCQ (전부 배수 -2.0, 이름도 '2X Short').

@@ -417,6 +417,21 @@ _KIND_FILTERS = [   # 질문 낱말(긴 것부터 소진 탐색) → 확정 필�
 ]
 
 
+_P = r"[가이은는의에서들\s]{0,4}발행"       # 조사 + '발행' — '~가 발행한 채권' 서술형
+_KIND_PARAPHRASES = [   # 발행 주체를 풀어 쓴 질의 (2026-08-31 리드 지적: '회사채' 낱말 없이 '회사에서 발행한 채권').
+    # 🔴 순서 = 소진 순서 — '한국은행이 발행' 이 '은행이 발행' 으로, '카드회사가 발행' 이 '회사가 발행' 으로 잡히지 않게 구체적인 것 먼저
+    (re.compile(r"한국은행" + _P), "TRIM(bd_knd)='통화안정채권'"),
+    (re.compile(r"(?:지자체|지방자치단체|지방\s*정부)" + _P), "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')"),
+    (re.compile(r"카드[사회]?[사]?" + _P), "TRIM(bd_knd)='신용카드채'"),
+    (re.compile(r"캐피[탈털][사회]?[사]?" + _P), "TRIM(bd_knd)='할부금융채'"),
+    (re.compile(r"보험[사회]?[사]?" + _P), "TRIM(bd_knd)='보험회사채'"),
+    (re.compile(r"증권[사회]?[사]?" + _P), "TRIM(bd_knd)='투자매매.중개채'"),
+    (re.compile(r"은행" + _P), "TRIM(bd_knd) IN ('일반은행채','특수은행채')"),
+    (re.compile(r"(?:정부|나라|국가)" + _P), "TRIM(std_pd_mcls_nm)='국공채'"),
+    (re.compile(r"(?:회사|기업)" + _P), "TRIM(std_pd_mcls_nm)='회사채'"),
+]
+
+
 def _question_kind_filters(question: str) -> set[str]:
     q = question
     found = set()
@@ -426,6 +441,11 @@ def _question_kind_filters(question: str) -> set[str]:
             q = q.replace(tok, "◌")        # 긴 낱말 소진 — '일반은행채' 뒤에 '은행채' 가 또 걸리지 않게
     if re.search(r"(?<![가-힣])국채", q):   # 단독 '국채' 만 — 미국채·한국채권 등 합성어 제외
         found.add(_KTB_FILTER)
+        q = re.sub(r"(?<![가-힣])국채", "◌", q)
+    for pat, flt in _KIND_PARAPHRASES:      # 서술형은 낱말 소진 뒤에 — '회사채' 가 이미 잡혔으면 중복 무해(같은 필터로 dedupe)
+        if pat.search(q):
+            found.add(flt)
+            q = pat.sub("◌", q)
     return found
 
 
@@ -435,9 +455,12 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     2026-08-31 저녁 서버 실측: 'AA등급 이상 회사채 top5' 에 종류 조건 통째 부재 —
     'A등급 이상 회사채' 사고 ②(617160d)와 동일 결함의 재발. 등급 보유 채권이 우연히
     대부분 회사채라 티가 덜 났을 뿐, 특수채 AA 가 섞일 수 있는 모수다.
-    발동 조건: ① domestic_bonds 조회 ② SQL 에 종류 컬럼(bd_knd·대분류·소분류)이 전혀 없음
-    ③ 질문의 종류 낱말이 정확히 한 가지('국고채와 회사채 비교' 류 복수 종류는 불개입)."""
-    if "domestic_bonds" not in sql or re.search(r"bd_knd|std_pd_mcls_nm|std_pd_scls_nm", sql, re.I):
+    발동 조건: ① domestic_bonds 조회 ② SQL 에 종류 컬럼(bd_knd·대분류·소분류)도 발행사
+    필터(pd_pbcm)도 없음 — '삼성전자라는 회사가 발행한' 처럼 특정 발행사를 지칭하는 질의에
+    회사채 필터를 덧씌우지 않는다(발행사조회 영역) ③ 질문의 종류 낱말·발행주체 서술이 정확히
+    한 가지('국고채와 회사채 비교' 류 복수 종류는 불개입). 서술형('회사에서 발행한 채권')은
+    _KIND_PARAPHRASES 가 받는다 — 낱말이 없어도 발행 주체 표현으로 종류를 특정."""
+    if "domestic_bonds" not in sql or re.search(r"bd_knd|std_pd_mcls_nm|std_pd_scls_nm|pd_pbcm", sql, re.I):
         return sql, False
     filters = _question_kind_filters(question)
     if len(filters) != 1:

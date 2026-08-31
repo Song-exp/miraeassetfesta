@@ -440,6 +440,21 @@ def test_ensure_kind_filter():
     assert not ensure_kind_filter("SELECT 1 FROM domestic_bonds WHERE TRIM(bd_knd)='MBS' LIMIT 1", "MBS 알려줘")[1]
     assert not ensure_kind_filter(sql, "수익률 높은 채권 5개")[1]
     assert not ensure_kind_filter(sql, "미국채 금리 어때")[1]
+    # 서술형(발행 주체 풀어쓰기 — 2026-08-31 리드 지적) — 낱말 없이도 종류 특정
+    f4, c4 = ensure_kind_filter(sql, "회사에서 발행한 채권 중 금리 높은 것 알려줘")
+    assert c4 and "TRIM(std_pd_mcls_nm)='회사채'" in f4
+    f5, c5 = ensure_kind_filter(sql, "은행이 발행한 채권 뭐 있어?")
+    assert c5 and "IN ('일반은행채','특수은행채')" in f5
+    # 구체 주체 우선 소진 — '한국은행이 발행'≠은행채, '카드회사가 발행'≠회사채
+    f6, c6 = ensure_kind_filter(sql, "한국은행이 발행한 채권 알려줘")
+    assert c6 and "통화안정채권" in f6 and "일반은행채" not in f6
+    f7, c7 = ensure_kind_filter(sql, "카드회사가 발행한 채권 수익률은?")
+    assert c7 and "신용카드채" in f7 and "std_pd_mcls_nm" not in f7
+    f8, c8 = ensure_kind_filter(sql, "정부가 발행한 채권 보여줘")
+    assert c8 and "TRIM(std_pd_mcls_nm)='국공채'" in f8
+    # 특정 발행사 지칭 — SQL 에 발행사 필터가 있으면 종류를 덧씌우지 않는다 (발행사조회 영역)
+    issuer_sql = "SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%삼성전자%' LIMIT 30"
+    assert not ensure_kind_filter(issuer_sql, "삼성전자라는 회사가 발행한 채권 알려줘")[1]
 
 
 class BuggyNoKindRecoPlanner:

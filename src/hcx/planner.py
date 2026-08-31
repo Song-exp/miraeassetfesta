@@ -65,7 +65,17 @@ _SQL_SYSTEM = """너는 SQLite SQL 생성기다. 주어진 스키마·도메인 
 
 답변불가 (예외 출력)
 - 근거문서에 '# 답변불가 규칙' 이 있고 질문이 그 사유(실시간 시세·미래 예측·DB 밖 정보·인과 설명)에 분명히 해당하면
-  SQL 대신 `REFUSE: ` 뒤에 사유 한 문장을 출력한다. 조금이라도 SQL 로 답할 수 있으면 SQL 을 낸다."""
+  SQL 대신 `REFUSE: ` 뒤에 사유 한 문장을 출력한다. 조금이라도 SQL 로 답할 수 있으면 SQL 을 낸다.
+
+예시 — 랭킹·집계 질의의 모범 형태 (2026-08-31: 도메인 규칙의 모수·대표행·정렬 컬럼 조건을 전부 적용한 꼴)
+질문: 1년 수익률이 가장 높은 공모펀드 5개 알려줘
+SQL: SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r), COUNT(*), fd_daily_bas_dt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 AND fd_yr1_ern_r > -100 GROUP BY or_co_xtn_itt_cd, CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END ORDER BY 3 DESC LIMIT 5
+(다른 상품군이면 컬럼을 베끼지 말고 **그 상품군의 도메인 규칙**에 있는 모수·정렬·개수 조건으로 같은 형태를 만든다)
+
+출력 직전 점검 — 하나라도 어기면 고쳐서 출력한다
+① 랭킹·집계인데 도메인 규칙의 기본 모수 조건(판매중·공모 등)이 빠지지 않았는가
+② 정렬 컬럼에 IS NOT NULL(및 규칙의 0·센티넬 제외)이 걸려 있는가
+③ 개수: 질문에 있으면 그 수, 없으면 도메인 규칙의 기본 개수인가"""
 
 _ANSWER_SYSTEM = """너는 금융상품 데이터 질의응답 답변자다. 아래 '조회 결과' 에 있는 사실만으로 답한다.
 

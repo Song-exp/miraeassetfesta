@@ -56,3 +56,23 @@ def test_curly_quotes_normalized(ctx):
     r = answer_question("T-QT", "국고채권 알려줘", planner=P(), ctx=ctx)
     assert "따옴표 정규화" in r.think_trace
     assert "‘" not in (r.sql or "")
+
+
+def test_fund_base_population_injected():
+    """v2 실패 1순위 — 펀드 랭킹 SQL 에 기본모수가 없으면 기계 주입한다(보정, 기각 아님)."""
+    from src.runtime.pipeline import ensure_fund_base_population as f
+
+    # WHERE 있는 랭킹 — 기존 조건은 괄호로 보존
+    s, ok = f("SELECT itm_nm FROM public_funds WHERE fd_yr1_ern_r IS NOT NULL ORDER BY fd_yr1_ern_r DESC LIMIT 5",
+              "1년 수익률 높은 펀드 알려줘")
+    assert ok and "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (fd_yr1_ern_r IS NOT NULL)" in s
+
+    # WHERE 없는 랭킹 — GROUP/ORDER 앞에 WHERE 삽입
+    s, ok = f("SELECT itm_nm FROM public_funds ORDER BY fd_nast_suma DESC LIMIT 5", "규모 큰 펀드")
+    assert ok and "WHERE sale_yn = '판매중'" in s and s.index("WHERE") < s.upper().index("ORDER BY")
+
+    # 발동 금지 4갈래 — 모수 언급 SQL · 사모 질문 · 교차(JOIN) · 랭킹 아님
+    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")[1]
+    assert not f("SELECT itm_nm FROM public_funds ORDER BY 1 LIMIT 5", "사모 펀드 중 큰 것")[1]
+    assert not f("SELECT 1 FROM public_funds p JOIN ext_fund_holdings h ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
+    assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1", "펀드 몇 개")[1]

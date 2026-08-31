@@ -176,6 +176,47 @@ _SQL_GRADE_CMP = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*(=|>=|<=|>|<)\s*'([^
 _SQL_GRADE_IN = re.compile(r"crd_grd\s*\)?\s*(?:NOT\s+)?IN\s*\(", re.I)
 
 
+_FUND_TBL = re.compile(r"\bfrom\s+public_funds\b", re.I)
+_SQL_ANCHOR = re.compile(r"\bgroup\s+by\b|\border\s+by\b", re.I)
+# 질문이 모수 밖을 명시하면 주입하지 않는다 — '사모 펀드 중 큰 것' 에 공모 필터를 박으면 정반대 오답
+_POP_WIDEN = ("사모", "판매완료", "판매 완료", "판매중단", "판매 중단", "역외", "전체 펀드", "모든 펀드", "판매종료")
+
+
+def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
+    """펀드 랭킹 SQL 에 기본모수(판매중·공모)를 기계 주입. (보정된 SQL, 보정했는지)
+
+    2026-08-31 paired v2: answer 실패 1순위(값 불일치 37건)가 기본모수·대표행 규칙 미적용 —
+    규칙이 프롬프트에 실려도 무시된다. ensure_limit 원칙(기각이 아니라 보정)의 연장.
+    발동 조건(전부 만족할 때만 — 넓히면 사모·판매완료 질의를 다친다):
+      ① FROM public_funds 단일 테이블 (JOIN·UNION 없음 — 교차질의는 손대지 않는다)
+      ② ORDER BY 존재 (랭킹·Top-N 꼴)
+      ③ SQL 에 sale_yn·prvo_pbff_desc 언급이 전혀 없음 (하나라도 있으면 모델 의도 존중)
+      ④ 질문에 모수 확장 토큰(사모·판매완료·역외·전체)이 없음
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    if not re.search(r"\border\s+by\b", sql, re.I):
+        return sql, False
+    if re.search(r"\bsale_yn\b|\bprvo_pbff_desc\b", sql, re.I):
+        return sql, False
+    if any(t in question for t in _POP_WIDEN):
+        return sql, False
+    cond = "sale_yn = '판매중' AND prvo_pbff_desc = '공모'"
+    m = re.search(r"\bwhere\b", sql, re.I)
+    if m:
+        # 기존 조건을 괄호로 감싼다 — 'WHERE a OR b' 에 그냥 AND 를 붙이면 (cond AND a) OR b 로 샌다
+        e = m.end()
+        tail = sql[e:]
+        stop = _SQL_ANCHOR.search(tail) or re.search(r"\blimit\b", tail, re.I)
+        body, rest = (tail[:stop.start()], tail[stop.start():]) if stop else (tail, "")
+        return f"{sql[:e]} {cond} AND ({body.strip()}) {rest}".rstrip(), True
+    anchor = _SQL_ANCHOR.search(sql)
+    if not anchor:
+        return sql, False
+    s = anchor.start()
+    return f"{sql[:s]}WHERE {cond} {sql[s:]}", True
+
+
 def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
     """질문의 '등급 이상/이하' 를 crd_grd 서열 IN 목록으로 확장. (보정된 SQL, 보정했는지)
 
@@ -829,6 +870,9 @@ def answer_question(
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
         step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+    sql, pop_fixed = ensure_fund_base_population(sql, q)
+    if pop_fixed:
+        step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
     sql, grades_fixed = expand_grade_comparison(sql, q)
     if grades_fixed:
         step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")

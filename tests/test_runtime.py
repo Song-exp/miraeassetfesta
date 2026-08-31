@@ -582,3 +582,29 @@ def test_ground_drops_region_korea_for_listing(ctx):
     # 투자 대상 자리면 그대로 남는다
     _, lines2 = _ground("국내에 투자하는 ETF", ctx, ["domestic_etfs"], cross=True)
     assert any("Region_Korea" in l and "건너뜀" not in l for l in lines2), lines2
+
+
+def test_guard_rejects_undeclared_table_reference():
+    """FROM/JOIN 에 없는 테이블을 `테이블.컬럼` 으로 참조하면 실행이 깨진다 (서버 실측 2026-08-31).
+
+    Guard 가 '통과' 를 찍고 Execute 에서 OperationalError 가 나 답변이 '오류' 로 나갔다.
+    여기서 기각해야 재생성 1회가 JOIN 을 붙일 기회를 얻는다.
+    """
+    bad = ("SELECT pd_nm AS 상품명 FROM domestic_etfs "
+           "WHERE TRIM(ext_etf_holdings.ticker) = 'LI' AND domestic_etfs.wu_inv_rgn = '국내' LIMIT 30")
+    err = validate_sql(bad)
+    assert err and "ext_etf_holdings" in err
+    # 다른 마스터 테이블을 선언 없이 끌어다 쓰는 것도 같다
+    assert validate_sql("SELECT pd_nm FROM domestic_etfs WHERE overseas_etfs.pd_nm='x' LIMIT 5")
+
+
+def test_guard_allows_declared_join_and_alias():
+    """정상 JOIN·별칭은 그대로 통과해야 한다 — 기각 규칙이 과잉이면 정답 SQL 을 버린다."""
+    ok_join = ("SELECT pd_nm FROM domestic_etfs JOIN ext_etf_holdings "
+               "ON ext_etf_holdings.etf_ticker = domestic_etfs.pd_itm_no "
+               "WHERE ext_etf_holdings.constituent = '삼성전자' LIMIT 30")
+    assert validate_sql(ok_join) is None
+    ok_alias = ("SELECT e.pd_nm FROM domestic_etfs e JOIN ext_etf_holdings h "
+                "ON h.etf_ticker = e.pd_itm_no WHERE h.constituent = '삼성전자' LIMIT 30")
+    assert validate_sql(ok_alias) is None
+    assert validate_sql("SELECT d.pd_nm FROM domestic_etfs d WHERE d.pd_grp_no='ETF' LIMIT 5") is None

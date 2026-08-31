@@ -69,6 +69,9 @@ _FORBIDDEN = re.compile(
 )   # 🔧 2026-08-31 저녁: replace → replace into 만 금지. REPLACE(pd_nm,' ','') 문자열 함수는 정당한 읽기 연산인데 기각되고 있었다
 
 
+_TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+
+
 def validate_sql(sql: str) -> str | None:
     """위반 사유를 반환. None 이면 통과."""
     s = sql.strip().rstrip(";")
@@ -85,9 +88,20 @@ def validate_sql(sql: str) -> str | None:
         return f"허용 테이블 밖: {m.group(1) if m else '?'}"
     # FROM/JOIN 에 등장하는 모든 테이블이 마스터 4 + 외부 ext_* 안에 있어야 한다 (교차질의 조인 허용, 그 외 차단)
     ctes = {n.lower() for n in re.findall(r"\b([A-Za-z_]\w*)\s+as\s*\(", s, re.I)}  # WITH 별칭은 테이블이 아니다
-    for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", s, re.I):
-        if t.lower() not in TABLES and t.lower() not in EXT_TABLES and t.lower() not in ctes:
+    declared = {t.lower() for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", s, re.I)} | ctes
+    for t in declared - ctes:
+        if t not in TABLES and t not in EXT_TABLES:
             return f"허용 테이블 밖: {t}"
+    # 🔴 FROM/JOIN 에 없는 테이블을 `테이블.컬럼` 으로 참조하면 실행 시 OperationalError 가 난다.
+    #    2026-08-31 서버 실측 — "Li Auto를 담은 국내 ETF":
+    #      SELECT pd_nm FROM domestic_etfs WHERE TRIM(ext_etf_holdings.ticker)='LI' … → 실행 실패.
+    #    Guard 는 "검사 통과" 를 찍고 Execute 에서 죽어 답변이 '오류가 발생해 확인할 수 없습니다' 로 나갔다.
+    #    여기서 기각하면 재생성 1회(R-4)가 사유를 받아 JOIN 을 붙일 기회를 얻는다.
+    #    별칭(`d.pd_nm`)은 걸리지 않는다 — 아는 테이블 이름일 때만 본다.
+    known = set(TABLES) | set(EXT_TABLES)
+    for qual in {m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}:
+        if qual in known and qual not in declared:
+            return f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
     return None

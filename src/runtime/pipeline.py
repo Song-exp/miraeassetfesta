@@ -385,9 +385,39 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     target = _fund_sort_target(sql)
     if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
         add.append("zrin_attr_nms")
+    # 🔴 **조건에 쓴 서술 컬럼이 결과에 없으면 답변기가 결과를 해석하지 못한다** — 2026-08-31 밤 실측(FND-R09):
+    #    WHERE han_clas_policies LIKE '%전문투자자%' 로 27행을 정확히 조회하고도 SELECT 에 그 컬럼이 없어
+    #    (itm_nm·mtco_itm_no·기준일만), 답변기가 "정보를 찾을 수 없습니다" 로 **조회 결과를 통째로 버렸다**.
+    #    FND-016(이름 소실 → 환각)과 같은 뿌리다: 답변기는 SELECT 에 실린 것만 볼 수 있다.
+    #    필터 근거를 답에 쓰려면 그 컬럼이 결과에 있어야 한다 — 최대 3개까지만 붙여 폭을 제한한다.
+    where = re.search(r"\bwhere\b(.*?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if where:
+        known = {c.lower() for c, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ())}
+        for col in dict.fromkeys(re.findall(r"\b[a-z][a-z0-9_]{3,}\b", where.group(1), re.I)):
+            c = col.lower()
+            if len(add) >= 3:
+                break
+            if c in known and c not in _EVIDENCE_SKIP and c not in head.lower() and c not in " ".join(add).lower():
+                add.append(c)
     if not add:
         return sql, False
     return head.rstrip() + ", " + ", ".join(add) + " " + sql[frm.start():], True
+
+
+# 결과에 다시 실을 필요가 없는 컬럼 — 기본모수·식별자·이미 다루는 축·결측 판정용
+_EVIDENCE_SKIP = {
+    "sale_yn", "prvo_pbff_desc", "itm_no", "itm_nm", "itm_abrv_nm", "mtco_itm_no",
+    "or_co_xtn_itt_cd", "null", "not", "and", "or", "like", "select", "from", "where",
+    "trim", "coalesce", "cast", "substr", "length", "case", "when", "then", "else", "end",
+    "zrin_fd_ivst_risk_gcd",   # 이름 컬럼(grd_nm)을 위에서 이미 붙인다
+}
+
+
+@lru_cache(maxsize=1)
+def _ev_ctx():
+    """스키마 조회용 컨텍스트 — 가드가 ctx 를 인자로 받지 않으므로 여기서 한 번만 로드한다."""
+    from .loader import load_context
+    return load_context()
 
 
 _SAFE_Q = re.compile(r"안전|안정적|안정형")

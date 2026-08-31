@@ -146,6 +146,17 @@ def test_fund_evidence_columns():
     dist = "SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY zrin_btyp_nm LIMIT 30"
     assert "itm_no" not in f(dist)[0]
 
+    # 🔴 WHERE 에 쓴 서술 컬럼이 SELECT 에 없으면 붙인다 — FND-R09 실측: 27행을 조회하고도
+    #    필터 근거(han_clas_policies)가 결과에 없어 답변기가 "찾을 수 없습니다" 로 버렸다(§6-2f)
+    r09 = ("SELECT DISTINCT itm_nm, mtco_itm_no, fd_daily_bas_dt FROM public_funds "
+           "WHERE prvo_pbff_desc = '공모' AND han_clas_policies LIKE '%전문투자자%' "
+           "AND sale_yn = '판매중' LIMIT 30")
+    s3, ok3 = f(r09)
+    assert ok3 and "han_clas_policies" in s3.split("FROM")[0]
+    assert not f(s3)[1]                                   # 멱등
+    # 기본모수 컬럼(sale_yn·prvo_pbff_desc)은 근거가 아니라 모수라 붙이지 않는다
+    assert "sale_yn" not in s3.split("FROM")[0]
+
 
 def test_fund_safe_grade_direction():
     """FND-C03 실측 — '안전' 질의의 등급 필터가 1·2 로 뒤집혔으면 6 으로 교정."""

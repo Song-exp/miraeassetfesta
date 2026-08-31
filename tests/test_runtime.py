@@ -397,15 +397,28 @@ def test_ensure_top_safety():
     # 위험등급 필터가 아예 없으면 주입 (WHERE 끝, ORDER BY 앞)
     f2, c2 = ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' ORDER BY applied_yield DESC LIMIT 3", q)
     assert c2 and f2.index("pd_risk_gcd = '16'") < f2.index("ORDER BY")
-    # = '15' 단독도 교정 · 6등급이 실존하는 종류(국고채)는 발동
+    # = '15' 단독도 교정 · 6등급이 실존하는 종류(국고채·은행채 — 특수은행채 16등급 1,241행 실측)는 발동
     assert "pd_risk_gcd = '16'" in ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '15' LIMIT 3", q)[0]
     assert ensure_top_safety(sql, "가장 안전한 국고채 3개 추천해줘")[1]
-    # 불개입 — 이미 16 단독 / 최상급 아님(IN 15,16 이 정답) / 수익률 하한 요구(폴백 영역) /
-    # 6등급 없는 종류(회사채 — 강제하면 0행) / 채권 테이블 아님
+    assert ensure_top_safety(sql, "가장 안전한 은행채 3개 추천해줘")[1]
+    # 어구 변종(2026-09-01 전수조사에서 누락 발견분) — 어순 역전·조사 2글자·외래어·덜 위험·안전성 높음
+    for variant in ("가장 위험이 낮은 채권 골라줘", "위험도가 가장 낮은 채권", "리스크가 가장 낮은 채권 추천",
+                    "가장 덜 위험한 채권", "안전성이 가장 높은 채권 3개"):
+        assert ensure_top_safety(sql, variant)[1], variant
+    # 구조표시 CASE 동반 — 치환은 WHERE 범위만: SELECT 의 pd_risk_gcd IN ('11','12','13') 은 보존 (전수조사 실측 파손)
+    case_sql = ("SELECT pd_nm, CASE WHEN TRIM(bd_knd) IN ('특수은행채','일반은행채','금융지주회사채') "
+                "AND pd_risk_gcd IN ('11','12','13') THEN '은행 자본성증권' ELSE '' END AS 구조, pd_risk_nm "
+                "FROM domestic_bonds WHERE pd_risk_gcd IN ('15','16') ORDER BY applied_yield DESC LIMIT 3")
+    f3, c3 = ensure_top_safety(case_sql, q)
+    assert c3 and "IN ('11','12','13')" in f3 and "pd_risk_gcd = '16'" in f3 and "IN ('15','16')" not in f3
+    # 불개입 — 이미 16 단독 / 최상급 아님(IN 15,16 이 정답) / 안정추구형(15,16) / 수익률 하한 요구(폴백 영역) /
+    # 6등급 없는 종류(회사채 — 강제하면 0행) / 반대 방향 최상급 동반(비교 질의) / 채권 테이블 아님
     assert not ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' LIMIT 3", q)[1]
     assert not ensure_top_safety(sql, "위험 낮은 채권 3개 추천해줘")[1]
+    assert not ensure_top_safety(sql, "안정추구형 투자자용 채권 3개")[1]
     assert not ensure_top_safety(sql, "가장 안전한 채권 중 수익률 6.5% 이상 3개")[1]
     assert not ensure_top_safety(sql, "가장 안전한 회사채 3개 추천해줘")[1]
+    assert not ensure_top_safety(sql, "가장 안전한 채권과 가장 위험한 채권 하나씩 알려줘")[1]
     assert not ensure_top_safety("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 3", q)[1]
 
 

@@ -499,16 +499,25 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     return _append_exclusions(sql, [next(iter(filters))])
 
 
-_TOP_SAFE_Q = re.compile(r"(?:가장|제일|젤|최고로?)\s*안전|위험[이도은]?\s*(?:가장|제일|매우|아주)\s*낮|매우\s*낮은\s*위험|원금\s*(?:이\s*)?최우선|안정형")
+_SUP = r"(?:가장|제일|젤|최고로?)"                       # 최상급 수식어
+_RISKW = r"(?:위험|리스크)(?:도|성)?[이가은는]?"           # 위험 명사 + 조사 ('위험도가' 꼴 포함)
+_TOP_SAFE_Q = re.compile(
+    rf"{_SUP}\s*안전|안전(?:성|도)?[이가은는]?\s*{_SUP}\s*높|{_SUP}\s*덜\s*위험"
+    rf"|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*낮|{_SUP}\s*{_RISKW}\s*낮"
+    rf"|매우\s*낮은\s*위험|{_RISKW}\s*최소|원금\s*(?:이\s*)?최우선|안정형")
+_TOP_RISK_Q = re.compile(                                # 반대 방향 최상급 — 동반되면 비교 질의라 불개입
+    rf"{_SUP}\s*위험한|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*높|{_SUP}\s*안\s*좋")
 _YIELD_DEMAND_Q = re.compile(r"[\d.]+\s*(?:%|퍼센트|프로)\s*(?:이상|넘|초과)")
-_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 — 국공채·특수채 계열만 (회사채 대분류는 6등급 0)
-    _KTB_FILTER,
-    "TRIM(std_pd_mcls_nm)='국공채'",
-    "TRIM(std_pd_mcls_nm)='특수채'",
-    "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')",
-    "TRIM(bd_knd)='통화안정채권'",
-    "TRIM(bd_knd)='MBS'",
-}
+_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 확정식 — 2026-09-01 전수 실측 (구매가능 모수 기준 16등급 행수)
+    _KTB_FILTER,                                                   # 377 (전부 16)
+    "TRIM(std_pd_mcls_nm)='국공채'",                                # 2,838
+    "TRIM(std_pd_mcls_nm)='특수채'",                                # 6,077
+    "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')",        # 2,239 (전부 16)
+    "TRIM(bd_knd)='통화안정채권'",                                   # 33 (전부 16)
+    "TRIM(bd_knd)='MBS'",                                          # 1,394
+    "TRIM(bd_knd) IN ('일반은행채','특수은행채')",                     # 1,241 (특수은행채 몫 — '가장 안전한 은행채' 는 16 강제가 맞다)
+    "TRIM(bd_knd)='특수은행채'",                                     # 1,241
+}   # 밖에 남는 것(16 = 0 실측): 회사채·일반회사채·일반은행채·신용카드채·할부금융채·보험회사채·투자매매.중개채
 _RISK_POS = re.compile(r"pd_risk_gcd\s*(?:IN\s*\(([^)]*)\)|=\s*'(\d+)')", re.I)
 
 
@@ -519,15 +528,21 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     로 나가 5등급 SC은행 콜옵션부 7.1% 가 1~3위 — 안전 버킷에서 가장 덜 안전한 구석이 정답을
     밀어냈다. 위험등급방향 규칙의 "'가장 안전한' 만 '16' 단독" 분기가 900자 문장에 파묻혀 미적용.
     '16' 단독이면 전 행 동급이라 수익률 정렬은 동점자 처리가 되므로 ORDER BY 는 건드리지 않는다.
-    불개입 2종 — 규칙의 IN ('15','16') 폴백이 정답인 영역: ① 수익률 하한 요구(6등급 최고 6.23%)
-    ② 6등급이 없는 종류 지목(회사채·은행채 등 — 강제하면 0행 '확인 불가' 오답)."""
+    불개입 3종 — 규칙의 IN ('15','16') 폴백·비교 답변이 정답인 영역: ① 수익률 하한 요구(6등급
+    최고 6.23%) ② 6등급이 없는 종류 지목(회사채·카드채 등 — 강제하면 0행 '확인 불가' 오답)
+    ③ 반대 방향 최상급 동반('가장 안전한 것과 가장 위험한 것') — 비교 질의.
+    치환은 WHERE 절 범위에서만 — 구조표시 규칙의 SELECT CASE 에 pd_risk_gcd IN ('11','12','13')
+    이 실리므로(은행 자본성증권 판정) 전문 치환은 그 CASE 를 파손한다 (2026-09-01 전수조사 실측)."""
     if "domestic_bonds" not in sql or not _TOP_SAFE_Q.search(question):
         return sql, False
-    if _YIELD_DEMAND_Q.search(question):
+    if _TOP_RISK_Q.search(question) or _YIELD_DEMAND_Q.search(question):
         return sql, False
     if _question_kind_filters(question) - _SAFE16_KINDS:
         return sql, False
-    m = _RISK_POS.search(sql)
+    wm = re.search(r"\bWHERE\b", sql, re.I)
+    lo = wm.end() if wm else len(sql)
+    tail = _WHERE_TAIL.search(sql, lo)
+    m = _RISK_POS.search(sql, lo, tail.start() if tail else len(sql))
     if not m:
         return _append_exclusions(sql, ["pd_risk_gcd = '16'"])
     vals = set(re.findall(r"\d+", m.group(1) or m.group(2)))

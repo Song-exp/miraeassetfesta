@@ -71,11 +71,18 @@ def test_fund_base_population_injected():
     s, ok = f("SELECT itm_nm FROM public_funds ORDER BY fd_nast_suma DESC LIMIT 5", "규모 큰 펀드")
     assert ok and "WHERE sale_yn = '판매중'" in s and s.index("WHERE") < s.upper().index("ORDER BY")
 
-    # 발동 금지 4갈래 — 모수 언급 SQL · 사모 질문 · 교차(JOIN) · 랭킹 아님
-    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")[1]
+    # 🔴 빠진 쪽만 주입한다 (2026-08-31 밤 FND-030) — 한쪽만 쓴 SQL 이 반쪽 모수로 나가던 것을 막는다.
+    #    기존 조건은 그대로 두고 없는 것만 채운다.
+    s, ok = f("SELECT COUNT(*) FROM public_funds WHERE thco_sale_yn='Y' AND prvo_pbff_desc='공모' LIMIT 30",
+              "미래에셋증권에서 살 수 있는 공모펀드는 몇 개야?")
+    assert ok and "sale_yn = '판매중'" in s and s.count("prvo_pbff_desc") == 1
+    s, ok = f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")
+    assert ok and "판매완료" in s and "prvo_pbff_desc = '공모'" in s and "'판매중'" not in s
+
+    # 발동 금지 3갈래 — 모수 확장 질문 · 교차(JOIN) · 집계도 랭킹도 아님
     assert not f("SELECT itm_nm FROM public_funds ORDER BY 1 LIMIT 5", "사모 펀드 중 큰 것")[1]
     assert not f("SELECT 1 FROM public_funds p JOIN ext_fund_holdings h ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
-    assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1", "펀드 몇 개")[1]
+    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 5", "펀드")[1]
 
 
 # ── 펀드 랭킹 대표행·근거컬럼·방향 가드 4종 (2026-08-31 밤 — FND-019·015·C03 실측 채점 후속) ──

@@ -227,13 +227,21 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
         return sql, False
-    if not re.search(r"\border\s+by\b", sql, re.I):
-        return sql, False
-    if re.search(r"\bsale_yn\b|\bprvo_pbff_desc\b", sql, re.I):
+    # 🔴 랭킹(ORDER BY)뿐 아니라 **집계(COUNT/SUM/AVG)** 도 기본모수 대상이다 — 기본모수 규칙이
+    #    "집계·Top-N" 을 함께 말한다. 2026-08-31 밤 FND-030 실측: COUNT 질의에 sale_yn 이 빠졌다.
+    if not re.search(r"\border\s+by\b", sql, re.I) and not re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I):
         return sql, False
     if any(t in question for t in _POP_WIDEN):
         return sql, False
-    cond = "sale_yn = '판매중' AND prvo_pbff_desc = '공모'"
+    # 🔴 **빠진 쪽만** 주입한다 — 예전엔 둘 중 하나라도 있으면 통째로 건너뛰어서, 한쪽만 쓴 SQL 이
+    #    반쪽 모수로 나갔다(2026-08-31 밤 FND-030 실측: prvo_pbff_desc 만 있고 sale_yn 누락).
+    #    모수를 넓히는 질의는 위 _POP_WIDEN 이 이미 막으므로 모델 의도를 해치지 않는다.
+    missing = [c for c, pat in (("sale_yn = '판매중'", r"\bsale_yn\b"),
+                                ("prvo_pbff_desc = '공모'", r"\bprvo_pbff_desc\b"))
+               if not re.search(pat, sql, re.I)]
+    if not missing:
+        return sql, False
+    cond = " AND ".join(missing)
     m = re.search(r"\bwhere\b", sql, re.I)
     if m:
         # 기존 조건을 괄호로 감싼다 — 'WHERE a OR b' 에 그냥 AND 를 붙이면 (cond AND a) OR b 로 샌다
@@ -1016,6 +1024,18 @@ def _synonym_keys(ctx) -> dict:
 _KR_LISTING = re.compile(r"국내\s*(?:상장|증시|시장)?\s*(?:ETF|ETN|etf|etn|상품|종목)")
 
 
+# '미래에셋증권에서 살 수 있는' 은 **판매사** 질의다 — KG 의 수탁사 노드(Org_trustee_*)를 물어오면
+# trusc_xtn_itt_cd 필터가 붙어 모수가 엉뚱하게 좁아진다(2026-08-31 밤 FND-030 실측: 2,908펀드 → 14개).
+# Region_Korea 억제와 같은 계열의 처방. 수탁을 명시한 질의는 예외로 둔다.
+_SALE_CHANNEL_Q = re.compile(r"살\s*수\s*있|판매하|취급|파는|구매\s*가능|판매사")
+_TRUSTEE_Q = re.compile(r"수탁|보관")
+
+
+def _drop_trustee_node(question: str) -> bool:
+    """판매 경로를 묻는 질의인가 — 그렇다면 수탁사 노드는 답이 아니다."""
+    return bool(_SALE_CHANNEL_Q.search(question)) and not _TRUSTEE_Q.search(question)
+
+
 def _region_korea_is_listing(question: str) -> bool:
     """'국내 ETF'·'국내 상장 ETF' 처럼 국내가 상장 시장을 가리키면 True.
 
@@ -1106,6 +1126,7 @@ def _ground(
                 yield alias, True
 
     drop_kr = _region_korea_is_listing(question)
+    drop_trustee = _drop_trustee_node(question)
     # (키, 노드, 경계검사) 목록은 질문과 무관하다 — 프로세스당 1회만 만든다.
     # 정렬만 질문마다 다시 한다(_in_target 이 대상 테이블에 걸려 있어서).
     pairs = _MATCH_KEYS.get(id(ctx))
@@ -1126,6 +1147,11 @@ def _ground(
             continue
         if bounded and not _boundary_hit(label, consumed):
             # 보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙는 것을 막는다
+            continue
+        if drop_trustee and node.node_id.startswith("Org_trustee_"):
+            # 판매사 질의에 수탁사 노드를 물어오면 모수가 엉뚱해진다 — 라벨은 소비해 같은 자리에서 다시 안 잡히게 둔다
+            consumed = consumed.replace(label, " ")
+            lines.append(f"'{label}' → (건너뜀) 판매 경로 질의 — 수탁사 노드는 답이 아니다 (당사판매 thco_sale_yn 로 푼다)")
             continue
         if drop_kr and node.node_id == "Region_Korea":
             # '국내 ETF' 의 '국내' 는 상장 시장이다. 라벨은 소비해 같은 자리에서 다시 잡히지 않게 둔다

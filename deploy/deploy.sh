@@ -132,10 +132,24 @@ say "4. 밖에서 확인"
 sleep 5
 echo "-- /health"
 curl -s -m 20 "https://$IP.nip.io/health"; echo
-echo "-- /answer (게이트 기각 경로 — HCX 호출 0회)"
-curl -sG -m 30 "https://$IP.nip.io/answer" \
-  --data-urlencode "question_id=DEPLOY-001" \
-  --data-urlencode "question=신용등급 AAAA인 채권 알려줘" | python -m json.tool
+echo "-- /answer (게이트 기각 경로 — HCX 호출 0회 · fail-closed 스모크)"
+# 🔴 8/30 교훈: curl 에 한글 리터럴을 주면 셸/스크립트 인코딩이 깨져도 스모크가 통과해 버렸다(fail-open).
+#    질의를 ASCII 유니코드 이스케이프로만 적고(스크립트 인코딩 무관), 응답의 question 에코가
+#    바이트 단위로 일치하는지 **먼저** 단언한다. 실패 시 exit 1 → set -e 로 배포 절차가 멈춘다.
+python - "$IP" <<'PYEOF'
+import json, sys, urllib.parse, urllib.request
+ip = sys.argv[1]
+q = "\uc2e0\uc6a9\ub4f1\uae09 AAAA\uc778 \ucc44\uad8c \uc54c\ub824\uc918"  # = "신용등급 AAAA인 채권 알려줘"
+url = "https://%s.nip.io/answer?%s" % (ip, urllib.parse.urlencode({"question_id": "DEPLOY-001", "question": q}))
+body = json.load(urllib.request.urlopen(url, timeout=30))
+sys.stdout.buffer.write((json.dumps(body, ensure_ascii=False, indent=1)[:800] + "\n").encode("utf-8"))
+if body.get("question") != q:
+    print("SMOKE FAIL: question echo mismatch (encoding broken en route)"); sys.exit(1)
+tt = body.get("think_trace", "")
+if "[Gate]" not in tt and "[Refuse]" not in tt:
+    print("SMOKE FAIL: expected gate/refuse for AAAA"); sys.exit(1)
+print("SMOKE OK: echo bytes match + gate rejection")
+PYEOF
 echo
 echo "✅ 배포 절차 종료. agent_ready 가 false 면 서버 .env 의 AGENT_READY=1 을 확인하세요."
 echo "   팀 실험 UI:  https://$IP.nip.io/chat?t=<CHAT_TOKEN>"

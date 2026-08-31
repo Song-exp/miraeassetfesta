@@ -758,3 +758,82 @@ clarify:
       → 문장에 '상장' 이 붙으면 지역 필터로 쓰지 않는다.
     규모:   "순자산(du_last_aum) / 거래대금 / 상장주식수 — 셋이 다름. 기본은 순자산"
     레버리지: "🔴 배수만 보면 인버스가 섞인다(324건 중 117건). query_rules.레버리지_인버스혼입경고 참조"
+
+# ── 이름 인코딩 — 상품명에 박혀 있는 정보 (2026-08-31 신설) ──
+#    리드 지시(08-31): "온톨로지 검토북 들어가서 각자 도메인 살펴보고 부족한 거 채워나가면 될 듯"
+#      → 규칙북 대조 결과 채권엔 name_encoding(42건)이 있는데 ETF 엔 없었다. 그 빈 곳을 채운다.
+#    리드 지시(08-31): "문자열 매칭은 좋은데 규칙을 더 세분화해서 전부 온톨로지에 박아놔야 될 듯. 안 걸리는 거 없게"
+#      → 상품명에 든 정보를 전수 조사해 **대응 컬럼이 있는지**까지 함께 적는다.
+#    🔴 원칙 — **대응 컬럼이 있으면 컬럼을 쓴다.** 이름은 컬럼이 없거나 값이 소실된 경우에만 쓴다.
+#    전수 근거: docs/rule_audit/README.md §3
+name_encoding:
+  # ① 대응 컬럼이 있음 — 이름을 쓰지 말 것
+  has_column:
+    레버리지:   {count: 390, column: cu_lev_fector, note: "배수 절댓값으로 판별. 이름 불필요"}
+    액티브:     {count: 359, column: "cu_strtegy='액티브'", note: 값매핑 정상}
+    합성:       {count: 104, column: "cu_strtegy='합성복제'", note: "이름의 '(합성)' 과 일치"}
+    월배당:     {count: 0,   column: "pd_dvid_cycl='M'",     note: "이름엔 '월배당' 표기가 없다 — 컬럼만 쓴다"}
+
+  # ② 대응 컬럼이 없거나 값이 소실됨 — 이름이 유일 근거
+  name_only:
+    인버스:
+      count: 235
+      pattern: "pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%'"
+      why: >-
+        🔴 cu_lev_fector 부호가 **88% 소실**됐다 — 이름이 '인버스 2X' 인데 배수가 +2.0.
+        음수는 235건 중 23건뿐이라 부호로 판별하면 212건을 놓친다.
+        해외엔 cu_inverse_short_yn 플래그가 있으나 국내엔 없다.
+      verified: "전수 검토 오탐 0 · 누락 0 (docs/rule_audit/inverse_domestic_2026-08-31.csv)"
+      rule: query_rules.인버스
+    환헤지:
+      count: 235
+      pattern: "pd_abrv_nm LIKE '%(H)%' OR pd_nm LIKE '%(H)%'"
+      why: >-
+        환헤지 여부 컬럼이 **없다.** 표기는 `(H)` 하나로 정형적이다 —
+        실측 2026-08-31: `(H)` 235건 · `(UH)` **0건** · '언헤지' 0건 · '환헤지' 0건.
+        즉 **`(H)` 가 붙으면 헤지, 안 붙으면 미헤지**로 읽는다(UH 표기는 국내에 없다).
+      caution: >-
+        ⚠️ 괄호를 포함해 매칭한다. `H` 만 찾으면 'HANARO'·'HBM' 등에 오탐이 난다.
+      rule: 🔴 아직 없음 — 환헤지 질의가 오면 신설 필요
+    선물:
+      count: 403
+      pattern: "pd_abrv_nm LIKE '%선물%' OR pd_nm LIKE '%선물%'"
+      why: 파생상품 여부 컬럼이 없다. 기초자산을 현물이 아니라 선물로 담는 상품이다.
+      caution: >-
+        ⚠️ 선물 ETF 는 롤오버 비용이 있어 장기 수익률이 기초지수와 벌어진다.
+        '지수를 그대로 추종한다'고 답하면 안 된다.
+      rule: 🔴 아직 없음
+    단일종목:
+      count: 18
+      pattern: "pd_abrv_nm LIKE '%단일종목%' OR pd_nm LIKE '%단일종목%'"
+      why: >-
+        한 종목에 집중 투자하는 ETF. 분산 효과가 없다.
+        실측: 삼성전자 편입비중 상위 5개가 전부 단일종목 레버리지(71~96%)다.
+      caution: "'ETF 는 분산투자' 라는 통념이 깨지는 상품 — 편입비중 질의에서 상위를 독점한다"
+      rule: query_rules.편입비중상위_레버리지경고 가 일부 대응
+    롱숏:
+      count: 2
+      pattern: "pd_abrv_nm LIKE '%롱%숏%' OR pd_nm LIKE '%롱%숏%'"
+      why: 인버스도 레버리지도 아닌 스프레드 전략. 누락 사냥(08-31)에서 발견.
+      rule: query_rules.롱숏
+
+  # ③ 기초지수명에 있음 — 상품명이 아니라 ref_base_index 를 본다
+  in_index_name:
+    커버드콜: {count: 63, index_pattern: "'Covered Call'", rule: query_rules.지수추종_순수}
+    혼합형:   {count: 70, index_pattern: "'Blend' · '50/50'", rule: query_rules.지수추종_순수}
+    TR_PR:    {count: 32, index_pattern: "'TR' · 'PR'", note: "총수익/가격 지수 구분. 규칙 없음 — 수익률 비교 시 섞이면 안 된다"}
+
+  # ④ 브랜드 접두어 → 운용사 (실측 2026-08-31, 1:1 대응)
+  brand_prefix:
+    KODEX:  {운용사: 삼성,     count: 243}
+    TIGER:  {운용사: 미래에셋,  count: 237}
+    RISE:   {운용사: KB,       count: 150}
+    ACE:    {운용사: 한국투자,  count: 120}
+    PLUS:   {운용사: 한화,     count: 92}
+    KIWOOM: {운용사: 키움,     count: 81}
+    SOL:    {운용사: 신한,     count: 81}
+    HANARO: {운용사: NH-Amundi, count: 64}
+    note: >-
+      🔴 브랜드로 운용사를 판정하지 말 것 — cu_fund_mgmt_co 컬럼이 정본이다.
+      이 표는 **사용자가 브랜드명으로 물었을 때 운용사로 잇기 위한 것**이다
+      ("KODEX 상품 알려줘" → 삼성자산운용). 반대 방향(운용사→브랜드)은 코드북 asset_manager.csv.

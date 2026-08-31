@@ -1542,6 +1542,12 @@ def answer_question(
         unk = guard.unknown_columns(sql, ctx)
         if unk:
             err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
+    if not err:
+        # 🔴 JOIN 의 모호 컬럼 — 실행 오류는 재생성 경로가 없어 그대로 "조회 중 오류" 가 나간다
+        amb = guard.ambiguous_columns(sql, ctx)
+        if amb:
+            err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
+                   + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
     violations = [] if err else guard.check_values(sql, ctx)
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
@@ -1571,6 +1577,8 @@ def answer_question(
                 unk = guard.unknown_columns(sql, ctx)
                 if unk:
                     err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
+                elif guard.ambiguous_columns(sql, ctx):
+                    err = "한정되지 않은 모호 컬럼: " + ", ".join(guard.ambiguous_columns(sql, ctx)[:5])
             violations = [] if err else guard.check_values(sql, ctx)
         if err or violations:
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")

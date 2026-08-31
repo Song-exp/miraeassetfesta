@@ -319,3 +319,21 @@ def test_hedge_fund_rule_is_answerable_now():
     g = ctx.planner_context(["public_funds"], "공모 헤지펀드 중 수익률 좋은 것 알려줘")
     assert "사모투자재간접" in g and "글로벌헤지전략" in g
     assert "수록되어 있지 않습니다" not in g          # 조회 없이 거절하라는 옛 지시가 사라졌다
+
+
+def test_ambiguous_join_column_rejected():
+    """설정일 질의 실측 — JOIN 에서 한정 안 된 itm_no 는 실행 시 ambiguous 오류라 미리 기각한다."""
+    from src.runtime.loader import load_context
+    from src.runtime import guard
+
+    ctx = load_context()
+    bad = ("SELECT itm_no, TRIM(itm_nm), fd_daily_bas_dt FROM public_funds "
+           "JOIN ext_fund_page ON public_funds.itm_no = ext_fund_page.itm_no "
+           "WHERE prvo_pbff_desc = '공모' ORDER BY estb_dt ASC LIMIT 1")
+    assert "itm_no" in guard.ambiguous_columns(bad, ctx)
+    good = ("SELECT p.itm_no, TRIM(p.itm_nm), e.estb_dt FROM public_funds p "
+            "JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn='판매중' "
+            "ORDER BY e.estb_dt ASC LIMIT 5")
+    assert not guard.ambiguous_columns(good, ctx)
+    # 단일 테이블은 검사 대상이 아니다
+    assert not guard.ambiguous_columns("SELECT itm_no FROM public_funds LIMIT 5", ctx)

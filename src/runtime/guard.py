@@ -102,6 +102,40 @@ def _owner_column(index: dict, table: str, column: str, literal: str) -> str:
     return ""
 
 
+_QUALIFIED = re.compile(r"[A-Za-z_]\w*\s*\.\s*([A-Za-z_]\w*)")
+
+
+def ambiguous_columns(sql: str, ctx: RuntimeContext) -> list[str]:
+    """JOIN 질의에서 **한정되지 않은** 채 여러 테이블에 존재하는 컬럼 — 실행하면 ambiguous 오류다.
+
+    2026-08-31 밤 실측(설정일 질의): public_funds JOIN ext_fund_page 에서 SELECT itm_no 가
+    양쪽에 있어 "ambiguous column name: itm_no" 로 죽었다. 실행 오류는 재생성 경로가 없어
+    그대로 "조회 중 오류" 응답이 나간다 — 실행 전에 잡아 재생성 1회를 준다.
+    """
+    body = _SQL_STR.sub("''", sql)
+    used = sql_tables(body)
+    if len(used) < 2:
+        return []
+    schema = getattr(ctx, "schema", {}) or {}
+    owners: dict[str, set] = {}
+    for t in used:
+        for c, *_ in (schema.get(t) or ()):
+            owners.setdefault(c.lower(), set()).add(t)
+    shared = {c for c, ts in owners.items() if len(ts) > 1}
+    if not shared:
+        return []
+    aliases = {a.lower() for a in _AS_ALIAS.findall(body)}
+    out = []
+    for c in sorted(shared):
+        if c in aliases:
+            continue
+        # 🔴 이름이 아니라 **등장 위치**로 판정한다 — `public_funds.itm_no` 가 한 번 있다고 해서
+        #    SELECT 의 맨 itm_no 가 한정된 것은 아니다(앞의 점 없는 등장이 곧 모호 컬럼이다).
+        if re.search(rf"(?<![\w.]){c}\b", body, re.I):
+            out.append(c)
+    return out
+
+
 def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     """값 사전이 완전한 컬럼에 한해, WHERE 리터럴이 실제 값인지 검사한다."""
     index = getattr(ctx, "value_index", None) or {}

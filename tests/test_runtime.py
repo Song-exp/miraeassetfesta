@@ -303,3 +303,63 @@ def test_full_path_grade_floor_expands(ctx):
     assert "[Guard] 등급 서열 확장" in r.think_trace
     assert "TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-', 'A+', 'A0', 'A-')" in r.sql
     assert "[Execute] 30행 조회" in r.think_trace
+
+
+_BACKSTOP_BUGGY_SQL = ("SELECT pd_nm, applied_yield, std_pd_mcls_nm, pd_risk_gcd FROM domestic_bonds "
+                       "WHERE (TRIM(std_pd_mcls_nm)='국공채' OR COALESCE(TRIM(pd_pbcm),'')='한국은행' "
+                       "OR pd_nm LIKE '%(정부보증)%') ORDER BY applied_yield DESC LIMIT 5")
+
+
+def test_ensure_credit_backstop():
+    from src.runtime.pipeline import ensure_credit_backstop
+    q = "정부가 책임지는채권 중에서 수익률 높은 순으로 5개 알려줘"
+    # 2026-08-31 저녁 서버 실측 SQL 그대로 — C층 탈락 → C층 + 랭킹 제외 조건 주입
+    fixed, changed = ensure_credit_backstop(_BACKSTOP_BUGGY_SQL, q)
+    assert changed
+    assert "'한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행'" in fixed
+    assert fixed.count("COALESCE(TRIM(pd_pbcm),'')='한국은행'") == 1     # 이미 있는 층은 중복 주입 금지
+    assert "applied_yield > 0" in fixed and "pd_risk_gcd <> '11'" in fixed
+    assert "bd_ofr_tcd <> '사모'" in fixed
+    assert fixed.index("<> '사모'") < fixed.index("ORDER BY")            # 제외는 WHERE 끝, 정렬 앞
+    # 랭킹 신호 없는 사실확인·집계 질의 — 층은 주입하되 제외는 넣지 않는다 (고위험제외 규칙)
+    fixed2, changed2 = ensure_credit_backstop(_BACKSTOP_BUGGY_SQL, "정부가 보증하는 채권이 몇 개야?")
+    assert changed2 and "한국주택금융공사" in fixed2 and "사모" not in fixed2
+    # 발동 조건 밖 — 정부보강 어휘 없음 / 앵커(국공채 필터) 없음 / 이미 완성식
+    assert not ensure_credit_backstop(_BACKSTOP_BUGGY_SQL, "국공채 수익률 높은 순 5개")[1]
+    assert not ensure_credit_backstop("SELECT 1 FROM domestic_bonds WHERE crd_grd='AAA' LIMIT 1", q)[1]
+    full = _BACKSTOP_BUGGY_SQL.replace("OR pd_nm LIKE '%(정부보증)%')",
+        "OR pd_nm LIKE '%(정부보증)%' OR TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')) "
+        "AND applied_yield > 0 AND pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모'")
+    assert not ensure_credit_backstop(full, q)[1]
+
+
+def test_ensure_risk_name_column():
+    from src.runtime.pipeline import ensure_risk_name_column
+    fixed, changed = ensure_risk_name_column(_BACKSTOP_BUGGY_SQL)
+    assert changed and "pd_risk_gcd, pd_risk_nm FROM" in fixed
+    # 불개입 — 이미 있음 / SELECT 에 코드 없음(WHERE 만) / 함수 인자
+    assert not ensure_risk_name_column(fixed)[1]
+    assert not ensure_risk_name_column("SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd='16' LIMIT 1")[1]
+    assert not ensure_risk_name_column("SELECT COUNT(pd_risk_gcd) FROM domestic_bonds")[1]
+
+
+class BuggyBackstopPlanner:
+    """2026-08-31 저녁 서버 실측 오답 SQL 그대로 — 지시문 승격(fbc7e4d) 후에도 C층·제외 절 탈락."""
+
+    def plan_sql(self, question, grounding):
+        return _BACKSTOP_BUGGY_SQL
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_backstop_recovers(ctx):
+    r = answer_question("T-23", "정부가 책임지는채권 중에서 수익률 높은 순으로 5개 알려줘",
+                        planner=BuggyBackstopPlanner(), ctx=ctx)
+    assert "[Guard] 신용보강 층 주입" in r.think_trace
+    assert "[Guard] 위험등급 이름 보강" in r.think_trace
+    assert "한국주택금융공사" in r.sql and "pd_risk_nm" in r.sql
+    assert "[Execute] 5행 조회" in r.think_trace
+    # 원 사고의 누락 1위(C층 5.859%)가 복귀하고, 사모/1등급 14.05% 는 제외된다
+    assert "토지주택채권 330(변)" in r.retrieved_context
+    assert "14.053" not in r.retrieved_context

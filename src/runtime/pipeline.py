@@ -210,6 +210,78 @@ def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
     return sql[:s] + repl + sql[e:], True
 
 
+_BACKSTOP_Q = re.compile(r"(?:정부|나라|국가)\s*(?:가|이|의|에서)?\s*(?:책임|보증|갚|지급)|정부\s*보증")
+_BACKSTOP_ANCHOR = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*=\s*'국공채'", re.I)
+_BACKSTOP_PARTS = [                              # (SQL 에 이미 있는지 볼 토큰, 주입식) — 신용보강 규칙의 A~C층
+    ("한국은행", "COALESCE(TRIM(pd_pbcm),'')='한국은행'"),
+    ("(정부보증)", "pd_nm LIKE '%(정부보증)%'"),
+    ("한국주택금융공사", "TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')"),
+]
+_RANK_Q = re.compile(r"추천|순으로|순위|톱|top\s*\d|\d+\s*(?:개|종목|가지)", re.I)
+_WHERE_TAIL = re.compile(r"\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT)\b", re.I)
+
+
+def ensure_credit_backstop(sql: str, question: str) -> tuple[str, bool]:
+    """'정부가 책임지는/보증하는' 질의 SQL 에 신용보강 필터의 빠진 층을 주입. (보정된 SQL, 보정했는지)
+
+    2026-08-31 저녁 서버 실측 재발: fbc7e4d 에서 지시문+복사용 WHERE 로 승격했는데도 HCX 가
+    C층(주금공·LH·산은·기은) OR 절만 또 빼먹어 1위 토지주택채권 330(변) 5.859% 가 다시 누락됐다.
+    긴 OR 절은 프롬프트 층만으로 안정 재현이 안 된다 — expand_grade_comparison 과 같은 결정 층.
+    발동 조건: ① 질문이 정부보강 어휘에 걸리고 ② SQL 에 국공채 대분류 필터(앵커)가 있다.
+    앵커를 괄호로 감싸 빠진 층만 OR 주입(이미 있는 층은 건드리지 않음 — OR 는 멱등이지만 중복 방지).
+    질문에 랭킹 신호(추천·순으로·N개)가 함께 있으면 고위험제외·수익률정상 조건도 WHERE 끝에 AND 주입
+    — 같은 실측에서 이 절들도 통째로 빠져 사모/1등급 14.05% 가 1위로 올라왔다. 랭킹 신호가 없으면
+    (사실확인·집계 질의) 제외를 주입하지 않는다: 조회에서는 제외하지 않는다는 고위험제외 규칙 그대로.
+    """
+    if not _BACKSTOP_Q.search(question):
+        return sql, False
+    m = _BACKSTOP_ANCHOR.search(sql)
+    if not m:
+        return sql, False
+    changed = False
+    missing = [expr for token, expr in _BACKSTOP_PARTS if token not in sql]
+    if missing:
+        s, e = m.span()
+        sql = f"{sql[:s]}({sql[s:e]} OR " + " OR ".join(missing) + f"){sql[e:]}"
+        changed = True
+    if _RANK_Q.search(question):
+        excl = []
+        if re.search(r"applied_yield", sql, re.I) and not re.search(r"applied_yield\s*>\s*0", sql):
+            excl.append("applied_yield > 0")
+        if "'11'" not in sql:
+            excl.append("pd_risk_gcd <> '11'")
+        if "C0" not in sql:
+            excl.append("COALESCE(TRIM(crd_grd),'') <> 'C0'")
+        if "사모" not in sql:
+            excl.append("bd_ofr_tcd <> '사모'")
+        if excl:
+            t = _WHERE_TAIL.search(sql)
+            pos = t.start() if t else len(sql)
+            sql = sql[:pos].rstrip() + " AND " + " AND ".join(excl) + " " + sql[pos:]
+            changed = True
+    return sql, changed
+
+
+def ensure_risk_name_column(sql: str) -> tuple[str, bool]:
+    """SELECT 에 위험등급 코드(pd_risk_gcd)만 있으면 이름(pd_risk_nm)을 나란히 붙인다.
+
+    2026-08-31 저녁 서버 실측: 코드만 SELECT 되자 답변기가 '16' 을 "위험등급 16등급" 으로 그대로
+    노출(존재하지 않는 등급). pd_risk_nm 은 DB 원본 컬럼이고 코드와 1:1 — 답변은 이름 문구를
+    인용하라는 규칙(위험등급방향)을 SELECT 단계에서 결정적으로 보장한다. COUNT(pd_risk_gcd) 처럼
+    함수 인자인 경우·이미 pd_risk_nm 이 있는 경우는 불개입.
+    """
+    if "pd_risk_nm" in sql:
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head = sql[: frm.start()]
+    m = re.search(r"\bpd_risk_gcd\b", head)
+    if not m or (m.start() > 0 and head[m.start() - 1] == "("):
+        return sql, False
+    return sql[: m.end()] + ", pd_risk_nm" + sql[m.end():], True
+
+
 def _ground(
     question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
 ) -> tuple[list, list[str]]:
@@ -595,6 +667,12 @@ def answer_question(
     sql, grades_fixed = expand_grade_comparison(sql, q)
     if grades_fixed:
         step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, backstop_fixed = ensure_credit_backstop(sql, q)
+    if backstop_fixed:
+        step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
+    sql, riskname_fixed = ensure_risk_name_column(sql)
+    if riskname_fixed:
+        step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")

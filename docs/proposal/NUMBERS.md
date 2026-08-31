@@ -34,20 +34,20 @@
 
 | 항목 | 값 |
 | :-- | --: |
-| `kg_node` | 39,677 |
-| `kg_alias` | 62,577 |
+| `kg_node` | 39,659 |
+| `kg_alias` | 62,564 |
 | `kg_edge` | 7,414 |
-| `kg_closure` | 9,919 |
+| `kg_closure` | 9,921 |
 
 ### 개체 종류별 노드
 
 | 개체 | 노드 수 |
 | :-- | --: |
 | Security | 26,271 |
-| Fund | 7,600 |
+| Fund | 7,584 |
 | Index | 3,172 |
-| Organization | 2,530 |
-| Region | 59 |
+| Organization | 2,527 |
+| Region | 60 |
 | CreditGrade | 21 |
 | AssetClass | 9 |
 | Currency | 8 |
@@ -57,7 +57,7 @@
 
 | 파일 | 줄 |
 | :-- | --: |
-| `ontology/common.ttl` | 56,994 |
+| `ontology/common.ttl` | 56,977 |
 | `ontology/bond_kr.ttl` | 26 |
 | `ontology/etf_kr.ttl` | 22 |
 | `ontology/etf_gl.ttl` | 21 |
@@ -65,10 +65,12 @@
 
 ## 4. 평가셋
 
-- `questions_cross_and_unanswerable.jsonl`: 9문항 (사람 검증 7)
+- `questions_cross_and_unanswerable.jsonl`: 9문항 (사람 검증 8)
+- `questions_domestic_bonds.jsonl`: 27문항 (사람 검증 27)
 - `questions_domestic_etfs.jsonl`: 23문항 (사람 검증 23)
-- `questions_official_sample.jsonl`: 8문항 (사람 검증 4)
+- `questions_official_sample.jsonl`: 8문항 (사람 검증 6)
 - `questions_overseas_etfs.jsonl`: 23문항 (사람 검증 23)
+- `questions_public_funds.jsonl`: 20문항 (사람 검증 0)
 
-**합계 63문항 · 사람 검증 57건**
+**합계 110문항 · 사람 검증 87건**
 

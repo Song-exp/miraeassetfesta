@@ -36,8 +36,8 @@ nodes:
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "아시아", source: manual, evidence: "33건"}
       - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "아시아", source: manual, evidence: "10,265건"}
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Asia Pacific", source: manual, evidence: "7건 — 오세아니아 포함 여부 미확정", status: pending}
-      - {table: domestic_etfs, column: ref_geo_focus, raw: "Asia Pacific", source: manual, evidence: "1건 — 2차 신규 참조컬럼(Lipper), 표기 동일", status: pending}
+      # 'Asia Pacific' 은 Region_AsiaPacific 으로 이동 (리드 결정 2026-08-31) — 실물 9건이 VPL·IPAC 등
+      # 일본+호주+NZ 포함 Pacific 계열이라 '아시아' 부착은 과대 해석이었다.
 
   Region_Korea:
     label_ko: 국내
@@ -56,9 +56,9 @@ nodes:
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn, raw: "중국",  source: manual, evidence: "63건"}
       - {table: overseas_etfs, column: wu_inv_rgn, raw: "China", source: manual, evidence: "46건"}
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Greater China", source: manual, evidence: "2건 — 홍콩·대만 포함 범위 미확정", status: pending}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Greater China", source: manual, evidence: "2건 — 리드 확정 08-31: 실물 ASHR(CSI300 순수 A주)·NBCE(중국 주식)라 본토 China 부착이 실질 정합. 대만 혼입 실측 0"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "China", source: manual, evidence: "56건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
-      - {table: domestic_etfs, column: ref_geo_focus, raw: "Greater China", source: manual, evidence: "1건 — 2차 신규 참조컬럼(Lipper), 표기 동일", status: pending}
+      - {table: domestic_etfs, column: ref_geo_focus, raw: "Greater China", source: manual, evidence: "1건 — 리드 확정 08-31 (위와 동일 근거)"}
 
   Region_Japan:
     label_ko: 일본
@@ -128,9 +128,18 @@ nodes:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "유럽",   source: manual, evidence: "7건"}
       - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Europe", source: manual, evidence: "41건"}
       - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "유럽",   source: manual, evidence: "1,846건"}
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "EuroZone", source: manual, evidence: "2건 — 유로존≠유럽(영국·스위스 제외) 미확정", status: pending}
-      - {table: domestic_etfs, column: ref_geo_focus, raw: "EuroZone", source: manual, evidence: "4건 — 2차 신규 참조컬럼(Lipper), 표기 동일", status: pending}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Europe", source: manual, evidence: "6건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
+      # 'EuroZone' 은 신설 Region_EuroZone(하위 노드)으로 이동 (리드 결정 2026-08-31) —
+      # Europe 직접 부착 시 "유로존" 질의가 영국·스위스 포함 유럽 전체로 과대 해석된다.
+
+  Region_EuroZone:
+    label_ko: 유로존
+    label_en: EuroZone
+    parent: Region_Europe
+    note: "리드 결정 2026-08-31 — 유로존 ⊂ 유럽(영국·스위스·노르웨이 제외). '유럽' 질의는 closure 로 이 노드 상품을 잡고, '유로존' 질의는 정확히 이 값만. 실물: FEZ(Euro Stoxx 50)·FEUZ"
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "EuroZone", source: manual, evidence: "2건 — FEZ·FEUZ 실측 08-31"}
+      - {table: domestic_etfs, column: ref_geo_focus, raw: "EuroZone", source: manual, evidence: "4건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
 
   Region_Emerging:
     label_ko: 이머징/브릭스
@@ -397,8 +406,10 @@ nodes:
     label_ko: 아시아태평양
     label_en: Asia Pacific
     parent: Region_Global
-    note: "'Asia Pacific' raw 는 기존 Region_Asia alias(pending) 가 선점 — 이 노드는 호주·NZ·ex Japan 의 상위 권역 용도"
-    aliases: []
+    note: "리드 결정 2026-08-31 — 'Asia Pacific' raw 를 여기 부착(Region_Asia 에서 이동). 실물 9건이 VPL(Vanguard Pacific)·IPAC 등 일본+호주+NZ 포함이라 '아시아' 가 아니라 이 권역이 맞다. 계층상 Asia 하위가 아니므로 '아시아' 질의에는 안 잡힌다 — 의미상 옳음(호주 포함)"
+    aliases:
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Asia Pacific", source: manual, evidence: "9건 — VPL·IPAC·DVYA 등 Pacific 계열 실측 08-31"}
+      - {table: domestic_etfs, column: ref_geo_focus, raw: "Asia Pacific", source: manual, evidence: "1건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
   Region_AsiaPacificExJapan:
     label_ko: 아시아태평양(일본 제외)
     label_en: Asia Pacific ex Japan

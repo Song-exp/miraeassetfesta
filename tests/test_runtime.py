@@ -128,6 +128,16 @@ def test_cross_query_detected(ctx):
     assert gate.is_cross_query("삼성전자를 보유한 국내/해외 ETF와 공모펀드를 연 수익률 기준 TOP10 알려줘", [])
     assert gate.is_cross_query("채권과 ETF 중 뭐가 안전해?", ["domestic_bonds", "domestic_etfs"])
     assert not gate.is_cross_query("KODEX 200 총보수 알려줘", ["domestic_etfs"])
+    # 🔴 2026-08-31 서버 실측 — '담은' 이 힌트에 없어 단일 라우팅에서 종목 노드가 규칙 E 로 버려졌다
+    assert gate.is_cross_query("Li Auto 담은 국내 ETF 알려줘", ["domestic_etfs"], 1)
+    assert gate.is_cross_query("삼성전자가 담긴 ETF", ["domestic_etfs"], 1)
+
+
+def test_join_keys_no_isin_join(ctx):
+    """해외ETF 조인은 티커 경유 — isin 조인은 63종 중복으로 다른 ETF 구성종목이 붙는다(오배정 8건 실증)."""
+    from src.runtime.pipeline import JOIN_KEYS
+    ovs = dict(JOIN_KEYS)["ext_ovs_etf_holdings"]
+    assert "pd_isin_cd" not in ovs and "etf_ticker" in ovs
 
 
 def test_security_grounding_no_false_positive(ctx):

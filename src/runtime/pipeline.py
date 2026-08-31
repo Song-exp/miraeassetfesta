@@ -718,7 +718,10 @@ MAX_ALIAS_VALUES = 60   # 한 컬럼에 실을 값 상한. 병목이 rate limit 
 # 조인 시 팬아웃이 있다 — 개수를 셀 때는 DISTINCT 를 쓴다.
 JOIN_KEYS: list[tuple[str, str]] = [
     ("ext_etf_holdings", "ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no"),
-    ("ext_ovs_etf_holdings", "ext_ovs_etf_holdings.isin = overseas_etfs.pd_isin_cd"),
+    # 🔴 2026-08-31 — isin 조인 폐기. pd_isin_cd 가 두 상품에 걸린 63종에서 다른 ETF 의 구성종목이
+    #    붙는다(오배정 8건 실증: FILL.K 에 POWR 구성종목 69행 — overseas_etfs.yaml external_join 참조).
+    ("ext_ovs_etf_holdings",
+     "ext_ovs_etf_holdings.etf_ticker = replace(replace(overseas_etfs.pd_itm_no,'.K',''),'.O','')"),
     # 🔴 2026-08-30 A-3-03 — grp 단독 금지. grp(=mtco_itm_no)는 운용사 안에서만 유일하다.
     #    단독 조인 시 103개 grp 가 복수 운용사에 걸려 쌍 179,333 중 5,099(2.84%) 오부착(최악 grp='00' → 운용사 34곳).
     #    itm_no 단독으로 바꾸면 형제 클래스 확장(정당 174,234 쌍)이 사라지므로, or_co 를 더한 복합키를 쓴다.

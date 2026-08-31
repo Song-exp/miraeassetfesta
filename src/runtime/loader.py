@@ -118,7 +118,11 @@ class RuntimeContext:
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")
             if norm:
-                out.append("- normalization: " + yaml.safe_dump(norm, allow_unicode=True, sort_keys=False).strip())
+                # 2026-08-31 압축 — 사람용 주석 키(_·🔴·실측·주의…)는 프롬프트에서 뺀다.
+                # 실측: 펀드 planner_context 11,599자 중 normalization 덤프가 6,287자(54%)였고 대부분이
+                # 경고·이력 주석이었다. 규칙의 원천(yaml)은 그대로 — 싣는 요약만 조작 가능한 키로 한정.
+                out.append("- normalization: "
+                           + yaml.safe_dump(_strip_annotations(norm), allow_unicode=True, sort_keys=False).strip())
             syn = doc.get("synonyms") or {}
             if syn:
                 # 사용자 통칭 → DB 표기. 라우팅 ② 겹과 같은 원천이라 플래너도 같은 어휘로 LIKE 를 쓴다
@@ -183,6 +187,22 @@ def _load_yaml(path: Path, header_only_if_big: bool = False) -> dict:
         return doc
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def _strip_annotations(obj):
+    """normalization 을 프롬프트에 실을 때 사람용 주석 키를 걷어낸다 — 조작 가능한 것(컬럼 목록·패턴·sql)만 남긴다."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            ks = str(k)
+            if ks.startswith("_") or ks.startswith("🔴") or any(
+                    w in ks for w in ("실측", "주의", "근거", "한계", "기각", "화이트리스트", "note")):
+                continue
+            out[k] = _strip_annotations(v)
+        return out
+    if isinstance(obj, list):
+        return [_strip_annotations(v) for v in obj]
+    return obj
 
 
 @lru_cache(maxsize=1)

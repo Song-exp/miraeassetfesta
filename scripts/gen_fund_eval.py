@@ -23,6 +23,8 @@ BASE = "sale_yn = '판매중' AND prvo_pbff_desc = '공모'"
 PAD = "CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END"
 GRP = f"or_co_xtn_itt_cd || '|' || COALESCE({PAD}, itm_no)"
 FEE = "COALESCE(or_co_rwrd_r,0)+COALESCE(sale_co_rwrd_r,0)+COALESCE(trusc_rwrd_r,0)+COALESCE(ofwk_trus_rwrd_r,0)"
+# 기점 오류 검증 3클래스(리드 확정 08-31, 검토기록 §13-8) — 18개월+ 수익률 랭킹에서만 제외(query_rules.수익률기점오류_제외)
+ERR3 = "itm_no NOT IN ('KR5157450126','KR5153450511','KR5119470012')"
 
 
 def topn(select_extra: str, where_extra: str, order: str, limit: int) -> str:
@@ -58,22 +60,24 @@ QUESTIONS: list[dict] = [
     dict(qid="FND-003", difficulty="중", qtype="랭킹", expected_behavior="answer",
          question="1년 수익률이 가장 높은 공모펀드 5개 알려줘",
          gold_sql=topn("MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, zrin_fd_ivst_risk_grd_nm",
-                       "fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 AND fd_yr1_ern_r > -100",
+                       f"fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 AND fd_yr1_ern_r > -100 AND {ERR3}",
                        "fd_yr1_ern_r DESC", 5),
-         must_include=["1년", "기준일", "누적"], must_not_include=["원금 보장", "수익률 전망"],
+         must_include=["1년", "기준일", "누적"], must_not_include=["원금 보장", "수익률 전망", "1,436"],
          source_columns=["fd_yr1_ern_r"],
-         note="극단값을 빼지 않는다(query_rules.수익률극단값) — >100% 889행·최대 1,436% 존재, 주의문구로 알린다. "
+         note="극단값을 빼지 않는다(query_rules.수익률극단값) — 단 기점 오류가 **검증된** 3클래스만 랭킹 제외"
+              "(수익률기점오류_제외 — 극단값≠오류값, 08-31). 마이다스 펀드 자체는 정상 형제 클래스로 남는다. "
               "수익률은 누적(연환산 아님). 대표행: 펀드단위 GROUP BY — 한 펀드 6클래스가 TOP5 를 도배하면 오답.",
-         gold_reason="규칙 대표행 · 수익률극단값 · 집계_TopN_필수 · answer_rules.누적수익률"),
+         gold_reason="규칙 대표행 · 수익률극단값 · 수익률기점오류_제외 · 집계_TopN_필수"),
     dict(qid="FND-004", difficulty="중", qtype="랭킹", expected_behavior="answer",
          question="3년 수익률 상위 5개 공모펀드 알려줘",
          gold_sql=topn("MAX(fd_yr3_ern_r) AS fd_yr3_ern_r",
-                       "fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0 AND fd_yr3_ern_r > -100",
+                       f"fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0 AND fd_yr3_ern_r > -100 AND {ERR3}",
                        "fd_yr3_ern_r DESC", 5),
          must_include=["3년", "기준일"], must_not_include=["연평균"],
          source_columns=["fd_yr3_ern_r"],
-         note="3년 수익률도 누적 — '연평균' 으로 나누어 말하면 오답(clarify.다의어.수익률). 유효 6,384행.",
-         gold_reason="규칙 대표행 · 집계_TopN_필수 · answer_rules.누적수익률"),
+         note="3년 수익률도 누적 — '연평균' 으로 나누어 말하면 오답(clarify.다의어.수익률). 유효 6,384행. "
+              "기점 오류 3클래스 랭킹 제외(수익률기점오류_제외).",
+         gold_reason="규칙 대표행 · 집계_TopN_필수 · 수익률기점오류_제외"),
     # ── 답변형 — 보수 (‰ · 4항목 합 · 0 = 미입력) ──
     dict(qid="FND-005", difficulty="중", qtype="랭킹", expected_behavior="answer",
          question="총보수가 가장 낮은 공모펀드 5개 알려줘",

@@ -1,4 +1,4 @@
-﻿"""파이프라인 오케스트레이터 — 단계별 실행 + think_trace 조립.
+"""파이프라인 오케스트레이터 — 단계별 실행 + think_trace 조립.
 
 think_trace 는 각 단계가 **실제로 한 일**의 로그다 (LLM 생성물 아님 — hcx/client.py 원칙).
 Plan(SQL 생성)·Answer(문장 생성)는 planner 인터페이스 뒤에 있다 — HCX 미연결 환경에서도

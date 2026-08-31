@@ -1,4 +1,4 @@
-﻿# domestic_bonds — 사람의 판단을 담는 파일
+# domestic_bonds — 사람의 판단을 담는 파일
 # 기계적 사실(결측률·distinct·값 목록)은 domestic_bonds.auto.yaml 에 있습니다. 여기엔 판정과 규칙만 씁니다.
 # 런타임 가드레일이 이 파일을 읽습니다.
 #

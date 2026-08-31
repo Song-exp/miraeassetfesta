@@ -381,6 +381,34 @@ def test_ensure_reco_exclusions():
     assert not ensure_reco_exclusions("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
 
 
+def test_ensure_top_safety():
+    from src.runtime.pipeline import ensure_top_safety
+    # 2026-08-31 실측 — '가장 안전한 채권 3개' 가 IN ('15','16') + 수익률 내림차순으로 나가
+    # 5등급 콜옵션부 7.1% 가 1~3위 (위험등급방향의 '16 단독' 분기 미적용)
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), applied_yield, pd_risk_gcd, pd_risk_nm FROM domestic_bonds "
+           "WHERE pd_risk_gcd IN ('15', '16') AND curr_cd = 'KRW' AND mat_dt >= 20260822 "
+           "AND applied_yield IS NOT NULL AND applied_yield > 0 AND pd_risk_gcd <> '11' "
+           "AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모' ORDER BY applied_yield DESC LIMIT 3")
+    q = "가장 안전한 채권 3개 추천해줘"
+    fixed, changed = ensure_top_safety(sql, q)
+    assert changed and "pd_risk_gcd = '16'" in fixed and "'15'" not in fixed
+    assert "pd_risk_gcd <> '11'" in fixed                     # 음의 필터(고위험제외)는 건드리지 않는다
+    assert "ORDER BY applied_yield DESC" in fixed             # 전 행 동급 — 수익률 정렬은 동점자 처리
+    # 위험등급 필터가 아예 없으면 주입 (WHERE 끝, ORDER BY 앞)
+    f2, c2 = ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' ORDER BY applied_yield DESC LIMIT 3", q)
+    assert c2 and f2.index("pd_risk_gcd = '16'") < f2.index("ORDER BY")
+    # = '15' 단독도 교정 · 6등급이 실존하는 종류(국고채)는 발동
+    assert "pd_risk_gcd = '16'" in ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '15' LIMIT 3", q)[0]
+    assert ensure_top_safety(sql, "가장 안전한 국고채 3개 추천해줘")[1]
+    # 불개입 — 이미 16 단독 / 최상급 아님(IN 15,16 이 정답) / 수익률 하한 요구(폴백 영역) /
+    # 6등급 없는 종류(회사채 — 강제하면 0행) / 채권 테이블 아님
+    assert not ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' LIMIT 3", q)[1]
+    assert not ensure_top_safety(sql, "위험 낮은 채권 3개 추천해줘")[1]
+    assert not ensure_top_safety(sql, "가장 안전한 채권 중 수익률 6.5% 이상 3개")[1]
+    assert not ensure_top_safety(sql, "가장 안전한 회사채 3개 추천해줘")[1]
+    assert not ensure_top_safety("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 3", q)[1]
+
+
 def test_ensure_ktb_kind_and_distinct_count():
     from src.runtime.pipeline import ensure_ktb_kind, ensure_distinct_count
     # 2026-08-31 저녁 실측 — '국고채 몇 종목' 이 대분류 국공채 COUNT(*) = 2,840 행수로 나감

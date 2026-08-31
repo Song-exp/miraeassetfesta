@@ -499,6 +499,43 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     return _append_exclusions(sql, [next(iter(filters))])
 
 
+_TOP_SAFE_Q = re.compile(r"(?:가장|제일|젤|최고로?)\s*안전|위험[이도은]?\s*(?:가장|제일|매우|아주)\s*낮|매우\s*낮은\s*위험|원금\s*(?:이\s*)?최우선|안정형")
+_YIELD_DEMAND_Q = re.compile(r"[\d.]+\s*(?:%|퍼센트|프로)\s*(?:이상|넘|초과)")
+_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 — 국공채·특수채 계열만 (회사채 대분류는 6등급 0)
+    _KTB_FILTER,
+    "TRIM(std_pd_mcls_nm)='국공채'",
+    "TRIM(std_pd_mcls_nm)='특수채'",
+    "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')",
+    "TRIM(bd_knd)='통화안정채권'",
+    "TRIM(bd_knd)='MBS'",
+}
+_RISK_POS = re.compile(r"pd_risk_gcd\s*(?:IN\s*\(([^)]*)\)|=\s*'(\d+)')", re.I)
+
+
+def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
+    """'가장 안전한' 류 최상급 질의의 위험등급 필터를 '16' 단독으로 교정·주입. (보정된 SQL, 보정했는지)
+
+    2026-08-31 실측: '가장 안전한 채권 3개 추천' 이 IN ('15','16') + ORDER BY applied_yield DESC
+    로 나가 5등급 SC은행 콜옵션부 7.1% 가 1~3위 — 안전 버킷에서 가장 덜 안전한 구석이 정답을
+    밀어냈다. 위험등급방향 규칙의 "'가장 안전한' 만 '16' 단독" 분기가 900자 문장에 파묻혀 미적용.
+    '16' 단독이면 전 행 동급이라 수익률 정렬은 동점자 처리가 되므로 ORDER BY 는 건드리지 않는다.
+    불개입 2종 — 규칙의 IN ('15','16') 폴백이 정답인 영역: ① 수익률 하한 요구(6등급 최고 6.23%)
+    ② 6등급이 없는 종류 지목(회사채·은행채 등 — 강제하면 0행 '확인 불가' 오답)."""
+    if "domestic_bonds" not in sql or not _TOP_SAFE_Q.search(question):
+        return sql, False
+    if _YIELD_DEMAND_Q.search(question):
+        return sql, False
+    if _question_kind_filters(question) - _SAFE16_KINDS:
+        return sql, False
+    m = _RISK_POS.search(sql)
+    if not m:
+        return _append_exclusions(sql, ["pd_risk_gcd = '16'"])
+    vals = set(re.findall(r"\d+", m.group(1) or m.group(2)))
+    if vals == {"16"}:
+        return sql, False
+    return sql[:m.start()] + "pd_risk_gcd = '16'" + sql[m.end():], True
+
+
 def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     """종목 수 질의의 COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교정. (보정된 SQL, 보정했는지)
 
@@ -1041,6 +1078,9 @@ def answer_question(
     sql, reco_fixed = ensure_reco_exclusions(sql, q)
     if reco_fixed:
         step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
+    sql, topsafe_fixed = ensure_top_safety(sql, q)
+    if topsafe_fixed:
+        step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
     sql, distinct_fixed = ensure_distinct_count(sql, q)
     if distinct_fixed:
         step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")

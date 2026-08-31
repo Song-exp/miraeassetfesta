@@ -354,3 +354,14 @@ def test_spaceless_name_match():
     assert ok2 and "REPLACE(itm_nm,' ','') NOT LIKE '%상장지수%'" in s2
     # 다른 컬럼은 건드리지 않는다
     assert not f("SELECT 1 FROM public_funds WHERE han_clas_policies LIKE '%전문투자자%' LIMIT 5")[1]
+
+
+def test_prospectus_hint_not_triggered_by_공모펀드():
+    """FND-028 실측 — '모펀드' 가 '공모펀드'·'사모펀드' 에 걸려 거의 모든 질의가 설명서 조인 대상이 됐다."""
+    from src.runtime.pipeline import _FUND_EXT_HINTS as H
+
+    assert not H.search("개인이 가입할 수 있는 공모펀드는 몇 개야?")
+    assert not H.search("사모펀드 알려줘")
+    assert H.search("이 펀드의 모펀드가 뭐야?")
+    assert H.search("설정일이 가장 오래된 공모펀드 알려줘")
+    assert H.search("환매 수수료가 없는 펀드 알려줘")

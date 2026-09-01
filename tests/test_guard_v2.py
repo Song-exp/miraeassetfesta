@@ -235,6 +235,21 @@ def test_value_violation_names_owner_column():
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
 
 
+def test_empty_string_literal_is_missing_idiom_not_value(ctx=None):
+    """`col = ''` 은 결측 관용구다 — 값 사전 검사로 기각하면 답변 가능한 결측 건수 질의가
+    오거절로 나간다 (2026-09-01 FND-037 실측: 벤치마크 결측 418행 질의가 가드에 막힘)."""
+    from src.runtime.loader import load_context
+    from src.runtime import guard
+
+    ctx = load_context()
+    sql = ("SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND (bmrk_nm IS NULL OR bmrk_nm = '' OR bmrk_eng_nm = '') AND sale_yn = '판매중' LIMIT 30")
+    assert guard.check_values(sql, ctx) == []
+    # 빈 문자열 면제가 실제 없는 값 검사를 무디게 하면 안 된다
+    bad = "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '' OR zrin_btyp_nm = '없는유형ZZZ' LIMIT 5"
+    assert len(guard.check_values(bad, ctx)) == 1
+
+
 def test_country_tag_rule_is_grounded():
     """FND-026 — 국가 질의에 태그 코드표가 프롬프트로 실려야 한다 (KG 에 국가→태그 매핑이 없다)."""
     from src.runtime.loader import load_context

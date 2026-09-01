@@ -263,6 +263,28 @@ def test_value_violation_names_owner_column():
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
 
 
+def test_fund_distinct_count_replaced():
+    """FND-034 실측 — COUNT(*) 가 클래스 850 을 '펀드 850개' 로 (구분 누락 6번째 재발).
+    펀드 개수 질의는 COUNT(DISTINCT 펀드키)+클래스수 병기로 교체하고 DB 실행까지 단언한다."""
+    import sqlite3
+    from src.runtime.pipeline import ensure_fund_distinct_count as f
+
+    q = "삼성자산운용이 운용하는 공모펀드는 몇 개야?"
+    bad = ("SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040010') "
+           "AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    s, ok = f(bad, q)
+    assert ok and '"펀드수"' in s and '"클래스수"' in s
+    assert not f(s, q)[1]                                  # 멱등 (COUNT(*) 단독 형태가 아니게 됨)
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    funds, classes = con.execute(s).fetchone()
+    assert (funds, classes) == (207, 850)                  # 2026-09-01 DB 실측 gold
+    # 불개입 — 클래스 수 질문 · 개수 질의 아님 · GROUP BY 분포
+    assert not f(bad, "삼성자산운용 펀드는 클래스가 몇 개야?")[1]
+    assert not f(bad, "삼성자산운용 펀드 알려줘")[1]
+    assert not f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY 1 LIMIT 30",
+                 "공모펀드는 유형별로 몇 개씩 있어?")[1]
+
+
 def test_fund_series_boundary_injected():
     """FND-032 실측 — HCX 가 호 경계식을 `'2호' IN (a OR b)`(항상 거짓)로 옮겨 0행 오거절.
     'N호' 언급 절을 걷어내고 GLOB 확정식을 주입한다."""

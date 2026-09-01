@@ -675,6 +675,33 @@ def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
     return sql[:m.start()] + _MIXED_FIX + sql[m.end():], True
 
 
+_Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
+_FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
+                  "CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
+                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END")
+
+
+def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
+    """펀드 개수 질의의 COUNT(*) 를 펀드단위 COUNT(DISTINCT 키)+클래스수 병기로 교체.
+
+    2026-09-01 FND-034 실측 — 클래스/펀드 구분 누락 6번째 재발: Ground·코드·기본모수 전부
+    맞았는데 COUNT(*) 가 클래스 850 을 '펀드 850개' 로 답했다(정답 207펀드). 운용사질의 규칙에
+    워크드 예시까지 실려도 무시된다 — HANDOFF 대기 항목 '반복되면 기계 주입' 발동.
+    발동 조건: ① public_funds 단일 테이블(JOIN·GROUP BY 없음) ② SELECT 가 COUNT(*) 단독
+    ③ 질문이 '펀드 … 몇 개/개수' 형 ④ 질문에 '클래스' 없음(클래스 수를 물으면 불개입).
+    클래스 수는 지우지 않고 병기한다 — 답변기가 두 기준을 함께 말할 재료.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by)\b", sql, re.I):
+        return sql, False
+    if not _Q_FUND_COUNT.search(question) or "클래스" in question:
+        return sql, False
+    m = re.match(r"(\s*SELECT\s+)COUNT\(\s*\*\s*\)(?:\s+AS\s+\w+)?(\s+FROM\b)", sql, re.I)
+    if not m:
+        return sql, False
+    head = (f'COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수"')
+    return sql[:m.end(1)] + head + sql[m.start(2):], True
+
+
 def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
     """N호 질의의 이름 검색에 호 경계식을 기계 주입. (보정된 SQL, 보정했는지)
 
@@ -1857,6 +1884,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, fcnt_fixed = ensure_fund_distinct_count(sql, q)
+    if fcnt_fixed:
+        step("[Guard] 펀드단위 집계 교체 — 펀드 개수 질의의 COUNT(*) 를 COUNT(DISTINCT 펀드키)+클래스수 병기로 "
+             "(2026-09-01 FND-034 실측: 클래스 850 을 '펀드 850개' 로 답함 — 구분 누락 6번째 재발)")
     sql, series_fixed = ensure_fund_series_boundary(sql, q)
     if series_fixed:
         step("[Guard] 호수 경계 주입 — N호 조건을 GLOB '*[^0-9]N호*' 확정식으로 교체 "

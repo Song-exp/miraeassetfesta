@@ -647,7 +647,7 @@ _BACKSTOP_PARTS = [                              # (SQL 에 이미 있는지 볼
     ("(정부보증)", "pd_nm LIKE '%(정부보증)%'"),
     ("한국주택금융공사", "TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')"),
 ]
-_RANK_Q = re.compile(r"추천|순으로|순위|톱|top\s*\d|\d+\s*(?:개|종목|가지)", re.I)
+_RANK_Q = re.compile(r"추천|순으로|순위|톱|top\s*\d|골라|\d+\s*(?:개|종목|가지)", re.I)
 _WHERE_TAIL = re.compile(r"\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT)\b", re.I)
 
 
@@ -707,7 +707,7 @@ def _append_exclusions(sql: str, excl: list[str]) -> tuple[str, bool]:
     return sql[:pos].rstrip() + joiner + " AND ".join(excl) + " " + sql[pos:], True
 
 
-_RECO_Q = re.compile(r"추천|랭킹|순위|톱|top|(?:높은|낮은)\s*순", re.I)
+_RECO_Q = re.compile(r"추천|랭킹|순위|톱|top|골라|(?:높은|낮은)\s*순", re.I)   # '골라줘' 는 추천 신호 (BND-S-002 · 2026-09-01 실측)
 
 
 def ensure_reco_exclusions(sql: str, question: str) -> tuple[str, bool]:
@@ -721,6 +721,29 @@ def ensure_reco_exclusions(sql: str, question: str) -> tuple[str, bool]:
     if "domestic_bonds" not in sql or not _RECO_Q.search(question):
         return sql, False
     return _append_exclusions(sql, _rank_exclusions(sql, question))
+
+
+_OTHER_AXIS_Q = re.compile(r"만기|잔존|듀레이션|표면|이표|단가|가격|짧|긴|길")
+
+
+def ensure_reco_sort(sql: str, question: str) -> tuple[str, bool]:
+    """추천 질의에 ORDER BY 가 통째로 없으면 기본 정렬(applied_yield DESC)을 주입. (보정된 SQL, 보정했는지)
+
+    2026-09-01 서버 실측: '망하지 않을 회사가 발행한 채권만 골라줘' 가 정렬 없는 임의 5행으로
+    나감(3.1~4.1% 비정렬 — 같은 모수의 상위 6.23% 누락). 추천개수정렬 규칙의 '정렬 없는 임의
+    N행은 추천이 아니다' 를 결정층이 받는다. 발동 조건 좁게: ① domestic_bonds ② 추천 신호
+    ③ ORDER BY 부재 ④ SELECT 에 applied_yield (DISTINCT 는 미선택 컬럼 정렬이 SQLite 제약)
+    ⑤ 질문이 다른 정렬 축(만기·표면금리·단가 등)을 말하지 않음 ⑥ 집계(COUNT) 아님."""
+    if "domestic_bonds" not in sql or not _RECO_Q.search(question):
+        return sql, False
+    if re.search(r"\bORDER\s+BY\b|\bCOUNT\s*\(", sql, re.I) or _OTHER_AXIS_Q.search(question):
+        return sql, False
+    fm = re.search(r"\bFROM\b", sql, re.I)
+    if not fm or "applied_yield" not in sql[:fm.start()]:
+        return sql, False
+    lm = re.search(r"\s*\bLIMIT\b", sql, re.I)
+    pos = lm.start() if lm else len(sql)
+    return sql[:pos].rstrip() + " ORDER BY applied_yield DESC" + sql[pos:], True
 
 
 _KTB_Q = re.compile(r"국고채|(?<![가-힣])국채")
@@ -884,9 +907,18 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     필터(pd_pbcm)도 없음 — '삼성전자라는 회사가 발행한' 처럼 특정 발행사를 지칭하는 질의에
     회사채 필터를 덧씌우지 않는다(발행사조회 영역) ③ 질문의 종류 낱말·발행주체 서술이 정확히
     한 가지('국고채와 회사채 비교' 류 복수 종류는 불개입). 서술형('회사에서 발행한 채권')은
-    _KIND_PARAPHRASES 가 받는다 — 낱말이 없어도 발행 주체 표현으로 종류를 특정."""
-    if "domestic_bonds" not in sql or re.search(r"bd_knd|std_pd_mcls_nm|std_pd_scls_nm|pd_pbcm", sql, re.I):
+    _KIND_PARAPHRASES 가 받는다 — 낱말이 없어도 발행 주체 표현으로 종류를 특정.
+    ⛑ 2026-09-01 서버 실측: ② 검사가 SQL 전문 대상이라 SELECT 의 TRIM(pd_pbcm) AS 발행기관
+    표시 컬럼에 걸려 불개입 — '망하지 않을 회사가 발행한 채권' 이 종류 필터 없이 지방채·국공채로
+    나감. 필터 여부는 WHERE 범위에서만 본다(표시·정렬 컬럼은 필터가 아니다)."""
+    if "domestic_bonds" not in sql:
         return sql, False
+    wm = re.search(r"\bWHERE\b", sql, re.I)
+    if wm:
+        tail = _WHERE_TAIL.search(sql, wm.end())
+        scope = sql[wm.end():tail.start() if tail else len(sql)]
+        if re.search(r"bd_knd|std_pd_mcls_nm|std_pd_scls_nm|pd_pbcm", scope, re.I):
+            return sql, False
     filters = _question_kind_filters(question)
     if len(filters) != 1:
         return sql, False
@@ -898,7 +930,11 @@ _RISKW = r"(?:위험|리스크)(?:도|성)?[이가은는]?"           # 위험 �
 _TOP_SAFE_Q = re.compile(
     rf"{_SUP}\s*안전|안전(?:성|도)?[이가은는]?\s*{_SUP}\s*높|{_SUP}\s*덜\s*위험"
     rf"|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*낮|{_SUP}\s*{_RISKW}\s*낮"
-    rf"|매우\s*낮은\s*위험|{_RISKW}\s*최소|원금\s*(?:이\s*)?최우선|안정형")
+    rf"|매우\s*낮은\s*위험|{_RISKW}\s*최소|원금\s*(?:이\s*)?최우선|안정형"
+    # 부도-공포 서술형 (2026-09-01 실측: '망하지 않을 회사' 가 어휘 밖 — S-009 '원금 잃기 싫은데' 사각과 같은 계열.
+    # 원금 보전 최우선 의도 = '16' 단독. '잃' 은 잃기 싫/잃으면 안/잃지 않 꼴만 — '원금을 잃을 수도 있나' 사실확인 오폭 방지)
+    r"|망하지\s*않|망할\s*(?:걱정|염려)|(?:돈|원금)[을\s]*(?:떼|뗄|잃(?:기\s*싫|으면\s*안|지\s*않))"
+    r"|부도\s*(?:걱정|염려)\s*없")
 _TOP_RISK_Q = re.compile(                                # 반대 방향 최상급 — 동반되면 비교 질의라 불개입
     rf"{_SUP}\s*위험한|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*높|{_SUP}\s*안\s*좋")
 _YIELD_DEMAND_Q = re.compile(r"[\d.]+\s*(?:%|퍼센트|프로)\s*(?:이상|넘|초과)")
@@ -949,6 +985,51 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     if vals == {"16"}:
         return sql, False
     return sql[:m.start()] + "pd_risk_gcd = '16'" + sql[m.end():], True
+
+
+_TOP_YIELD_Q = re.compile(
+    rf"(?:수익률|표면금리|이자율|이율|금리|이자)[이가은는도의]?\s*{_SUP}\s*(?:높|낮)"
+    rf"|{_SUP}\s*(?:높|낮)은\s*(?:수익률|표면금리|이자율|이율|금리|이자)")
+_RISK_VOCAB = re.compile(r"위험|리스크|안전|안정|원금|성향|등급")
+
+
+def strip_fabricated_risk_filter(sql: str, question: str) -> tuple[str, bool]:
+    """수익률·금리 최상급 조회 SQL 에서 질문에 없는 위험등급 필터를 떼어낸다. (보정된 SQL, 보정했는지)
+
+    2026-09-01 서버 실측: '수익률이 제일 높은 채권' 에 HCX 가 pd_risk_gcd = '16' 을 끼워
+    6등급 최고(한국수출입금융 6.231%)를 답함 — 진짜 최고는 신보 유동화 728.524%(C0·1등급)다.
+    '가장/제일' 최상급을 보고 위험등급방향의 '16 단독' 을 수익률 축에 옮겨 붙인 조건 날조
+    (_TOP_SAFE_Q 는 이 질문에 매치되지 않음 — 가드 주입분 아님, 로컬 재현 확인). 조회는
+    제외하지 않는다는 고위험제외 규칙 그대로, 위험 어휘가 질문에 없으면 위험등급 절을 제거한다.
+    불개입 3종: ① 질문에 위험·리스크·안전·안정·원금·성향·등급(그 필터를 정당화하는 어휘)
+    ② WHERE 에 OR 가 있으면 — 절 제거가 그룹 논리를 바꾼다 ③ 최상위 AND 결합이 아니면.
+    추천 질의의 고위험제외(<> '11' 꼴)는 _RISK_POS 에 안 걸려 건드리지 않고, 떼어낸 경우에도
+    ensure_reco_exclusions 가 필요분을 다시 넣는다."""
+    if "domestic_bonds" not in sql or not _TOP_YIELD_Q.search(question):
+        return sql, False
+    if _RISK_VOCAB.search(question):
+        return sql, False
+    wm = re.search(r"\bWHERE\b", sql, re.I)
+    if not wm:
+        return sql, False
+    lo = wm.end()
+    tail = _WHERE_TAIL.search(sql, lo)
+    hi = tail.start() if tail else len(sql)
+    if re.search(r"\bOR\b", sql[lo:hi], re.I):
+        return sql, False
+    m = _RISK_POS.search(sql, lo, hi)
+    if not m:
+        return sql, False
+    before, after = sql[lo:m.start()], sql[m.end():hi]
+    if not before.strip() and not after.strip():
+        return sql[:wm.start()] + sql[hi:], True            # WHERE 가 이 절뿐 — 통째 제거
+    pm = re.search(r"\s+AND\s+\Z", before, re.I)
+    if pm:
+        return sql[:lo + pm.start()] + sql[m.end():], True  # 앞의 AND 와 함께 제거
+    nm = re.match(r"\s+AND\s+", after, re.I)
+    if nm:
+        return sql[:m.start()] + sql[m.end() + nm.end():], True  # 뒤의 AND 와 함께 제거
+    return sql, False
 
 
 _MAT_SORT_Q = re.compile(r"만기[가는이도]?\s*(?:까지)?\s*(?:가장|제일|젤)?\s*(?:긴|길|멀|먼|늦|짧|빠(?:른|르)|오래)"
@@ -1614,6 +1695,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, reco_fixed = ensure_reco_exclusions(sql, q)
     if reco_fixed:
         step("[Guard] 추천 제외 주입 — 추천·랭킹 질의의 WHERE 에 고위험제외(사모·1등급·C0)·수익률정상 조건을 주입 (2026-08-31 저녁 'AA등급 이상 추천'에 사모 3건 혼입 실측. 질문이 그 범주를 명시하면 건너뜀)")
+    sql, recosort_fixed = ensure_reco_sort(sql, q)
+    if recosort_fixed:
+        step("[Guard] 추천 정렬 주입 — 추천 질의에 ORDER BY 가 없어 기본 정렬 applied_yield DESC 를 주입 (2026-09-01 서버 실측: '망하지 않을 회사 채권 골라줘' 가 정렬 없는 임의 5행 — 상위 수익률 누락)")
+    sql, riskstrip_fixed = strip_fabricated_risk_filter(sql, q)
+    if riskstrip_fixed:
+        step("[Guard] 날조 위험필터 제거 — 수익률·금리 최상급 조회에 질문에 없는 위험등급 절이 끼어 제거 (2026-09-01 서버 실측: '수익률이 제일 높은 채권' 에 pd_risk_gcd='16' 날조 → 6등급 최고 6.231% 오답, 실제 최고 728.524% C0)")
     sql, topsafe_fixed = ensure_top_safety(sql, q)
     if topsafe_fixed:
         step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")

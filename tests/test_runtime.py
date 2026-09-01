@@ -381,6 +381,27 @@ def test_ensure_reco_exclusions():
     # 발동 조건 밖 — 랭킹 신호 없음(개수·조회) / 채권 테이블 아님
     assert not ensure_reco_exclusions(sql, "표면금리 5% 넘는 회사채 30개 보여줘")[1]
     assert not ensure_reco_exclusions("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
+    # '골라줘' 도 추천 신호 (2026-09-01 실측: '골라줘' 질의가 제외 없이 나감)
+    assert ensure_reco_exclusions(sql, "안전한 회사채 몇 개만 골라줘")[1]
+
+
+def test_ensure_reco_sort():
+    from src.runtime.pipeline import ensure_reco_sort
+    # 2026-09-01 서버 실측 — '망하지 않을 회사가 발행한 채권만 골라줘' 가 정렬 없는 임의 5행
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), applied_yield, pd_risk_nm FROM domestic_bonds "
+           "WHERE pd_risk_gcd = '16' LIMIT 5")
+    q = "망하지 않을 회사가 발행한 채권만 골라줘"
+    fixed, changed = ensure_reco_sort(sql, q)
+    assert changed and "ORDER BY applied_yield DESC" in fixed
+    assert fixed.index("ORDER BY") < fixed.index("LIMIT")
+    # 불개입 — 이미 정렬 있음 / 다른 축 요구(만기) / 집계 / applied_yield 미선택(DISTINCT 제약) /
+    # 추천 신호 없음 / 채권 테이블 아님
+    assert not ensure_reco_sort(fixed, q)[1]
+    assert not ensure_reco_sort(sql, "만기 짧은 걸로 골라줘")[1]
+    assert not ensure_reco_sort("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_risk_gcd='16'", q)[1]
+    assert not ensure_reco_sort("SELECT DISTINCT pd_no, TRIM(pd_nm) FROM domestic_bonds LIMIT 5", q)[1]
+    assert not ensure_reco_sort(sql, "위험등급 6등급 채권 5개 보여줘")[1]
+    assert not ensure_reco_sort("SELECT pd_abrv_nm, applied_yield FROM domestic_etfs LIMIT 5", q)[1]
 
 
 def test_server_probe_fixes_20260831_night(ctx):
@@ -479,6 +500,17 @@ def test_ensure_top_safety():
     for variant in ("가장 위험이 낮은 채권 골라줘", "위험도가 가장 낮은 채권", "리스크가 가장 낮은 채권 추천",
                     "가장 덜 위험한 채권", "안전성이 가장 높은 채권 3개"):
         assert ensure_top_safety(sql, variant)[1], variant
+    # 부도-공포 서술형(2026-09-01 실측 사각 보강) — S-009 '원금 잃기 싫은데' 계열
+    for variant in ("망하지 않을 회사 채권 골라줘", "돈 떼일 걱정 없는 채권 뭐 있어?",
+                    "원금 잃기 싫은데 채권 뭐 사면 돼?", "부도 걱정 없는 채권"):
+        assert ensure_top_safety(sql, variant)[1], variant
+    # '망하지 않을 회사가 발행한' — 회사채(6등급 0행)를 지목하므로 완화 branch: 16 단독 → IN ('15','16')
+    f_corp, c_corp = ensure_top_safety(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' AND TRIM(std_pd_mcls_nm)='회사채' LIMIT 5",
+        "망하지 않을 회사가 발행한 채권만 골라줘")
+    assert c_corp and "IN ('15','16')" in f_corp
+    # '원금을 잃을 수도 있어?' 사실확인은 트리거 밖 — 잃기 싫/잃으면 안 꼴만
+    assert not ensure_top_safety(sql, "채권도 원금을 잃을 수 있어?")[1]
     # 구조표시 CASE 동반 — 치환은 WHERE 범위만: SELECT 의 pd_risk_gcd IN ('11','12','13') 은 보존 (전수조사 실측 파손)
     case_sql = ("SELECT pd_nm, CASE WHEN TRIM(bd_knd) IN ('특수은행채','일반은행채','금융지주회사채') "
                 "AND pd_risk_gcd IN ('11','12','13') THEN '은행 자본성증권' ELSE '' END AS 구조, pd_risk_nm "
@@ -494,6 +526,41 @@ def test_ensure_top_safety():
     assert not ensure_top_safety(sql, "가장 안전한 회사채 3개 추천해줘")[1]
     assert not ensure_top_safety(sql, "가장 안전한 채권과 가장 위험한 채권 하나씩 알려줘")[1]
     assert not ensure_top_safety("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 3", q)[1]
+
+
+def test_strip_fabricated_risk_filter():
+    from src.runtime.pipeline import strip_fabricated_risk_filter
+    # 2026-09-01 서버 실측 — '수익률이 제일 높은 채권' 에 pd_risk_gcd = '16' 이 날조되어
+    # 6등급 최고 6.231% 오답 (실제 최고 신보 유동화 728.524% C0·1등급. _TOP_SAFE_Q 미매치 확인)
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm) as 상품명, applied_yield FROM domestic_bonds "
+           "WHERE pd_risk_gcd = '16' AND applied_yield IS NOT NULL AND applied_yield > 0 "
+           "ORDER BY applied_yield DESC LIMIT 5")
+    q = "수익률이 제일 높은 채권이 뭐야?"
+    fixed, changed = strip_fabricated_risk_filter(sql, q)
+    assert changed and "pd_risk_gcd" not in fixed and "applied_yield > 0" in fixed
+    assert "ORDER BY applied_yield DESC" in fixed
+    # 절이 중간·끝에 있어도 앞뒤 AND 와 함께 떨어진다 · IN 꼴도 · '가장 낮은' 방향도
+    f2, c2 = strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' AND pd_risk_gcd IN ('15','16') "
+        "ORDER BY applied_yield DESC LIMIT 5", "수익률이 가장 낮은 채권은?")
+    assert c2 and "pd_risk_gcd" not in f2 and "curr_cd='KRW'" in f2 and " AND  AND " not in f2
+    # WHERE 가 그 절뿐이면 WHERE 통째 제거
+    f3, c3 = strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' ORDER BY applied_yield DESC LIMIT 5", q)
+    assert c3 and "WHERE" not in f3 and "ORDER BY applied_yield DESC" in f3
+    # 불개입 — 위험·안전·등급 어휘가 필터를 정당화 / 고위험제외(<>)는 음의 필터라 보존 /
+    # WHERE 에 OR(그룹 논리) / 위험 필터 없음 / 수익률 최상급 아님 / 채권 테이블 아님
+    assert not strip_fabricated_risk_filter(sql, "가장 안전하면서 수익률이 제일 높은 채권")[1]
+    assert not strip_fabricated_risk_filter(sql, "위험등급 1등급 중 수익률이 제일 높은 채권")[1]
+    assert not strip_fabricated_risk_filter(sql, "1등급 채권 중 수익률이 가장 높은 건?")[1]
+    assert not strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd <> '11' ORDER BY applied_yield DESC LIMIT 5", q)[1]
+    assert not strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE (pd_risk_gcd = '16' OR crd_grd='AAA') LIMIT 5", q)[1]
+    assert not strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 5", q)[1]
+    assert not strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]
+    assert not strip_fabricated_risk_filter("SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_risk_cd='PD_RISK_GCD_16' LIMIT 5", q)[1]
 
 
 def test_ensure_ktb_kind_and_distinct_count():
@@ -596,6 +663,15 @@ def test_ensure_kind_filter():
     assert c7 and "신용카드채" in f7 and "std_pd_mcls_nm" not in f7
     f8, c8 = ensure_kind_filter(sql, "정부가 발행한 채권 보여줘")
     assert c8 and "TRIM(std_pd_mcls_nm)='국공채'" in f8
+    # 2026-09-01 서버 실측 — SELECT 의 TRIM(pd_pbcm) 표시 컬럼은 필터가 아니다: 발동해야 함
+    show_sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), TRIM(pd_pbcm) as 발행기관, applied_yield "
+                "FROM domestic_bonds WHERE pd_risk_gcd = '16' LIMIT 5")
+    f9, c9 = ensure_kind_filter(show_sql, "망하지 않을 회사가 발행한 채권만 골라줘")
+    assert c9 and "TRIM(std_pd_mcls_nm)='회사채'" in f9
+    # WHERE 의 pd_pbcm 은 발행사 필터 — 종전대로 불개입 (발행사조회 영역)
+    assert not ensure_kind_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%한국전력%' LIMIT 5",
+        "회사가 발행한 채권 알려줘")[1]
     # 특정 발행사 지칭 — SQL 에 발행사 필터가 있으면 종류를 덧씌우지 않는다 (발행사조회 영역)
     issuer_sql = "SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%삼성전자%' LIMIT 30"
     assert not ensure_kind_filter(issuer_sql, "삼성전자라는 회사가 발행한 채권 알려줘")[1]

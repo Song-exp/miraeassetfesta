@@ -266,14 +266,34 @@ def emit_kg(con, shared):
         src_id TEXT, predicate TEXT, dst_id TEXT, source TEXT, as_of TEXT)""")
     cur.execute("create table kg_closure (ancestor_id TEXT, descendant_id TEXT)")
 
+    # 🔴 운용사 정식명 라벨 보강 (2026-09-01 FND-034 실측) — organization.yaml 의 label_ko 는
+    #    약칭('삼성')이라 매칭 하한(한글 3자)에 걸려 '삼성자산운용' 질의가 Ground 매칭 0 이 됐다
+    #    (미래에셋은 4자라 우연히 통과). public_funds 운용사 코드 alias 를 가진 노드에
+    #    asset_manager.csv 의 정식명을 '/' 라벨 조각으로 병합한다 — 런타임 _keys 가 '/' 를 갈라
+    #    조각마다 단어경계 매칭을 하므로 '삼성'(2자)은 계속 걸러지고 정식명만 매칭에 참여한다.
+    mgr_names = {}
+    _am = os.path.join(PROJECT_ROOT, "ontology", "codebooks", "asset_manager.csv")
+    with open(_am, encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            nm = (r.get("name") or "").replace("(주)", "").strip()
+            if nm:
+                mgr_names[r["code"].strip()] = nm
+
     n_node = n_alias = n_edge = n_closure = 0
     for fname, doc in shared.items():
         entity = doc.get("entity")
         parents = {}
         for node_id, node in (doc.get("nodes") or {}).items():
+            label_ko = node.get("label_ko")
+            for al in node.get("aliases") or []:
+                if al.get("table") == "public_funds" and al.get("column") == "or_co_xtn_itt_cd":
+                    nm = mgr_names.get(str(al.get("raw", "")).strip())
+                    if nm and label_ko and nm not in label_ko:
+                        label_ko = f"{label_ko}/{nm}"
+                    break
             cur.execute("insert into kg_node values (?,?,?,?,?)",
                         (node_id, entity, node.get("label_ko"),
-                         node.get("label_ko"), node.get("label_en")))
+                         label_ko, node.get("label_en")))
             n_node += 1
             if node.get("parent"):
                 parents[node_id] = node["parent"]

@@ -99,6 +99,18 @@ def test_full_path_with_planner(ctx):
     assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측
 
 
+def test_manager_full_name_grounds(ctx):
+    """FND-034 실측 — 라벨이 약칭('삼성', 2자)뿐이라 매칭 하한(한글 3자)에 걸려 Ground 0 →
+    플래너가 수탁사 코드 서브쿼리를 지어내 '0개' 오답. 정식명 라벨 병합('삼성/삼성자산운용')로
+    '삼성자산운용' 질의가 운용사 코드에 매핑돼야 한다."""
+    from src.runtime.pipeline import _ground
+    _, lines = _ground("삼성자산운용이 운용하는 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert any("Org_00040010" in l and "or_co_xtn_itt_cd" in l for l in lines), lines
+    # 약칭 2자('삼성')는 여전히 매칭에 참여하지 않는다 — '삼성전자' 질의 오탐 방지
+    _, l2 = _ground("삼성전자를 담은 공모펀드 알려줘", ctx, ["public_funds"], cross=True)
+    assert not any("Org_00040010" in l for l in l2), l2
+
+
 def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):
     """FND-032 실측 — '펀드' 명사 없는 질의가 미특정으로 빠져 FROM domestic_bonds 완전일치 → 오거절.
 

@@ -431,25 +431,29 @@ query_rules:
   ETF만: pd_grp_no = 'ETF'
   ETN만: pd_grp_no = 'ETN'
   기초지수유효: "cu_base_index NOT LIKE '%not provided%' AND cu_base_index NOT LIKE '%not available%'"
-  보수유효: >-
-    cu_charge_rt > 0
-    총보수 **정렬·필터·Top-N**('수수료 저렴한 해외 ETF' 등)에만 반드시 넣는다.
-    0값 419건(레버리지/인버스/ETN 위주)은 '보수 0' 이 아니라 미수록 — 없으면 0값 행들이
-    '가장 저렴' 으로 도배된다(2026-08-31 paired 실측 ETF-O-020). 모수 명시.
-    🔴 **보수를 묻지 않은 질의에는 걸지 않는다.** 서버 실측 2026-09-01 —
-    "미국 반도체 ETF 알려줘" 에 이 조건이 붙어 SSG(ProShares UltraShort Semiconductors,
-    보수 미수록)가 목록에서 **말없이 빠졌다**(18→17건). 미수록은 제외 사유가 아니라
-    "보수 미수록" 으로 표기할 사유다. cu_fund_mgmt_co 존재 조건도 같다 — 묻지 않았으면 걸지 않는다.
-    형식(보수 Top-N): `SELECT TRIM(pd_abrv_nm) AS 티커, pd_nm AS 상품명, cu_charge_rt AS 연간보수율pct
-    FROM overseas_etfs WHERE pd_grp_no='ETF' AND cu_charge_rt > 0 ORDER BY cu_charge_rt ASC, du_last_aum DESC LIMIT <N+여유>`
-    🔴 **동률을 자르지 않는다** — 최저 0.01% 가 **6개 동률**인데 LIMIT 5 로 자르면 1개(VEXC,
-    Vanguard EM Ex-China)가 말없이 빠진다(서버 실측 2026-09-01). N개를 물어도 N위와 동률인 행은
-    모두 싣고 동률임을 밝히거나, 최소한 "0.01% 동률이 6개" 라고 말한다. 2차 정렬(du_last_aum DESC)로
-    동률 내 순서를 고정해 재현 가능하게 한다.
-    답변에 **모수를 밝힌다** — "연간보수율이 수록된 ETF 5,604개 중"(실측 2026-09-01).
-  ISIN조인금지: >-
-    🔴 pd_isin_cd·pd_lipper_id 는 단독 조인·단건 조회 키로 쓰지 않는다 — 각각 63종이 2개 상품에 걸린다(같은 ISIN 이 OEUR.K/OEFA.K 둘 다).
-    조인·단건 조회 키는 pd_itm_no. ISIN 검색 결과가 복수면 티커를 병기해 모두 제시한다. (리드 확답 2026-08-31, B-3)
+  보수유효:
+    triggers: [보수, 수수료, 비용, 저렴, 싼, expense]
+    text: >-
+      cu_charge_rt > 0
+      총보수 **정렬·필터·Top-N**('수수료 저렴한 해외 ETF' 등)에만 반드시 넣는다.
+      0값 419건(레버리지/인버스/ETN 위주)은 '보수 0' 이 아니라 미수록 — 없으면 0값 행들이
+      '가장 저렴' 으로 도배된다(2026-08-31 paired 실측 ETF-O-020). 모수 명시.
+      🔴 **보수를 묻지 않은 질의에는 걸지 않는다.** 서버 실측 2026-09-01 —
+      "미국 반도체 ETF 알려줘" 에 이 조건이 붙어 SSG(ProShares UltraShort Semiconductors,
+      보수 미수록)가 목록에서 **말없이 빠졌다**(18→17건). 미수록은 제외 사유가 아니라
+      "보수 미수록" 으로 표기할 사유다. cu_fund_mgmt_co 존재 조건도 같다 — 묻지 않았으면 걸지 않는다.
+      형식(보수 Top-N): `SELECT TRIM(pd_abrv_nm) AS 티커, pd_nm AS 상품명, cu_charge_rt AS 연간보수율pct
+      FROM overseas_etfs WHERE pd_grp_no='ETF' AND cu_charge_rt > 0 ORDER BY cu_charge_rt ASC, du_last_aum DESC LIMIT <N+여유>`
+      🔴 **동률을 자르지 않는다** — 최저 0.01% 가 **6개 동률**인데 LIMIT 5 로 자르면 1개(VEXC,
+      Vanguard EM Ex-China)가 말없이 빠진다(서버 실측 2026-09-01). N개를 물어도 N위와 동률인 행은
+      모두 싣고 동률임을 밝히거나, 최소한 "0.01% 동률이 6개" 라고 말한다. 2차 정렬(du_last_aum DESC)로
+      동률 내 순서를 고정해 재현 가능하게 한다.
+      답변에 **모수를 밝힌다** — "연간보수율이 수록된 ETF 5,604개 중"(실측 2026-09-01).
+  ISIN조인금지:
+    triggers: [ISIN, 편입, 보유, 담은, 담고, 구성, 포함, 들어]
+    text: >-
+      🔴 pd_isin_cd·pd_lipper_id 는 단독 조인·단건 조회 키로 쓰지 않는다 — 각각 63종이 2개 상품에 걸린다(같은 ISIN 이 OEUR.K/OEFA.K 둘 다).
+      조인·단건 조회 키는 pd_itm_no. ISIN 검색 결과가 복수면 티커를 병기해 모두 제시한다. (리드 확답 2026-08-31, B-3)
   # 🆕 2026-08-31 리드 확답(ask_lead §3) — "○○ 담은 상품" 질의에 같은 발행사의 **회사채**가 섞여 나올 수 있다.
   #    ㉡ closure 확장으로 Sec_lei_* 법인 노드 아래 주식·채권이 함께 매달린다
   #    (예: NVIDIA — 주식 Sec_o_67066G104 · 회사채 Sec_o_67066GAF1, CUSIP 발행사부(6자리)가 같다).
@@ -457,7 +461,9 @@ query_rules:
   #    대신 결과에 채권이 섞이면 답변에 밝힌다: "이 중 N건은 ○○ 주식이 아니라 ○○가 발행한 채권을 담은 상품입니다."
   #    판별: ext_ovs_etf_holdings 에서 CUSIP 9자리 중 발행사부(앞 6자)가 같고 발행물부(7~8자)가 다르면 별개 증권이며,
   #          holding_name 에 만기·이율 표기(예: 'NVIDIA Corp 3.5% 2040')가 있으면 채권이다.
-  종목질의_회사채포함: "발행사(Sec_lei_*·Sec_m_*) 후손 확장 결과에 채권이 섞이면 제외하지 말고 답변에 밝힌다"
+  종목질의_회사채포함:
+    triggers: [편입, 보유, 담은, 담고, 구성, 포함, 들어, 채권]
+    text: "발행사(Sec_lei_*·Sec_m_*) 후손 확장 결과에 채권이 섞이면 제외하지 말고 답변에 밝힌다"
   # 🔴 2026-08-27 C절 검토 — 플래그만 믿으면 인버스를 놓친다.
   #    실측: cu_inverse_short_yn 이 NULL 인데 cu_lev_fector < 0 (인버스 확정) 3건
   #          — SSPC·SKDD·SPCQ (전부 배수 -2.0, 이름도 '2X Short').
@@ -471,27 +477,31 @@ query_rules:
   #           근거: 셋 다 wu_inv_ast_type='Equity' · cu_strtegy 원문 "invests at least 80% of its
   #           net assets in the equity securities ... while also seeking to protect principal
   #           during unfavorable market conditions" · cu_lev_fector 전부 NULL.
-  인버스숏: >-
-    cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0
-    OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%'
-    OR (pd_nm LIKE '%Bear%' AND pd_nm NOT LIKE '%BullBear%')
-    OR (pd_nm LIKE '%UltraShort%' AND pd_nm NOT LIKE '%Income%' AND pd_nm NOT LIKE '%Bond%'
-        AND pd_nm NOT LIKE '%Treasury%' AND pd_nm NOT LIKE '%Municipal%' AND pd_nm NOT LIKE '%Fixed%')
-    🔴 이 조건을 **통째로** 쓴다 — `cu_inverse_short_yn='Y'` 하나로 줄이면 **8건을 놓친다**
-    (실측 183 vs 191 · 2026-09-01): QBER·SNK·METQ·VYLD·YQQQ·SSPC·SKDD·SPCQ —
-    플래그가 비었는데 배수가 음수이거나 이름이 '2X Short'·'Inverse' 인 진짜 인버스들이다.
-    서버 실측 2026-09-01 — "해외 인버스 ETF 3개" 가 플래그만 걸었다.
-    (이 경고는 원래 yaml 주석에 있었다 — 주석은 프롬프트에 실리지 않아 플래너가 못 봤다. 본문으로 승격.)
-    🔴 질문이 "인버스 **ETF**" 면 `AND pd_grp_no = 'ETF'` 를 함께 건다 —
-    플래그 'Y' 인 183건 중 **ETN 이 17건** 섞여 있다(국내 인버스와 같은 함정).
-    ⚠️ UltraShort 예외를 빼면 오탐 103건 — 'UltraShort Bond/Treasury' 는 방향이 아니라 만기가 짧다는 뜻이고,
-    BullBear(WBI 3종)는 하락장 방어형 롱 펀드다.
-  레버리지: >-
-    cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1
-    🔴 NULL 5,136건(85%)은 '미수록' 이지 **1배 확정이 아니다** — 결측 행을 '레버리지 아님' 으로
-    말하지 않는다(이름의 2X·3X·Ultra 를 함께 본다).
-    이 조건에 걸리는 상품은 **빼지 않는다** — 살 수 있는 정상 상품이고 배수는 사실이다.
-    결과에 인버스가 섞이면 레버리지_인버스혼입경고 대로 답변에 밝힌다.
+  인버스숏:
+    triggers: [인버스, 숏, Short, Bear, Inverse, 하락, 내리]
+    text: >-
+      cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0
+      OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%'
+      OR (pd_nm LIKE '%Bear%' AND pd_nm NOT LIKE '%BullBear%')
+      OR (pd_nm LIKE '%UltraShort%' AND pd_nm NOT LIKE '%Income%' AND pd_nm NOT LIKE '%Bond%'
+          AND pd_nm NOT LIKE '%Treasury%' AND pd_nm NOT LIKE '%Municipal%' AND pd_nm NOT LIKE '%Fixed%')
+      🔴 이 조건을 **통째로** 쓴다 — `cu_inverse_short_yn='Y'` 하나로 줄이면 **8건을 놓친다**
+      (실측 183 vs 191 · 2026-09-01): QBER·SNK·METQ·VYLD·YQQQ·SSPC·SKDD·SPCQ —
+      플래그가 비었는데 배수가 음수이거나 이름이 '2X Short'·'Inverse' 인 진짜 인버스들이다.
+      서버 실측 2026-09-01 — "해외 인버스 ETF 3개" 가 플래그만 걸었다.
+      (이 경고는 원래 yaml 주석에 있었다 — 주석은 프롬프트에 실리지 않아 플래너가 못 봤다. 본문으로 승격.)
+      🔴 질문이 "인버스 **ETF**" 면 `AND pd_grp_no = 'ETF'` 를 함께 건다 —
+      플래그 'Y' 인 183건 중 **ETN 이 17건** 섞여 있다(국내 인버스와 같은 함정).
+      ⚠️ UltraShort 예외를 빼면 오탐 103건 — 'UltraShort Bond/Treasury' 는 방향이 아니라 만기가 짧다는 뜻이고,
+      BullBear(WBI 3종)는 하락장 방어형 롱 펀드다.
+  레버리지:
+    triggers: [레버리지, 2X, 3X, 2배, 3배, Ultra, 배수]
+    text: >-
+      cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1
+      🔴 NULL 5,136건(85%)은 '미수록' 이지 **1배 확정이 아니다** — 결측 행을 '레버리지 아님' 으로
+      말하지 않는다(이름의 2X·3X·Ultra 를 함께 본다).
+      이 조건에 걸리는 상품은 **빼지 않는다** — 살 수 있는 정상 상품이고 배수는 사실이다.
+      결과에 인버스가 섞이면 레버리지_인버스혼입경고 대로 답변에 밝힌다.
   # 🆕 2026-08-29 회의 결정 — 공통 패턴 "살 수 없는 건 제외, 살 수는 있는데 위험한 건 알린다".
   #    `레버리지` 901건 중 **131건(14%)이 인버스**다(EDZ -3.0 · SRTY.K -3.0 등).
   #    "레버리지 ETF 알려줘" 에 하락 베팅 상품이 섞여 나간다.
@@ -499,11 +509,13 @@ query_rules:
   #    대신 답변에 인버스가 포함되면 밝힌다 —
   #    "이 중 N건은 지수가 **내릴 때** 수익이 나는 인버스 상품입니다. 방향이 반대이니 확인하세요."
   #    국내(domestic_etfs.레버리지_인버스혼입경고)와 같은 방침. 부호 소실은 국내만의 문제다(해외는 부호 정상).
-  레버리지_인버스혼입경고: >-
-    cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1
-    AND (cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0
-         OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%'
-         OR (pd_nm LIKE '%Bear%' AND pd_nm NOT LIKE '%BullBear%'))
+  레버리지_인버스혼입경고:
+    triggers: [레버리지, 2X, 3X, 2배, 3배, Ultra, 배수]
+    text: >-
+      cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1
+      AND (cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0
+           OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%'
+           OR (pd_nm LIKE '%Bear%' AND pd_nm NOT LIKE '%BullBear%'))
   상장일유효: pd_lstg_dt <> 0
   판매중만: pd_sale_yn = 1       # ⚠️ 해외는 유효분 전부 판매중이라 no-op (constant_columns) — 국내와의 대칭 유지용
   거래정상: pd_tr_yn = 0         # ⚠️ 동일 — no-op
@@ -528,10 +540,12 @@ query_rules:
   # (c) 환율 — du_last_aum 은 USD. 국내ETF(KRW)·펀드(KRW) 와 통합 정렬 시
   #     ontology/codebooks/fx_rate.csv (8/21 기준으로 교체 예정) 로 환산해 단위·환율·기준일을 답변에 명시.
   #     환산 미적용이면 통합 정렬 금지 — 상품군별 분리 제시.
-  통합정렬환율: >-
-    du_last_aum * fx_rate(USD→KRW, fx_rate.csv)
-    🔴 국내(원화)와 해외(달러)를 **한 표로 정렬하려면 환산이 선행**돼야 한다 —
-    환산을 안 했으면 통합 정렬 금지, 상품군별로 분리해 제시한다.
+  통합정렬환율:
+    triggers: [원화, 환율, 통합, 함께, 국내, 비교, 합쳐]
+    text: >-
+      du_last_aum * fx_rate(USD→KRW, fx_rate.csv)
+      🔴 국내(원화)와 해외(달러)를 **한 표로 정렬하려면 환산이 선행**돼야 한다 —
+      환산을 안 했으면 통합 정렬 금지, 상품군별로 분리해 제시한다.
   단어경계_필수: >-
     🔴 영문 약어를 `LIKE '%AI%'` 로 걸면 안 된다. 실측 오탐이 압도적이다 —
     `AI` 부분일치 865건 중 **811건(94%)이 오탐**이고(Ch**ai**nlink · D**ai**ly · C**a**l**i**fornia 등),
@@ -547,26 +561,30 @@ query_rules:
     형식 — 티커로 물으면 `TRIM(pd_abrv_nm) = 'VOO'` (또는 pd_itm_no LIKE 'VOO.%')
     · 이름으로 물으면 `pd_nm` 을 쓰되 **공백 제거 후 LIKE** 하고 query_rules.단어경계_필수 를 함께 본다.
     ⚠️ 약어명도 키가 아니다 — 중복 6건.
-  개수만_준_질의: >-
-    🔴 `LIMIT N` 을 `ORDER BY` 없이 두지 않는다. 축이 문장에 없으면 기본 정렬은
-    **순자산 내림차순** `ORDER BY du_last_aum DESC` 이고 답변에 그 기준을 밝힌다(국내와 동일 방침).
-    서버 실측 2026-09-01 — "미국 반도체 ETF" 가 `ORDER BY pd_nm ASC`(알파벳)로 나왔다.
-    이번엔 17행 전부 실려 무해했지만, 결과가 LIMIT 30 을 넘는 섹터면 **알파벳 앞쪽만 잘려 나간다**.
-    ⚠️ du_last_aum 은 결측 11건이 뒤로 밀린다 — Top-N 답변에 한 줄로 밝힌다.
-  개별조회_별칭: >-
-    🔴 개별 상품 정보 조회("VOO 정보 알려줘")에 **`SELECT *` 를 쓰지 않는다.**
-    49개 컬럼이 암호 같은 원어 이름으로 답변기에 넘어가면 오독한다 — 서버 실측 2026-09-01, VOO 한 답변에서 4건:
-    ① `pd_us_cik`(SEC 등록번호) 36405 를 **"시가총액 36405백만 달러"** 로(실제 순자산 du_last_aum ≈ 9,973억 달러)
-    ② `du_er_1d`(1일 수익률) 0.39 를 **"추적오차 0.39%"** 로(해외에 추적오차 컬럼은 없다)
-    ③ `du_vol_1d` 10,712,821 을 **"107,128,210 주"** 로(자릿수 10배)
-    ④ 설정일을 **2000-04-30 으로 창작**(pd_lstg_dt=20100907 인데).
-    형식 — 필요한 컬럼만 **AS 한글 별칭**으로:
-    `SELECT pd_nm AS 상품명, TRIM(pd_abrv_nm) AS 티커, cu_base_index AS 기초지수,
-    NULLIF(cu_charge_rt,0) AS 연간보수율pct, pd_lstg_dt AS 설정일, cu_fund_mgmt_co AS 운용사,
-    cu_index_repl_mthd AS 복제방식, du_clpr AS 종가USD, du_vol_1d AS 일거래량주,
-    du_last_aum AS 순자산USD, wu_inv_ast_type AS 자산군, wu_inv_rgn AS 투자지역
-    FROM overseas_etfs WHERE TRIM(pd_abrv_nm) = '<티커>'`
-    별칭이 곧 답변 어휘가 되므로 답변기가 컬럼을 헷갈릴 여지가 없다.
+  개수만_준_질의:
+    triggers: [개, 상위, TOP, 순, 추천, 랭킹, 위]
+    text: >-
+      🔴 `LIMIT N` 을 `ORDER BY` 없이 두지 않는다. 축이 문장에 없으면 기본 정렬은
+      **순자산 내림차순** `ORDER BY du_last_aum DESC` 이고 답변에 그 기준을 밝힌다(국내와 동일 방침).
+      서버 실측 2026-09-01 — "미국 반도체 ETF" 가 `ORDER BY pd_nm ASC`(알파벳)로 나왔다.
+      이번엔 17행 전부 실려 무해했지만, 결과가 LIMIT 30 을 넘는 섹터면 **알파벳 앞쪽만 잘려 나간다**.
+      ⚠️ du_last_aum 은 결측 11건이 뒤로 밀린다 — Top-N 답변에 한 줄로 밝힌다.
+  개별조회_별칭:
+    triggers: [정보, 뭐야, 어떤, 알려, 소개, 설명]
+    text: >-
+      🔴 개별 상품 정보 조회("VOO 정보 알려줘")에 **`SELECT *` 를 쓰지 않는다.**
+      49개 컬럼이 암호 같은 원어 이름으로 답변기에 넘어가면 오독한다 — 서버 실측 2026-09-01, VOO 한 답변에서 4건:
+      ① `pd_us_cik`(SEC 등록번호) 36405 를 **"시가총액 36405백만 달러"** 로(실제 순자산 du_last_aum ≈ 9,973억 달러)
+      ② `du_er_1d`(1일 수익률) 0.39 를 **"추적오차 0.39%"** 로(해외에 추적오차 컬럼은 없다)
+      ③ `du_vol_1d` 10,712,821 을 **"107,128,210 주"** 로(자릿수 10배)
+      ④ 설정일을 **2000-04-30 으로 창작**(pd_lstg_dt=20100907 인데).
+      형식 — 필요한 컬럼만 **AS 한글 별칭**으로:
+      `SELECT pd_nm AS 상품명, TRIM(pd_abrv_nm) AS 티커, cu_base_index AS 기초지수,
+      NULLIF(cu_charge_rt,0) AS 연간보수율pct, pd_lstg_dt AS 설정일, cu_fund_mgmt_co AS 운용사,
+      cu_index_repl_mthd AS 복제방식, du_clpr AS 종가USD, du_vol_1d AS 일거래량주,
+      du_last_aum AS 순자산USD, wu_inv_ast_type AS 자산군, wu_inv_rgn AS 투자지역
+      FROM overseas_etfs WHERE TRIM(pd_abrv_nm) = '<티커>'`
+      별칭이 곧 답변 어휘가 되므로 답변기가 컬럼을 헷갈릴 여지가 없다.
 
 # ── 국내ETF 대비 비대칭 요약 (교차질의 주의) ──
 domestic_asymmetry:

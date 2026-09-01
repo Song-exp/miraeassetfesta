@@ -112,8 +112,13 @@ class RuntimeContext:
                 if str(name).startswith("_"):
                     continue
                 if isinstance(rule, dict) and "triggers" in rule:
-                    if question is not None and not any(w in question for w in rule.get("triggers") or []):
-                        continue
+                    # 🔴 대소문자 무시 — 사람은 'kodex'·'ai' 라고도 쓴다. 트리거가 대문자(KODEX·AI)로만
+                    #    등록돼 있으면 소문자 질의에서 규칙이 통째로 빠진다 (2026-09-01, ETF triggers 도입 시 실측).
+                    #    트리거 누락은 규칙 미주입 = 오답이고, 과잉 주입은 무해하므로 casefold 로 넓게 맞춘다.
+                    if question is not None:
+                        q_cf = question.casefold()
+                        if not any(str(w).casefold() in q_cf for w in rule.get("triggers") or []):
+                            continue
                     rule = rule.get("text", "")
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")

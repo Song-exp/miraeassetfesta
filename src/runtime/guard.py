@@ -179,6 +179,11 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
         for lit in _LIT.findall(body):
             pairs.append((tbl or None, col, lit))
     for tbl, col, lit in pairs:
+        # `col = ''` 은 값 조회가 아니라 **결측 관용구**다 (IS NULL OR col='') — 값 사전에 빈 문자열이
+        # 있을 리 없으니 검사하면 무조건 오탐 기각이 된다 (2026-09-01 FND-037 실측: 벤치마크 결측
+        # 건수 질의가 답변 가능한데 가드가 만든 오거절로 나감)
+        if not lit.strip():
+            continue
         col_l = col.lower()
         candidates = [tbl.lower()] if tbl else [t for t in tables if (t, col_l) in index]
         for t in candidates:

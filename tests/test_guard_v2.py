@@ -71,11 +71,18 @@ def test_fund_base_population_injected():
     s, ok = f("SELECT itm_nm FROM public_funds ORDER BY fd_nast_suma DESC LIMIT 5", "규모 큰 펀드")
     assert ok and "WHERE sale_yn = '판매중'" in s and s.index("WHERE") < s.upper().index("ORDER BY")
 
-    # 발동 금지 4갈래 — 모수 언급 SQL · 사모 질문 · 교차(JOIN) · 랭킹 아님
-    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")[1]
+    # 🔴 빠진 쪽만 주입한다 (2026-08-31 밤 FND-030) — 한쪽만 쓴 SQL 이 반쪽 모수로 나가던 것을 막는다.
+    #    기존 조건은 그대로 두고 없는 것만 채운다.
+    s, ok = f("SELECT COUNT(*) FROM public_funds WHERE thco_sale_yn='Y' AND prvo_pbff_desc='공모' LIMIT 30",
+              "미래에셋증권에서 살 수 있는 공모펀드는 몇 개야?")
+    assert ok and "sale_yn = '판매중'" in s and s.count("prvo_pbff_desc") == 1
+    s, ok = f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")
+    assert ok and "판매완료" in s and "prvo_pbff_desc = '공모'" in s and "'판매중'" not in s
+
+    # 발동 금지 3갈래 — 모수 확장 질문 · 교차(JOIN) · 집계도 랭킹도 아님
     assert not f("SELECT itm_nm FROM public_funds ORDER BY 1 LIMIT 5", "사모 펀드 중 큰 것")[1]
     assert not f("SELECT 1 FROM public_funds p JOIN ext_fund_holdings h ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
-    assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1", "펀드 몇 개")[1]
+    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 5", "펀드")[1]
 
 
 # ── 펀드 랭킹 대표행·근거컬럼·방향 가드 4종 (2026-08-31 밤 — FND-019·015·C03 실측 채점 후속) ──
@@ -337,3 +344,100 @@ def test_ambiguous_join_column_rejected():
     assert not guard.ambiguous_columns(good, ctx)
     # 단일 테이블은 검사 대상이 아니다
     assert not guard.ambiguous_columns("SELECT itm_no FROM public_funds LIMIT 5", ctx)
+
+
+def test_spaceless_name_match():
+    """FND-R05 후속 — 종목명 LIKE 는 공백 무시 매칭으로 바꾼다.
+
+    실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다. 매칭을 넓히기만 하므로
+    존재하지 않는 상품(R05)은 여전히 0행이다."""
+    from src.runtime.pipeline import ensure_spaceless_name_match as f
+
+    s, ok = f("SELECT itm_no FROM public_funds WHERE itm_nm LIKE '%미래에셋 코어테크%' LIMIT 30")
+    assert ok and "REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%'" in s
+    assert not f(s)[1]                                  # 멱등
+    # TRIM 감싼 형태·NOT LIKE 도 처리
+    s2, ok2 = f("SELECT 1 FROM public_funds WHERE TRIM(itm_nm) NOT LIKE '%상장 지수%' LIMIT 5")
+    assert ok2 and "REPLACE(itm_nm,' ','') NOT LIKE '%상장지수%'" in s2
+    # 다른 컬럼은 건드리지 않는다
+    assert not f("SELECT 1 FROM public_funds WHERE han_clas_policies LIKE '%전문투자자%' LIMIT 5")[1]
+
+
+def test_prospectus_hint_not_triggered_by_공모펀드():
+    """FND-028 실측 — '모펀드' 가 '공모펀드'·'사모펀드' 에 걸려 거의 모든 질의가 설명서 조인 대상이 됐다."""
+    from src.runtime.pipeline import _FUND_EXT_HINTS as H
+
+    assert not H.search("개인이 가입할 수 있는 공모펀드는 몇 개야?")
+    assert not H.search("사모펀드 알려줘")
+    assert H.search("이 펀드의 모펀드가 뭐야?")
+    assert H.search("설정일이 가장 오래된 공모펀드 알려줘")
+    assert H.search("환매 수수료가 없는 펀드 알려줘")
+
+
+def test_fund_padded_columns_trimmed():
+    """FND-030 실측 — 펀드 코드 컬럼도 패딩이 있어 무TRIM 등호가 0행이 된다.
+
+    KG 가 준 '0016022' 로 = 비교하면 0행, DB 원값은 '0016022 '(8자, 202행)."""
+    from src.runtime.pipeline import ensure_trimmed_compare as f
+
+    s, ok = f("SELECT COUNT(*) FROM public_funds WHERE trusc_xtn_itt_cd = '0016022' LIMIT 30")
+    assert ok and "TRIM(trusc_xtn_itt_cd) = '0016022'" in s
+    assert not f(s)[1]                                    # 멱등
+    # LIKE 는 % 가 패딩을 흡수하므로 불개입
+    assert not f("SELECT 1 FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 5")[1]
+
+
+def test_sales_company_rule_grounded():
+    """FND-030 — '미래에셋증권에서 살 수 있는' 은 판매사 질의(thco_sale_yn)여야 한다."""
+    from src.runtime.loader import load_context
+
+    ctx = load_context()
+    g = ctx.planner_context(["public_funds"], "미래에셋증권에서 살 수 있는 공모펀드는 몇 개야?")
+    assert "thco_sale_yn" in g and "수탁사" in g
+
+
+def test_enum_value_suffix_fix():
+    """FND-024 실측 — '재간접형' 처럼 접미사만 다른 표기를 실제 값으로 흡수한다.
+
+    값 검사 기각 → 재생성이 사유의 '실제 값 예' 4개를 그대로 IN 에 넣는 오작동 → 거절로 나갔다.
+    답변 가능한 질의(2,594행)가 거절되던 경로를 없앤다."""
+    from src.runtime.loader import load_context
+    from src.runtime.pipeline import ensure_enum_value_fix as f
+
+    ctx = load_context()
+    s, ok = f("SELECT COUNT(*) FROM public_funds WHERE or_attr_desc = '재간접형' LIMIT 30", ctx)
+    assert ok and "'재간접'" in s and "재간접형" not in s
+    assert not f(s, ctx)[1]                                # 멱등
+    # 불개입 — 이미 실제 값 · 컬럼 오선택(재생성 사유로 넘긴다)
+    assert not f("SELECT 1 FROM public_funds WHERE or_attr_desc='재간접' LIMIT 5", ctx)[1]
+    assert not f("SELECT 1 FROM public_funds WHERE or_attr_desc='해외주식형' LIMIT 5", ctx)[1]
+
+
+def test_public_only_narrowing_and_type_rule():
+    """FND-038 실측 — '공모펀드는 유형별로' 질의에 사모가 섞이면 좁히고, '유형'=자산유형 규칙이 실린다."""
+    from src.runtime.pipeline import ensure_fund_base_population as f
+    from src.runtime.loader import load_context
+
+    s, ok = f("SELECT prvo_pbff_desc, COUNT(*) FROM public_funds WHERE sale_yn='판매중' "
+              "AND prvo_pbff_desc IN ('공모','사모') GROUP BY 1 LIMIT 2",
+              "공모펀드는 유형별로 몇 개씩 있어?")
+    assert ok and "prvo_pbff_desc = '공모'" in s and "'사모'" not in s
+    # 사모를 물으면 건드리지 않는다 (_POP_WIDEN)
+    assert not f("SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc IN ('공모','사모') LIMIT 5",
+                 "사모까지 포함해서 몇 개야?")[1]
+
+    g = load_context().planner_context(["public_funds"], "공모펀드는 유형별로 몇 개씩 있어?")
+    assert "zrin_btyp_nm" in g and "제로인 미수록" in g and "모집 방식" in g
+
+
+def test_group_null_label():
+    """FND-038 실측 — 분포 집계의 NULL 그룹에 라벨을 줘야 답변이 그 행을 빠뜨리지 않는다."""
+    from src.runtime.pipeline import ensure_group_null_label as f
+
+    s, ok = f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds WHERE sale_yn='판매중' "
+              "GROUP BY zrin_btyp_nm LIMIT 30")
+    assert ok and "COALESCE(zrin_btyp_nm,'(미수록)')" in s
+    assert not f(s)[1]                                     # 멱등
+    # 불개입 — GROUP BY 없음 · 축이 서술 컬럼이 아님 · 이미 COALESCE
+    assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1")[1]
+    assert not f("SELECT itm_no, COUNT(*) FROM public_funds GROUP BY itm_no LIMIT 5")[1]

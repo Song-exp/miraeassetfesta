@@ -7,6 +7,7 @@ Ground·Gate·Guard·Execute 는 전부 동작·테스트 가능하다.
 
 from __future__ import annotations
 
+import difflib
 import inspect
 import os
 import re
@@ -70,6 +71,17 @@ _FORBIDDEN = re.compile(
 
 
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+# 테이블 -> 컬럼 집합. validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사한다.
+# ctx 없이 호출되는 순수 함수라 모듈 수준에 캐시한다 — load_context() 가 채운다(없으면 검사 생략).
+_COLUMNS_OF: dict[str, set] = {}
+
+
+def set_column_index(schema: dict) -> None:
+    """{테이블: [(컬럼, …), …]} 를 받아 수식자 검사용 색인을 만든다."""
+    _COLUMNS_OF.clear()
+    for t, cols in (schema or {}).items():
+        _COLUMNS_OF[t.lower()] = {c[0].lower() if isinstance(c, (list, tuple)) else str(c).lower()
+                                  for c in cols}
 
 
 def _name_owners(cols: list[str], ctx) -> str:
@@ -81,10 +93,19 @@ def _name_owners(cols: list[str], ctx) -> str:
        '그건 public_funds 컬럼이다' 를 알려주면 모델이 테이블을 바꾸거나 그 조건을 뺄 수 있다.
     """
     schema = getattr(ctx, "schema", {}) or {}
+    every = sorted({c.lower() for t in schema for c, *_ in schema[t]})
     out = []
     for col in cols:
         owner = next((t for t in schema if any(c.lower() == col.lower() for c, *_ in schema[t])), None)
-        out.append(f"{col}(→ {owner} 컬럼이다. 이 테이블에는 없다)" if owner else col)
+        if owner:
+            out.append(f"{col}(→ {owner} 컬럼이다. 이 테이블에는 없다)")
+            continue
+        # 어느 테이블에도 없는 환각 컬럼 — 철자 유사 후보를 붙인다 (mtco_nm·cu_last_aum 류.
+        # 2026-09-01 FND-035 실측: 힌트 없는 기각은 재생성도 같은 컬럼을 반복했다)
+        near = difflib.get_close_matches(col.lower(), every, n=2, cutoff=0.6)
+        hint = (f"(어느 테이블에도 없는 컬럼이다. 철자가 비슷한 실제 컬럼: {', '.join(near)} — 뜻이 같다는 보장은 없다)"
+                if near else "(어느 테이블에도 없는 컬럼이다 — 스키마 목록의 컬럼만 쓴다)")
+        out.append(col + hint)
     return ", ".join(out)
 
 
@@ -118,6 +139,20 @@ def validate_sql(sql: str) -> str | None:
     for qual in {m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}:
         if qual in known and qual not in declared:
             return f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)"
+    # 🔴 선언된 테이블이어도 **그 테이블에 없는 컬럼**을 수식자로 붙이면 실행이 깨진다.
+    #    2026-08-31 서버 실측 — "하이닉스가 가장많이 편입된 상품":
+    #      SELECT ... SUM(domestic_etfs.weight_pct) FROM domestic_etfs JOIN ext_etf_holdings ...
+    #      weight_pct 는 ext_etf_holdings 컬럼인데 domestic_etfs 에 붙였다.
+    #    guard.unknown_columns 는 SQL 안 **어느 테이블에든** 있으면 통과시켜 이걸 못 잡는다.
+    #    수식자는 명시적이라 애매함이 없다 — 여기서 정확히 기각한다.
+    if _COLUMNS_OF:
+        for m in _TABLE_QUALIFIER.finditer(s):
+            t, col = m.group(1).lower(), m.group(0).split(".")[-1].strip().lower()
+            cols = _COLUMNS_OF.get(t)
+            if cols and col not in cols:
+                owner = next((o for o, c in _COLUMNS_OF.items() if col in c), None)
+                hint = f" ({owner} 컬럼이다)" if owner else ""
+                return f"{t} 에 없는 컬럼: {col}{hint}"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
     return None
@@ -227,13 +262,28 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
         return sql, False
-    if not re.search(r"\border\s+by\b", sql, re.I):
-        return sql, False
-    if re.search(r"\bsale_yn\b|\bprvo_pbff_desc\b", sql, re.I):
+    # 🔴 랭킹(ORDER BY)뿐 아니라 **집계(COUNT/SUM/AVG)** 도 기본모수 대상이다 — 기본모수 규칙이
+    #    "집계·Top-N" 을 함께 말한다. 2026-08-31 밤 FND-030 실측: COUNT 질의에 sale_yn 이 빠졌다.
+    if not re.search(r"\border\s+by\b", sql, re.I) and not re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I):
         return sql, False
     if any(t in question for t in _POP_WIDEN):
         return sql, False
-    cond = "sale_yn = '판매중' AND prvo_pbff_desc = '공모'"
+    # 🔴 질문이 '공모' 를 명시했는데 SQL 이 사모까지 포함하면 좁힌다 — 2026-09-01 FND-038 실측:
+    #    "공모펀드는 유형별로 몇 개씩?" 에 prvo_pbff_desc IN ('공모','사모') 가 나가 사모 1,993개가
+    #    답에 실렸다. 위 _POP_WIDEN 이 이미 '사모' 질문을 걸러내므로 여기 오는 것은 공모 질의뿐이다.
+    m_in = re.search(r"\bprvo_pbff_desc\s+IN\s*\([^)]*'사모'[^)]*\)", sql, re.I)
+    if m_in and "공모" in question:
+        sql = sql[:m_in.start()] + "prvo_pbff_desc = '공모'" + sql[m_in.end():]
+        return sql, True
+    # 🔴 **빠진 쪽만** 주입한다 — 예전엔 둘 중 하나라도 있으면 통째로 건너뛰어서, 한쪽만 쓴 SQL 이
+    #    반쪽 모수로 나갔다(2026-08-31 밤 FND-030 실측: prvo_pbff_desc 만 있고 sale_yn 누락).
+    #    모수를 넓히는 질의는 위 _POP_WIDEN 이 이미 막으므로 모델 의도를 해치지 않는다.
+    missing = [c for c, pat in (("sale_yn = '판매중'", r"\bsale_yn\b"),
+                                ("prvo_pbff_desc = '공모'", r"\bprvo_pbff_desc\b"))
+               if not re.search(pat, sql, re.I)]
+    if not missing:
+        return sql, False
+    cond = " AND ".join(missing)
     m = re.search(r"\bwhere\b", sql, re.I)
     if m:
         # 기존 조건을 괄호로 감싼다 — 'WHERE a OR b' 에 그냥 AND 를 붙이면 (cond AND a) OR b 로 샌다
@@ -446,8 +496,80 @@ def _ev_ctx():
 
 # 설명서(ext_fund_page)에만 있는 항목을 가리키는 어휘 — 마스터 45컬럼에 없다고 거절하던 것을 연다
 _FUND_EXT_HINTS = re.compile(
-    r"설정일|설정된|언제\s*설정|설정\s*시기|오래된|신생|환매|투자설명서|설명서|모펀드|지급일"
+    r"설정일|설정된|언제\s*설정|설정\s*시기|오래된|신생|환매|투자설명서|설명서|(?<![공사])모펀드|지급일"
+    # 🔴 (?<![공사])모펀드 — 그냥 '모펀드' 로 두면 "**공모펀드**"·"사모펀드" 에 걸려 거의 모든 펀드 질의가
+    #    설명서 조인 대상이 된다(2026-08-31 밤 실측: "개인이 가입할 수 있는 공모펀드는 몇 개야?" 오발동).
+    #    프롬프트가 2,000자 늘고 교차질의로 오분류된다.
 )
+
+
+_NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?\b(itm_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
+
+
+def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
+    """종목명 LIKE 를 **공백 무시 매칭**으로 바꾼다. (보정된 SQL, 보정했는지)
+
+    2026-08-31 밤 실측(FND-R05 후속): 사용자가 띄어 쓰면 있는 상품을 통째로 놓친다 —
+    '미래에셋 코어테크' 그대로 0행 / 공백 제거 14행. 'AI 반도체' 도 0행 / 4행.
+    종목명은 표기 공백이 제각각이라(삼성 베스트 MMF 법인 제1호) 양쪽 다 정규화해야 한다:
+    REPLACE(itm_nm,' ','') LIKE '%<공백 제거 키워드>%'. 매칭을 넓히기만 하므로 안전하고,
+    존재하지 않는 상품(FND-R05)은 여전히 0행이다.
+    """
+    def _fix(m: re.Match) -> str:
+        pat = m.group(3).replace(" ", "")
+        return f"REPLACE({m.group(1)},' ','') {m.group(2).upper()} '{pat}'"
+    fixed = _NAME_LIKE.sub(_fix, sql)
+    return fixed, fixed != sql
+
+
+def ensure_enum_value_fix(sql: str, ctx) -> tuple[str, bool]:
+    """WHERE 리터럴이 실제 enum 값과 접미사·공백만 다르면 실제 값으로 치환. (보정된 SQL, 보정했는지)
+
+    FND-024 실측 처방 — 값 검사 기각 → 재생성 실패 → 거절 경로를 애초에 없앤다.
+    guard.nearest_enum_value 가 유일 후보일 때만 값을 돌려주므로 의미가 갈리는 치환은 일어나지 않는다.
+    """
+    index = getattr(ctx, "value_index", None) or {}
+    if not index:
+        return sql, False
+    changed = False
+    for v in guard.check_values(sql, ctx):
+        if v.owner:                      # 컬럼 오선택은 재생성 사유로 넘긴다 (§6-2e)
+            continue
+        near = guard.nearest_enum_value(index, v.table, v.column, v.literal)
+        if near and near != v.literal:
+            sql = re.sub(rf"'{re.escape(v.literal)}'", f"'{near}'", sql)
+            changed = True
+    return sql, changed
+
+
+# 분포 집계의 GROUP BY 축이 될 수 있는 서술 컬럼 — NULL 이 정상적으로 존재한다
+_NULLABLE_GROUP_COLS = ("zrin_btyp_nm", "zrin_ptn_nm", "or_attr_desc", "fd_ivst_rgn_desc",
+                        "ovrs_fd_desc", "pers_corp_desc", "han_clas_nm", "han_clas_fee_type",
+                        "han_clas_sales_channel", "bmrk_nm", "curr_cd")
+
+
+def ensure_group_null_label(sql: str) -> tuple[str, bool]:
+    """분포 집계의 GROUP BY 축이 NULL 일 때 이름을 붙인다. (보정된 SQL, 보정했는지)
+
+    2026-09-01 실측(FND-038): `GROUP BY zrin_btyp_nm` 결과에 NULL 그룹(418행·308펀드)이 나왔지만
+    라벨이 빈칸이라 답변기가 그 행을 **통째로 빠뜨렸다**(합계가 8,469 로 500 부족).
+    이름이 없으면 말할 수 없다 — FND-016(이름 소실)·R09(근거 컬럼 부재)와 같은 뿌리다.
+    COALESCE 로 '(미수록)' 라벨을 주어 결측도 하나의 범주로 답에 실리게 한다.
+    """
+    if not _FUND_TBL.search(sql) or "COALESCE" in sql.upper():
+        return sql, False
+    m = re.search(r"\bgroup\s+by\s+([A-Za-z_]\w*)", sql, re.I)
+    if not m or m.group(1).lower() not in _NULLABLE_GROUP_COLS:
+        return sql, False
+    col = m.group(1)
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head = sql[:frm.start()]
+    fixed = re.sub(rf"(?<![.\w(]){col}\b(?!\s*\))", f"COALESCE({col},'(미수록)')", head, count=1)
+    if fixed == head:
+        return sql, False
+    return fixed + sql[frm.start():], True
 
 
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
@@ -700,7 +822,14 @@ def normalize_table_names(sql: str) -> tuple[str, bool]:
     return sql, changed
 
 
-_PADDED_COLS = ("bd_knd", "pd_pbcm")   # 2026-08-31 전수 실측: 이 둘만 고정폭 패딩(21,682·21,282행) — 나머지 범주 컬럼 9종은 패딩 0
+# 2026-08-31 전수 실측 — 고정폭 패딩(뒤 공백)이 있어 무TRIM 등호 비교가 0행이 되는 컬럼.
+# 채권: bd_knd 21,682 · pd_pbcm 21,282.
+# 🔴 펀드도 같은 문제가 있었다(밤 실측 FND-030): KG 가 준 값 '0016022' 로 = 비교하면 0행,
+#    DB 원값은 '0016022 '(8자, 202행)이라 TRIM 해야 맞는다. yaml normalization.trim_columns 에
+#    적혀 있어도 플래너가 적용하지 않는다 — 결정 층으로 내린다.
+_PADDED_COLS = ("bd_knd", "pd_pbcm",
+                "trusc_xtn_itt_cd", "or_co_xtn_itt_cd", "std_itm_no", "ksd_itm_no",
+                "rptt_ksd_itm_no", "kofia_fd_ccd", "itm_abrv_nm", "han_clas_nm")
 
 
 def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:
@@ -1068,6 +1197,18 @@ def _synonym_keys(ctx) -> dict:
 _KR_LISTING = re.compile(r"국내\s*(?:상장|증시|시장)?\s*(?:ETF|ETN|etf|etn|상품|종목)")
 
 
+# '미래에셋증권에서 살 수 있는' 은 **판매사** 질의다 — KG 의 수탁사 노드(Org_trustee_*)를 물어오면
+# trusc_xtn_itt_cd 필터가 붙어 모수가 엉뚱하게 좁아진다(2026-08-31 밤 FND-030 실측: 2,908펀드 → 14개).
+# Region_Korea 억제와 같은 계열의 처방. 수탁을 명시한 질의는 예외로 둔다.
+_SALE_CHANNEL_Q = re.compile(r"살\s*수\s*있|판매하|취급|파는|구매\s*가능|판매사")
+_TRUSTEE_Q = re.compile(r"수탁|보관")
+
+
+def _drop_trustee_node(question: str) -> bool:
+    """판매 경로를 묻는 질의인가 — 그렇다면 수탁사 노드는 답이 아니다."""
+    return bool(_SALE_CHANNEL_Q.search(question)) and not _TRUSTEE_Q.search(question)
+
+
 def _region_korea_is_listing(question: str) -> bool:
     """'국내 ETF'·'국내 상장 ETF' 처럼 국내가 상장 시장을 가리키면 True.
 
@@ -1158,6 +1299,7 @@ def _ground(
                 yield alias, True
 
     drop_kr = _region_korea_is_listing(question)
+    drop_trustee = _drop_trustee_node(question)
     # (키, 노드, 경계검사) 목록은 질문과 무관하다 — 프로세스당 1회만 만든다.
     # 정렬만 질문마다 다시 한다(_in_target 이 대상 테이블에 걸려 있어서).
     pairs = _MATCH_KEYS.get(id(ctx))
@@ -1178,6 +1320,11 @@ def _ground(
             continue
         if bounded and not _boundary_hit(label, consumed):
             # 보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙는 것을 막는다
+            continue
+        if drop_trustee and node.node_id.startswith("Org_trustee_"):
+            # 판매사 질의에 수탁사 노드를 물어오면 모수가 엉뚱해진다 — 라벨은 소비해 같은 자리에서 다시 안 잡히게 둔다
+            consumed = consumed.replace(label, " ")
+            lines.append(f"'{label}' → (건너뜀) 판매 경로 질의 — 수탁사 노드는 답이 아니다 (당사판매 thco_sale_yn 로 푼다)")
             continue
         if drop_kr and node.node_id == "Region_Korea":
             # '국내 ETF' 의 '국내' 는 상장 시장이다. 라벨은 소비해 같은 자리에서 다시 잡히지 않게 둔다
@@ -1399,6 +1546,18 @@ def build_grounding(
         # (2026-08-26 실측: "삼성전자를 보유한 국내 ETF" → OperationalError).
         parts.append(
             "# 교차질의 조인 키 — 구성종목·설명서 조건은 아래 외부 테이블에 있다. 반드시 JOIN 해서 쓴다\n"
+            "# 🔴 조인 키는 **짝이 정해져 있다.** 아래 줄의 왼쪽 ext_ 테이블은 오른쪽 마스터에만 붙는다 —\n"
+            "#    다른 마스터에 갖다 쓰면 없는 컬럼이 되어 실행이 깨진다\n"
+            "#    (2026-08-31 실측: public_funds.pd_itm_no 로 ext_etf_holdings 를 조인하려다 두 번 기각).\n"
+            "# 🔴 상품군이 둘 이상이면(\"ETF나 펀드\", \"ETF와 공모펀드\") **한 테이블에 뭉치지 말고\n"
+            "#    상품군별 SELECT 를 UNION ALL 로 합친다.** 상품군마다 마스터·조인키·수익률 컬럼이 다르다:\n"
+            "#      SELECT '국내ETF' AS 구분, e.pd_abrv_nm, e.du_er_1y FROM domestic_etfs e\n"
+            "#        JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent='…'\n"
+            "#      UNION ALL\n"
+            "#      SELECT '공모펀드', p.itm_nm, p.fd_yr1_ern_r FROM public_funds p\n"
+            "#        JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd\n"
+            "#        WHERE f.holding_nm='…'\n"
+            "#    정렬·LIMIT 은 UNION 전체를 감싼 바깥에서 한 번만 건다. 답변에는 구분 열을 함께 밝힌다.\n"
             + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
         )
     # R-2: triggered 규칙은 질문 어휘가 있을 때만. RULES_MODE=full 이면 종전처럼 전부 (eval/run_paired.py 의 대조군)
@@ -1478,7 +1637,7 @@ def _execute(sql: str) -> tuple[str, int]:
         con.close()
 
 
-def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) -> str:
+def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
 
     🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
@@ -1503,6 +1662,18 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step) ->
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, gnull_fixed = ensure_group_null_label(sql)
+    if gnull_fixed:
+        step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "
+             "(2026-09-01 FND-038 실측: 라벨이 빈칸이라 답변기가 418행 그룹을 통째로 빠뜨렸다)")
+    sql, enum_fixed = ensure_enum_value_fix(sql, ctx)
+    if enum_fixed:
+        step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "
+             "(2026-08-31 밤 FND-024 실측: '재간접형' → 실제 값 '재간접'. 기각·재생성으로는 못 고쳐 거절로 나갔다)")
+    sql, space_fixed = ensure_spaceless_name_match(sql)
+    if space_fixed:
+        step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
+             "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
     sql, ev_fixed = ensure_fund_evidence_columns(sql)
     if ev_fixed:
         step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
@@ -1676,7 +1847,7 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql = _apply_sql_guards(sql, q, name_token, future, step)
+    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
@@ -1715,14 +1886,14 @@ def answer_question(
             # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
             #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
             sql, _ = normalize_date_literals(raw2)
-            sql = _apply_sql_guards(sql, q, name_token, future, step)
+            sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
             err = validate_sql(sql) or forbidden_column_use(sql)
             if not err:
                 unk = guard.unknown_columns(sql, ctx)
                 if unk:
-                    err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
+                    err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
                 elif guard.ambiguous_columns(sql, ctx):
                     err = "한정되지 않은 모호 컬럼: " + ", ".join(guard.ambiguous_columns(sql, ctx)[:5])
             violations = [] if err else guard.check_values(sql, ctx)

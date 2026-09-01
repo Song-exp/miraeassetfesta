@@ -821,7 +821,7 @@ def test_guard_rejects_undeclared_table_reference():
 def test_guard_allows_declared_join_and_alias():
     """정상 JOIN·별칭은 그대로 통과해야 한다 — 기각 규칙이 과잉이면 정답 SQL 을 버린다."""
     ok_join = ("SELECT pd_nm FROM domestic_etfs JOIN ext_etf_holdings "
-               "ON ext_etf_holdings.etf_ticker = domestic_etfs.pd_itm_no "
+               "ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no "
                "WHERE ext_etf_holdings.constituent = '삼성전자' LIMIT 30")
     assert validate_sql(ok_join) is None
     ok_alias = ("SELECT e.pd_nm FROM domestic_etfs e JOIN ext_etf_holdings h "
@@ -865,6 +865,23 @@ def test_unknown_column_feedback_names_owner(ctx):
     from src.runtime.pipeline import _name_owners
     msg = _name_owners(["zrin_fd_ivst_risk_gcd"], ctx)
     assert "public_funds" in msg
+
+
+def test_unknown_column_feedback_suggests_near_miss(ctx):
+    """어느 테이블에도 없는 환각 컬럼은 철자 유사 후보를 붙인다 (FND-035: mtco_nm 반복 실측)."""
+    from src.runtime.pipeline import _name_owners
+    msg = _name_owners(["mtco_nm"], ctx)
+    assert "없는 컬럼" in msg and "mtco_itm_no" in msg
+
+
+def test_gate_annualized_return_absent(ctx):
+    """'연평균 수익률' 은 HCX 없이 즉답 — 플래너·답변기가 층끼리 어긋나던 것 (FND-017 실측)."""
+    from src.runtime import gate
+    g = gate.check("연평균 수익률이 가장 높은 공모펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "누적" in g.answer and "수록되어 있지 않" in g.answer
+    # '연평균' 이 없으면 발동하지 않는다
+    g2 = gate.check("1년 수익률이 가장 높은 공모펀드 알려줘", ctx, ["public_funds"])
+    assert not g2.rejected
 
 
 def test_ground_uses_yaml_synonyms(ctx):
@@ -946,3 +963,22 @@ def test_ground_combined_label_split(ctx):
     for name in ("네이버", "NAVER", "포스코홀딩스"):
         _, lines = _ground(f"{name} 편입 ETF", ctx, ["domestic_etfs"], cross=True)
         assert [x for x in lines if "건너뜀" not in x], f"{name} 매칭 0"
+
+
+def test_guard_rejects_wrong_table_qualifier(ctx):
+    """선언된 테이블이어도 그 테이블에 없는 컬럼을 수식자로 붙이면 기각해야 한다.
+
+    서버 실측 2026-08-31: SUM(domestic_etfs.weight_pct) — weight_pct 는 ext_etf_holdings 컬럼인데
+    domestic_etfs 에 붙였고 Guard 가 '검사 통과' 를 찍었다(SQL 안 다른 테이블에 있어서).
+    """
+    bad = ("SELECT domestic_etfs.pd_abrv_nm, SUM(domestic_etfs.weight_pct) FROM domestic_etfs "
+           "JOIN ext_etf_holdings ON domestic_etfs.pd_itm_no = ext_etf_holdings.etf_code "
+           "WHERE ext_etf_holdings.constituent='SK하이닉스' GROUP BY 1 LIMIT 1")
+    err = validate_sql(bad)
+    assert err and "weight_pct" in err and "ext_etf_holdings" in err, err
+    # 올바른 수식자·별칭은 통과
+    ok = bad.replace("SUM(domestic_etfs.weight_pct)", "SUM(ext_etf_holdings.weight_pct)")
+    assert validate_sql(ok) is None
+    alias = ("SELECT e.pd_abrv_nm, SUM(h.weight_pct) FROM domestic_etfs e "
+             "JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no GROUP BY 1 LIMIT 5")
+    assert validate_sql(alias) is None

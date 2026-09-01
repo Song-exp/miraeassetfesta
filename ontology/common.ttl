@@ -22551,6 +22551,7 @@ fp:Sec_d_8b7f9251d8 a fp:Security ; skos:prefLabel "DIGITAL ARTS INC"@en .
 fp:Sec_d_1684dbe23c a fp:Security ; skos:prefLabel "YAGEO CO"@en .
 fp:Sec_d_6881bc6233 a fp:Security ; skos:prefLabel "PICC PROPERTY&CASUALTY"@en .
 fp:Sec_d_a357a1dde8 a fp:Security ; skos:prefLabel "Taiwan Semiconductor Manufact"@en .
+fp:Sec_d_a357a1dde8 skos:broader fp:Sec_m_tsmc .
 fp:Sec_d_d139727ac3 a fp:Security ; skos:prefLabel "LI NING CO LTD"@en .
 fp:Sec_d_9cab77d6ca a fp:Security ; skos:prefLabel "GREAT WALL MOTOR COMPANY-H"@en .
 fp:Sec_d_3c9f97ef67 a fp:Security ; skos:prefLabel "MACRONIX INTERNATIONAL CO"@en .
@@ -23632,9 +23633,11 @@ fp:Sec_d_277dec7cc0 a fp:Security ; skos:prefLabel "ASR Microelectronics Co Ltd"
 fp:Sec_d_042d2de0eb a fp:Security ; skos:prefLabel "Jinko Solar Co Ltd"@en .
 fp:Sec_d_c1d0dd7fd1 a fp:Security ; skos:prefLabel "SICC Co Ltd"@en .
 fp:Sec_d_8c213388d0 a fp:Security ; skos:prefLabel "BeOne Medicines Ltd"@en .
+fp:Sec_d_8c213388d0 skos:broader fp:Sec_m_beone_medicines .
 fp:Sec_d_324f3bc887 a fp:Security ; skos:prefLabel "CHINA SOUTHERN POWER GRID -A"@en .
 fp:Sec_d_ae31ca6d2e a fp:Security ; skos:prefLabel "Nexchip Semiconductor Corp"@en .
 fp:Sec_d_f186d5f574 a fp:Security ; skos:prefLabel "Cambricon Technologies Corp Ltd"@en .
+fp:Sec_d_f186d5f574 skos:broader fp:Sec_m_cambricon .
 fp:Sec_d_9b7149d9b6 a fp:Security ; skos:prefLabel "Shanghai United Imaging Healthcare Co Lt"@en .
 fp:Sec_d_d28eafef7f a fp:Security ; skos:prefLabel "AVIC Chengdu UAS Co Ltd"@en .
 fp:Sec_d_d558345cee a fp:Security ; skos:prefLabel "Xinjiang Daqo New Energy Co Ltd"@en .
@@ -23882,6 +23885,7 @@ fp:Sec_d_2aa3b34637 a fp:Security ; skos:prefLabel "AMERICAN AIRLINES GROUP INC"
 fp:Sec_d_52a9d673c0 a fp:Security ; skos:prefLabel "Applied Optoelectronics Inc"@en .
 fp:Sec_d_fc193c3491 a fp:Security ; skos:prefLabel "AAON Inc"@en .
 fp:Sec_d_58f3e88c79 a fp:Security ; skos:prefLabel "애플/Apple Inc"@en .
+fp:Sec_d_58f3e88c79 skos:broader fp:Sec_m_apple .
 fp:Sec_d_8b2b78ca6a a fp:Security ; skos:prefLabel "AMERICAN ASSETS TRUST INC"@en .
 fp:Sec_d_38595d427e a fp:Security ; skos:prefLabel "Axon Enterprise Inc"@en .
 fp:Sec_d_29c3d350e1 a fp:Security ; skos:prefLabel "ABB INDIA LTD"@en .
@@ -24015,6 +24019,7 @@ fp:Sec_d_f81c9f16fd a fp:Security ; skos:prefLabel "American Tower Corp"@en .
 fp:Sec_d_f01fcce573 a fp:Security ; skos:prefLabel "AMUNDI SA"@en .
 fp:Sec_d_bb8e3ae8cd a fp:Security ; skos:prefLabel "Aumovio SE"@en .
 fp:Sec_d_22f4631dc9 a fp:Security ; skos:prefLabel "아마존/Amazon.com Inc"@en .
+fp:Sec_d_22f4631dc9 skos:broader fp:Sec_m_amazon .
 fp:Sec_d_519d5f5695 a fp:Security ; skos:prefLabel "ACCIONA SA"@en .
 fp:Sec_d_da87718543 a fp:Security ; skos:prefLabel "CORP ACCIONA ENERGIAS RENOVA"@en .
 fp:Sec_d_4fbb49e7c1 a fp:Security ; skos:prefLabel "Arista Networks Inc"@en .
@@ -24775,7 +24780,9 @@ fp:Sec_d_82c3aedc58 a fp:Security ; skos:prefLabel "Generac Holdings Inc"@en .
 fp:Sec_d_813cf56f43 a fp:Security ; skos:prefLabel "GENUS PLC"@en .
 fp:Sec_d_d47673ed5c a fp:Security ; skos:prefLabel "Gentex Corp"@en .
 fp:Sec_d_151431a3c9 a fp:Security ; skos:prefLabel "알파벳 C/Alphabet Inc C"@en .
+fp:Sec_d_151431a3c9 skos:broader fp:Sec_m_alphabet .
 fp:Sec_d_e8c34fae77 a fp:Security ; skos:prefLabel "알파벳 A/Alphabet Inc"@en .
+fp:Sec_d_e8c34fae77 skos:broader fp:Sec_m_alphabet .
 fp:Sec_d_3a9f854699 a fp:Security ; skos:prefLabel "Godfrey Phillips India Ltd"@en .
 fp:Sec_d_35e84866d8 a fp:Security ; skos:prefLabel "Genuine Parts Co"@en .
 fp:Sec_d_c82935025e a fp:Security ; skos:prefLabel "Structure Therapeutics Inc"@en .
@@ -25302,6 +25309,7 @@ fp:Sec_d_3abaa6e8b6 a fp:Security ; skos:prefLabel "Morgan Stanley"@en .
 fp:Sec_d_b751525e11 a fp:Security ; skos:prefLabel "MSA Safety Inc"@en .
 fp:Sec_d_86c46afcb2 a fp:Security ; skos:prefLabel "MSCI Inc"@en .
 fp:Sec_d_6ba52c8f47 a fp:Security ; skos:prefLabel "마이크로소프트/MICROSOFT CORP"@en .
+fp:Sec_d_6ba52c8f47 skos:broader fp:Sec_m_microsoft .
 fp:Sec_d_adc7c5837d a fp:Security ; skos:prefLabel "Sphere Entertainment Co"@en .
 fp:Sec_d_928cf4d389 a fp:Security ; skos:prefLabel "MADISON SQUARE GARDEN SPORTS"@en .
 fp:Sec_d_c6a9eda56b a fp:Security ; skos:prefLabel "Motorola Solutions Inc"@en .
@@ -25402,6 +25410,7 @@ fp:Sec_d_1d7c41352e a fp:Security ; skos:prefLabel "NUCOR CORP"@en .
 fp:Sec_d_afa625ee6b a fp:Security ; skos:prefLabel "NOVAVAX INC"@en .
 fp:Sec_d_167b8cfa99 a fp:Security ; skos:prefLabel "NOVOCURE LTD"@en .
 fp:Sec_d_ca3c50c193 a fp:Security ; skos:prefLabel "엔비디아/NVIDIA Corp"@en .
+fp:Sec_d_ca3c50c193 skos:broader fp:Sec_m_nvidia .
 fp:Sec_d_6eb9919d7d a fp:Security ; skos:prefLabel "Nova Ltd"@en .
 fp:Sec_d_7900678717 a fp:Security ; skos:prefLabel "Novo Nordisk A/S"@en .
 fp:Sec_d_053aa6dacb a fp:Security ; skos:prefLabel "NVR Inc"@en .
@@ -26019,8 +26028,10 @@ fp:Sec_d_eb4168e748 a fp:Security ; skos:prefLabel "Tractor Supply Co"@en .
 fp:Sec_d_5368ea2094 a fp:Security ; skos:prefLabel "Tower Semiconductor Ltd"@en .
 fp:Sec_d_b76cb1f105 a fp:Security ; skos:prefLabel "TAYSHA GENE THERAPIES INC"@en .
 fp:Sec_d_87553d015f a fp:Security ; skos:prefLabel "테슬라/Tesla Inc"@en .
+fp:Sec_d_87553d015f skos:broader fp:Sec_m_tesla .
 fp:Sec_d_3a36367cd7 a fp:Security ; skos:prefLabel "Yieldmax Tsla Option Income ETF"@en .
 fp:Sec_d_8274bbef22 a fp:Security ; skos:prefLabel "TSMC/TAIWAN SEMICONDUCTOR-SP ADR"@en .
+fp:Sec_d_8274bbef22 skos:broader fp:Sec_m_tsmc .
 fp:Sec_d_944f9b0274 a fp:Security ; skos:prefLabel "Tyson Foods Inc"@en .
 fp:Sec_d_b01fbcc397 a fp:Security ; skos:prefLabel "Trane Technologies plc"@en .
 fp:Sec_d_cbefefc42e a fp:Security ; skos:prefLabel "Titan Co Ltd"@en .

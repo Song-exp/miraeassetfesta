@@ -884,6 +884,16 @@ def test_gate_annualized_return_absent(ctx):
     assert not g2.rejected
 
 
+def test_gate_ac_class_choice_is_conditional_answer(ctx):
+    """A/C 클래스 유불리는 게이트 즉답 — 플래너가 '정보가 없다'+전문가 면책으로 오거절 (FND-C04 실측)."""
+    from src.runtime import gate
+    g = gate.check("같은 펀드면 A클래스랑 C클래스 중 뭐가 유리해?", ctx, ["public_funds"])
+    assert g.rejected and "투자 기간" in g.answer and "판매보수" in g.answer
+    # 조회 질의(보수 알려줘)는 발동하지 않는다 — 판단 어휘가 있어야 한다
+    g2 = gate.check("솔로몬 펀드 A클래스랑 C클래스 보수 알려줘", ctx, ["public_funds"])
+    assert not g2.rejected
+
+
 def test_ground_uses_yaml_synonyms(ctx):
     """yaml synonyms 가 Ground 매칭 키로도 쓰여야 한다 (서버 실측 2026-08-31 저녁).
 

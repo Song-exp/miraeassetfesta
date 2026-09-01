@@ -120,7 +120,10 @@ if [ "$MODE" != "--code-only" ]; then
   gzip -c "$DB" > /tmp/fp.db.gz
   echo "   압축 $(du -h /tmp/fp.db.gz | cut -f1)"
   ssh_ "mkdir -p $REMOTE/data $REMOTE/logs"
-  scp -i "$KEY" -o IdentitiesOnly=yes /tmp/fp.db.gz "$USER@$IP:$REMOTE/data/"
+  # 🔴 scp 에도 ssh_ 와 같은 호스트키 옵션이 필요하다 — 2026-09-01 실측: 한글 사용자명 경로가
+  #    cp949 로 깨져 known_hosts 를 못 만들고, 옵션 없는 scp 만 "Host key verification failed" 로
+  #    죽었다(ssh 는 accept-new 라 경고 후 진행). --db-only 가 조용히 실패해 서버 KG 가 구버전으로 남았다.
+  scp -i "$KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new /tmp/fp.db.gz "$USER@$IP:$REMOTE/data/"
   ssh_ "cd $REMOTE/data && gunzip -f -c fp.db.gz > financial_products.db && rm fp.db.gz && md5sum financial_products.db"
   echo "   🔴 위 md5 가 로컬($LOCAL_MD5)과 같은지 확인하세요."
 fi

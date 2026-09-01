@@ -263,6 +263,26 @@ def test_value_violation_names_owner_column():
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
 
 
+def test_fund_series_boundary_injected():
+    """FND-032 실측 — HCX 가 호 경계식을 `'2호' IN (a OR b)`(항상 거짓)로 옮겨 0행 오거절.
+    'N호' 언급 절을 걷어내고 GLOB 확정식을 주입한다."""
+    from src.runtime.pipeline import ensure_fund_series_boundary as f
+
+    q = "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘"
+    bad = ("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, TRIM(itm_nm) AS itm_nm FROM public_funds "
+           "WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋디스커버리증권투자신탁%' "
+           "AND '2호' IN (REPLACE(itm_nm,' ','') LIKE '%[^0-9]2호%' OR REPLACE(itm_nm,' ','') LIKE '%2호[^0-9]%') "
+           "LIMIT 30")
+    s, ok = f(bad, q)
+    assert ok and "GLOB '*[^0-9]2호*'" in s and "IN (" not in s
+    assert "LIKE '%미래에셋디스커버리증권투자신탁%'" in s          # 이름 절은 보존
+    assert not f(s, q)[1]                                          # 멱등
+    # 불개입 — 호수 없음 · 이름 검색 없음 · 펀드 테이블 아님
+    assert not f(bad, "미래에셋디스커버리증권투자신탁 위험등급 알려줘")[1]
+    assert not f("SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매중' LIMIT 1", q)[1]
+    assert not f("SELECT 1 FROM domestic_bonds WHERE pd_nm LIKE '%2호%' LIMIT 5", q)[1]
+
+
 def test_fund_mixed_type_canonical_filter():
     """FND-023 실측 2회 — '혼합형' 질의의 유형 필터를 zrin 확정식(주식혼합형+채권혼합형)으로 교체."""
     from src.runtime.pipeline import ensure_fund_mixed_type as f

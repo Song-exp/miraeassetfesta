@@ -675,6 +675,38 @@ def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
     return sql[:m.start()] + _MIXED_FIX + sql[m.end():], True
 
 
+def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
+    """N호 질의의 이름 검색에 호 경계식을 기계 주입. (보정된 SQL, 보정했는지)
+
+    2026-09-01 FND-032 실측 2회: ① 미특정 라우팅 수리 후 HCX 가 이름 검색까진 왔는데 호 경계를
+    `'2호' IN (a LIKE .. OR b LIKE ..)` 로 옮겨 적음 — 문법상 유효하나 항상 거짓이라 0행 오거절.
+    LIKE 에 [^0-9] 문자클래스를 쓰는 등 경계식은 HCX 가 반복적으로 망가뜨린다 — 규칙(종목명검색)에
+    정확식이 실려 있어도 소용없어 결정층으로 내린다. GLOB '*[^0-9]N호*' 하나로 '제N호'·'…신탁N호'
+    전부 잡히고 12호·32호는 앞 숫자 때문에 배제된다(디스커버리 2호 2행 정확 일치 실측).
+    발동 조건: ① public_funds ② 질문의 호수가 정확히 1종 ③ SQL 에 itm_nm 이름 검색 존재
+    ④ 올바른 경계식(GLOB [^0-9]N호)이 아직 없음. 조치: 'N호' 를 언급하는 최상위 AND 절을 걷어내고
+    (망가진 시도 제거) 경계식 한 절을 주입한다.
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, False
+    nos = set(_Q_SERIES_NO.findall(question))
+    if len(nos) != 1:
+        return sql, False
+    n = nos.pop()
+    if not re.search(r"\bitm_nm\b", sql, re.I):
+        return sql, False
+    bound = f"REPLACE(itm_nm,' ','') GLOB '*[^0-9]{n}호*'"
+    if bound in sql:
+        return sql, False
+    m = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m:
+        return sql, False
+    body = m.group(1)
+    kept = [c for c in guard.split_conjuncts(body) if f"{n}호" not in c]
+    new_body = " " + " AND ".join(kept + [bound]) + " "
+    return sql[:m.start(1)] + new_body + sql[m.end(1):], True
+
+
 def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
     """질문의 '등급 이상/이하' 를 crd_grd 서열 IN 목록으로 확장. (보정된 SQL, 보정했는지)
 
@@ -1825,6 +1857,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, series_fixed = ensure_fund_series_boundary(sql, q)
+    if series_fixed:
+        step("[Guard] 호수 경계 주입 — N호 조건을 GLOB '*[^0-9]N호*' 확정식으로 교체 "
+             "(2026-09-01 FND-032 실측: HCX 가 경계식을 `'2호' IN (a OR b)` 로 옮겨 항상-거짓 0행)")
     sql, mixed_fixed = ensure_fund_mixed_type(sql, q)
     if mixed_fixed:
         step("[Guard] 혼합형 확정식 치환 — 유형 조건을 zrin_btyp_nm IN (주식혼합형·채권혼합형) 으로 교체 "

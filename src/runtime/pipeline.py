@@ -70,6 +70,17 @@ _FORBIDDEN = re.compile(
 
 
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+# 테이블 -> 컬럼 집합. validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사한다.
+# ctx 없이 호출되는 순수 함수라 모듈 수준에 캐시한다 — load_context() 가 채운다(없으면 검사 생략).
+_COLUMNS_OF: dict[str, set] = {}
+
+
+def set_column_index(schema: dict) -> None:
+    """{테이블: [(컬럼, …), …]} 를 받아 수식자 검사용 색인을 만든다."""
+    _COLUMNS_OF.clear()
+    for t, cols in (schema or {}).items():
+        _COLUMNS_OF[t.lower()] = {c[0].lower() if isinstance(c, (list, tuple)) else str(c).lower()
+                                  for c in cols}
 
 
 def _name_owners(cols: list[str], ctx) -> str:
@@ -118,6 +129,20 @@ def validate_sql(sql: str) -> str | None:
     for qual in {m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}:
         if qual in known and qual not in declared:
             return f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)"
+    # 🔴 선언된 테이블이어도 **그 테이블에 없는 컬럼**을 수식자로 붙이면 실행이 깨진다.
+    #    2026-08-31 서버 실측 — "하이닉스가 가장많이 편입된 상품":
+    #      SELECT ... SUM(domestic_etfs.weight_pct) FROM domestic_etfs JOIN ext_etf_holdings ...
+    #      weight_pct 는 ext_etf_holdings 컬럼인데 domestic_etfs 에 붙였다.
+    #    guard.unknown_columns 는 SQL 안 **어느 테이블에든** 있으면 통과시켜 이걸 못 잡는다.
+    #    수식자는 명시적이라 애매함이 없다 — 여기서 정확히 기각한다.
+    if _COLUMNS_OF:
+        for m in _TABLE_QUALIFIER.finditer(s):
+            t, col = m.group(1).lower(), m.group(0).split(".")[-1].strip().lower()
+            cols = _COLUMNS_OF.get(t)
+            if cols and col not in cols:
+                owner = next((o for o, c in _COLUMNS_OF.items() if col in c), None)
+                hint = f" ({owner} 컬럼이다)" if owner else ""
+                return f"{t} 에 없는 컬럼: {col}{hint}"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
     return None
@@ -1430,6 +1455,18 @@ def build_grounding(
         # (2026-08-26 실측: "삼성전자를 보유한 국내 ETF" → OperationalError).
         parts.append(
             "# 교차질의 조인 키 — 구성종목·설명서 조건은 아래 외부 테이블에 있다. 반드시 JOIN 해서 쓴다\n"
+            "# 🔴 조인 키는 **짝이 정해져 있다.** 아래 줄의 왼쪽 ext_ 테이블은 오른쪽 마스터에만 붙는다 —\n"
+            "#    다른 마스터에 갖다 쓰면 없는 컬럼이 되어 실행이 깨진다\n"
+            "#    (2026-08-31 실측: public_funds.pd_itm_no 로 ext_etf_holdings 를 조인하려다 두 번 기각).\n"
+            "# 🔴 상품군이 둘 이상이면(\"ETF나 펀드\", \"ETF와 공모펀드\") **한 테이블에 뭉치지 말고\n"
+            "#    상품군별 SELECT 를 UNION ALL 로 합친다.** 상품군마다 마스터·조인키·수익률 컬럼이 다르다:\n"
+            "#      SELECT '국내ETF' AS 구분, e.pd_abrv_nm, e.du_er_1y FROM domestic_etfs e\n"
+            "#        JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent='…'\n"
+            "#      UNION ALL\n"
+            "#      SELECT '공모펀드', p.itm_nm, p.fd_yr1_ern_r FROM public_funds p\n"
+            "#        JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd\n"
+            "#        WHERE f.holding_nm='…'\n"
+            "#    정렬·LIMIT 은 UNION 전체를 감싼 바깥에서 한 번만 건다. 답변에는 구분 열을 함께 밝힌다.\n"
             + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
         )
     # R-2: triggered 규칙은 질문 어휘가 있을 때만. RULES_MODE=full 이면 종전처럼 전부 (eval/run_paired.py 의 대조군)

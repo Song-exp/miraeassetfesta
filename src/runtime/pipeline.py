@@ -7,6 +7,7 @@ Ground·Gate·Guard·Execute 는 전부 동작·테스트 가능하다.
 
 from __future__ import annotations
 
+import difflib
 import inspect
 import os
 import re
@@ -92,10 +93,19 @@ def _name_owners(cols: list[str], ctx) -> str:
        '그건 public_funds 컬럼이다' 를 알려주면 모델이 테이블을 바꾸거나 그 조건을 뺄 수 있다.
     """
     schema = getattr(ctx, "schema", {}) or {}
+    every = sorted({c.lower() for t in schema for c, *_ in schema[t]})
     out = []
     for col in cols:
         owner = next((t for t in schema if any(c.lower() == col.lower() for c, *_ in schema[t])), None)
-        out.append(f"{col}(→ {owner} 컬럼이다. 이 테이블에는 없다)" if owner else col)
+        if owner:
+            out.append(f"{col}(→ {owner} 컬럼이다. 이 테이블에는 없다)")
+            continue
+        # 어느 테이블에도 없는 환각 컬럼 — 철자 유사 후보를 붙인다 (mtco_nm·cu_last_aum 류.
+        # 2026-09-01 FND-035 실측: 힌트 없는 기각은 재생성도 같은 컬럼을 반복했다)
+        near = difflib.get_close_matches(col.lower(), every, n=2, cutoff=0.6)
+        hint = (f"(어느 테이블에도 없는 컬럼이다. 철자가 비슷한 실제 컬럼: {', '.join(near)} — 뜻이 같다는 보장은 없다)"
+                if near else "(어느 테이블에도 없는 컬럼이다 — 스키마 목록의 컬럼만 쓴다)")
+        out.append(col + hint)
     return ", ".join(out)
 
 
@@ -1796,7 +1806,7 @@ def answer_question(
             if not err:
                 unk = guard.unknown_columns(sql, ctx)
                 if unk:
-                    err = "스키마에 없는 컬럼: " + ", ".join(unk[:5])
+                    err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
                 elif guard.ambiguous_columns(sql, ctx):
                     err = "한정되지 않은 모호 컬럼: " + ", ".join(guard.ambiguous_columns(sql, ctx)[:5])
             violations = [] if err else guard.check_values(sql, ctx)

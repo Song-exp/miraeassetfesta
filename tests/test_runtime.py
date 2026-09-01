@@ -791,6 +791,23 @@ def test_unknown_column_feedback_names_owner(ctx):
     assert "public_funds" in msg
 
 
+def test_unknown_column_feedback_suggests_near_miss(ctx):
+    """어느 테이블에도 없는 환각 컬럼은 철자 유사 후보를 붙인다 (FND-035: mtco_nm 반복 실측)."""
+    from src.runtime.pipeline import _name_owners
+    msg = _name_owners(["mtco_nm"], ctx)
+    assert "없는 컬럼" in msg and "mtco_itm_no" in msg
+
+
+def test_gate_annualized_return_absent(ctx):
+    """'연평균 수익률' 은 HCX 없이 즉답 — 플래너·답변기가 층끼리 어긋나던 것 (FND-017 실측)."""
+    from src.runtime import gate
+    g = gate.check("연평균 수익률이 가장 높은 공모펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "누적" in g.answer and "수록되어 있지 않" in g.answer
+    # '연평균' 이 없으면 발동하지 않는다
+    g2 = gate.check("1년 수익률이 가장 높은 공모펀드 알려줘", ctx, ["public_funds"])
+    assert not g2.rejected
+
+
 def test_ground_uses_yaml_synonyms(ctx):
     """yaml synonyms 가 Ground 매칭 키로도 쓰여야 한다 (서버 실측 2026-08-31 저녁).
 

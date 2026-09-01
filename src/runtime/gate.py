@@ -189,7 +189,8 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                 if hit:
                     return GateResult(
                         rejected=True,
-                        reason=f"{tables[0]}.{item['column']} 은(는) 전건 '{item['value']}' 인 상수 컬럼 — 질문의 '{hit.group(0)}' 조건은 데이터에 존재하지 않음 (yaml gate_constants)",
+                        # reason 키가 있으면 그대로 쓴다 — '상수 컬럼' 서술이 안 맞는 부재형 항목용 (연평균 등)
+                        reason=item.get("reason") or f"{tables[0]}.{item['column']} 은(는) 전건 '{item['value']}' 인 상수 컬럼 — 질문의 '{hit.group(0)}' 조건은 데이터에 존재하지 않음 (yaml gate_constants)",
                         answer=item.get("answer") or f"해당 상품군의 {item['column']} 은(는) 전부 '{item['value']}' 이라 요청하신 조건의 상품은 수록되어 있지 않습니다.",
                     )
 

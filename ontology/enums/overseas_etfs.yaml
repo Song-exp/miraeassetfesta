@@ -440,6 +440,13 @@ query_rules:
     "미국 반도체 ETF 알려줘" 에 이 조건이 붙어 SSG(ProShares UltraShort Semiconductors,
     보수 미수록)가 목록에서 **말없이 빠졌다**(18→17건). 미수록은 제외 사유가 아니라
     "보수 미수록" 으로 표기할 사유다. cu_fund_mgmt_co 존재 조건도 같다 — 묻지 않았으면 걸지 않는다.
+    형식(보수 Top-N): `SELECT TRIM(pd_abrv_nm) AS 티커, pd_nm AS 상품명, cu_charge_rt AS 연간보수율pct
+    FROM overseas_etfs WHERE pd_grp_no='ETF' AND cu_charge_rt > 0 ORDER BY cu_charge_rt ASC, du_last_aum DESC LIMIT <N+여유>`
+    🔴 **동률을 자르지 않는다** — 최저 0.01% 가 **6개 동률**인데 LIMIT 5 로 자르면 1개(VEXC,
+    Vanguard EM Ex-China)가 말없이 빠진다(서버 실측 2026-09-01). N개를 물어도 N위와 동률인 행은
+    모두 싣고 동률임을 밝히거나, 최소한 "0.01% 동률이 6개" 라고 말한다. 2차 정렬(du_last_aum DESC)로
+    동률 내 순서를 고정해 재현 가능하게 한다.
+    답변에 **모수를 밝힌다** — "연간보수율이 수록된 ETF 5,604개 중"(실측 2026-09-01).
   ISIN조인금지: >-
     🔴 pd_isin_cd·pd_lipper_id 는 단독 조인·단건 조회 키로 쓰지 않는다 — 각각 63종이 2개 상품에 걸린다(같은 ISIN 이 OEUR.K/OEFA.K 둘 다).
     조인·단건 조회 키는 pd_itm_no. ISIN 검색 결과가 복수면 티커를 병기해 모두 제시한다. (리드 확답 2026-08-31, B-3)

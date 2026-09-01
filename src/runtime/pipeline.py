@@ -2173,11 +2173,15 @@ def answer_question(
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))
+    # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
+    #    "총 10개" 라고 셌다. 순자산 자릿수 훼손과 같은 계열 — 모델에게 산술(개수 세기)을 시키지
+    #    말고 복사만 하게 한다. retrieved_context(조회 원문)는 건드리지 않고 답변 입력에만 붙인다.
+    rows_for_answer = f"(조회 결과: 총 {n}행)\n{rows}"
     # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
     if _accepts_answer_rules(planner):
-        result.answer = planner.compose_answer(q, rows, answer_rules)
+        result.answer = planner.compose_answer(q, rows_for_answer, answer_rules)
     else:
-        result.answer = planner.compose_answer(q, rows)
+        result.answer = planner.compose_answer(q, rows_for_answer)
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

@@ -150,6 +150,15 @@ def test_fund_evidence_columns():
     # 단일 건수 질의(COUNT, GROUP BY 없음) — 출력 의미가 바뀌므로 불개입
     assert not f("SELECT COUNT(*) FROM public_funds WHERE zrin_fd_ivst_risk_gcd IS NULL LIMIT 1")[1]
 
+    # 🔴 9/1 서버 실측(021·022·031) — 순자산 랭킹은 억 원 파생 컬럼 병기 (13자리 옮겨쓰기 자릿수 훼손)
+    nast_rank = ("SELECT itm_no, TRIM(itm_nm), fd_nast_suma FROM public_funds "
+                 "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' ORDER BY 3 DESC LIMIT 5")
+    s3, ok3 = f(nast_rank)
+    assert ok3 and '"순자산_억원"' in s3 and s3.index("순자산_억원") < s3.upper().index("FROM")
+    assert not f(s3)[1]                                    # 멱등
+    # 수익률 랭킹에는 붙지 않는다
+    assert "순자산_억원" not in f(grade_rank)[0]
+
     # 🔴 식별 컬럼 없는 값-only SQL — 답변기가 이름을 지어낸 배포 실측(§6-2d 후속) 대응
     valonly = ("SELECT fd_yr1_ern_r FROM public_funds WHERE or_co_xtn_itt_cd = '00080008' "
                "AND itm_nm LIKE '%코어테크%' AND sale_yn = '판매중' LIMIT 30")
@@ -252,6 +261,25 @@ def test_value_violation_names_owner_column():
     sql2 = "SELECT itm_nm FROM public_funds WHERE or_attr_desc = '없는유형ZZZ' LIMIT 5"
     vs2 = guard.check_values(sql2, ctx)
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
+
+
+def test_value_violation_hints_similar_values_first():
+    """FND-023 실측 — '혼합형' 기각 예시가 임의 표본이라 재생성이 힌트 0 으로 REFUSE.
+    어간('혼합') 포함 실제 값(주식혼합·채권혼합)이 예시 맨 앞에 와야 재생성이 고친다."""
+    from src.runtime.loader import load_context
+    from src.runtime import guard
+
+    ctx = load_context()
+    sql = ("SELECT itm_nm FROM public_funds WHERE or_attr_desc = '혼합형' "
+           "AND sale_yn = '판매중' LIMIT 30")
+    vs = guard.check_values(sql, ctx)
+    assert len(vs) == 1
+    msg = str(vs[0])
+    assert "주식혼합" in msg and "채권혼합" in msg
+    # 유사 값이 없으면 종전처럼 정렬 표본을 보여준다
+    vs2 = guard.check_values(
+        "SELECT itm_nm FROM public_funds WHERE or_attr_desc = '없는유형ZZZ' LIMIT 5", ctx)
+    assert len(vs2) == 1 and "실제 값 예" in str(vs2[0])
 
 
 def test_empty_string_literal_is_missing_idiom_not_value(ctx=None):

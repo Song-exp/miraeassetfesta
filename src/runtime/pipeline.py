@@ -457,6 +457,11 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     target = _fund_sort_target(sql)
     if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
         add.append("zrin_attr_nms")
+    # 🔴 순자산 랭킹은 억 원 파생 컬럼을 병기한다 — 2026-09-01 서버 실측(021·022·031): 답변기가
+    #    13자리 원 단위를 옮겨 적다 자릿수를 훼손했다(1,024,955,248,968 → "10,249,525,488원").
+    #    억 환산으로 답한 문항(025·029)은 전부 정확 — 안전하게 옮길 수 있는 수를 결과에 실어 준다.
+    if target and target[0] == "fd_nast_suma" and "순자산_억원" not in sql:
+        add.append('CAST(fd_nast_suma/100000000 AS INTEGER) AS "순자산_억원"')
     # 🔴 **조건에 쓴 서술 컬럼이 결과에 없으면 답변기가 결과를 해석하지 못한다** — 2026-08-31 밤 실측(FND-R09):
     #    WHERE han_clas_policies LIKE '%전문투자자%' 로 27행을 정확히 조회하고도 SELECT 에 그 컬럼이 없어
     #    (itm_nm·mtco_itm_no·기준일만), 답변기가 "정보를 찾을 수 없습니다" 로 **조회 결과를 통째로 버렸다**.

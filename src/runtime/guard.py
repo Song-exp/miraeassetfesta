@@ -192,10 +192,27 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
                 continue
             if _norm(lit) in vals:
                 break
-            hint = sorted(v for v in index.get(("_raw", t, col_l), ()) )[:_MAX_HINT]
+            hint = _value_hints(index.get(("_raw", t, col_l), ()), lit)
             out.append(ValueViolation(t, col_l, lit, hint, _owner_column(index, t, col_l, lit)))
             break
     return out
+
+
+def _value_hints(raw, literal: str) -> list[str]:
+    """기각된 리터럴과 비슷한 실제 값을 예시 맨 앞에 놓는다.
+
+    2026-09-01 FND-023 실측: '혼합형' 기각의 예시가 정렬 표본(MMF·기타·임대형·재간접)이라
+    실제 값 '주식혼합'·'채권혼합' 이 안 보였고, 재생성은 힌트 0 으로 REFUSE — 답변 가능한
+    질의(주식혼합+채권혼합 top5 실재)가 오거절로 나갔다. _name_owners 의 철자 유사 후보(FND-035)와
+    동형 — 이번엔 컬럼이 아니라 값이다. 접미사 노이즈를 벗긴 어간의 포함 관계로 추린다.
+    """
+    base = _norm(literal)
+    for s in _SUFFIX_NOISE:
+        base = base.removesuffix(s)
+    base = base.strip()
+    sim = sorted(v for v in raw if base and base in _norm(v))
+    rest = [v for v in sorted(raw) if v not in sim]
+    return (sim + rest)[:_MAX_HINT]
 
 
 # ── ② 0행 진단 ──────────────────────────────────────────────────────────

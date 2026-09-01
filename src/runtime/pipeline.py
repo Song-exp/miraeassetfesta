@@ -203,6 +203,7 @@ def ensure_maturity_lower_bound(sql: str) -> tuple[str, bool]:
     'N년 안에 만기' 에 상한(mat_dt <= 미래일)만 걸면 만기일 미수록 0값 4행·만기 경과 49행이
     통과한다 — NULL-안전 제외 규칙과 같은 계열의 결측 누수. 상한이 기준일 이후일 때만 붙인다:
     '만기 지난 채권' 질의(상한이 과거)와 BETWEEN(자체 하한)은 건드리지 않는다.
+    하한은 >= — 기준일 당일 만기(잔존 1일) 7종목은 모수다 (2026-09-01 실측: > 가 이들을 누락).
     """
     if _MAT_LOWER.search(sql):
         return sql, False
@@ -210,7 +211,21 @@ def ensure_maturity_lower_bound(sql: str) -> tuple[str, bool]:
     if not m or int(m.group(1)) <= CUTOFF_INT:
         return sql, False
     s, e = m.span()
-    return f"{sql[:s]}(mat_dt > {CUTOFF_INT} AND {sql[s:e]}){sql[e:]}", True
+    return f"{sql[:s]}(mat_dt >= {CUTOFF_INT} AND {sql[s:e]}){sql[e:]}", True
+
+
+_CUTOFF_STRICT = re.compile(rf"\bmat_dt\s*>\s*{CUTOFF_INT}(?:\.0)?\b")
+
+
+def ensure_cutoff_inclusive(sql: str) -> tuple[str, bool]:
+    """기준일 하한의 초과(>)를 이상(>=)으로 교정. (보정된 SQL, 보정했는지)
+
+    2026-09-01 서버 실측: '만기가 가장 짧은 채권 뭐야' 가 mat_dt > 20260822 로 나가
+    기준일 당일 만기 7종목(잔존 1일 동률 — 진짜 최단)을 건너뛰고 8/23 채권(잔존 2일)을 답함.
+    구매가능 모수는 mat_dt >= 20260822 다(규칙 구매가능 · gold 전 문항 동일 표기).
+    기준일 리터럴에 붙은 > 만 교정한다 — 다른 날짜의 부등호는 사용자 조건일 수 있어 불개입."""
+    new = _CUTOFF_STRICT.sub(f"mat_dt >= {CUTOFF_INT}", sql)
+    return (new, new != sql)
 
 
 def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
@@ -1043,15 +1058,17 @@ def ensure_maturity_sort(sql: str, question: str) -> tuple[str, bool]:
     2026-08-31 서버 실측: '한전 채권 중 만기가 가장 긴' 이 ORDER BY dur DESC 로 나가
     한국전력공사채권999(만기 2049-10-24)를 답함 — 실제 최장은 1184(2052-04-21). 이표율 차이로
     듀레이션 순위와 만기 순위는 역전된다(dur 은 잔존일수도 만기도 아니다 — 만기윈도우 규칙).
-    교체 후 mat_dt 하한이 없으면 mat_dt > 기준일 을 주입 — 만기 짧은 순(ASC)에서 만기일
-    미수록 0값 4행·만기 경과 49행이 1위로 오는 것을 막는다(만기 긴 순에도 무해)."""
+    교체 후 mat_dt 하한이 없으면 mat_dt >= 기준일 을 주입 — 만기 짧은 순(ASC)에서 만기일
+    미수록 0값 4행·만기 경과 49행이 1위로 오는 것을 막는다(만기 긴 순에도 무해).
+    >= 인 이유: 당일 만기 7종목(잔존 1일)이 진짜 최단이다 (2026-09-01 실측: > 가 누락)."""
     if "domestic_bonds" not in sql or not _MAT_SORT_Q.search(question):
         return sql, False
     new = _ORDER_DUR.sub(r"\1mat_dt", sql)
     if new == sql:
         return sql, False
     if not re.search(r"mat_dt\s*>=?\s*\d", new):
-        new, _ = _append_exclusions(new, [f"mat_dt > {CUTOFF_INT}"])
+        # >= — 당일 만기(잔존 1일)는 모수다. 0값·만기 경과 배제라는 원래 목적엔 >= 로 충분 (2026-09-01)
+        new, _ = _append_exclusions(new, [f"mat_dt >= {CUTOFF_INT}"])
     return new, True
 
 
@@ -1075,6 +1092,34 @@ def price_ambiguity_clarify(question: str, tables: list[str]) -> str | None:
     if _CHEAP_CUE.search(question):
         return None
     return CHEAP_CLARIFY
+
+
+_COUNT_Q = re.compile(r"몇\s*(?:개|종목|건|가지)[가-힣]*\s*(?:야|이야|인가|인지|입니|일까|있|없|되|돼)|종목\s*수|개수")
+_COUNT_SKIP_Q = re.compile(r"골라|추천|보여|알려\s*줘")   # '몇 개만 골라줘' 는 추천(개수 지정)이지 개수 질문이 아니다
+
+
+def ensure_count_query(sql: str, question: str) -> tuple[str, bool]:
+    """개수 질문('몇 개야·몇 종목이야')의 목록 SELECT 를 COUNT(DISTINCT pd_no) 집계로 교체. (보정된 SQL, 보정했는지)
+
+    2026-09-01 서버 실측: '지금 살 수 있는 채권 중에 수익률 5% 넘는 건 몇 개야?' 에 COUNT 없는
+    목록 SELECT + 잔존일수 오름차순 상위 3행이 나감 — 정답 1,406종목은 어디에도 없다. LIMIT 상한
+    (30행) 아래서는 답변기가 행을 세어도 개수가 될 수 없으므로 SQL 층에서 집계로 바꿔야 한다.
+    ensure_distinct_count 는 COUNT(*) 가 이미 있을 때의 종목 수 교정 — COUNT 자체가 없는 형태는
+    이 가드가 받는다. 발동 조건 좁게: ① domestic_bonds ② 개수 의문 어구(추천·목록 신호가 있으면
+    불개입 — '몇 개만 골라줘') ③ 단일 평문 SELECT (COUNT·GROUP BY·UNION·중첩 SELECT 없음).
+    교체 시 ORDER BY·LIMIT 은 버린다(집계에 무의미)."""
+    if "domestic_bonds" not in sql or not _COUNT_Q.search(question) or _COUNT_SKIP_Q.search(question):
+        return sql, False
+    if re.search(r"\bCOUNT\s*\(|\bGROUP\s+BY\b|\bUNION\b", sql, re.I) or sql.upper().count("SELECT") != 1:
+        return sql, False
+    fm = re.search(r"\bFROM\b", sql, re.I)
+    if not fm:
+        return sql, False
+    body = sql[fm.start():]
+    cut = re.search(r"\s*\b(?:ORDER\s+BY|LIMIT)\b", body, re.I)
+    if cut:
+        body = body[:cut.start()]
+    return "SELECT COUNT(DISTINCT pd_no) AS 종목수 " + body.strip(), True
 
 
 def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
@@ -1615,7 +1660,8 @@ def _cell(v, col: str) -> str:
         return ""
     if col.endswith("remaining_days") and isinstance(v, (int, float)) and v > 0:
         # 단위를 칸에 박는다 — 2026-08-31 밤 서버 실측: 답변기가 9,375(일)를 "약 93.75년" 으로 환산 환각.
-        return f"{int(v)}일(약 {v / 365:.1f}년)"
+        # 1년 미만은 '6일(약 0.0년)' 이 아니라 '6일' — 2026-09-01 서버 답변에 0.0년 병기 관측.
+        return f"{int(v)}일(약 {v / 365:.1f}년)" if v >= 365 else f"{int(v)}일"
     if isinstance(v, float) and v.is_integer() and ("_dt" in col or col.endswith("dt") or "date" in col):
         return str(int(v))
     if isinstance(v, str):
@@ -1648,7 +1694,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     """
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
-        step(f"[Guard] 만기 하한 보정 — mat_dt > {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외)")
+        step(f"[Guard] 만기 하한 보정 — mat_dt >= {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외, 당일 만기는 모수)")
+    sql, incl = ensure_cutoff_inclusive(sql)
+    if incl:
+        step(f"[Guard] 기준일 경계 교정 — mat_dt > {CUTOFF_INT} 를 >= 로 (2026-09-01 서버 실측: '만기 가장 짧은' 이 당일 만기 7종목(잔존 1일)을 건너뛰고 8/23 채권을 답함)")
     sql, pop_fixed = ensure_fund_base_population(sql, q)
     if pop_fixed:
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
@@ -1707,6 +1756,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, matsort_fixed = ensure_maturity_sort(sql, q)
     if matsort_fixed:
         step("[Guard] 만기 정렬 교정 — '만기 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체 (2026-08-31 서버 실측: 한전 만기 최장이 dur 정렬로 2049년 채권 오답 — 실제 최장 2052년. 듀레이션·만기 순위는 이표율로 역전된다)")
+    sql, countq_fixed = ensure_count_query(sql, q)
+    if countq_fixed:
+        step("[Guard] 개수 질문 집계 교체 — '몇 개/몇 종목' 질문의 목록 SELECT 를 COUNT(DISTINCT pd_no) 로 교체 (2026-09-01 서버 실측: '5% 넘는 건 몇 개야' 에 잔존일수순 임의 3행 목록 — 정답 1,406종목 부재)")
     sql, distinct_fixed = ensure_distinct_count(sql, q)
     if distinct_fixed:
         step("[Guard] 종목 수 교정 — COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교체 (1,078종목이 장내·장외 복수 행 — 행수는 종목 수가 아니다)")

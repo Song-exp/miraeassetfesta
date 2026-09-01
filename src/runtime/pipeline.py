@@ -1096,8 +1096,7 @@ _SHORT_MIN_EN = 5
 # Security 라벨 1,262개가 이 꼴이라 한쪽 표기로 물으면 통째로 못 잡았다.
 _LABEL_SPLIT = re.compile(r"\s*/\s*")
 
-_MATCH_KEYS: dict[int, list] = {}   # id(ctx) -> [(키, 노드, 경계검사)] · 질문과 무관해 1회만 만든다
-_SYN_KEYS: dict[int, dict] = {}     # id(ctx) -> {정식 표기: [사용자 통칭 …]}
+# (매칭 키·동의어 캐시는 ctx 객체 속성으로 옮겼다 — _synonym_keys()·_ground() 참조)
 
 
 def _synonym_keys(ctx) -> dict:
@@ -1113,14 +1112,16 @@ def _synonym_keys(ctx) -> dict:
        HLB글로벌→'B글로벌'(깨짐) · 현대차증권→'차증권'(무의미)이 나온다.
        사람이 고른 통칭만 쓴다 — 그게 yaml synonyms 가 있는 이유다.
     """
-    out = _SYN_KEYS.get(id(ctx))
+    # 🔴 캐시는 ctx **객체 속성**에 둔다 — 종전 모듈 dict + id(ctx) 키는 /reload 로 ctx 가
+    #    교체될 때 옛 객체의 id 가 재활용되면 낡은 표를 돌려줄 수 있다(2026-09-01 자체 점검 §7).
+    out = getattr(ctx, "_syn_keys_cache", None)
     if out is None:
         out = {}
         for doc in (ctx.enums or {}).values():
             for term, canon in ((doc or {}).get("synonyms") or {}).items():
                 if isinstance(canon, str) and canon and canon != term and len(term) >= 2:
                     out.setdefault(canon, []).append(term)
-        _SYN_KEYS[id(ctx)] = out
+        ctx._syn_keys_cache = out
     return out
 # '국내' 가 **상장 시장**을 뜻하는 자리 — 투자지역(wu_inv_rgn)이 아니다.
 # 리드 실검증: "Li Auto를 담은 국내 ETF" 에서 '국내' 가 Region_Korea 로 잡혀 wu_inv_rgn='국내' 필터가 붙었다.
@@ -1233,7 +1234,7 @@ def _ground(
     drop_trustee = _drop_trustee_node(question)
     # (키, 노드, 경계검사) 목록은 질문과 무관하다 — 프로세스당 1회만 만든다.
     # 정렬만 질문마다 다시 한다(_in_target 이 대상 테이블에 걸려 있어서).
-    pairs = _MATCH_KEYS.get(id(ctx))
+    pairs = getattr(ctx, "_match_keys_cache", None)   # ctx 속성 캐시 — id 재활용 stale 방지(위와 동일)
     if pairs is None:
         seen_keys: set = set()
         pairs = []
@@ -1243,7 +1244,7 @@ def _ground(
                     continue
                 seen_keys.add((node.node_id, key))
                 pairs.append((key, node, bounded))
-        _MATCH_KEYS[id(ctx)] = pairs
+        ctx._match_keys_cache = pairs
     candidates = sorted(pairs, key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))))
     consumed = question
     for label, node, bounded in candidates:

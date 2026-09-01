@@ -36,6 +36,8 @@ DEFAULT_QIDS = [
     "ETF-D-029", "ETF-D-030", "ETF-D-031",
     "ETF-O-030", "ETF-O-031", "ETF-O-032", "ETF-O-033",
     "OFFICIAL-003", "OFFICIAL-004", "OFFICIAL-005", "OFFICIAL-NA-003",
+    # 정상 경로 스모크(2026-09-01 2차 점검) — 회귀 셋이 결함 재현 위주라 평범한 질의가 비어 있었다.
+    "ETF-D-004", "ETF-D-010", "ETF-D-019", "ETF-D-012",
 ]
 
 

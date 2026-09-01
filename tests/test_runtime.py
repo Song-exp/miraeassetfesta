@@ -995,3 +995,22 @@ def test_triggers_trim_prompt(ctx):
     assert len(p) < 6000, len(p)
     assert "- 환헤지:" not in p and "- 선물:" not in p     # 무관 규칙은 빠진다
     assert "- ETF만:" in p                                  # 보편 제약은 남는다
+
+
+def test_paraphrases_still_get_critical_rules(ctx):
+    """🔴 2026-09-01 2차 점검 — 트리거식 전환 직후 바꿔 말한 질의 7/9에서 규칙이 빠졌다.
+    오답을 만드는 규칙(보수·인버스·편입비중·위험)은 always-on 으로 복귀했다 — 이 테스트는
+    누군가 다시 트리거식으로 바꾸면 같은 사고가 재발한다는 것을 잡는 회귀 담장이다."""
+    cases = [
+        ("돈 제일 조금 떼가는 국내 ETF 5개", "보수유효"),
+        ("제일 싸게 살 수 있는 ETF", "보수유효"),
+        ("운용 코스트 낮은 ETF", "보수유효"),
+        ("지수 반대로 가는 ETF 3개", "인버스"),
+        ("떨어질 때 버는 ETF", "인버스"),
+        ("삼성전자 제일 많이 갖고 있는 ETF", "편입비중상위"),
+        ("원금 잃기 싫은데 뭐 사", "위험요인질의"),
+        ("ETF 아무거나 5개", "개수만_준_질의"),
+    ]
+    misses = [f"{q} → {rule}" for q, rule in cases
+              if f"- {rule}:" not in ctx.planner_context(["domestic_etfs"], question=q)]
+    assert not misses, f"바꿔 말한 질의에서 규칙 누락: {misses}"

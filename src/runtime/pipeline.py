@@ -1328,6 +1328,9 @@ def _region_korea_is_listing(question: str) -> bool:
     return bool(_KR_LISTING.search(question))
 
 
+_Q_SERIES_NO = re.compile(r"(\d+)\s*호")
+
+
 def _ground(
     question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
 ) -> tuple[list, list[str]]:
@@ -1444,6 +1447,18 @@ def _ground(
         aliases = target_aliases(ctx, node, target, relations)
         if target and not aliases:
             # E — 대상 테이블에 값이 없는 노드. 레이블을 소비하지 않아 같은 표기의 다른 노드가 잡힐 수 있게 둔다
+            continue
+        # 🔴 Fund 노드 호수 불일치 (2026-09-01 FND-032 실측) — '미래에셋디스커버리증권투자신탁' 노드의
+        #    rptt 코드는 4호를 가리키는데 질문은 2호였다. 호가 다르면 다른 펀드다 — 코드 매핑을 실으면
+        #    플래너가 4호 값을 2호의 답으로 낼 수 있다. 라벨은 소비하고 코드 대신 이름 검색을 지시한다.
+        ho = _Q_SERIES_NO.search(question)
+        if (node.node_id.startswith("Fund_") and ho
+                and not any(ho.group(1) + "호" in lb.replace(" ", "") for lb in node.labels)):
+            consumed = consumed.replace(label, " ")
+            lines.append(
+                f"'{label}' → {node.node_id} (Fund) — ⚠️ 질문의 '{ho.group(1)}호' 와 이 노드의 코드가 "
+                f"가리키는 펀드가 다를 수 있어 코드 매핑을 싣지 않는다. public_funds.itm_nm 공백무시 LIKE "
+                f"+ 호 경계(종목명검색 규칙)로 푼다")
             continue
         hits.append(node)
         consumed = consumed.replace(label, " ")
@@ -1908,6 +1923,24 @@ def answer_question(
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
         step("[Ground] KG 개체 매핑 — 매칭 없음" + (" (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)" if tables else ""))
+
+    # 🔴 미특정 라우팅 보정 (2026-09-01 FND-032 실측) — "…증권투자신탁 2호 위험등급" 은 '펀드' 명사가
+    #    없어 미특정 → 4테이블로 빠졌고, KG 가 public_funds 매핑을 찾아 근거문서에 실었는데도 HCX 는
+    #    FROM domestic_bonds 완전일치 SQL 을 내 0행 오거절. Ground 가 테이블을 알아냈으면 라우팅이
+    #    그것을 쓴다 — 매핑이 단일 상품군만 가리킬 때만 좁힌다(지역·등급 노드처럼 여러 테이블에
+    #    걸리면 불개입). §7 구조 리스크 1(미특정 경로 가드 우회)의 부분 해소이기도 하다.
+    if not tables and ground_lines:
+        seen = set(re.findall(r"\b(domestic_bonds|domestic_etfs|overseas_etfs|public_funds)\.",
+                              " ".join(ground_lines)))
+        if len(seen) == 1:
+            tables = [seen.pop()]
+            step(f"[Route] 미특정 보정 — KG 매핑이 {tables[0]} 만 가리켜 그 상품군으로 좁힌다 "
+                 "(2026-09-01 FND-032 실측: 미특정 → 채권 테이블 SQL → 0행 오거절)")
+            cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]
+            if not cross and tables == ["public_funds"] and _FUND_EXT_HINTS.search(q):
+                cross = True
+                step("[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함")
+            hits, ground_lines = _ground(q, ctx, tables, cross)
 
     # Gate — HCX 호출 0회 기각 경로
     g = gate.check(q, ctx, tables)

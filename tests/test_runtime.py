@@ -99,6 +99,21 @@ def test_full_path_with_planner(ctx):
     assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측
 
 
+def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):
+    """FND-032 실측 — '펀드' 명사 없는 질의가 미특정으로 빠져 FROM domestic_bonds 완전일치 → 오거절.
+
+    ① Ground 매핑이 public_funds 만 가리키면 라우팅을 그 상품군으로 좁힌다.
+    ② Fund 노드의 코드가 질문의 호수와 다를 수 있으면(디스커버리 노드 rptt = 4호에 2호 질문)
+       코드 매핑을 싣지 않고 이름 검색을 지시한다 — 4호 값이 2호의 답으로 나가는 것을 막는다.
+    """
+    r = answer_question("T-032", "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘", ctx=ctx)
+    assert "미특정 보정" in r.think_trace and "public_funds" in r.think_trace
+    assert "코드 매핑을 싣지 않는다" in r.think_trace and "rptt_ksd_itm_no" not in r.think_trace
+    # 호수 없는 질의는 코드 매핑 유지(불개입) — 좁히기는 동일하게 발동
+    r2 = answer_question("T-032b", "미래에셋디스커버리증권투자신탁 위험등급 알려줘", ctx=ctx)
+    assert "미특정 보정" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
+
+
 def test_cutoff_august_allowed(ctx):
     # 기준일 2026-08-22 — 8월은 기준일 포함 월이라 게이트를 통과해야 한다 (2차 데이터 전환 회귀 테스트)
     r = answer_question("T-11", "2026년 8월 상장한 국내 ETF 알려줘", ctx=ctx)

@@ -696,6 +696,39 @@ def strip_disclaimer(text: str) -> tuple[str, bool]:
     return (out, True) if out else (text, False)
 
 
+# 국가태그 규칙의 확정 대응 (한국·국내는 제외 — 상장/국내 질의와 충돌)
+_COUNTRY_TAGS = {"중국": "CHN", "차이나": "CHN", "미국": "USA", "베트남": "VNM", "일본": "JPN",
+                 "러시아": "RUS", "브라질": "BRA", "홍콩": "HKG", "독일": "DEU",
+                 "인도네시아": "IDN", "인도": "IND"}
+
+
+def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
+    """국가 질의의 지역 컬럼 오용을 태그 확정식으로 교체. (보정된 SQL, 보정했는지)
+
+    2026-09-01 FND-026 재검 실측 — 국가태그 규칙이 실려도 플래너가 ① fd_ivst_rgn_desc='중국'
+    (없는 값 — 기각) ② 재생성서 ='글로벌' (있는 값 — 통과·오모수: 중국 아닌 글로벌 펀드가 LIMIT 을
+    도배) ③ 태그를 써도 wrap 없는 LIKE '%,CHN,%' 로 목록 처음·끝의 태그 98/560행을 놓친다.
+    조치: 질문의 국가어에 대해 ① fd_ivst_rgn_desc 등호 조건을 정식 태그식으로 교체
+    ② wrap 없는 태그 LIKE 를 ','||…||',' 정식형으로 교정. 국가어 없는 질의·지역어 질의는 불개입.
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, False
+    tag = next((t for w, t in _COUNTRY_TAGS.items() if w in question), None)
+    if not tag:
+        return sql, False
+    canon = f"',' || prfd_attr_cds || ',' LIKE '%,{tag},%'"
+    fixed = False
+    m = re.search(r"(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", sql)
+    if m:
+        sql = sql[:m.start()] + canon + sql[m.end():]
+        fixed = True
+    bare = re.compile(rf"(?<!\|\| ')(?:\b\w+\.)?prfd_attr_cds\s+LIKE\s+'%,{tag},%'")
+    if bare.search(sql):
+        sql = bare.sub(canon, sql)
+        fixed = True
+    return sql, fixed
+
+
 _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
 _FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
                   "CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
@@ -1905,6 +1938,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, ctag_fixed = ensure_fund_country_tag(sql, q)
+    if ctag_fixed:
+        step("[Guard] 국가 태그 확정식 — 지역 컬럼 등호·미래핑 태그 LIKE 를 ','||prfd_attr_cds||',' 정식형으로 교체 "
+             "(2026-09-01 FND-026 재검: ='글로벌' 오모수 + wrap 없는 LIKE 가 98/560행 누락)")
     sql, fcnt_fixed = ensure_fund_distinct_count(sql, q)
     if fcnt_fixed:
         step("[Guard] 펀드단위 집계 교체 — 펀드 개수 질의의 COUNT(*) 를 COUNT(DISTINCT 펀드키)+클래스수 병기로 "

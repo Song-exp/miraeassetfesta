@@ -263,6 +263,23 @@ def test_value_violation_names_owner_column():
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
 
 
+def test_fund_country_tag_canonicalized():
+    """FND-026 재검 실측 — ='글로벌' 오모수 + wrap 없는 태그 LIKE 98/560행 누락을 정식형으로 교체."""
+    from src.runtime.pipeline import ensure_fund_country_tag as f
+
+    q = "중국에 투자하는 공모펀드 알려줘"
+    bad = ("SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND (fd_ivst_rgn_desc = '글로벌' OR prfd_attr_cds LIKE '%,CHN,%') "
+           "AND sale_yn = '판매중' LIMIT 30")
+    s, ok = f(bad, q)
+    assert ok and "fd_ivst_rgn_desc" not in s
+    assert s.count("',' || prfd_attr_cds || ',' LIKE '%,CHN,%'") == 2
+    assert not f(s, q)[1]                                  # 멱등
+    # 불개입 — 국가어 없음(지역어 질의) · 펀드 테이블 아님
+    assert not f(bad, "글로벌 펀드 알려줘")[1]
+    assert not f("SELECT 1 FROM domestic_etfs WHERE wu_inv_rgn='중국' LIMIT 5", q)[1]
+
+
 def test_strip_disclaimer():
     """면책 금지 규칙 5회 재발 실측 — '금융기관 문의·전문가 상담' 문장을 통째로 걷어낸다."""
     from src.runtime.pipeline import strip_disclaimer as f

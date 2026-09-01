@@ -109,6 +109,10 @@ def test_manager_full_name_grounds(ctx):
     # 약칭 2자('삼성')는 여전히 매칭에 참여하지 않는다 — '삼성전자' 질의 오탐 방지
     _, l2 = _ground("삼성전자를 담은 공모펀드 알려줘", ctx, ["public_funds"], cross=True)
     assert not any("Org_00040010" in l for l in l2), l2
+    # 🔴 회귀 보호 — 정식명을 label_ko 에 '/' 병합하면 조각에 단어경계가 붙어 브랜드+상품명
+    #    합성어('미래에셋코어테크')의 브랜드 매칭이 죽는다 (2026-09-01 저녁 FND-016 재검 실측)
+    _, l3 = _ground("미래에셋코어테크 펀드 1년 수익률 알려줘", ctx, ["public_funds"])
+    assert any("Org_00080008" in l for l in l3), l3
 
 
 def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):

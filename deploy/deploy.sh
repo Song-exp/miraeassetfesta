@@ -85,6 +85,13 @@ fi
 if [ "$MODE" != "--db-only" ]; then
   say "1. 코드 갱신 (git pull)"
   ssh_ "cd $REMOTE && git pull --ff-only && git log --oneline -1"
+  # 🔴 2026-09-01 실측 — 서버 작업본에 더티 파일이 있으면 pull 은 통과하고 그 파일이 이미지에
+  #    구워진다(‘펀드’ 라우팅이 서버에서만 깨졌던 원인 추적). 더티면 여기서 멈춘다 — 지우지는 않는다.
+  if [ -n "$(ssh_ "cd $REMOTE && git status --porcelain -- src/ ontology/ eval/")" ]; then
+    echo "❌ 서버 작업본이 더티합니다 — 아래 파일이 이미지에 구워집니다. 정리 후 다시 배포하세요."
+    ssh_ "cd $REMOTE && git status --short -- src/ ontology/ eval/ && git diff --stat -- src/ | tail -5"
+    exit 1
+  fi
 
   say "1-B. 서버 .env 점검"
   # 🔴 SITE_ADDRESS 는 경고가 아니라 중단이다. 비어 있으면 Caddyfile 의 `{$SITE_ADDRESS} {` 가
@@ -126,6 +133,20 @@ if [ "$MODE" = "--db-only" ]; then
 else
   ssh_ "cd $REMOTE && docker compose up -d --build && docker compose ps"
 fi
+
+# ── 3-B. 이미지 안 코드 검증 — 라우팅은 순수 함수라 HCX 0회·결정적이다 ──────────
+# 🔴 2026-09-01 실측 — 서버 저장소는 최신인데 응답은 '펀드' 라우팅이 깨져 있었다.
+#    구워진 이미지의 코드를 컨테이너 안에서 직접 단언한다 (밖에서는 구분이 안 된다).
+say "3-B. 이미지 코드 검증 (컨테이너 안 라우팅 단언)"
+ssh_ "cd $REMOTE && docker compose exec -T api python -c \"
+from src.runtime.router import route, PRODUCT
+from src.runtime.loader import load_context
+ctx = load_context()
+for q, want in [('국내 펀드 알려줘', ['public_funds']), ('신용등급 AAA 채권', ['domestic_bonds'])]:
+    r = route(q, ctx)
+    assert r.decided and r.tables == want, (q, r.tables, r.why, sorted(PRODUCT))
+print('ROUTE SMOKE OK (in-container)')
+\"" || { echo "❌ 이미지 안 라우팅 단언 실패 — 구워진 코드가 저장소와 다릅니다. docker compose build --no-cache 로 재빌드하세요."; exit 1; }
 
 # ── 4. 확인 ─────────────────────────────────────────────────────────────
 say "4. 밖에서 확인"

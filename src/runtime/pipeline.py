@@ -675,6 +675,27 @@ def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
     return sql[:m.start()] + _MIXED_FIX + sql[m.end():], True
 
 
+# 면책 상투구가 든 문장 통째 — 문장 경계는 마침표·물음표·느낌표·줄바꿈 (쉼표는 문장 내부)
+_DISCLAIMER = re.compile(
+    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견))"
+    r"[^.!?\n]*[.!?]?")
+
+
+def strip_disclaimer(text: str) -> tuple[str, bool]:
+    """답변에서 면책 상투구 문장을 걷어낸다. (정리된 답변, 제거했는지)
+
+    2026-09-01 실측 — answer_rules 의 면책 금지가 하루 5회 재발("금융기관에 문의"·"전문가와
+    상담"): 규칙이 실려도 답변기가 습관적으로 붙인다(법칙 1). 값·목록은 그대로 두고 해당 문장만
+    통째로 제거. 전부 지워지면(면책 한 줄짜리 답) 원문 유지 — 빈 답변이 더 나쁘다.
+    """
+    out = _DISCLAIMER.sub("", text)
+    if out == text:
+        return text, False
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return (out, True) if out else (text, False)
+
+
 _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
 _FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
                   "CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
@@ -2213,6 +2234,10 @@ def answer_question(
         result.answer = planner.compose_answer(q, rows_for_answer, answer_rules)
     else:
         result.answer = planner.compose_answer(q, rows_for_answer)
+    result.answer, stripped = strip_disclaimer(result.answer)
+    if stripped:
+        step("[Guard] 면책 문구 제거 — '금융기관 문의·전문가 상담' 류 문장을 답변에서 걷어냄 "
+             "(answer_rules 금지 규칙 미준수 5회 재발 — 2026-09-01 결정층行)")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

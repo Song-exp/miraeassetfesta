@@ -263,6 +263,25 @@ def test_value_violation_names_owner_column():
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
 
 
+def test_strip_disclaimer():
+    """면책 금지 규칙 5회 재발 실측 — '금융기관 문의·전문가 상담' 문장을 통째로 걷어낸다."""
+    from src.runtime.pipeline import strip_disclaimer as f
+
+    a = ("1. 삼성MMF법인제1호 C 클래스 - 124295억원\n\n"
+         "이 펀드들은 모두 선취 수수료가 없으며, 순자산이 큰 순으로 정렬되어 있습니다. "
+         "더 자세한 내용은 해당 금융기관에 문의하시기 바랍니다.")
+    s, ok = f(a)
+    assert ok and "문의" not in s and "124295억원" in s and "정렬되어 있습니다." in s
+    # 쉼표 낀 긴 문장도 통째로
+    b = "안전성이 중요한 경우 전문가와 상담하여 자신의 투자 목표에 맞는 상품을 선택하는 것이 좋습니다."
+    s2, ok2 = f("위험등급은 6등급입니다. " + b)
+    assert ok2 and "전문가" not in s2 and "6등급입니다." in s2
+    # 불개입 — 면책 없음 · 면책뿐인 답(빈 답변 방지)
+    assert f("위험등급은 6등급입니다.") == ("위험등급은 6등급입니다.", False)
+    only = "자세한 내용은 금융기관에 문의하세요."
+    assert f(only) == (only, False)
+
+
 def test_fund_distinct_count_replaced():
     """FND-034 실측 — COUNT(*) 가 클래스 850 을 '펀드 850개' 로 (구분 누락 6번째 재발).
     펀드 개수 질의는 COUNT(DISTINCT 펀드키)+클래스수 병기로 교체하고 DB 실행까지 단언한다."""

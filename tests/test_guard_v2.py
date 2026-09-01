@@ -154,7 +154,7 @@ def test_fund_evidence_columns():
     nast_rank = ("SELECT itm_no, TRIM(itm_nm), fd_nast_suma FROM public_funds "
                  "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' ORDER BY 3 DESC LIMIT 5")
     s3, ok3 = f(nast_rank)
-    assert ok3 and '"순자산_억원"' in s3 and s3.index("순자산_억원") < s3.upper().index("FROM")
+    assert ok3 and "'억원'" in s3 and s3.index("순자산_억원") < s3.upper().index("FROM")
     assert not f(s3)[1]                                    # 멱등
     # 수익률 랭킹에는 붙지 않는다
     assert "순자산_억원" not in f(grade_rank)[0]
@@ -261,6 +261,27 @@ def test_value_violation_names_owner_column():
     sql2 = "SELECT itm_nm FROM public_funds WHERE or_attr_desc = '없는유형ZZZ' LIMIT 5"
     vs2 = guard.check_values(sql2, ctx)
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
+
+
+def test_fund_mixed_type_canonical_filter():
+    """FND-023 실측 2회 — '혼합형' 질의의 유형 필터를 zrin 확정식(주식혼합형+채권혼합형)으로 교체."""
+    from src.runtime.pipeline import ensure_fund_mixed_type as f
+
+    q = "혼합형 공모펀드 중 1년 수익률 상위 5개 알려줘"
+    bad = ("SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS r FROM public_funds "
+           "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND or_attr_desc IN ('혼합자산', '대출형', '개발형') "
+           "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 3 DESC LIMIT 5")
+    s, ok = f(bad, q)
+    assert ok and "zrin_btyp_nm IN ('주식혼합형','채권혼합형')" in s and "혼합자산" not in s
+    assert not f(s, q)[1]                                  # 멱등
+    # 불개입 — 구체 유형 명시 · 유형 조건 없음 · 유형 조건 2개(치환이 얽힌다) · '혼합형' 없음
+    assert not f(bad, "혼합자산 펀드 수익률 상위 5개")[1]
+    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5", q)[1]
+    two = bad.replace("AND or_attr_desc IN ('혼합자산', '대출형', '개발형')",
+                      "AND or_attr_desc = '혼합자산' AND zrin_btyp_nm = '주식혼합형'")
+    assert not f(two, q)[1]
+    assert not f(bad, "채권형 펀드 알려줘")[1]
 
 
 def test_value_violation_hints_similar_values_first():

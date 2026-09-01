@@ -460,8 +460,9 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     # 🔴 순자산 랭킹은 억 원 파생 컬럼을 병기한다 — 2026-09-01 서버 실측(021·022·031): 답변기가
     #    13자리 원 단위를 옮겨 적다 자릿수를 훼손했다(1,024,955,248,968 → "10,249,525,488원").
     #    억 환산으로 답한 문항(025·029)은 전부 정확 — 안전하게 옮길 수 있는 수를 결과에 실어 준다.
+    #    단위는 값에 구워 넣는다('10249억원') — 숫자만 주면 답변기가 단위를 지어낸다(재검 실측: "십억 원").
     if target and target[0] == "fd_nast_suma" and "순자산_억원" not in sql:
-        add.append('CAST(fd_nast_suma/100000000 AS INTEGER) AS "순자산_억원"')
+        add.append("CAST(fd_nast_suma/100000000 AS INTEGER) || '억원' AS \"순자산_억원\"")
     # 🔴 **조건에 쓴 서술 컬럼이 결과에 없으면 답변기가 결과를 해석하지 못한다** — 2026-08-31 밤 실측(FND-R09):
     #    WHERE han_clas_policies LIKE '%전문투자자%' 로 27행을 정확히 조회하고도 SELECT 에 그 컬럼이 없어
     #    (itm_nm·mtco_itm_no·기준일만), 답변기가 "정보를 찾을 수 없습니다" 로 **조회 결과를 통째로 버렸다**.
@@ -629,6 +630,37 @@ def ensure_fund_safe_grade_direction(sql: str, question: str) -> tuple[str, bool
     if not m:
         return sql, False
     return sql[:m.start()] + "zrin_fd_ivst_risk_gcd = 6" + sql[m.end():], True
+
+
+_MIXED_Q = re.compile(r"혼합형")
+_MIXED_SPECIFIC_Q = re.compile(r"주식\s*혼합|채권\s*혼합|혼합\s*자산|해외\s*혼합")
+_MIXED_FIX = "zrin_btyp_nm IN ('주식혼합형','채권혼합형')"
+_FUND_TYPE_COND = re.compile(
+    r"(?:\b\w+\.)?(?:or_attr_desc|zrin_btyp_nm)\s*(?:=\s*'[^']*'|IN\s*\([^)]*\))", re.I)
+
+
+def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
+    """'혼합형' 질의의 유형 필터를 zrin 확정식(주식혼합형+채권혼합형)으로 교체. (보정된 SQL, 보정했는지)
+
+    2026-09-01 FND-023 실측 2회: ① or_attr_desc='혼합형'(없는 값) 기각 → 재생성 REFUSE(오거절) ·
+    ② 값 힌트 수리 후 재검은 첫 SQL 부터 or_attr_desc IN ('혼합자산','대출형','개발형') — 실제 값이라
+    검사는 통과하지만 모수가 다르다(gold 주식혼합+채권혼합 top1 118.45 vs 혼합자산 32.6). HCX 비결정성이라
+    규칙·힌트로는 못 박는다 — 채권 ensure_kind_filter 와 동형의 확정식 치환.
+    발동 조건: ① public_funds ② 질문에 '혼합형' ③ 구체 유형(주식혼합·채권혼합·혼합자산·해외혼합) 명시
+    없음 ④ SQL 의 유형 조건(or_attr_desc·zrin_btyp_nm)이 정확히 1개 (0개·2개 이상은 불개입 — 치환이
+    다른 조건과 얽히면 0행을 만들 수 있다).
+    """
+    if not _FUND_TBL.search(sql) or not _MIXED_Q.search(question):
+        return sql, False
+    if _MIXED_SPECIFIC_Q.search(question):
+        return sql, False
+    conds = list(_FUND_TYPE_COND.finditer(sql))
+    if len(conds) != 1:
+        return sql, False
+    m = conds[0]
+    if re.sub(r"\s+", "", m.group(0)) == re.sub(r"\s+", "", _MIXED_FIX):
+        return sql, False
+    return sql[:m.start()] + _MIXED_FIX + sql[m.end():], True
 
 
 def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
@@ -1732,6 +1764,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, mixed_fixed = ensure_fund_mixed_type(sql, q)
+    if mixed_fixed:
+        step("[Guard] 혼합형 확정식 치환 — 유형 조건을 zrin_btyp_nm IN (주식혼합형·채권혼합형) 으로 교체 "
+             "(2026-09-01 FND-023 실측 2회: '혼합형' 이 없는 값 기각→오거절, 재검은 혼합자산·대출형·개발형 오모수)")
     sql, gnull_fixed = ensure_group_null_label(sql)
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "

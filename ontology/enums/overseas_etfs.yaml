@@ -477,6 +477,15 @@ query_rules:
     OR (pd_nm LIKE '%Bear%' AND pd_nm NOT LIKE '%BullBear%')
     OR (pd_nm LIKE '%UltraShort%' AND pd_nm NOT LIKE '%Income%' AND pd_nm NOT LIKE '%Bond%'
         AND pd_nm NOT LIKE '%Treasury%' AND pd_nm NOT LIKE '%Municipal%' AND pd_nm NOT LIKE '%Fixed%')
+    🔴 이 조건을 **통째로** 쓴다 — `cu_inverse_short_yn='Y'` 하나로 줄이면 **8건을 놓친다**
+    (실측 183 vs 191 · 2026-09-01): QBER·SNK·METQ·VYLD·YQQQ·SSPC·SKDD·SPCQ —
+    플래그가 비었는데 배수가 음수이거나 이름이 '2X Short'·'Inverse' 인 진짜 인버스들이다.
+    서버 실측 2026-09-01 — "해외 인버스 ETF 3개" 가 플래그만 걸었다.
+    (이 경고는 원래 yaml 주석에 있었다 — 주석은 프롬프트에 실리지 않아 플래너가 못 봤다. 본문으로 승격.)
+    🔴 질문이 "인버스 **ETF**" 면 `AND pd_grp_no = 'ETF'` 를 함께 건다 —
+    플래그 'Y' 인 183건 중 **ETN 이 17건** 섞여 있다(국내 인버스와 같은 함정).
+    ⚠️ UltraShort 예외를 빼면 오탐 103건 — 'UltraShort Bond/Treasury' 는 방향이 아니라 만기가 짧다는 뜻이고,
+    BullBear(WBI 3종)는 하락장 방어형 롱 펀드다.
   레버리지: "cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1"   # NULL 5,136건은 '미수록'이지 1배 확정 아님
   # 🆕 2026-08-29 회의 결정 — 공통 패턴 "살 수 없는 건 제외, 살 수는 있는데 위험한 건 알린다".
   #    `레버리지` 901건 중 **131건(14%)이 인버스**다(EDZ -3.0 · SRTY.K -3.0 등).

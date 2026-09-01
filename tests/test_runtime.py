@@ -894,6 +894,18 @@ def test_gate_ac_class_choice_is_conditional_answer(ctx):
     assert not g2.rejected
 
 
+def test_gate_no_redemption_fee_is_qualified_answer(ctx):
+    """환매수수료 '없음'은 게이트 즉답 — SQL 은 미수록 30행 조회에 성공했는데 답변기가 통째 거절 (FND-R07 실측)."""
+    from src.runtime import gate
+    g = gate.check("환매 수수료가 없는 펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "단정할 수 없" in g.answer and "297" in g.answer
+    g2 = gate.check("환매수수료 면제되는 펀드 있어?", ctx, ["public_funds"])
+    assert g2.rejected
+    # 조회 질의(조건 알려줘)·안내 요청은 발동하지 않는다
+    for q in ("미래에셋 펀드 환매수수료 알려줘", "환매수수료 안내해줘"):
+        assert not gate.check(q, ctx, ["public_funds"]).rejected
+
+
 def test_ground_uses_yaml_synonyms(ctx):
     """yaml synonyms 가 Ground 매칭 키로도 쓰여야 한다 (서버 실측 2026-08-31 저녁).
 

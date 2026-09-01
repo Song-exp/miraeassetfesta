@@ -255,12 +255,18 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     2026-08-31 paired v2: answer 실패 1순위(값 불일치 37건)가 기본모수·대표행 규칙 미적용 —
     규칙이 프롬프트에 실려도 무시된다. ensure_limit 원칙(기각이 아니라 보정)의 연장.
     발동 조건(전부 만족할 때만 — 넓히면 사모·판매완료 질의를 다친다):
-      ① FROM public_funds 단일 테이블 (JOIN·UNION 없음 — 교차질의는 손대지 않는다)
+      ① FROM public_funds (+ ext_* 설명서 조인 허용 — 타 상품군 조인·UNION 은 손대지 않는다.
+         🔴 9/1 FND-R06 실측: ext_fund_page 조인 랭킹이 JOIN 제외 조건으로 빠져나가
+         판매완료 펀드 1997-10-28 이 '가장 오래된 펀드'로 나갔다. sale_yn·prvo_pbff_desc 는
+         public_funds 에만 있는 컬럼이라(PRAGMA 전수 확인) 조인문에도 비한정 주입이 모호하지 않다)
       ② ORDER BY 존재 (랭킹·Top-N 꼴)
       ③ SQL 에 sale_yn·prvo_pbff_desc 언급이 전혀 없음 (하나라도 있으면 모델 의도 존중)
       ④ 질문에 모수 확장 토큰(사모·판매완료·역외·전체)이 없음
     """
-    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    if re.search(r"\bjoin\b", sql, re.I) and re.search(
+            r"\b(?:domestic_bonds|domestic_etfs|overseas_etfs)\b", sql, re.I):
         return sql, False
     # 🔴 랭킹(ORDER BY)뿐 아니라 **집계(COUNT/SUM/AVG)** 도 기본모수 대상이다 — 기본모수 규칙이
     #    "집계·Top-N" 을 함께 말한다. 2026-08-31 밤 FND-030 실측: COUNT 질의에 sale_yn 이 빠졌다.
@@ -573,7 +579,17 @@ def ensure_group_null_label(sql: str) -> tuple[str, bool]:
 
 
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
-_GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
+# 뒤집힘은 등호만이 아니다 — 9/1 서버 실측: BETWEEN 1 AND 3 으로 우회해 높은위험 30행이
+# 조회됐다. '낮은 숫자 = 안전' 오해의 표현형 전부(=1·2, BETWEEN 1~n<6, <=3, IN(1..3))를 잡는다.
+_GCD_HIGHRISK = re.compile(
+    r"zrin_fd_ivst_risk_gcd\s*(?:"
+    r"=\s*'?[12](?:\.0)?'?"
+    r"|BETWEEN\s+'?1(?:\.0)?'?\s+AND\s+'?[1-5](?:\.0)?'?"
+    r"|<=?\s*'?[1-3](?:\.0)?'?"
+    r"|IN\s*\(\s*'?[123](?:\.0)?'?(?:\s*,\s*'?[123](?:\.0)?'?)*\s*\)"
+    r")",
+    re.I,
+)
 
 
 def ensure_fund_safe_grade_direction(sql: str, question: str) -> tuple[str, bool]:

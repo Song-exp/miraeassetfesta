@@ -79,9 +79,16 @@ def test_fund_base_population_injected():
     s, ok = f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")
     assert ok and "판매완료" in s and "prvo_pbff_desc = '공모'" in s and "'판매중'" not in s
 
-    # 발동 금지 3갈래 — 모수 확장 질문 · 교차(JOIN) · 집계도 랭킹도 아님
+    # 🔴 9/1 FND-R06 실측 — ext_* 설명서 조인도 기본모수 대상이다. JOIN 전체 제외가
+    #    판매완료 펀드(신바람삼성 1997-10-28)를 '가장 오래된 펀드'로 내보냈다.
+    s, ok = f("SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+              "WHERE prvo_pbff_desc = '공모' ORDER BY estb_dt ASC LIMIT 1",
+              "설정일이 가장 오래된 공모펀드 알려줘")
+    assert ok and "sale_yn = '판매중'" in s and s.count("prvo_pbff_desc") == 1
+
+    # 발동 금지 3갈래 — 모수 확장 질문 · 타 상품군 조인(교차질의) · 집계도 랭킹도 아님
     assert not f("SELECT itm_nm FROM public_funds ORDER BY 1 LIMIT 5", "사모 펀드 중 큰 것")[1]
-    assert not f("SELECT 1 FROM public_funds p JOIN ext_fund_holdings h ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
+    assert not f("SELECT 1 FROM public_funds p JOIN domestic_etfs d ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
     assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 5", "펀드")[1]
 
 
@@ -178,6 +185,18 @@ def test_fund_safe_grade_direction():
     assert not f(flipped, "위험등급 1등급 펀드 알려줘")[1]
     assert not f(flipped, "위험한 펀드 알려줘")[1]
     assert not f(s, "안전한 펀드 추천해줘")[1]
+    # 9/1 서버 실측 — BETWEEN 1 AND 3 우회(높은위험 30행 조회). 뒤집힘 표현형 확장분
+    between = flipped.replace("zrin_fd_ivst_risk_gcd = 1",
+                              "zrin_fd_ivst_risk_gcd BETWEEN 1 AND 3")
+    s2, ok2 = f(between, "안전한 펀드 추천해줘")
+    assert ok2 and "zrin_fd_ivst_risk_gcd = 6" in s2 and "BETWEEN" not in s2
+    for form in ("zrin_fd_ivst_risk_gcd <= 2", "zrin_fd_ivst_risk_gcd IN (1, 2, 3)"):
+        sx, okx = f(flipped.replace("zrin_fd_ivst_risk_gcd = 1", form), "안전한 펀드 추천해줘")
+        assert okx and "zrin_fd_ivst_risk_gcd = 6" in sx
+    # 안전 방향 범위(4~6·6 포함)는 불개입
+    assert not f(flipped.replace("zrin_fd_ivst_risk_gcd = 1",
+                                 "zrin_fd_ivst_risk_gcd BETWEEN 4 AND 6"),
+                 "안전한 펀드 추천해줘")[1]
 
 
 # ── 상품 고유명 소실 가드 (2026-08-31 밤 — FND-016 최악 등급 오답 §6-2d) ──

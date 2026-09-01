@@ -906,3 +906,27 @@ def test_guard_rejects_wrong_table_qualifier(ctx):
     alias = ("SELECT e.pd_abrv_nm, SUM(h.weight_pct) FROM domestic_etfs e "
              "JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no GROUP BY 1 LIMIT 5")
     assert validate_sql(alias) is None
+
+
+def test_guard_rejects_mismatched_ext_master_pair(ctx):
+    """ext_* 를 남의 마스터와 조인하면 기각 — 컬럼이 각자 실존해 수식자 검사는 통과한다.
+
+    서버 실측 2026-09-01(공식 예시 #3): domestic_etfs ⋈ ext_fund_holdings (d.pd_itm_no=h.grp)
+    가 Guard 를 통과하고 0행 → '확인되지 않습니다' 오답.
+    """
+    bad = ("SELECT d.pd_abrv_nm FROM domestic_etfs d JOIN ext_fund_holdings h "
+           "ON d.pd_itm_no = h.grp WHERE h.holding_nm = '캠브리콘' LIMIT 30")
+    err = validate_sql(bad)
+    assert err and "public_funds" in err, err
+    ok = ("SELECT e.pd_abrv_nm FROM domestic_etfs e JOIN ext_etf_holdings h "
+          "ON h.etf_code = e.pd_itm_no LIMIT 5")
+    assert validate_sql(ok) is None
+
+
+def test_kg_cambricon_domestic_link(ctx):
+    """공식 예시 #3 — 캠브리콘 정본이 국내ETF 구성종목 노드(Sec_d, '688256 C1')까지 편다."""
+    clos = ctx.kg_closure.get("Sec_m_cambricon") or []
+    assert "Sec_d_f186d5f574" in clos, clos
+    from src.runtime.pipeline import _ground
+    _, lines = _ground("캠브리콘이 편입된 중국 반도체 ETF를 알려줘", ctx, ["domestic_etfs"], cross=True)
+    assert any("ext_etf_holdings" in l for l in lines), lines

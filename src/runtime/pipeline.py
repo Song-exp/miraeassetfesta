@@ -71,6 +71,9 @@ _FORBIDDEN = re.compile(
 
 
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+# ext_* ↔ 마스터 조인 짝 (external_join 정본). validate_sql 이 남남 조인을 기각하는 근거.
+_EXT_PAIR = {"ext_etf_holdings": "domestic_etfs", "ext_ovs_etf_holdings": "overseas_etfs",
+             "ext_fund_holdings": "public_funds", "ext_fund_page": "public_funds"}
 # 테이블 -> 컬럼 집합. validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사한다.
 # ctx 없이 호출되는 순수 함수라 모듈 수준에 캐시한다 — load_context() 가 채운다(없으면 검사 생략).
 _COLUMNS_OF: dict[str, set] = {}
@@ -139,6 +142,15 @@ def validate_sql(sql: str) -> str | None:
     for qual in {m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}:
         if qual in known and qual not in declared:
             return f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)"
+    # 🔴 ext_* 는 조인 짝이 정해져 있다 — 다른 마스터와 섞으면 의미가 틀린 조인이 된다.
+    #    2026-09-01 서버 실측(공식 예시 #3): domestic_etfs 를 ext_fund_holdings(펀드 보유)와
+    #    d.pd_itm_no = h.grp 로 조인 — 컬럼은 각자 실존해서 수식자 검사를 통과했지만 키가 남남이라 0행.
+    #    ext_* 단독 사용(ext_etf_holdings.etf_name 만 조회 등)은 정상이므로,
+    #    **다른 마스터가 선언돼 있는데 제 짝이 없을 때만** 기각한다.
+    for ext, master in _EXT_PAIR.items():
+        if ext in declared and master not in declared and (declared & set(TABLES)):
+            return (f"{ext} 의 조인 짝은 {master} 다 — 다른 마스터와 조인 금지"
+                    f" (교차질의 조인 키 목록의 짝을 그대로 쓴다)")
     # 🔴 선언된 테이블이어도 **그 테이블에 없는 컬럼**을 수식자로 붙이면 실행이 깨진다.
     #    2026-08-31 서버 실측 — "하이닉스가 가장많이 편입된 상품":
     #      SELECT ... SUM(domestic_etfs.weight_pct) FROM domestic_etfs JOIN ext_etf_holdings ...

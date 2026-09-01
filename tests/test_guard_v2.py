@@ -263,6 +263,45 @@ def test_value_violation_names_owner_column():
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
 
 
+def test_distribution_answer_assembled():
+    """FND-038 재검 실측 — 답변기가 19행 중 17행만 나열 + '일부' 서술. 분포는 기계 조립한다."""
+    from src.runtime.pipeline import _distribution_answer as f
+
+    sql = ("SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*) FROM public_funds "
+           "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY zrin_btyp_nm LIMIT 30")
+    rows = "COALESCE | COUNT(*)\n(미수록) | 418\nMMF | 108\n해외기타 | 801"
+    a = f(sql, rows, 3)
+    assert a and "3개 범주" in a and "1,327건" in a
+    assert "(미수록): 418건" in a and "해외기타: 801건" in a       # 전 행 보존
+    # 불개입 — GROUP BY 없음 · SELECT 3항목 · 둘째가 COUNT 아님 · 행 형식 불일치
+    assert f("SELECT COUNT(*) FROM public_funds LIMIT 1", "COUNT(*)\n5", 1) is None
+    assert f("SELECT a, b, COUNT(*) FROM public_funds GROUP BY 1,2 LIMIT 30", rows, 3) is None
+    assert f("SELECT zrin_btyp_nm, AVG(fd_yr1_ern_r) FROM public_funds GROUP BY 1 LIMIT 30", rows, 3) is None
+
+
+def test_fund_mgmt_modal_name():
+    """FND-035 재검 실측 — MAX(mgmt_co_nm) 이 합병 코드 구명칭(프랭클린 10행)을 사전순으로 뽑음.
+    소수 이름 제외(DB 실측 기반)로 정본 이름(우리자산운용 373행)이 나와야 한다."""
+    import sqlite3
+    from src.runtime.pipeline import ensure_fund_mgmt_modal_name as f, _minority_mgmt_names
+
+    assert "00040007/프랭클린템플턴투자신탁운용" in _minority_mgmt_names()
+    # 🔴 쌍 제외 근거 — '우리자산운용' 은 00040007 다수(413)·00040023 소수(1): 전역 이름 제외는 오답
+    assert "00040023/우리자산운용" in _minority_mgmt_names()
+    assert "00040007/우리자산운용" not in _minority_mgmt_names()
+    sql = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS code, MAX(mgmt_co_nm) AS nm "
+           "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+           "WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' "
+           "AND printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) = '00040007' GROUP BY 1 LIMIT 5")
+    s, ok = f(sql)
+    assert ok and "|| '/' || mgmt_co_nm NOT IN" in s
+    assert not f(s)[1]                                     # 멱등
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    code, nm = con.execute(s).fetchone()
+    assert (code, nm) == ("00040007", "우리자산운용")
+    assert not f("SELECT itm_nm FROM public_funds LIMIT 5")[1]
+
+
 def test_fund_country_tag_canonicalized():
     """FND-026 재검 실측 — ='글로벌' 오모수 + wrap 없는 태그 LIKE 98/560행 누락을 정식형으로 교체."""
     from src.runtime.pipeline import ensure_fund_country_tag as f

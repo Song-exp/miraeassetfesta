@@ -696,6 +696,89 @@ def strip_disclaimer(text: str) -> tuple[str, bool]:
     return (out, True) if out else (text, False)
 
 
+def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
+    """2열(범주 라벨 · COUNT(*)) GROUP BY 분포 결과의 답변을 기계 조립한다. 아니면 None.
+
+    발동 조건(전부): GROUP BY 존재 · JOIN 없음 · SELECT 가 정확히 2항목이고 둘째가 COUNT(*) ·
+    행 2개 이상 · 전 행이 '라벨 | 정수' 형태. 합계·범주 수를 함께 낸다 — 오계수·행 생략·
+    전칭('일부') 서술이 이 모양의 질의에서 원천적으로 사라진다.
+    """
+    if n < 2 or not re.search(r"\bgroup\s+by\b", sql, re.I) or re.search(r"\bjoin\b", sql, re.I):
+        return None
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm:
+        return None
+    sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+    items = _split_select_items(sel)
+    if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+        return None
+    body = rows.splitlines()[1:]
+    if len(body) != n:
+        return None
+    pairs = []
+    for ln in body:
+        parts = ln.split(" | ")
+        if len(parts) != 2:
+            return None
+        try:
+            cnt = int(float(parts[1]))
+        except ValueError:
+            return None
+        pairs.append((parts[0].strip(), cnt))
+    total = sum(c for _, c in pairs)
+    lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 2026-08-22).", ""]
+    lines += [f"- {lab}: {c:,}건" for lab, c in pairs]
+    return "\n".join(lines)
+
+
+@lru_cache(maxsize=1)
+def _minority_mgmt_names() -> tuple[str, ...]:
+    """합병 이력 코드(이름 2종 이상)의 소수 이름 목록 — DB 실측으로 계산, 하드코딩 아님.
+
+    2026-09-01 FND-035 재검: MAX(mgmt_co_nm) 이 사전순으로 구명칭을 뽑았다
+    (00040007: 우리자산운용 373행 vs 프랭클린템플턴 10행 — 'ㅍ' > 'ㅇ'). 코드가 정본이고
+    이름은 참고 병기인데 참고가 틀리면 답이 틀려 보인다. 코드별 최빈 이름만 남긴다.
+    """
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)), e.mgmt_co_nm, COUNT(*) "
+            "FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+            "WHERE e.mgmt_co_nm IS NOT NULL AND TRIM(e.mgmt_co_nm) <> '' "
+            "GROUP BY 1, 2").fetchall()
+    finally:
+        con.close()
+    by_code: dict[str, list] = {}
+    for code, nm, c in rows:
+        by_code.setdefault(code, []).append((c, nm))
+    minority = set()
+    for code, lst in by_code.items():
+        if len(lst) > 1:
+            lst.sort(reverse=True)
+            # 🔴 코드/이름 **쌍**으로 제외한다 — 전역 이름 목록은 오답이다: '우리자산운용' 은
+            #    00040007 에선 다수(413행)지만 00040023 에선 소수(1행)다 (2026-09-02 실측).
+            minority.update(f"{code}/{nm}" for _, nm in lst[1:])
+    return tuple(sorted(minority))
+
+
+_MGMT_MAX = re.compile(r"MAX\(\s*((?:\w+\.)?mgmt_co_nm)\s*\)", re.I)
+_OR_CO_KEY = "printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER))"
+
+
+def ensure_fund_mgmt_modal_name(sql: str) -> tuple[str, bool]:
+    """MAX(mgmt_co_nm) 이 합병 구명칭을 뽑지 않게 코드/이름 쌍으로 소수 이름을 제외한다."""
+    m = _MGMT_MAX.search(sql)
+    if not m:
+        return sql, False
+    pairs = _minority_mgmt_names()
+    if not pairs:
+        return sql, False
+    lst = ", ".join(f"'{p}'" for p in pairs)
+    col = m.group(1)
+    return _MGMT_MAX.sub(
+        f"MAX(CASE WHEN {_OR_CO_KEY} || '/' || {col} NOT IN ({lst}) THEN {col} END)", sql), True
+
+
 # 국가태그 규칙의 확정 대응 (한국·국내는 제외 — 상장/국내 질의와 충돌)
 _COUNTRY_TAGS = {"중국": "CHN", "차이나": "CHN", "미국": "USA", "베트남": "VNM", "일본": "JPN",
                  "러시아": "RUS", "브라질": "BRA", "홍콩": "HKG", "독일": "DEU",
@@ -1938,6 +2021,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, modal_fixed = ensure_fund_mgmt_modal_name(sql)
+    if modal_fixed:
+        step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
+             "소수 이름 제외로 교정 (2026-09-01 FND-035 재검: 00040007 이 프랭클린템플턴(10행)으로 표기 — 정본은 우리자산운용 373행)")
     sql, ctag_fixed = ensure_fund_country_tag(sql, q)
     if ctag_fixed:
         step("[Guard] 국가 태그 확정식 — 지역 컬럼 등호·미래핑 태그 LIKE 를 ','||prfd_attr_cds||',' 정식형으로 교체 "
@@ -2259,6 +2346,17 @@ def answer_question(
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")
         result.think_trace = "\n".join(trace)
         result.answer = answer
+        return result
+
+    # 🔴 분포(2열 GROUP BY COUNT) 답변은 기계 조립 — HCX 0회 (2026-09-01 FND-038 재검 실측:
+    #    행수 병기 후에도 19행 중 17행만 나열 + 금지된 '일부' 서술 재발. 목록 전사는 LLM 에게
+    #    맡길 수 없다 — 결정층에서 전 행을 그대로 옮긴다).
+    dist = _distribution_answer(sql, rows, n)
+    if dist is not None:
+        step("[Answer] 분포 답변 기계 조립 — 2열(범주·건수) GROUP BY 결과는 HCX 없이 전 행을 그대로 옮긴다 "
+             "(2026-09-01 FND-038 재검: 19행 중 17행 나열 + '일부' 서술 재발)")
+        result.think_trace = "\n".join(trace)
+        result.answer = dist
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

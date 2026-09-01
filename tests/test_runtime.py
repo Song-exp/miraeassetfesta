@@ -930,3 +930,19 @@ def test_kg_cambricon_domestic_link(ctx):
     from src.runtime.pipeline import _ground
     _, lines = _ground("캠브리콘이 편입된 중국 반도체 ETF를 알려줘", ctx, ["domestic_etfs"], cross=True)
     assert any("ext_etf_holdings" in l for l in lines), lines
+
+
+def test_zero_row_lookup_suggests_similar(ctx):
+    """존재하지 않는 상품의 완전일치 조회가 0행이면 유사 후보를 되묻는다 (공식 예시 NA-3).
+
+    '확인할 수 없음' 단문도 정답 처리되지만, clarify.존재하지_않는_개체 의 정답 형태는
+    "혹시 △△ 를 말씀하신 건가요?" 되묻기다 — 후보 4종을 버리면 아깝다.
+    """
+    from src.runtime.pipeline import _suggest_similar_products
+    cand = _suggest_similar_products(
+        "SELECT * FROM domestic_etfs WHERE TRIM(pd_abrv_nm) = 'KODEX AI로봇' LIMIT 30")
+    assert cand, "후보 0건"
+    assert any("로봇" in c for c in cand), cand
+    # 단일 토큰·미매칭 이름은 빈 목록 — 되묻기 없이 종전 확인불가 문구로
+    assert _suggest_similar_products(
+        "SELECT * FROM domestic_etfs WHERE TRIM(pd_abrv_nm) = 'VOO' LIMIT 30") == []

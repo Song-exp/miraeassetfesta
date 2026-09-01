@@ -1521,6 +1521,40 @@ def build_grounding(
     return "\n\n".join(parts)
 
 
+
+_NAME_LOOKUP = re.compile(r"TRIM\((?:\w+\.)?(pd_abrv_nm|pd_nm)\)\s*=\s*'([^']+)'", re.I)
+_TOKEN_SPLIT = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
+
+
+def _suggest_similar_products(sql: str) -> list[str]:
+    """개별 상품 완전일치 조회가 0행일 때 유사 후보를 찾는다 — clarify.존재하지_않는_개체 의 되묻기 재료.
+
+    'KODEX AI로봇' → 토큰(KODEX·AI·로봇) 중 첫 토큰(브랜드)을 필수로, 나머지 중 하나 이상이
+    들어간 상품을 순자산 순으로 최대 4개. 실측(2026-09-01): KODEX 로봇액티브·글로벌로봇(합성)·
+    차이나/미국휴머노이드로봇 이 이 방식으로 나온다. LLM 없이 SQLite 재조회 한 번이다.
+    """
+    m = _NAME_LOOKUP.search(sql)
+    if not m:
+        return []
+    name = m.group(2)
+    toks = _TOKEN_SPLIT.findall(name)
+    if len(toks) < 2:
+        return []
+    table = "overseas_etfs" if "overseas_etfs" in sql.lower() else "domestic_etfs"
+    first, rest = toks[0], [t for t in toks[1:] if len(t) >= 2]
+    if not rest:
+        return []
+    cond = " OR ".join("replace(pd_abrv_nm,' ','') LIKE ?" for _ in rest)
+    args = [f"%{first}%"] + [f"%{t}%" for t in rest]
+    q = (f"SELECT DISTINCT TRIM(pd_abrv_nm) FROM {table} "
+         f"WHERE replace(pd_abrv_nm,' ','') LIKE ? AND ({cond}) "
+         f"ORDER BY du_last_aum DESC LIMIT 4")
+    try:
+        with connect_readonly() as con:
+            return [r[0] for r in con.execute(q, args)]
+    except sqlite3.Error:
+        return []
+
 def _grounding_blocks(grounding: str) -> list[str]:
     """근거문서에 실제로 실린 블록 이름 — trace 에 글자 수만 적으면 무엇이 실렸는지 알 수 없다.
 
@@ -1844,9 +1878,20 @@ def answer_question(
     if n == 0:
         # 규칙 §3 — 조회 0건이면 지어내지 않고 즉시 확인 불가.
         # R-4 — 어느 조건 때문인지 조건별 건수를 센다(SQLite 재실행뿐, HCX 0회). 조건을 완화해 다시 답하지는 않는다.
+        # 🆕 2026-09-01 — 개별 상품 조회(약어명/상품명 완전일치)가 0행이면 **유사 후보를 되묻기 형태로** 붙인다.
+        #    clarify.존재하지_않는_개체 의 정답 형태다("혹시 △△ 를 말씀하신 건가요?" 가 정답 처리).
+        #    서버 실측(공식 예시 NA-3 "KODEX AI로봇"): '확인되지 않습니다' 단문으로 끝나 후보 4종을 버렸다.
+        #    LLM 을 거치지 않는 결정 층이다 — 후보는 SQLite 재조회로만 찾는다.
         answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
+        cand = _suggest_similar_products(sql)
+        if cand:
+            names = " / ".join(cand)
+            answer = (f"요청하신 상품은 제공된 데이터에 없습니다. "
+                      f"혹시 다음 상품을 말씀하신 건가요? — {names}")
+            step(f"[Suggest] 정확 일치 0건 — 유사 후보 {len(cand)}건 되묻기 (clarify.존재하지_않는_개체)")
         try:
-            diag = guard.diagnose_zero_rows(sql)
+            # 후보 되묻기가 이미 사유를 대신한다 — 이름 조건 하나짜리 진단을 겹쳐 붙이지 않는다
+            diag = None if cand else guard.diagnose_zero_rows(sql)
         except sqlite3.Error:
             diag = None
         if diag and diag.text():

@@ -1060,3 +1060,27 @@ def test_verify_product_names_no_cross_product_or_particle_loss():
     assert out == "삼성중국본토중소형FOCUS증권자투자신탁UH의 1년 수익률" and len(fixes) == 1   # 종전 교정 + 조사 보존
     d = "삼성중국본토중소형FOCUS증권자투자신탁H(주식) 은 없습니다."
     assert f(d, rows) == (d, [])                                                    # H/UH — 하위 문자열
+
+
+def test_fund_rank_sort_col_inside_function():
+    """리뷰 ②-5 — 정렬 컬럼이 함수 인자(ROUND(col,2))면 별칭까지 붙여 문법 오류 → 무응답. agg(col) 만 감싼다."""
+    from src.runtime.pipeline import ensure_fund_rank_representative as f
+
+    con = _ro()
+    s = ("SELECT itm_nm, ROUND(fd_yr1_ern_r,2) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+         "AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') ORDER BY 2 DESC LIMIT 5")   # 기점오류 제외는 체인의 별도 가드
+    out, ok = f(s, "1년 수익률 높은 공모펀드 5개")
+    assert ok and "ROUND(MAX(fd_yr1_ern_r),2)" in out and " AS fd_yr1_ern_r" not in out
+    rows = con.execute(out).fetchall()
+    assert rows[0][1] == 387.66 and len(rows) == 5
+    # 이름 ORDER BY 도 살린다 — ORDER BY fd_yr1_ern_r → MAX(fd_yr1_ern_r)
+    s2 = s.replace("ORDER BY 2 DESC", "ORDER BY fd_yr1_ern_r DESC")
+    out2, ok2 = f(s2, "q")
+    assert ok2 and "ORDER BY MAX(fd_yr1_ern_r) DESC" in out2 and con.execute(out2).fetchone()[1] == 387.66
+    # 기존 GROUP BY 경로에서도 동일
+    s3 = ("SELECT itm_no, ROUND(fd_mm6_ern_r,1) FROM public_funds WHERE sale_yn='판매중' "
+          "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 2 DESC LIMIT 3")
+    out3, ok3 = f(s3, "q")
+    assert ok3 and "ROUND(MAX(fd_mm6_ern_r),1)" in out3 and len(con.execute(out3).fetchall()) == 3
+    # bare 컬럼 경로는 종전(별칭 유지)
+    assert "MAX(fd_yr1_ern_r) AS fd_yr1_ern_r" in f(_R7_SQL, "q")[0]

@@ -414,37 +414,57 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
     has_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    tail = sql[frm.start():]
     if has_group:
         if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
             return sql, False
-        if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+        head, wrapped, in_func = _wrap_sort_col(head, col, agg)
+        if not wrapped:
             return sql, False
-        m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
-        if not m:
-            return sql, False
-        alias = m.group(1) or f" AS {col}"
-        fixed_head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
-        return fixed_head + sql[frm.start():], True
+        if in_func:
+            tail = _wrap_order_by_col(tail, col, agg)
+        return head + tail, True
     # ── GROUP BY 부재: 펀드키 주입 ──
     if "클래스" in question or re.search(r"\b(?:count|sum|avg|total)\s*\(", head, re.I):
         return sql, False
-    tail = sql[frm.start():]
     m_ob = re.search(r"\border\s+by\b", tail, re.I)
     if not m_ob:
         return sql, False
     add = []
     if "itm_nm" not in head and "itm_no" not in head:
         add += ["itm_no", "TRIM(itm_nm) AS itm_nm"]
-    m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
-    if m and not re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
-        alias = m.group(1) or f" AS {col}"
-        head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
-    elif not m:
+    head, wrapped, in_func = _wrap_sort_col(head, col, agg)
+    if not wrapped and not re.search(rf"\b{col}\b", head, re.I):
         add.append(f"{agg}({col}) AS {col}")     # 정렬 컬럼이 SELECT 에 없으면 별칭으로 실어 ORDER BY 이름을 살린다
     add.append('COUNT(*) AS "클래스수"')
     head = head.rstrip() + ", " + ", ".join(add) + " "
     tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_KEY_EXPR} " + tail[m_ob.start():]
+    if in_func:
+        tail = _wrap_order_by_col(tail, col, agg)
     return head + tail, True
+
+
+def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
+    """SELECT 목록의 bare 정렬 컬럼을 agg(col) 로 감싼다. (새 head, 감쌌는지, 함수 인자 위치였는지)
+
+    🔴 2026-09-02 리뷰 ②-5: 정렬 컬럼이 함수 안이면(`ROUND(fd_yr1_ern_r,2)`) 별칭까지 붙여
+    `ROUND(MAX(fd_yr1_ern_r) AS fd_yr1_ern_r,2)` 문법 오류 → "데이터 조회 중 오류" 무응답. 함수 인자 위치면
+    `agg(col)` 만 넣고 별칭은 생략한다 — 위치 ORDER BY 는 그대로 유효, 이름 ORDER BY 는 _wrap_order_by_col 이 맞춘다.
+    """
+    if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+        return head, False, False
+    m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
+    if not m:
+        return head, False, False
+    if re.search(r"\w+\(\s*$", head[:m.start()]):
+        return head[:m.start()] + f"{agg}({col})" + head[m.start() + len(col):], True, True
+    alias = m.group(1) or f" AS {col}"
+    return head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():], True, False
+
+
+def _wrap_order_by_col(tail: str, col: str, agg: str) -> str:
+    """ORDER BY 첫 키가 이름으로 정렬 컬럼을 쓰면 agg(col) 로 — 별칭이 없어진 함수 인자 경우의 짝."""
+    return re.sub(rf"(\border\s+by\s+(?:(?!max\(|min\()[^,])*?)\b{col}\b", rf"\1{agg}({col})", tail, count=1, flags=re.I)
 
 
 def ensure_fund_return_error_exclusion(sql: str) -> tuple[str, bool]:

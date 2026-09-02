@@ -291,3 +291,45 @@ def test_positive_count_not_refused(ctx):
     assert "확인할 수 없" not in r.answer, r.answer
     assert "7클래스(판매 단위)" in r.answer, r.answer
     assert "집계 오거절 교정" in r.think_trace
+
+
+# ── 뿌리⑦-b — 설정연도 확정식 (G2 · KG-035 · X19) ──
+
+def test_estb_year_canonical(ctx):
+    """G2 — 같은 문형 세 문항이 날짜 절만 달라 답이 갈렸다: Z22(estb_dt 범위) 정답 ↔ KG-035(fd_daily_bas_dt) ↔ X19(estb_dt <=).
+    설정일 정본은 ext_fund_page.estb_dt 뿐이고 연도는 [YYYY0101, (YYYY+1)0101) 범위로 확정한다."""
+    from src.runtime.pipeline import ensure_fund_estb_year as f, answer_question, _execute
+
+    kg035 = ("SELECT COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+             "AND fd_daily_bas_dt BETWEEN 20260000 AND 20269999 LIMIT 30")
+    out, ok = f(kg035, "2026년에 설정된 공모펀드는 몇 개야?")
+    assert ok and "fd_daily_bas_dt" not in out and "estb_dt >= '20260101' AND estb_dt < '20270101'" in out
+    assert "20269999" not in out, out          # BETWEEN 을 쪼개다 남긴 껍데기 절
+
+    x19 = ("SELECT COUNT(*) FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+           "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND estb_dt <= 20250930 LIMIT 30")
+    out2, ok2 = f(x19, "2025년에 설정된 공모펀드는 몇 개야?")
+    assert ok2 and "20250930" not in out2 and "estb_dt >= '20250101'" in out2
+    assert f(out2, "2025년에 설정된 공모펀드는 몇 개야?")[1] is False        # 멱등
+
+    # 불개입 — 설정 어휘 없음 · 연도 없음 · 만기 질의(mat_dt 가드 영역)
+    assert f(kg035, "2026년 만기 채권 알려줘")[1] is False
+    assert f(kg035, "설정된 공모펀드 알려줘")[1] is False
+
+    # 전 체인 — KG-035 39펀드/124클래스 · X19 107/305 (2024년은 Z22 gold 107/287 과 같은 식)
+    key = ("COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN "
+           "length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) "
+           "END, itm_no)) AS \"펀드수\", ")
+    for q, s, want in (("2026년에 설정된 공모펀드는 몇 개야?", kg035.replace("SELECT ", "SELECT " + key), ("39개", "124개")),
+                       ("2025년에 설정된 공모펀드는 몇 개야?", x19.replace("SELECT COUNT(*)", "SELECT " + key + "COUNT(*) AS \"클래스수\""), ("107개", "305개"))):
+        class P:
+            def plan_sql(self, qq, g):
+                return s
+
+            def compose_answer(self, qq, rows, answer_rules=""):
+                return "x"
+
+        r = answer_question("T-G2", q, planner=P(), ctx=ctx)
+        assert "ext_fund_page" in r.sql, r.sql
+        for frag in want:
+            assert frag in r.answer, (q, frag, r.answer)

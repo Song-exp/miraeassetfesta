@@ -435,6 +435,42 @@ def _strictify_base_population(sql: str) -> tuple[str, bool]:
     return sql[:m_w.start()] + " WHERE " + " AND ".join(out) + " " + sql[m_w.end():].lstrip(), True
 
 
+_ESTB_Q = re.compile(r"설정(?:된|일|됐|되었|되는|한)|운용한\s*지|만들어진|출시(?:된|일)")
+_ESTB_DATE_CONJ = re.compile(r"\b(?:\w+\.)?(?:estb_dt|fd_daily_bas_dt)\b", re.I)
+_YEAR_Q = re.compile(r"((?:19|20)\d{2})\s*년")
+
+
+def ensure_fund_estb_year(sql: str, question: str) -> tuple[str, bool]:
+    """KG 4R G2 — '「YYYY년」에 설정된' 질의의 날짜 절은 컬럼과 표현식을 기계가 확정한다. (SQL, 교체했는지)
+
+    설정일 정본은 `ext_fund_page.estb_dt`(TEXT 'YYYYMMDD', 10,565행 전건 수록)뿐이다. public_funds 의
+    `fd_daily_bas_dt`(기준일)·`mat_dt`(만기)는 설정일이 아니다. 6R 실측 — 같은 문형 세 문항이 SQL 의 날짜 절만
+    다르고 답이 갈렸다: Z22(2024년) `estb_dt` 범위 → 107/287 정답 · KG-035(2026년) `fd_daily_bas_dt BETWEEN
+    20260000 AND 20269999` → 2,594 오답 · X19(2025년) `estb_dt <= 20250930` → 2,853 오답.
+    조치: 설정 어휘 + 연도가 있으면 날짜 절을 전부 걷어내고 `estb_dt >= 'YYYY0101' AND estb_dt < '(YYYY+1)0101'`
+    로 확정한다. 비교 리터럴은 **문자열** — estb_dt 는 TEXT 컬럼이다. LEFT JOIN 은 ensure_ext_join 이 받는다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    m_y = _YEAR_Q.search(question)
+    if not (_ESTB_Q.search(question) and m_y):
+        return sql, False
+    y = int(m_y.group(1))
+    canon = f"estb_dt >= '{y}0101' AND estb_dt < '{y + 1}0101'"
+    if canon in sql:
+        return sql, False
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
+        return (f"{sql[:anchor.start()]}WHERE {canon} {sql[anchor.start():]}", True) if anchor else (sql, False)
+    # `col BETWEEN a AND b` 는 최상위 AND 로 갈리면 `b` 만 남는 껍데기 절이 된다(KG-035 `AND 20269999`) —
+    #    쪼개기 전에 통째로 한 토큰으로 접어 둔다.
+    where_txt = re.sub(r"(?:\w+\.)?(?:estb_dt|fd_daily_bas_dt)\s+(?:NOT\s+)?BETWEEN\s+\S+\s+AND\s+\S+",
+                       "estb_dt IS NOT NULL", m_w.group(1), flags=re.I)
+    keep = [c for c in guard.split_conjuncts(where_txt) if not _ESTB_DATE_CONJ.search(c)]
+    return sql[:m_w.start()] + " WHERE " + " AND ".join([canon] + keep) + " " + sql[m_w.end():].lstrip(), True
+
+
 def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> tuple[str, bool]:
     """펀드 랭킹 SQL 에 기본모수(판매중·공모)를 기계 주입. (보정된 SQL, 보정했는지)
 
@@ -4517,6 +4553,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if key_fixes:
         step(f"[Guard] 펀드 키 컬럼 교정 — {' · '.join(key_fixes)} (7R S′ · 6R W11 실측: KG 가 rptt_ksd_itm_no 를 핀했는데 "
              "HCX 가 같은 값을 itm_no IN (…) 에 실어 0행 오거절 — 값 검사·코드 검사 둘 다 펀드 키 컬럼을 안 본다)")
+    sql, estb_fixed = ensure_fund_estb_year(sql, q)
+    if estb_fixed:
+        step("[Guard] 설정연도 확정식 — 설정일 정본은 ext_fund_page.estb_dt 뿐이라 날짜 절을 연도 범위로 교체 "
+             "(KG 4R G2 · KG-035 `fd_daily_bas_dt BETWEEN 20260000 AND 20269999` → 2,594 오답 · X19 `estb_dt <= 20250930` → 2,853 오답)")
     sql, pop_fixed = ensure_fund_base_population(sql, q)
     if pop_fixed:
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")

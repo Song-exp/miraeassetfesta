@@ -200,3 +200,28 @@ def test_r10_future_date_literal():
     assert P.strip_future_basis_date(keep) == (keep, None)
     mat = "SELECT pd_no FROM domestic_bonds WHERE mat_dt <= 20301231 LIMIT 5"
     assert P.strip_future_basis_date(mat) == (mat, None)
+
+
+# ── I1 · 부정 술어 금지 · H1 · 미조회 축 문장 제거 ───────────────────────────────
+def test_r10_no_inverted_predicate():
+    """KG 부류 I — Z18: 'ETF로 자산배분하는 공모펀드' 가 NOT LIKE '%ETF%' 로 나가 질문의 정확한 반대."""
+    s = ("SELECT itm_no, itm_nm FROM public_funds WHERE zrin_btyp_nm IN ('주식형','해외주식형') "
+         "AND REPLACE(itm_nm,' ','') NOT LIKE '%ETF%' AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
+    out, ok = P.fix_inverted_name_predicate(s, "ETF로 자산배분하는 공모펀드 있어?")
+    assert ok and "NOT LIKE" not in out and "LIKE '%ETF%'" in out
+    # 제외 어휘가 있으면 사용자 조건 — 손대지 않는다 (FND-006 'MMF 제외')
+    assert P.fix_inverted_name_predicate(s, "MMF를 제외한 공모펀드 알려줘")[1] is False
+    # 질문에 없는 낱말의 NOT LIKE 도 손대지 않는다
+    assert P.fix_inverted_name_predicate(s, "주식형 공모펀드 알려줘")[1] is False
+
+
+def test_r10_unsourced_axis_sentence():
+    """KG 부류 E 부수 — AA5: SELECT 에 estb_dt 가 없는데 '설정일 2011-06-20 · 약 12년'."""
+    rows = "itm_nm | zrin_fd_ivst_risk_grd_nm\nKB중국본토A주 | 높은 위험"
+    out, hit = P.strip_unsourced_estb_claim(
+        "KB중국본토A주 펀드는 2011-06-20에 설정되었습니다. 약 12년 운용 중입니다. 위험등급은 2등급입니다.", rows)
+    assert hit and "2011" not in out and "12년" not in out and "위험등급은 2등급입니다." in out
+    assert "미조회" in out or "확인하지 못했습니다" in out
+    # 날짜 축이 결과에 있으면 그대로 둔다 · 설정 축이 아닌 문장도 그대로
+    assert P.strip_unsourced_estb_claim("설정일은 2011-06-20입니다.", "itm_nm | estb_dt\nX | 20110620")[1] is False
+    assert P.strip_unsourced_estb_claim("이 펀드의 3년 수익률은 12.3%입니다.", rows)[1] is False

@@ -2334,6 +2334,56 @@ def strip_false_hedge(text: str, sql: str, n: int) -> tuple[str, bool]:
 #      답변이 다른 날짜로 명시했다. 값 판정과 별개로 직접 감점 축이다.
 #   ⓑ 집계 방법론 날조: "모든 클래스의 수익률을 합하여" — 결과는 클래스별 값이지 합산이 아니다(Y3).
 #   ⓒ 데이터 품질 추측: "기준가 산정 오류가 있을 가능성" — HCX 가 근거 없이 지어낸 유보(Y1).
+_EXCLUDE_Q = re.compile(r"제외|빼고|아닌|말고|이외|을?\s*뺀|없는")
+_NOT_NAME_LIKE = re.compile(r"((?:REPLACE\(\s*(?:\w+\.)?itm_nm\s*,[^)]*\)|TRIM\(\s*(?:\w+\.)?itm_nm\s*\)"
+                            r"|\b(?:\w+\.)?itm_nm\b)\s*)NOT\s+LIKE(\s*'%([^%']+)%')", re.I)
+
+
+def fix_inverted_name_predicate(sql: str, question: str) -> tuple[str, bool]:
+    """질문의 낱말을 **부정 술어**로 뒤집은 이름 절을 긍정으로 되돌린다. (SQL, 되돌렸는지)
+
+    🔴 10R KG 부류 I — 값 검사가 실패해 축을 못 세우면 HCX 가 질문의 낱말을 `NOT LIKE` 로 뒤집는다.
+       Z18 실측: "ETF로 자산배분하는 공모펀드" → `zrin_btyp_nm IN ('주식형','해외주식형') AND
+       REPLACE(itm_nm,' ','') NOT LIKE '%ETF%'` — **질문의 정확한 반대**. 1,508펀드/4,551클래스가
+       나가고 30건이 나열됐다(gold `itm_nm LIKE '%ETF%'` 20펀드/112클래스 · 형제 X16 이 정답 경로).
+    질문에 제외 어휘(제외·빼고·아닌·말고)가 있으면 사용자 조건이므로 손대지 않는다(FND-006 'MMF 제외').
+    """
+    if _EXCLUDE_Q.search(question):
+        return sql, False
+    q = question.replace(" ", "").casefold()
+
+    def _flip(m: re.Match) -> str:
+        return m.group(1) + "LIKE" + m.group(2) if m.group(3).replace(" ", "").casefold() in q else m.group(0)
+    fixed = _NOT_NAME_LIKE.sub(_flip, sql)
+    return fixed, fixed != sql
+
+
+_ESTB_WORD = re.compile(r"설정|설립|운용\s*(?:한\s*지|기간|되|중|해\s*온)")
+_DURATION = re.compile(r"약\s*\d+\s*년|\d+\s*년\s*(?:간|째|동안|넘게|이상\s*운용)")
+
+
+def strip_unsourced_estb_claim(answer: str, rows: str) -> tuple[str, bool]:
+    """조회 결과에 날짜 축이 없는데 설정일·운용 기간을 단정한 문장을 제거. (답변, 제거했는지)
+
+    🔴 10R KG 부류 E 부수 — AA5 실측: SELECT 에 `estb_dt` 가 **없는데**(있는 건 `fd_estb_ctry_cd='000'`)
+       답변이 "설정일은 2011-06-20 · 약 12년" 이라 했다. 2011년부터 2026년이면 15년이라 자기 산술과도
+       모순인데 어떤 가드도 안 잡았다. 일반 규칙: **답변이 말한 축이 retrieved_context 헤더에 없으면
+       그 문장을 제거하고 '미조회' 로 강등한다.**
+    """
+    header = rows.splitlines()[0] if rows else ""
+    if re.search(r"_dt\b|설정일|일자|date", header, re.I):
+        return answer, False
+    out, hit = [], False
+    for sent in re.split(r"(?<=[.!?\n])", answer):
+        if _ESTB_WORD.search(sent) and (_DATE_IN_TEXT.search(sent) or _DURATION.search(sent)):
+            hit = True
+            continue
+        out.append(sent)
+    if not hit:
+        return answer, False
+    return ("".join(out).strip() + "\n(설정일은 이번 조회 대상에 포함되지 않아 확인하지 못했습니다.)"), True
+
+
 _CUTOFF_CLAIM = re.compile(r"[^.!?\n]*(?:기준일|기준\s*시점|(?:을|를)?\s*기준으로\s*한)[^.!?\n]*[.!?]?")
 _DATE_IN_TEXT = re.compile(r"((?:19|20)\d{2})\s*[년\-]\s*(\d{1,2})\s*[월\-]\s*(\d{1,2})\s*일?")
 _FAKE_BASIS = re.compile(
@@ -5294,6 +5344,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
              "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
+    sql, unflip = fix_inverted_name_predicate(sql, q)
+    if unflip:
+        step("[Guard] 부정 이름 술어 교정 — 질문의 낱말을 NOT LIKE 로 뒤집은 절을 LIKE 로 되돌림 "
+             "(10R KG 부류 I · Z18 실측: 'ETF로 자산배분하는 공모펀드' 가 NOT LIKE '%ETF%' 로 나가 "
+             "1,508펀드 오답 목록 — gold 20펀드. 질문에 제외 어휘가 있으면 사용자 조건이라 불개입)")
     sql, lookup_fixed = ensure_fund_lookup_grouping(sql, q)
     if lookup_fixed:
         step("[Guard] 개별 조회 펀드 묶기 — 이름 검색 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값 병기 "
@@ -5807,6 +5862,11 @@ def answer_question(
     if hedged:
         step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
              "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
+    result.answer, estb_stripped = strip_unsourced_estb_claim(result.answer, rows)
+    if estb_stripped:
+        step("[Guard] 미조회 축 문장 제거 — 조회 결과에 날짜 컬럼이 없는데 설정일·운용 기간을 단정한 문장을 걷어냄 "
+             "(10R KG 부류 E 부수 · AA5 실측: SELECT 에 estb_dt 가 없는데 '설정일 2011-06-20 · 약 12년' — "
+             "2011→2026 은 15년이라 자기 산술과도 모순)")
     name_skip: list = []
     result.answer, name_fixes = verify_product_names(result.answer, rows, name_skip)
     if name_fixes:

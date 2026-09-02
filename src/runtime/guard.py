@@ -340,8 +340,9 @@ _SIMPLE = re.compile(r"^\s*select\b(?P<sel>.+?)\bfrom\b(?P<from>.+?)(?:\bwhere\b
 _COMPLEX = re.compile(r"\(\s*select\b|\bunion\b|\bhaving\b|\bwith\b", re.I)
 
 
-def split_conjuncts(where: str) -> list[str]:
-    """최상위 AND 로만 가른다 — 괄호·따옴표 안의 AND 는 건드리지 않는다. OR 가 최상위에 있으면 통째로 한 조건."""
+def _split_top_level(where: str, op: str) -> list[str]:
+    """최상위 `op`(AND·OR)로만 가른다 — 괄호·따옴표 안은 건드리지 않는다."""
+    tok, n = f" {op} ", len(op) + 2
     parts, depth, buf, i, s = [], 0, [], 0, where
     in_q = False
     while i < len(s):
@@ -353,12 +354,26 @@ def split_conjuncts(where: str) -> list[str]:
                 depth += 1
             elif ch == ")":
                 depth -= 1
-            elif depth == 0 and s[i:i + 5].upper() == " AND " :
-                parts.append("".join(buf).strip()); buf = []; i += 5; continue
+            elif depth == 0 and s[i:i + n].upper() == tok:
+                parts.append("".join(buf).strip()); buf = []; i += n; continue
         buf.append(ch); i += 1
     if "".join(buf).strip():
         parts.append("".join(buf).strip())
     return parts
+
+
+def split_conjuncts(where: str) -> list[str]:
+    """최상위 AND 로만 가른다 — 괄호·따옴표 안의 AND 는 건드리지 않는다. OR 가 최상위에 있으면 통째로 한 조건."""
+    return _split_top_level(where, "AND")
+
+
+def split_disjuncts(where: str) -> list[str]:
+    """최상위 OR 로만 가른다 — 확정식 치환을 **비교식 단위**로 하기 위한 짝(11R gold ③-3).
+
+    OR 절을 통째로 버리면 반대편 가지(사용자 조건)까지 사라진다 —
+    `cu_base_index LIKE '%우주%' OR pd_nm LIKE '%항공%'` 에서 이름 가지가 소멸한 계열(OFFICIAL-004).
+    """
+    return _split_top_level(where, "OR")
 
 
 @dataclass

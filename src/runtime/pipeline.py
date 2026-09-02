@@ -747,6 +747,11 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _ETF_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
         return sql, False
+    # 🔴 11R KG ③-2 (부류 V) — 모수 확정식도 **자기 FROM 을 확인한다.** X8 실측: `FROM public_funds` 문장의
+    #    서브쿼리에 ETF 테이블이 있다는 이유로 바깥 WHERE 에 `pd_sale_yn=1` 을 주입해 스키마 검사가 기각했다.
+    #    어느 가지의 WHERE 인지 알 수 없는 혼합 문장에서는 불개입한다(오거절이 잘못된 주입보다 낫다).
+    if re.search(r"\bfrom\s+(?!domestic_etfs\b|overseas_etfs\b)\w+", sql, re.I):
+        return sql, False
     tbl = _ETF_TBL.search(sql).group(0).split()[-1].lower()
     orig = sql
     strict = dict(_ETF_BASE_STRICT)
@@ -818,26 +823,46 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
        실측 KOSPI200 **34**(X7) · NASDAQ100 **16**(Z19) · S&P500 **24**(AA22) — 전부 gold 와 일치한다.
        파생·섹터 변형(`F-KOSPI 200`·`KOSPI 200 IT`·`KOSPI 200 Covered Call`)은 순수추종이 아니다.
     해외 ETF(`overseas_etfs`)는 `cu_base_index` 가 정상이라 대상이 아니다.
+
+    🔴 11R gold ③-3 — **치환은 술어 단위가 아니라 비교식 단위다.** 종전엔 지수 컬럼이 낀 절을 통째로 버려
+       OR 반대편 가지까지 사라졌다(`cu_base_index LIKE '%우주%' OR pd_nm LIKE '%항공%'` → 이름 가지 소멸).
+    🔴 11R KG ③-2 (부류 V) — **확정식은 자기가 주입할 컬럼이 그 FROM 테이블에 있는지 먼저 확인한다.**
+       X8 실측: `FROM public_funds` 문장에 ETF 컬럼을 주입해 바로 뒤 스키마 검사가 자기 출력을 기각했다(자가 오거절).
+       테이블이 섞인 문장(UNION·JOIN·다른 FROM)에서는 어느 가지의 WHERE 인지 알 수 없으므로 불개입한다.
     """
     if not re.search(r"\bfrom\s+domestic_etfs\b", sql, re.I):
+        return sql, False
+    if re.search(r"\bunion\b|\bjoin\b|\bfrom\s+(?!domestic_etfs\b)\w+", sql, re.I):
         return sql, False
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m_w:
         return sql, False
-    conjs = _flat_conjuncts(m_w.group(1))
-    kept, hit = [], None
-    for c in conjs:
-        # 지수 컬럼을 쓴 절의 **비교 리터럴**(REPLACE 의 ' '·'' 인자는 제외)을 지수명으로 삼는다
-        lits = [x.strip("'").strip("%") for x in _SQL_LITERAL.findall(c) if len(x.strip("'").strip("% ")) >= 2]
-        if _ETF_INDEX_COL.search(c) and lits and not re.search(r"\bNOT\b", c, re.I):
-            hit = re.sub(r"\s+", "", lits[-1])
+    def _canon(lit: str) -> str:
+        return (f"{_GUARD_MARK}(REPLACE(ref_base_index,' ','') GLOB '{lit}' "
+                f"OR REPLACE(ref_base_index,' ','') GLOB '{lit}[CTP]R*')")
+
+    out, changed = [], False
+    for c in _flat_conjuncts(m_w.group(1)):
+        if _GUARD_MARK in c or not _ETF_INDEX_COL.search(c):
+            out.append(c)                                    # 이미 확정식이거나 지수 축이 아니다(멱등)
             continue
-        kept.append(c)
-    if not hit or re.search(r"[*?\[\]]", hit):
+        branches, hit_any = [], False
+        for b in guard.split_disjuncts(_outer_group(c.strip()) or c):
+            # 지수 컬럼을 쓴 **가지**의 비교 리터럴(REPLACE 의 ' '·'' 인자는 제외)을 지수명으로 삼는다
+            lits = [x.strip("'").strip("%") for x in _SQL_LITERAL.findall(b) if len(x.strip("'").strip("% ")) >= 2]
+            hit = re.sub(r"\s+", "", lits[-1]) if lits else ""
+            if _ETF_INDEX_COL.search(b) and hit and not re.search(r"\bNOT\b", b, re.I) \
+                    and not re.search(r"[*?\[\]]", hit):
+                branches.append(_canon(hit))
+                hit_any = changed = True
+            else:
+                branches.append(b.strip())
+        out.append(branches[0] if len(branches) == 1 else "(" + " OR ".join(branches) + ")")
+        if not hit_any:
+            out[-1] = c
+    if not changed:
         return sql, False
-    canon = (f"{_GUARD_MARK}(REPLACE(ref_base_index,' ','') GLOB '{hit}' "
-             f"OR REPLACE(ref_base_index,' ','') GLOB '{hit}[CTP]R*')")
-    new = sql[:m_w.start(1)] + " " + " AND ".join(kept + [canon]) + " " + sql[m_w.end(1):]
+    new = sql[:m_w.start(1)] + " " + " AND ".join(out) + " " + sql[m_w.end(1):]
     return (new, True) if new != sql else (sql, False)
 
 

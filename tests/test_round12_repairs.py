@@ -62,3 +62,31 @@ def test_fabricated_predicate_still_removed_when_others_remain():
            "AND cu_charge_rt > 0 AND ref_base_index LIKE '%KOSPI200%'")
     out, changed = p.ensure_etf_base_population(sql, "KOSPI200 ETF 순자산 합계")
     assert changed and "cu_charge_rt" not in out, out
+
+
+# ── P3 · gold ③-3 — 확정식 치환은 술어 단위가 아니라 비교식 단위다 ──
+def test_index_canon_keeps_or_branch():
+    """OR 반대편 가지(사용자 조건)까지 버리던 계열 — OFFICIAL-004 이름 가지 소멸."""
+    out, ok = p.ensure_etf_index_canon(
+        "SELECT pd_abrv_nm FROM domestic_etfs WHERE cu_base_index LIKE '%우주항공%' "
+        "OR pd_nm LIKE '%우주항공%' LIMIT 30")
+    assert ok and "ref_base_index" in out and "pd_nm LIKE '%우주항공%'" in out, out
+    assert p.ensure_etf_index_canon(out)[1] is False, "멱등이 아니다"
+
+
+def test_index_canon_gold_axes_unchanged():
+    """지수 축 gold 는 흔들리지 않는다 — KOSPI200 34 · NASDAQ100 16 (심사관 실측)."""
+    con = connect_readonly()
+    for lit, gold in (("KOSPI200", 34), ("NASDAQ100", 16)):
+        out = _chain_etf(f"SELECT COUNT(*) FROM domestic_etfs WHERE cu_base_index LIKE '%{lit}%'",
+                         f"{lit} 지수를 추종하는 ETF는 몇 개야?")
+        assert con.execute(out).fetchone()[0] == gold, out
+
+
+# ── P4 · KG ③-2 (부류 V) — 확정식은 자기 컬럼이 그 FROM 테이블에 있는지 먼저 본다 ──
+def test_etf_canon_scope_guard():
+    """X8: `FROM public_funds` 문장에 ETF 컬럼을 주입해 스키마 검사가 자기 출력을 기각한 자가 오거절."""
+    mixed = ("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND bmrk_nm LIKE '%S&P500%' "
+             "AND itm_no IN (SELECT itm_no FROM domestic_etfs WHERE cu_base_index LIKE '%S&P500%')")
+    assert p.ensure_etf_index_canon(mixed)[1] is False, "테이블이 섞인 문장에 확정식이 개입했다"
+    assert p.ensure_etf_base_population(mixed, "S&P500 공모펀드 몇 개")[1] is False

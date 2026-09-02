@@ -198,7 +198,8 @@ class SQLPlanner:
 def test_future_year_as_maturity_passes(ctx):
     p = SQLPlanner("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5")
     r = answer_question("B-04", "2027년 만기 채권 알려줘", planner=p, ctx=ctx)
-    assert "[Execute]" in r.think_trace and "2026-08-24" not in r.answer
+    # 채권 목록은 기계 조립(2026-09-02)이라 머리줄에 기준일이 정당하게 실린다 — 기각 문구("이후 시점의 정보는 확인할 수 없습니다")가 아닌지만 본다
+    assert "[Execute]" in r.think_trace and "확인할 수 없습니다" not in r.answer and "[Answer] 채권 목록 답변 기계 조립" in r.think_trace
     assert "# 시점 주의" in p.grounding
 
 
@@ -234,8 +235,9 @@ def test_grounding_carries_clarify_rules_for_bonds(ctx):
 
 
 def test_answer_rules_reach_composer(ctx):
-    p = SQLPlanner("SELECT pd_nm, crd_grd FROM domestic_bonds WHERE std_pd_mcls_nm='국공채' LIMIT 3")
-    r = answer_question("H-01", "국공채 알려줘", planner=p, ctx=ctx)
+    # 채권 목록은 2026-09-02 부터 기계 조립(HCX 0회)이라 답변 규칙이 composer 에 닿는 경로는 집계·서술형 SQL 로 확인한다
+    p = SQLPlanner("SELECT AVG(applied_yield) AS 평균수익률, COUNT(DISTINCT pd_no) AS 종목수 FROM domestic_bonds WHERE std_pd_mcls_nm='국공채' LIMIT 1")
+    r = answer_question("H-01", "국공채 평균 수익률 알려줘", planner=p, ctx=ctx)
     assert "[Answer]" in r.think_trace and p.calls
     assert "신용등급 미부여" in p.calls[0] and "## domestic_bonds" in p.calls[0]
 

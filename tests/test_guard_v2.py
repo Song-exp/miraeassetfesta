@@ -2243,3 +2243,34 @@ def test_default_topn_for_rank_questions_without_count():
     assert not f("SELECT bd_knd, COUNT(*) FROM domestic_bonds GROUP BY 1 ORDER BY 2 DESC LIMIT 30", "채권 종류별로 많은 순으로 알려줘")[1]
     assert not f("SELECT pd_nm, mat_dt FROM domestic_bonds ORDER BY mat_dt ASC LIMIT 30", "만기가 가장 짧은 채권 뭐야?")[1]
     assert not f(sql.replace("LIMIT 30", "LIMIT 5"), "한전 채권 수익률 낮은 순으로 알려줘")[1]
+
+
+def test_bond_list_answer_assembled(ctx):
+    """2026-09-02 재배포 후 실측 — '수익률 높은 채권 추천해줘' 에 답변기가 종목명 0건 + 규칙 문구의 6.23% 인용. 채권 목록은 기계 조립."""
+    from src.runtime.pipeline import answer_question
+    sql = ("SELECT pd_no, pd_nm, MAX(applied_yield) AS applied_yield, TRIM(crd_grd) AS crd_grd, mat_dt FROM domestic_bonds "
+           "WHERE curr_cd = 'KRW' AND applied_yield > 0 AND mat_dt >= 20260824 AND pd_risk_gcd <> '11' "
+           "AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모' GROUP BY pd_no ORDER BY MAX(applied_yield) DESC LIMIT 5")
+
+    class P:
+        def plan_sql(self, q, g): return sql
+        def compose_answer(self, q, rows, answer_rules=""): return "HCX"
+
+    r = answer_question("T-BL", "수익률 높은 채권 추천해줘", planner=P(), ctx=ctx)
+    a = r.answer
+    assert "[Answer] 채권 목록 답변 기계 조립" in r.think_trace and a != "HCX"
+    assert "중진공2024제2차스케일업유동화전문2-3(사)(콜/중)" in a and "9.824%" in a and "만기 2029-10-25" in a   # 1위 원문 그대로
+    assert a.count("\n1. ") == 1 and "5. " in a and "6.23" not in a                                          # 5행 전부·창작 수치 없음
+    assert "전체 18,060종목" in a and "수익률 높은 순 상위 5개" in a and "기준일 2026-08-24" in a
+    assert "원금을 돌려받지 못할 위험" in a and "1등급) 채권과 사모 채권은 제외" in a                          # 조건부 문구 — 6% 초과·추천
+    # 6% 초과 없는 목록엔 주의 문구 없음 · 조회(추천 아님)엔 제외 고지 없음
+    sql2 = ("SELECT pd_nm, MIN(applied_yield) AS applied_yield, TRIM(crd_grd) AS crd_grd, mat_dt FROM domestic_bonds "
+            "WHERE TRIM(pd_pbcm) = '한국전력공사(주)' AND mat_dt >= 20260824 GROUP BY pd_no ORDER BY MIN(applied_yield) ASC LIMIT 5")
+    class P2(P):
+        def plan_sql(self, q, g): return sql2
+    r2 = answer_question("T-BL2", "한전 채권 수익률 낮은 순으로 알려줘", planner=P2(), ctx=ctx)
+    assert "한국전력공사채권1065" in r2.answer and "원금을 돌려받지" not in r2.answer and "전체 385종목" in r2.answer
+    # 집계·펀드 SQL 은 불개입
+    from src.runtime.pipeline import _bond_list_answer as f
+    assert f("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds LIMIT 30", "COUNT(DISTINCT pd_no)\n5", 1, "몇 개야") is None
+    assert f("SELECT itm_nm FROM public_funds LIMIT 5", "itm_nm\nA", 1, "펀드") is None

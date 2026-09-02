@@ -1161,6 +1161,105 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
     return "\n".join(out)
 
 
+_BOND_AXIS_KO = {"applied_yield": ("수익률", "높은 순", "낮은 순"), "after_tax_yield": ("세후수익률", "높은 순", "낮은 순"),
+                 "corp_pretax_yield": ("법인 세전수익률", "높은 순", "낮은 순"), "srfc_irt": ("표면금리", "높은 순", "낮은 순"),
+                 "buy_yield": ("매수수익률", "높은 순", "낮은 순"), "mat_dt": ("만기", "긴 순", "짧은 순"),
+                 "remaining_days": ("잔존만기", "긴 순", "짧은 순"), "dur": ("듀레이션", "긴 순", "짧은 순"),
+                 "eval_price": ("평가가", "높은 순", "낮은 순"), "isu_bal_amt": ("발행잔액", "많은 순", "적은 순")}
+_BOND_HIDE = {"pd_no", "pd_risk_gcd", "curr_cd", "info_base_dt", "info_seq", "pd_exg_mkt"}
+_BOND_YIELD_COLS = ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield", "srfc_irt")
+
+
+def _fmt_ymd(v: str) -> str:
+    s = v.strip().rstrip("0").rstrip(".") if re.fullmatch(r"\d{8}\.0+", v.strip()) else v.strip()
+    return f"{s[:4]}-{s[4:6]}-{s[6:]}" if re.fullmatch(r"\d{8}", s) else (s or "미수록")
+
+
+def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
+    """채권 목록(정렬 랭킹·조건 목록)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
+
+    2026-09-02 서버 실측(재배포 후): '수익률 높은 채권 추천해줘' — SQL·5행은 정확했는데 답변기가 "6% 초과라 추천이 어렵다" 며
+    **종목명을 하나도 옮기지 않고**, 조회 결과에 없는 '6등급 최고 6.23%' 를 규칙 문구에서 끌어와 답했다. 주의 문구 규칙은 목록에
+    붙이는 문장인데 목록 자체를 대체했다 — 분포(FND-038)·펀드 목록(R3)과 같은 결론: 목록 전사는 LLM 에게 맡길 수 없다.
+    발동(전부): ① domestic_bonds 단독(JOIN·UNION·서브쿼리 없음) ② SELECT 에 집계 없음 ③ 헤더에 pd_nm ④ 1행 이상 ≤ 상한.
+    머리줄: 커버리지(전체 N종목 중 상위 k) · 정렬 축·방향 · 기준일. 본문: 결과 행 그대로(수익률·신용등급·만기·잔존·구조/보강 열).
+    꼬리: 규칙의 조건부 문구만 — 6% 초과·2/3등급이 있을 때 원금 주의, 추천 질의면 고위험(1등급)·사모 제외 고지(SQL 에 그 절이 있을 때만)."""
+    if "domestic_bonds" not in sql or n < 1 or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return None
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm or re.search(r"\b(?:COUNT|SUM|AVG|TOTAL|GROUP_CONCAT)\s*\(", sql[:frm.start()], re.I):
+        return None
+    lines = rows.splitlines()
+    if len(lines) != n + 1:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if "pd_nm" not in cols:
+        return None
+    recs = []
+    for ln in lines[1:]:
+        parts = [p.strip() for p in ln.split(" | ")]
+        if len(parts) != len(cols):
+            return None
+        recs.append(dict(zip(cols, parts)))
+    ycol = next((c for c in _BOND_YIELD_COLS if c in cols), None)
+    # 정렬 축 — ORDER BY 첫 키(MAX/MIN 감싼 대표행 형 포함)
+    axis_txt = ""
+    m = re.search(r"\bORDER\s+BY\s+(?:MAX|MIN)?\(?\s*([A-Za-z_]\w*)\s*\)?(?:\s+(ASC|DESC))?", sql, re.I)
+    if m and m.group(1).lower() in _BOND_AXIS_KO:
+        name, hi, lo = _BOND_AXIS_KO[m.group(1).lower()]
+        axis_txt = f"{name} {hi if (m.group(2) or 'ASC').upper() == 'DESC' else lo}"
+    cov = _bond_coverage_counts(sql)
+    total = cov[1] if cov else None
+    basis = f"기준일 {gate.DATA_CUTOFF}"
+    if total and total > n:
+        head = (f"조건에 해당하는 채권은 전체 {total:,}종목이며, {axis_txt + ' ' if axis_txt else ''}상위 {n}개는 다음과 같습니다 ({basis})."
+                if axis_txt else f"조건에 해당하는 채권은 전체 {total:,}종목이며, 그중 {n}개는 다음과 같습니다 ({basis}).")
+    else:
+        head = (f"조건에 해당하는 채권 {n}종목을 {axis_txt}으로 정렬했습니다 ({basis})." if axis_txt
+                else f"조건에 해당하는 채권은 {n}종목입니다 ({basis}).")
+    out = [head, ""]
+    warn = False
+    for i, r in enumerate(recs, 1):
+        bits = []
+        if ycol and r.get(ycol):
+            try:
+                yv = float(r[ycol])
+            except ValueError:
+                yv = None
+            # 0 은 결측(주최 공지: 0·빈값은 의도된 값 → "없다" 로) — 2026-09-02 전환사채 목록에 "수익률 0.0%" 가 값처럼 나감
+            bits.append(f"{_BOND_AXIS_KO.get(ycol, (ycol,))[0]} {'미수록' if yv == 0 else r[ycol] + '%'}")
+            warn = warn or (yv is not None and yv > 6)
+        for c in _BOND_YIELD_COLS:
+            if c != ycol and c in cols and r.get(c):
+                bits.append(f"{_BOND_AXIS_KO.get(c, (c,))[0]} {r[c]}%")
+        if "crd_grd" in cols:
+            bits.append(f"신용등급 {r['crd_grd']}" if r.get("crd_grd") else "신용등급 미수록")
+        if "pd_risk_nm" in cols and r.get("pd_risk_nm"):
+            bits.append(f"위험등급 {r['pd_risk_nm']}")
+        if r.get("pd_risk_gcd") in ("12", "13"):
+            warn = True
+        if "mat_dt" in cols and r.get("mat_dt"):
+            bits.append(f"만기 {_fmt_ymd(r['mat_dt'])}")
+        if "remaining_days" in cols and r.get("remaining_days"):
+            bits.append(f"잔존 {r['remaining_days']}")
+        if "pd_pbcm" in cols and r.get("pd_pbcm"):
+            bits.append(f"발행사 {r['pd_pbcm']}")
+        for c in cols:
+            if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm") or c in _BOND_YIELD_COLS:
+                continue
+            if r.get(c):
+                bits.append(f"{c} {r[c]}")
+        out.append(f"{i}. {r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
+    tail = []
+    if warn:
+        tail.append("수익률이 높은 채권은 원금을 돌려받지 못할 위험도 높을 수 있습니다. 신용등급·위험등급을 함께 확인하세요.")
+    if _RECO_Q.search(question) and "pd_risk_gcd <> '11'" in sql and "bd_ofr_tcd <> '사모'" in sql:
+        tail.append("위험등급이 매우 높은(1등급) 채권과 사모 채권은 제외했습니다.")
+    if tail:
+        out += ["", " ".join(tail)]
+    return "\n".join(out)
+
+
 def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     """ORDER BY 없는 펀드 목록(태그·유형 필터)을 펀드키로 묶어 순자산순 대표행으로. (보정된 SQL, 보정했는지)
 
@@ -4631,6 +4730,13 @@ def answer_question(
              "(2026-09-02 R3·S7: 30행 중 5·10행만 옮김 · S6: 총량 대신 '더 있을 수 있음')")
         result.think_trace = "\n".join(trace)
         result.answer = lst
+        return result
+    bl = _bond_list_answer(sql, rows, n, q)
+    if bl is not None:
+        step("[Answer] 채권 목록 답변 기계 조립 — 결과 행 전부 + 커버리지·정렬축 머리줄 + 조건부 주의 문구, HCX 0회 "
+             "(2026-09-02 재배포 후 실측: '수익률 높은 채권 추천해줘' 답변기가 종목명 0건 전사 + 규칙 문구의 6.23% 를 결과처럼 인용)")
+        result.think_trace = "\n".join(trace)
+        result.answer = bl
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

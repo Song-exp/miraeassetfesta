@@ -107,3 +107,27 @@ def test_fund_key_column_correction(ctx):
     # 어느 키에도 없는 리터럴은 손대지 않는다 (값 검사·0행 진단에 맡긴다)
     bogus = "SELECT itm_no FROM public_funds WHERE itm_no = 'ZZZNOTAKEY' LIMIT 30"
     assert ensure_fund_key_column(bogus) == (bogus, [])
+
+
+# ── 뿌리⑤ — precheck 파싱 검사 (G6 · Z13) ──
+
+def test_precheck_parses_sql(ctx):
+    """KG 4R G6 — 문법 오류는 실행 전에 잡힌다. 6R Z13: 괄호 불균형이 '검사 통과' 뒤 OperationalError 로 죽었다."""
+    from src.runtime.pipeline import validate_sql
+
+    z13 = ("SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모') "
+           "UNION ALL (SELECT COUNT(*) FROM domestic_etfs WHERE cu_fund_mgmt_co = 'KB' AND pd_grp_no = 'ETF') LIMIT 30")
+    err = validate_sql(z13)
+    assert err and ("괄호" in err or "문법" in err), err
+
+    # 🔴 없는 컬럼은 여기서 기각하지 않는다 — guard.unknown_columns 가 더 나은 사유를 내는 자리다(중복 0)
+    assert validate_sql("SELECT itm_no FROM public_funds WHERE zzz_nope = '1' LIMIT 5") is None
+    from src.runtime import guard
+    assert guard.unknown_columns("SELECT itm_no FROM public_funds WHERE zzz_nope = '1' LIMIT 5", ctx)
+    # 정상 SQL 은 통과 (EXPLAIN 드라이런이 무해해야 한다)
+    for ok in (
+        "SELECT itm_no, itm_nm FROM public_funds WHERE sale_yn = '판매중' LIMIT 30",
+        "WITH x AS (SELECT pd_no, applied_yield FROM domestic_bonds) SELECT * FROM x LIMIT 5",
+        "SELECT COUNT(*) FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no LIMIT 30",
+    ):
+        assert validate_sql(ok) is None, (ok, validate_sql(ok))

@@ -189,6 +189,27 @@ def validate_sql(sql: str) -> str | None:
         return "SQLite 문법이 아니다(TOP n) — LIMIT n 을 쓴다"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
+    # KG 4R G6 — **실행 전에 파싱한다.** 여기까지 정규식 검사를 다 통과해도 문법이 깨져 있으면 실행 예외가
+    #    "데이터 조회 중 오류가 발생해 확인할 수 없습니다" 로 사용자에게 나간다 — 오거절보다 나쁜 표면이다.
+    #    Z13 실측: `… prvo_pbff_desc = '공모') UNION ALL (SELECT …` 괄호 불균형이 "[Guard] SQL 검사 통과" 뒤
+    #    OperationalError: near ")" 로 죽었다. complete_statement 로 미완결문을, EXPLAIN 드라이런으로 문법을 잡고
+    #    재생성 피드백으로 돌린다(실행은 하지 않는다 — EXPLAIN 은 계획만 낸다).
+    if not sqlite3.complete_statement(s + ";"):
+        return "SQL 이 완결된 한 문장이 아니다(괄호·따옴표 불균형) — 괄호 짝과 따옴표를 맞춰 한 문장으로 낸다"
+    try:
+        con = connect_readonly()
+        try:
+            con.execute("EXPLAIN " + s)
+        finally:
+            con.close()
+    except sqlite3.OperationalError as e:
+        # 🔴 **문법 오류만** 여기서 기각한다. 'no such column/table' 은 guard.unknown_columns·ambiguous_columns 가
+        #    더 나은 사유(어느 테이블 컬럼인지)를 내는 자리이고, 스키마가 다른 환경에서 정답 SQL 을 버릴 수 있다
+        #    (같은 목적 가드 중복 0 — 2026-09-02 실측: ext_etf_holdings 별칭 JOIN 이 오탐 기각됐다).
+        if re.search(r'near "|unrecognized token|incomplete input|syntax error', str(e), re.I):
+            return f"SQL 문법 오류(실행 전 파싱): {e}"
+    except sqlite3.Error:
+        pass                     # 파서 밖 오류(연결 등)로 정상 SQL 을 막지 않는다
     return None
 
 

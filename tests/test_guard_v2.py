@@ -2172,3 +2172,32 @@ def test_r6_P_template_simple_predicates(ctx):
 
     r = answer_question("T-V5", "순자산 상위 펀드 3개", planner=P(), ctx=ctx)
     assert len(calls) == 2 and "실행 오류" in calls[1] and "실행 실패" in r.think_trace and "오류가 발생해" not in r.answer
+
+
+def test_r6_F3_holdings_join_template(ctx):
+    """6R F3 (KG-028·KG-034·X1·X2) — 개별 펀드의 구성종목 질의: public_funds 단독 SQL 을 ext_fund_holdings JOIN 확정식으로 교체
+    (대표 클래스 1개 · 비중순). 트리거 없는 질의·펀드 미지정·이미 holdings 를 쓴 SQL 은 불개입. precheck 는 테이블 범위를 컬럼 검사 앞에."""
+    from src.runtime.pipeline import ensure_fund_holdings_template as ht, _sql_precheck as pc, answer_question
+
+    base = ("SELECT itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%IBK중소형주코리아%' AND sale_yn = '판매중' "
+            "AND prvo_pbff_desc = '공모' LIMIT 3")
+    out, ok = ht(base, "IBK중소형주코리아 펀드가 가장 많이 보유한 종목 3개 알려줘", ctx)
+    assert ok and "FROM ext_fund_holdings h" in out and "h2.grp = p.mtco_itm_no" in out and "LIKE '%IBK중소형주코리아%'" in out and "LIMIT 3" in out
+    assert ht(base, "IBK중소형주코리아 펀드 순자산 알려줘", ctx)[1] is False
+    assert ht("SELECT itm_nm FROM public_funds WHERE zrin_btyp_nm = '주식형' LIMIT 3", "주식형 펀드가 보유한 종목", ctx)[1] is False
+    assert ht(out, "IBK중소형주코리아 펀드가 보유한 종목", ctx)[1] is False
+    # precheck 순서 — 펀드 질의가 ETF 구성종목 테이블로 새면 '없는 컬럼' 이 아니라 '테이블 범위' 사유
+    err = pc("SELECT e.pd_nm, h.constituent FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no "
+             "WHERE h.constituent LIKE '%삼성전자%' LIMIT 3", ctx, ["public_funds"], False)
+    assert err and err.startswith("라우팅 대상")
+
+    class P:
+        def plan_sql(self, q, g):
+            return base
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-F3", "IBK중소형주코리아 펀드가 가장 많이 보유한 종목 3개 알려줘", planner=P(), ctx=ctx)
+    assert "ext_fund_holdings" in r.sql and "구성종목 확정식" in r.think_trace
+    assert "종목명" in r.retrieved_context and len(r.retrieved_context.splitlines()) == 4

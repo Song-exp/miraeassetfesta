@@ -238,6 +238,16 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
         if agg:
             err = (f"WHERE 절에 윈도우·집계 함수 사용({agg}) — 실행 시 misuse 오류. 집계 조건은 HAVING 으로, "
                    "순위·윈도우 조건은 서브쿼리(WITH … AS (SELECT …, RANK() OVER(…) rk …) SELECT … WHERE rk <= n) 로 옮긴다")
+    if not err and tables:
+        # 6R F3 — 테이블 범위를 컬럼 검사 **앞**에 둔다: 잘못된 테이블의 컬럼을 '없는 컬럼' 이라 하면 재생성이 컬럼만 고친다.
+        # KG 2R N1 — 교차 판정이어도 허용 집합은 **라우터가 정한 마스터 + 그 짝 ext_***. `not cross` 로 검사를 끄면 펀드 질의에
+        #    domestic_etfs + ext_etf_holdings 가 통과해 엉뚱한 ETF 종목이 답으로 나간다(KG-028 'IBK K-AI반도체코어테크' 57.12% 환각).
+        #    다른 마스터는 질문에 그 상품군 명사가 있을 때 라우터가 이미 tables 에 넣었다.
+        allowed = set(tables) | {e for e, m in _EXT_PAIR.items() if m in tables}
+        outside = sorted(set(guard.sql_tables(sql)) - allowed)
+        if outside:
+            err = (f"라우팅 대상({', '.join(tables)} + 짝 ext_*) 밖 테이블 사용: {', '.join(outside)} — "
+                   "질문의 상품군 테이블(과 그 외부 수집 테이블)로만 쓴다")
     if not err:
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
@@ -249,15 +259,6 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
         if amb:
             err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
                    + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
-    if not err and tables:
-        # KG 2R N1 — 교차 판정이어도 허용 집합은 **라우터가 정한 마스터 + 그 짝 ext_***. `not cross` 로 검사를 끄면 펀드 질의에
-        #    domestic_etfs + ext_etf_holdings 가 통과해 엉뚱한 ETF 종목이 답으로 나간다(KG-028 'IBK K-AI반도체코어테크' 57.12% 환각).
-        #    다른 마스터는 질문에 그 상품군 명사가 있을 때 라우터가 이미 tables 에 넣었다.
-        allowed = set(tables) | {e for e, m in _EXT_PAIR.items() if m in tables}
-        outside = sorted(set(guard.sql_tables(sql)) - allowed)
-        if outside:
-            err = (f"라우팅 대상({', '.join(tables)} + 짝 ext_*) 밖 테이블 사용: {', '.join(outside)} — "
-                   "질문의 상품군 테이블(과 그 외부 수집 테이블)로만 쓴다")
     if not err:
         bad = guard.check_code_literals(sql, ctx)
         if bad:
@@ -1940,6 +1941,54 @@ def ensure_ext_join(sql: str, ctx) -> tuple[str, list[str]]:
         sql = sql[:mm.end()] + f" LEFT JOIN {ext} ON {on_clause}" + sql[mm.end():]
         notes.append(f"{', '.join(used)} 은 {ext} 컬럼 → LEFT JOIN 주입")
     return sql, notes
+
+
+_HOLD_Q = re.compile(r"보유\s*(?:종목|주식|자산|비중|하고|한)|담(?:은|고|았)|구성\s*종목|편입|포트폴리오|투자\s*(?:종목|하는\s*종목)|(?:상위|주요|많이\s*가진)\s*종목")
+
+
+def ensure_fund_holdings_template(sql: str, question: str, ctx) -> tuple[str, bool]:
+    """6R F3 — 특정 펀드의 **구성종목** 질의를 ext_fund_holdings JOIN 확정식으로 교체. (보정 SQL, 교체했는지)
+
+    부류: 질문에 구성종목 트리거(보유 종목·담은·편입·포트폴리오…) + 펀드 개별 지정(_has_name_filter 또는 펀드키 핀) + SQL 이 아직
+    ext_fund_holdings 를 쓰지 않음. 팬아웃(1:N)이라 ensure_ext_join(1:1 전용) 의 자동 주입 밖이었고, 플래너는 public_funds 만 조회하거나
+    domestic_etfs·ext_etf_holdings 로 새어 나갔다(KG-028 'IBK K-AI반도체코어테크' ETF 종목 환각 · KG-034 · X1 · X2).
+    확정식: 원문 WHERE 의 펀드 술어(p. 한정)로 펀드를 고르고, 그 펀드 그룹(grp+or_co = JOIN_KEYS)의 보유 목록이 실린 대표 클래스
+    (순자산 최대) itm_no 하나의 종목을 비중순으로 낸다 — 클래스 팬아웃 없이 한 펀드 = 한 목록. 컬럼명은 스키마(ext_fund_holdings)에서."""
+    if not _HOLD_Q.search(question) or re.search(r"\bext_fund_holdings\b|\bunion\b", sql, re.I):
+        return sql, False
+    m = _FROM_MASTER.search(sql)
+    if not m or m.group(1).lower() != "public_funds" or not (_has_name_filter(sql) or _has_fund_key_pin(sql)):
+        return sql, False
+    schema = getattr(ctx, "schema", {}) or {}
+    hcols = {c.lower() for c, *_ in schema.get("ext_fund_holdings", ())}
+    if not {"holding_nm", "weight_pct", "itm_no", "grp", "or_co"} <= hcols:
+        return sql, False
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, False
+    alias = m.group(2)
+    preds = []
+    for c in guard.split_conjuncts(m_w.group(1)):
+        c = re.sub(r"\bpublic_funds\.", "p.", c)
+        if alias:
+            c = re.sub(rf"\b{re.escape(alias)}\.", "p.", c)
+        c = re.sub(r"(?<![\w.])itm_no\b", "p.itm_no", c)
+        preds.append(c.strip())
+    if not preds:
+        return sql, False
+    # 개수는 질문의 숫자('3개·5종목')가 우선 — 앞선 개별 조회 가드가 LIMIT 을 30 으로 올려둔 뒤라 SQL 의 LIMIT 은 믿을 수 없다
+    m_q = re.search(r"(\d+)\s*(?:개|종목|가지|위)", question)
+    m_lim = re.search(r"\blimit\s+(\d+)", sql, re.I)
+    k = int(m_q.group(1)) if m_q else (int(m_lim.group(1)) if m_lim else 10)
+    k = min(max(k, 1), MAX_ROWS)
+    extra = ", h.asset_type AS \"자산유형\"" if "asset_type" in hcols else ""
+    extra += ", h.bas_dt AS \"기준일\"" if "bas_dt" in hcols else ""
+    return (f"SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\"{extra} "
+            f"FROM ext_fund_holdings h "
+            f"WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 "
+            f"JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd "
+            f"WHERE {' AND '.join(preds)} ORDER BY p.fd_nast_suma DESC LIMIT 1) "
+            f"ORDER BY h.weight_pct DESC LIMIT {k}"), True
 
 
 def qualify_join_columns(sql: str, ctx) -> tuple[str, list[str]]:
@@ -4138,6 +4187,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, brep_fixed = ensure_bond_representative(sql)
     if brep_fixed:
         step("[Guard] 채권 대표행 보정 — 목록 SELECT 를 GROUP BY pd_no 로 종목 단위 묶기 + 정렬 컬럼 MAX/MIN (2026-09-02 실측: 장내·장외 중복행으로 발행사 39곳 top5 에 같은 종목 2회 — gold 38개 중 37개가 GROUP BY pd_no)")
+    sql, hold_fixed = ensure_fund_holdings_template(sql, q, ctx)
+    if hold_fixed:
+        step("[Guard] 구성종목 확정식 — 개별 펀드의 보유 종목 질의를 ext_fund_holdings(grp+or_co) JOIN 템플릿으로 교체, 대표 클래스 1개의 목록을 비중순으로 "
+             "(5R KG-028·KG-034·X1·X2: public_funds 단독 조회 또는 ETF 구성종목 테이블로 이탈)")
     if name_token and _FUND_TBL.search(sql):
         # 6R J′ — 사후조건: 어느 가드가 절을 걷어냈든(호수 가드가 이름+N호 결합 LIKE 를 통째로 제거 — W6) 이름 토큰은 살아남는다. 멱등(N2 규칙 재사용)
         sql, post_fixed = ensure_fund_name_filter(sql, name_token)

@@ -13,3 +13,6 @@ ipykernel>=6.29.0
 # 노트북 「📊 기초 통계」 절의 dist() 용.
 # 없어도 텍스트 막대로 동작하므로 필수는 아니지만, 분포는 그림으로 보는 편이 빠릅니다.
 matplotlib>=3.8.0
+
+# scripts/check_yaml_dupkeys.py (배포 전 기준선 3종 중 하나) — 없으면 스크립트가 sys.exit 한다.
+ruamel.yaml>=0.18

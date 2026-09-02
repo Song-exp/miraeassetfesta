@@ -24,6 +24,7 @@
 - `.env` 는 example 복사본 — HCX 키 없음. **로컬 HCX 경로 실행 불가**, 결정층(라우터·Ground·가드·조립기)만 pytest 로 검증. HCX 실측은 서버 `/answer` 로.
 - git remote 는 `https://Song-exp@github.com/...` 로 사용자명 고정(huhjihye 계정은 쓰기 권한 없음). 부모 폴더 `toxin_2026` 도 별도 레포 — pj 를 거기 커밋하지 않는다.
 - SSH(배포)는 ACG 통과 확인됨(공인 IP 210.183.172.228).
+- **다른 PC 에서 이어가기**: `git pull` → `pip install -r requirements-dev.txt`(`ruamel.yaml` 추가됨) → `python scripts/build_ontology.py`(KG 스키마가 바뀌었으므로 필수) → 기준선 3종. 마스터 DB(`data/financial_products.db`)·`1.금융상품/`·`secrets/` 는 gitignore 라 없으면 드라이브/zip 에서 복사. **오늘 새로 수집한 외부 데이터는 없다**(`data/external` 변경 0) — KG 는 커밋된 yaml·코드북·빌더에서 전부 재생성된다.
 
 ---
 

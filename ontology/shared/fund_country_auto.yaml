@@ -1,0 +1,246 @@
+# GENERATED — 편집 금지. 재생성: python scripts/gen_fund_attribute_yaml.py
+# source=ontology/codebooks/fund_country_tag.csv · fund_attr_code.csv — as_of=2026-08-22
+entity: Country
+description: 펀드 투자국가 태그(prfd_attr_cds ISO3 토큰) — 지역 계층(Region)과 별개 축. closure 대상 아님(권역 후손 전개는 Region 이 맡는다)
+property: investsInCountry
+generated: true
+as_of: '2026-08-22'
+nodes:
+  Country_CHN:
+    label_ko: 중국
+    label_en: CHN
+    axis: country
+    n_rows_all: 584
+    n_rows_base: 560
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: CHN
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_USA:
+    label_ko: 미국
+    label_en: USA
+    axis: country
+    n_rows_all: 354
+    n_rows_base: 333
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: USA
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_IND:
+    label_ko: 인도
+    label_en: IND
+    axis: country
+    n_rows_all: 124
+    n_rows_base: 135
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: IND
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_JPN:
+    label_ko: 일본
+    label_en: JPN
+    axis: country
+    n_rows_all: 121
+    n_rows_base: 79
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: JPN
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_VNM:
+    label_ko: 베트남
+    label_en: VNM
+    axis: country
+    n_rows_all: 117
+    n_rows_base: 119
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: VNM
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_BRA:
+    label_ko: 브라질
+    label_en: BRA
+    axis: country
+    n_rows_all: 60
+    n_rows_base: 42
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: BRA
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_RUS:
+    label_ko: 러시아
+    label_en: RUS
+    axis: country
+    n_rows_all: 51
+    n_rows_base: 51
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: RUS
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_HKG:
+    label_ko: 홍콩
+    label_en: HKG
+    axis: country
+    n_rows_all: 29
+    n_rows_base: 30
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: HKG
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_KOR:
+    label_ko: 한국
+    label_en: KOR
+    axis: country
+    n_rows_all: 21
+    n_rows_base: 16
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: KOR
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_DEU:
+    label_ko: 독일
+    label_en: DEU
+    axis: country
+    n_rows_all: 17
+    n_rows_base: 11
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: DEU
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_IDN:
+    label_ko: 인도네시아
+    label_en: IDN
+    axis: country
+    n_rows_all: 12
+    n_rows_base: 7
+    tag_sparse: false
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: IDN
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_TWN:
+    label_ko: 대만
+    label_en: TWN
+    axis: country
+    n_rows_all: 7
+    n_rows_base: 0
+    tag_sparse: true
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: TWN
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_MYS:
+    label_ko: 말레이시아
+    label_en: MYS
+    axis: country
+    n_rows_all: 5
+    n_rows_base: 0
+    tag_sparse: true
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: MYS
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_AUS:
+    label_ko: 호주
+    label_en: AUS
+    axis: country
+    n_rows_all: 5
+    n_rows_base: 0
+    tag_sparse: true
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: AUS
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_GBR:
+    label_ko: 영국
+    label_en: GBR
+    axis: country
+    n_rows_all: 3
+    n_rows_base: 0
+    tag_sparse: true
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: GBR
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_FRA:
+    label_ko: 프랑스
+    label_en: FRA
+    axis: country
+    n_rows_all: 3
+    n_rows_base: 0
+    tag_sparse: true
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: FRA
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  Country_ESP:
+    label_ko: 스페인
+    label_en: ESP
+    axis: country
+    n_rows_all: 2
+    n_rows_base: 0
+    tag_sparse: true
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: ESP
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)

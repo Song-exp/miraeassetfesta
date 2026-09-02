@@ -31,6 +31,10 @@ fp:manages a owl:ObjectProperty ; owl:inverseOf fp:hasManager ; rdfs:comment "�
 fp:issues a owl:ObjectProperty ; owl:inverseOf fp:hasIssuer ; rdfs:comment "발행사 → 상품 (fp:hasIssuer 의 역)"@ko .
 fp:isHeldBy a owl:ObjectProperty ; owl:inverseOf fp:holds ; rdfs:comment "종목 → 그 종목을 편입한 상품 (fp:holds 의 역) — '삼성전자 편입 ETF' 질의의 탐색 방향"@ko .
 
+# ── 기관 라벨 슬롯 (KG 1R S1): skos:prefLabel(정식/브랜드) · fp:formerName(구상호 — 질의 표기용, DB 값 아님) · fp:successor(합병·이관 후계 법인) ──
+fp:formerName a owl:AnnotationProperty ; rdfs:comment "구상호 — 매칭 시 후계 법인 코드로 조회하고 '현재 X 가 운용' 을 답에 병기한다"@ko .
+fp:successor a owl:ObjectProperty ; rdfs:domain fp:Organization ; rdfs:range fp:Organization ; rdfs:comment "합병·이관으로 현재 그 상품을 운용하는 법인"@ko .
+
 # ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 24.6%·0등급 존재) ──
 fp:riskGradeValue a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf ( fp:DomesticBond fp:DomesticETF fp:PublicFund ) ] ;  # 해외ETF 는 위험등급 컬럼 자체가 없음(ABSENT — etf_gl.ttl)
@@ -115,6 +119,216 @@ fp:Curr_AUD a fp:Currency ; skos:prefLabel "호주 달러"@ko, "AUD"@en .
 fp:Curr_GBP a fp:Currency ; skos:prefLabel "영국 파운드"@ko, "GBP"@en .
 fp:Curr_SEK a fp:Currency ; skos:prefLabel "스웨덴 크로나"@ko, "SEK"@en .
 fp:Curr_Unknown a fp:Currency ; skos:prefLabel "통화 미상"@ko .
+
+# ── FundAttribute (shared/fund_attribute_auto.yaml) ──
+fp:FundAttribute a owl:Class .
+fp:hasAttribute a owl:ObjectProperty ;
+    rdfs:domain [ owl:unionOf ( fp:PublicFund ) ] ;
+    rdfs:range fp:FundAttribute ;
+    rdfs:comment "펀드별속성 태그(prfd_attr_cds) 15축 — 설정형태(C)·판매채널(D)·세제(F/G)·구조(M)·테마(N)·섹터(O)·스타일(P)·전략(S)·TDF(T)·지역구분(V/W)"@ko .
+fp:FundAttr_C101 a fp:FundAttribute ; skos:prefLabel "추가"@ko .
+fp:FundAttr_C102 a fp:FundAttribute ; skos:prefLabel "단위"@ko .
+fp:FundAttr_C103 a fp:FundAttribute ; skos:prefLabel "개방"@ko .
+fp:FundAttr_C104 a fp:FundAttribute ; skos:prefLabel "폐쇄"@ko .
+fp:FundAttr_D101 a fp:FundAttribute ; skos:prefLabel "직판"@ko .
+fp:FundAttr_D102 a fp:FundAttribute ; skos:prefLabel "국내위탁판매"@ko .
+fp:FundAttr_D103 a fp:FundAttribute ; skos:prefLabel "직판&국내위탁판매"@ko .
+fp:FundAttr_D105 a fp:FundAttribute ; skos:prefLabel "국내외혼합판매"@ko .
+fp:FundAttr_D106 a fp:FundAttribute ; skos:prefLabel "온라인전용"@ko .
+fp:FundAttr_E101 a fp:FundAttribute ; skos:prefLabel "개인"@ko .
+fp:FundAttr_E102 a fp:FundAttribute ; skos:prefLabel "법인"@ko .
+fp:FundAttr_E103 a fp:FundAttribute ; skos:prefLabel "가입대상제한없음"@ko .
+fp:FundAttr_F101 a fp:FundAttribute ; skos:prefLabel "단순비과세"@ko .
+fp:FundAttr_F102 a fp:FundAttribute ; skos:prefLabel "단순소득공제"@ko .
+fp:FundAttr_F103 a fp:FundAttribute ; skos:prefLabel "단순세액공제"@ko .
+fp:FundAttr_F104 a fp:FundAttribute ; skos:prefLabel "소득공제비과세"@ko .
+fp:FundAttr_F106 a fp:FundAttribute ; skos:prefLabel "세금우대"@ko .
+fp:FundAttr_F107 a fp:FundAttribute ; skos:prefLabel "분리과세"@ko .
+fp:FundAttr_G101 a fp:FundAttribute ; skos:prefLabel "개인연금"@ko .
+fp:FundAttr_G102 a fp:FundAttribute ; skos:prefLabel "근로자장기저축"@ko .
+fp:FundAttr_G110 a fp:FundAttribute ; skos:prefLabel "연금저축"@ko .
+fp:FundAttr_G113 a fp:FundAttribute ; skos:prefLabel "장기주택마련"@ko .
+fp:FundAttr_G114 a fp:FundAttribute ; skos:prefLabel "장기주식"@ko .
+fp:FundAttr_G115 a fp:FundAttribute ; skos:prefLabel "퇴직연금"@ko .
+fp:FundAttr_G116 a fp:FundAttribute ; skos:prefLabel "재형저축"@ko .
+fp:FundAttr_G117 a fp:FundAttribute ; skos:prefLabel "소득공제장기펀드"@ko .
+fp:FundAttr_G118 a fp:FundAttribute ; skos:prefLabel "해외비과세"@ko .
+fp:FundAttr_G119 a fp:FundAttribute ; skos:prefLabel "벤처기업투자신탁"@ko .
+fp:FundAttr_M101 a fp:FundAttribute ; skos:prefLabel "목표달성전환"@ko .
+fp:FundAttr_M102 a fp:FundAttribute ; skos:prefLabel "목표달성상환"@ko .
+fp:FundAttr_M104 a fp:FundAttribute ; skos:prefLabel "엄브렐러"@ko .
+fp:FundAttr_M105 a fp:FundAttribute ; skos:prefLabel "Wrap"@ko .
+fp:FundAttr_M106 a fp:FundAttribute ; skos:prefLabel "라이프싸이클"@ko .
+fp:FundAttr_M107 a fp:FundAttribute ; skos:prefLabel "운용펀드"@ko .
+fp:FundAttr_M109 a fp:FundAttribute ; skos:prefLabel "자펀드"@ko .
+fp:FundAttr_M110 a fp:FundAttribute ; skos:prefLabel "종류형 운용펀드"@ko .
+fp:FundAttr_M111 a fp:FundAttribute ; skos:prefLabel "종류형 클래스펀드"@ko .
+fp:FundAttr_M112 a fp:FundAttribute ; skos:prefLabel "FoFs"@ko .
+fp:FundAttr_M113 a fp:FundAttribute ; skos:prefLabel "ETF"@ko .
+fp:FundAttr_M119 a fp:FundAttribute ; skos:prefLabel "MoM"@ko .
+fp:FundAttr_M120 a fp:FundAttribute ; skos:prefLabel "역내/역외일치재간접"@ko .
+fp:FundAttr_M121 a fp:FundAttribute ; skos:prefLabel "외화기준가펀드"@ko .
+fp:FundAttr_N101 a fp:FundAttribute ; skos:prefLabel "삼성그룹주"@ko .
+fp:FundAttr_N102 a fp:FundAttribute ; skos:prefLabel "현대그룹주"@ko .
+fp:FundAttr_N105 a fp:FundAttribute ; skos:prefLabel "5대그룹주"@ko .
+fp:FundAttr_N106 a fp:FundAttribute ; skos:prefLabel "SRI"@ko .
+fp:FundAttr_N107 a fp:FundAttribute ; skos:prefLabel "어린이펀드"@ko .
+fp:FundAttr_N108 a fp:FundAttribute ; skos:prefLabel "적립식펀드"@ko .
+fp:FundAttr_N109 a fp:FundAttribute ; skos:prefLabel "복제"@ko .
+fp:FundAttr_N111 a fp:FundAttribute ; skos:prefLabel "상장지주"@ko .
+fp:FundAttr_N112 a fp:FundAttribute ; skos:prefLabel "현대차그룹"@ko .
+fp:FundAttr_N113 a fp:FundAttribute ; skos:prefLabel "15대그룹"@ko .
+fp:FundAttr_N114 a fp:FundAttribute ; skos:prefLabel "원자재"@ko .
+fp:FundAttr_N115 a fp:FundAttribute ; skos:prefLabel "천연자원"@ko .
+fp:FundAttr_N116 a fp:FundAttribute ; skos:prefLabel "인프라"@ko .
+fp:FundAttr_N118 a fp:FundAttribute ; skos:prefLabel "럭셔리"@ko .
+fp:FundAttr_N119 a fp:FundAttribute ; skos:prefLabel "친환경"@ko .
+fp:FundAttr_N121 a fp:FundAttribute ; skos:prefLabel "지배구조"@ko .
+fp:FundAttr_N122 a fp:FundAttribute ; skos:prefLabel "중국본토A"@ko .
+fp:FundAttr_N123 a fp:FundAttribute ; skos:prefLabel "녹색성장"@ko .
+fp:FundAttr_N125 a fp:FundAttribute ; skos:prefLabel "분배식"@ko .
+fp:FundAttr_N126 a fp:FundAttribute ; skos:prefLabel "분할매수"@ko .
+fp:FundAttr_N130 a fp:FundAttribute ; skos:prefLabel "4차산업"@ko .
+fp:FundAttr_N131 a fp:FundAttribute ; skos:prefLabel "성과보수"@ko .
+fp:FundAttr_N132 a fp:FundAttribute ; skos:prefLabel "뉴딜"@ko .
+fp:FundAttr_N134 a fp:FundAttribute ; skos:prefLabel "메타버스"@ko .
+fp:FundAttr_N135 a fp:FundAttribute ; skos:prefLabel "투자전략(전통)"@ko .
+fp:FundAttr_N136 a fp:FundAttribute ; skos:prefLabel "투자전략(퀀트)"@ko .
+fp:FundAttr_N137 a fp:FundAttribute ; skos:prefLabel "투자전략(배당/우선주)"@ko .
+fp:FundAttr_N138 a fp:FundAttribute ; skos:prefLabel "투자전략(우량주/블루칩)"@ko .
+fp:FundAttr_N139 a fp:FundAttribute ; skos:prefLabel "투자전략(IPO/SPAC)"@ko .
+fp:FundAttr_N140 a fp:FundAttribute ; skos:prefLabel "그룹주"@ko .
+fp:FundAttr_N141 a fp:FundAttribute ; skos:prefLabel "4차산업(메타버스)"@ko .
+fp:FundAttr_N142 a fp:FundAttribute ; skos:prefLabel "4차산업(인공지능/로봇)"@ko .
+fp:FundAttr_N143 a fp:FundAttribute ; skos:prefLabel "디지털"@ko .
+fp:FundAttr_N144 a fp:FundAttribute ; skos:prefLabel "반도체"@ko .
+fp:FundAttr_N145 a fp:FundAttribute ; skos:prefLabel "2차전지/배터리"@ko .
+fp:FundAttr_N147 a fp:FundAttribute ; skos:prefLabel "럭셔리"@ko .
+fp:FundAttr_N149 a fp:FundAttribute ; skos:prefLabel "금융"@ko .
+fp:FundAttr_N152 a fp:FundAttribute ; skos:prefLabel "방위산업"@ko .
+fp:FundAttr_N153 a fp:FundAttribute ; skos:prefLabel "우주항공"@ko .
+fp:FundAttr_N154 a fp:FundAttribute ; skos:prefLabel "리츠"@ko .
+fp:FundAttr_N155 a fp:FundAttribute ; skos:prefLabel "인프라"@ko .
+fp:FundAttr_N156 a fp:FundAttribute ; skos:prefLabel "헬스케어(바이오)"@ko .
+fp:FundAttr_N159 a fp:FundAttribute ; skos:prefLabel "에너지"@ko .
+fp:FundAttr_N160 a fp:FundAttribute ; skos:prefLabel "자동차(미래차)"@ko .
+fp:FundAttr_N161 a fp:FundAttribute ; skos:prefLabel "원자재(금)"@ko .
+fp:FundAttr_N165 a fp:FundAttribute ; skos:prefLabel "원자재(원유)"@ko .
+fp:FundAttr_N166 a fp:FundAttribute ; skos:prefLabel "원자재(농산물)"@ko .
+fp:FundAttr_N167 a fp:FundAttribute ; skos:prefLabel "ESG"@ko .
+fp:FundAttr_N168 a fp:FundAttribute ; skos:prefLabel "친환경"@ko .
+fp:FundAttr_N175 a fp:FundAttribute ; skos:prefLabel "TIF"@ko .
+fp:FundAttr_N176 a fp:FundAttribute ; skos:prefLabel "TRF"@ko .
+fp:FundAttr_N177 a fp:FundAttribute ; skos:prefLabel "TDF"@ko .
+fp:FundAttr_N178 a fp:FundAttribute ; skos:prefLabel "디딤펀드"@ko .
+fp:FundAttr_O101 a fp:FundAttribute ; skos:prefLabel "에너지섹터"@ko .
+fp:FundAttr_O102 a fp:FundAttribute ; skos:prefLabel "기초소재섹터"@ko .
+fp:FundAttr_O103 a fp:FundAttribute ; skos:prefLabel "일반산업섹터"@ko .
+fp:FundAttr_O117 a fp:FundAttribute ; skos:prefLabel "헬스케어섹터"@ko .
+fp:FundAttr_O120 a fp:FundAttribute ; skos:prefLabel "금융섹터"@ko .
+fp:FundAttr_O125 a fp:FundAttribute ; skos:prefLabel "정보기술섹터"@ko .
+fp:FundAttr_O131 a fp:FundAttribute ; skos:prefLabel "기타섹터"@ko .
+fp:FundAttr_O132 a fp:FundAttribute ; skos:prefLabel "소비재섹터"@ko .
+fp:FundAttr_O133 a fp:FundAttribute ; skos:prefLabel "원자재섹터"@ko .
+fp:FundAttr_P101 a fp:FundAttribute ; skos:prefLabel "배당주"@ko .
+fp:FundAttr_P102 a fp:FundAttribute ; skos:prefLabel "가치주"@ko .
+fp:FundAttr_P103 a fp:FundAttribute ; skos:prefLabel "성장주"@ko .
+fp:FundAttr_P104 a fp:FundAttribute ; skos:prefLabel "중소형주"@ko .
+fp:FundAttr_P108 a fp:FundAttribute ; skos:prefLabel "Dur 0.5~1"@ko .
+fp:FundAttr_P120 a fp:FundAttribute ; skos:prefLabel "만기매칭"@ko .
+fp:FundAttr_P121 a fp:FundAttribute ; skos:prefLabel "국공채"@ko .
+fp:FundAttr_P122 a fp:FundAttribute ; skos:prefLabel "회사채"@ko .
+fp:FundAttr_Q107 a fp:FundAttribute ; skos:prefLabel "부동산"@ko .
+fp:FundAttr_Q109 a fp:FundAttribute ; skos:prefLabel "농산물"@ko .
+fp:FundAttr_Q111 a fp:FundAttribute ; skos:prefLabel "천연자원(에너지)"@ko .
+fp:FundAttr_R102 a fp:FundAttribute ; skos:prefLabel "전환사채"@ko .
+fp:FundAttr_R105 a fp:FundAttribute ; skos:prefLabel "공모주(혼합)"@ko .
+fp:FundAttr_R106 a fp:FundAttribute ; skos:prefLabel "공모주(채권)"@ko .
+fp:FundAttr_R107 a fp:FundAttribute ; skos:prefLabel "하이일드"@ko .
+fp:FundAttr_R110 a fp:FundAttribute ; skos:prefLabel "ELS"@ko .
+fp:FundAttr_R111 a fp:FundAttribute ; skos:prefLabel "코넥스"@ko .
+fp:FundAttr_R112 a fp:FundAttribute ; skos:prefLabel "메자닌"@ko .
+fp:FundAttr_S101 a fp:FundAttribute ; skos:prefLabel "시스템자산배분"@ko .
+fp:FundAttr_S102 a fp:FundAttribute ; skos:prefLabel "자산배분"@ko .
+fp:FundAttr_S103 a fp:FundAttribute ; skos:prefLabel "원금보존추구"@ko .
+fp:FundAttr_S104 a fp:FundAttribute ; skos:prefLabel "인덱스"@ko .
+fp:FundAttr_S107 a fp:FundAttribute ; skos:prefLabel "차익거래"@ko .
+fp:FundAttr_S108 a fp:FundAttribute ; skos:prefLabel "롱/숏"@ko .
+fp:FundAttr_S109 a fp:FundAttribute ; skos:prefLabel "시장매크로"@ko .
+fp:FundAttr_S115 a fp:FundAttribute ; skos:prefLabel "Covered Call"@ko .
+fp:FundAttr_S116 a fp:FundAttribute ; skos:prefLabel "퀀트"@ko .
+fp:FundAttr_S117 a fp:FundAttribute ; skos:prefLabel "레버리지"@ko .
+fp:FundAttr_S118 a fp:FundAttribute ; skos:prefLabel "집중"@ko .
+fp:FundAttr_S119 a fp:FundAttribute ; skos:prefLabel "로보어드바이저"@ko .
+fp:FundAttr_S120 a fp:FundAttribute ; skos:prefLabel "리버스"@ko .
+fp:FundAttr_S121 a fp:FundAttribute ; skos:prefLabel "EMP"@ko .
+fp:FundAttr_T210 a fp:FundAttribute ; skos:prefLabel "TDF(빈티지 없음)"@ko .
+fp:FundAttr_T215 a fp:FundAttribute ; skos:prefLabel "TDF2015"@ko .
+fp:FundAttr_T220 a fp:FundAttribute ; skos:prefLabel "TDF2020"@ko .
+fp:FundAttr_T225 a fp:FundAttribute ; skos:prefLabel "TDF2025"@ko .
+fp:FundAttr_T230 a fp:FundAttribute ; skos:prefLabel "TDF2030"@ko .
+fp:FundAttr_T235 a fp:FundAttribute ; skos:prefLabel "TDF2035"@ko .
+fp:FundAttr_T240 a fp:FundAttribute ; skos:prefLabel "TDF2040"@ko .
+fp:FundAttr_T245 a fp:FundAttribute ; skos:prefLabel "TDF2045"@ko .
+fp:FundAttr_T250 a fp:FundAttribute ; skos:prefLabel "TDF2050"@ko .
+fp:FundAttr_T255 a fp:FundAttribute ; skos:prefLabel "TDF2055"@ko .
+fp:FundAttr_T260 a fp:FundAttribute ; skos:prefLabel "TDF2060"@ko .
+fp:FundAttr_V101 a fp:FundAttribute ; skos:prefLabel "국내"@ko .
+fp:FundAttr_V102 a fp:FundAttribute ; skos:prefLabel "국외"@ko .
+fp:FundAttr_V103 a fp:FundAttribute ; skos:prefLabel "국내외"@ko .
+fp:FundAttr_W101 a fp:FundAttribute ; skos:prefLabel "글로벌"@ko .
+fp:FundAttr_W102 a fp:FundAttribute ; skos:prefLabel "글로벌신흥국"@ko .
+fp:FundAttr_W104 a fp:FundAttribute ; skos:prefLabel "북미"@ko .
+fp:FundAttr_W105 a fp:FundAttribute ; skos:prefLabel "남미"@ko .
+fp:FundAttr_W106 a fp:FundAttribute ; skos:prefLabel "아태"@ko .
+fp:FundAttr_W107 a fp:FundAttribute ; skos:prefLabel "아-태(ex 일)"@ko .
+fp:FundAttr_W108 a fp:FundAttribute ; skos:prefLabel "아시아"@ko .
+fp:FundAttr_W109 a fp:FundAttribute ; skos:prefLabel "아시아(ex 일)"@ko .
+fp:FundAttr_W110 a fp:FundAttribute ; skos:prefLabel "아시아신흥국"@ko .
+fp:FundAttr_W111 a fp:FundAttribute ; skos:prefLabel "동북아"@ko .
+fp:FundAttr_W112 a fp:FundAttribute ; skos:prefLabel "동남아"@ko .
+fp:FundAttr_W114 a fp:FundAttribute ; skos:prefLabel "범유럽"@ko .
+fp:FundAttr_W115 a fp:FundAttribute ; skos:prefLabel "서유럽"@ko .
+fp:FundAttr_W116 a fp:FundAttribute ; skos:prefLabel "동유럽"@ko .
+fp:FundAttr_W118 a fp:FundAttribute ; skos:prefLabel "유로권"@ko .
+fp:FundAttr_W120 a fp:FundAttribute ; skos:prefLabel "브릭스"@ko .
+fp:FundAttr_W121 a fp:FundAttribute ; skos:prefLabel "친디아"@ko .
+fp:FundAttr_W122 a fp:FundAttribute ; skos:prefLabel "범중국"@ko .
+fp:FundAttr_W123 a fp:FundAttribute ; skos:prefLabel "한일"@ko .
+fp:FundAttr_W124 a fp:FundAttribute ; skos:prefLabel "한중"@ko .
+fp:FundAttr_W127 a fp:FundAttribute ; skos:prefLabel "한중인"@ko .
+fp:FundAttr_W128 a fp:FundAttribute ; skos:prefLabel "중베트남"@ko .
+fp:FundAttr_W135 a fp:FundAttribute ; skos:prefLabel "브러시아"@ko .
+fp:FundAttr_W137 a fp:FundAttribute ; skos:prefLabel "EMEA(동유럽중동아프리카)"@ko .
+fp:FundAttr_W138 a fp:FundAttribute ; skos:prefLabel "인니말레이"@ko .
+fp:FundAttr_W140 a fp:FundAttribute ; skos:prefLabel "차브라질"@ko .
+fp:FundAttr_W142 a fp:FundAttribute ; skos:prefLabel "G2"@ko .
+fp:FundAttr_W144 a fp:FundAttribute ; skos:prefLabel "유라시아"@ko .
+fp:FundAttr_W147 a fp:FundAttribute ; skos:prefLabel "글로벌선진국"@ko .
+
+# ── Country (shared/fund_country_auto.yaml) ──
+fp:Country a owl:Class .
+fp:investsInCountry a owl:ObjectProperty ;
+    rdfs:domain [ owl:unionOf ( fp:PublicFund ) ] ;
+    rdfs:range fp:Country ;
+    rdfs:comment "펀드 투자국가 태그(prfd_attr_cds ISO3 토큰) — 지역 계층(Region)과 별개 축. closure 대상 아님(권역 후손 전개는 Region 이 맡는다)"@ko .
+fp:Country_CHN a fp:Country ; skos:prefLabel "중국"@ko, "CHN"@en .
+fp:Country_USA a fp:Country ; skos:prefLabel "미국"@ko, "USA"@en .
+fp:Country_IND a fp:Country ; skos:prefLabel "인도"@ko, "IND"@en .
+fp:Country_JPN a fp:Country ; skos:prefLabel "일본"@ko, "JPN"@en .
+fp:Country_VNM a fp:Country ; skos:prefLabel "베트남"@ko, "VNM"@en .
+fp:Country_BRA a fp:Country ; skos:prefLabel "브라질"@ko, "BRA"@en .
+fp:Country_RUS a fp:Country ; skos:prefLabel "러시아"@ko, "RUS"@en .
+fp:Country_HKG a fp:Country ; skos:prefLabel "홍콩"@ko, "HKG"@en .
+fp:Country_KOR a fp:Country ; skos:prefLabel "한국"@ko, "KOR"@en .
+fp:Country_DEU a fp:Country ; skos:prefLabel "독일"@ko, "DEU"@en .
+fp:Country_IDN a fp:Country ; skos:prefLabel "인도네시아"@ko, "IDN"@en .
+fp:Country_TWN a fp:Country ; skos:prefLabel "대만"@ko, "TWN"@en .
+fp:Country_MYS a fp:Country ; skos:prefLabel "말레이시아"@ko, "MYS"@en .
+fp:Country_AUS a fp:Country ; skos:prefLabel "호주"@ko, "AUS"@en .
+fp:Country_GBR a fp:Country ; skos:prefLabel "영국"@ko, "GBR"@en .
+fp:Country_FRA a fp:Country ; skos:prefLabel "프랑스"@ko, "FRA"@en .
+fp:Country_ESP a fp:Country ; skos:prefLabel "스페인"@ko, "ESP"@en .
 
 # ── Fund (shared/fund_structure_auto.yaml) ──
 fp:Fund a owl:Class .
@@ -18472,12 +18686,17 @@ fp:Org_SamsungActive a fp:Organization ; skos:prefLabel "삼성액티브"@ko .
 fp:Org_00040035 a fp:Organization ; skos:prefLabel "KB"@ko .
 fp:Org_00040024 a fp:Organization ; skos:prefLabel "한국투자"@ko .
 fp:Org_00040067 a fp:Organization ; skos:prefLabel "신한"@ko .
+fp:Org_00040067 fp:formerName "신한BNP파리바자산운용"@ko .
+fp:Org_00040067 fp:formerName "신한BNPP자산운용"@ko .
 fp:Org_00040007 a fp:Organization ; skos:prefLabel "우리"@ko .
+fp:Org_00040007 fp:formerName "프랭클린템플턴투자신탁운용"@ko .
+fp:Org_00040007 fp:formerName "동양자산운용"@ko .
 fp:Org_00040027 a fp:Organization ; skos:prefLabel "한화"@ko .
 fp:Org_00080052 a fp:Organization ; skos:prefLabel "키움"@ko .
 fp:Org_00040040 a fp:Organization ; skos:prefLabel "NH-Amundi"@ko .
 fp:Org_00080029 a fp:Organization ; skos:prefLabel "피델리티"@ko .
 fp:Org_00080035 a fp:Organization ; skos:prefLabel "iM에셋"@ko .
+fp:Org_00080035 fp:formerName "DGB자산운용"@ko .
 fp:Org_00040006 a fp:Organization ; skos:prefLabel "DB"@ko .
 fp:Org_00040001 a fp:Organization ; skos:prefLabel "교보악사"@ko .
 fp:Org_00080013 a fp:Organization ; skos:prefLabel "다올"@ko .
@@ -18488,6 +18707,7 @@ fp:Org_00040038 a fp:Organization ; skos:prefLabel "카디안"@ko .
 fp:Org_00040014 a fp:Organization ; skos:prefLabel "신영"@ko .
 fp:Org_00080043 a fp:Organization ; skos:prefLabel "트러스톤"@ko .
 fp:Org_00040087 a fp:Organization ; skos:prefLabel "KCGI"@ko .
+fp:Org_00040087 fp:formerName "메리츠자산운용"@ko .
 fp:Org_00040021 a fp:Organization ; skos:prefLabel "흥국"@ko .
 fp:Org_00080010 a fp:Organization ; skos:prefLabel "유리"@ko .
 fp:Org_00080022 a fp:Organization ; skos:prefLabel "IBK"@ko .
@@ -18510,6 +18730,7 @@ fp:Org_00080026 a fp:Organization ; skos:prefLabel "스팍스"@ko .
 fp:Org_00080032 a fp:Organization ; skos:prefLabel "현대인베스트먼트"@ko .
 fp:Org_00080018 a fp:Organization ; skos:prefLabel "플러스"@ko .
 fp:Org_00040022 a fp:Organization ; skos:prefLabel "프랭클린"@ko .
+fp:Org_00040022 fp:successor fp:Org_00040007 .
 fp:Org_00080208 a fp:Organization ; skos:prefLabel "웰컴"@ko .
 fp:Org_00080157 a fp:Organization ; skos:prefLabel "와이즈"@ko .
 fp:Org_00040011 a fp:Organization ; skos:prefLabel "멀티에셋"@ko .

@@ -71,6 +71,7 @@ _CRD_TOKEN = re.compile(r"(?<![A-Za-z0-9])([A-D]{1,4}[+\-0]?)(?![A-Za-z0-9+\-])"
 # 목록이 아니라 표의 형태에서 온 규칙이다 — 'CB'(전환사채)·'DC'(퇴직연금형) 는 글자가 섞여 등급이 아니고,
 # 'AAAA' 는 모양은 맞지만 표에 없다. loader 가 표준표 전체가 이 모양임을 보장한다.
 _GRADE_SHAPE = re.compile(r"^([A-D])\1{0,3}[+\-0]?$")
+_TABLE_KO = {"public_funds": "공모펀드", "domestic_etfs": "국내 ETF", "overseas_etfs": "해외 ETF", "domestic_bonds": "국내채권"}
 _RISK_GRADE = re.compile(r"(?:위험\s*등급|위험등급)\s*(\d+)\s*등급|(\d+)\s*등급")
 # 기준일 2026-08-22 — 2026년 8월은 기준일 포함 월이라 허용, 9월 이후만 미래 (2차 데이터 전환 2026-08-25)
 # 연도: '2027년' · '2027.' · '2027-' · '2027/' · '20270101' — 월: '2026년 9월' · '2026-09' · '2026.10'
@@ -150,6 +151,22 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
     """`tables` 는 라우터가 정한 테이블(미특정이면 빈 목록)."""
     entities = detect_entities(question)
 
+    # ①-0 absent_properties — 속성 자체가 없는 부류(좌수·운용역·기준가 시계열…): enums yaml 선언(= ttl ABSENT)이 곧
+    #    게이트 어휘다. HCX 0회 — 컬럼명 유사어(fd_set_pcd ≈ '설정')로 모델이 대체 계산하는 경로를 먼저 끊는다
+    #    (2026-09-02 KG-027: 설정유형코드 '10' 을 "10좌" 로 6펀드 단언). 대체 안내는 선언의 substitute 만.
+    if len(tables) == 1:
+        for item in ctx.absent_props.get(tables[0], []):
+            for pat in item.get("vocab") or []:
+                hit = re.search(pat, question)
+                if hit:
+                    sub = item.get("substitute") or {}
+                    note = f" {sub['note']}" if sub.get("note") else ""
+                    return GateResult(
+                        rejected=True,
+                        reason=f"온톨로지 ABSENT — {tables[0]} 에 {item['property']} 속성 없음 · 질문의 '{hit.group(0)}' (enums absent_properties → HCX 0회)",
+                        answer=f"{item['why']}{note}",
+                    )
+
     # ① absent — 온톨로지 속성 부재 (질의가 특정 테이블 하나로 좁혀질 때만 기각)
     if len(tables) == 1:
         for entity in entities:
@@ -194,15 +211,28 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                         answer=item.get("answer") or f"해당 상품군의 {item['column']} 은(는) 전부 '{item['value']}' 이라 요청하신 조건의 상품은 수록되어 있지 않습니다.",
                     )
 
-    # ② enum — 위험등급 범위 0~6 (규칙 §4: 1~5 제약은 오류)
+    # ② enum — 위험등급 값 범위: **테이블별 선언**(shared/risk_grade.yaml range_by_table)에서 판정한다 — 코드 상수 금지.
+    #    2026-09-02 KG-013/014: 공용 상수 0~6 이 펀드 0등급을 정의역으로 허용(NULL 422 ≠ 0)하고 즉답 문구도 "0~6" 이었다.
+    #    라우팅 테이블이 하나면 그 범위·문구, 여럿/미특정이면 선언들의 합집합. 선언이 없으면 종전 0~6.
     if "위험등급" in question:
         m = _RISK_GRADE.search(question)
         grade = next((g for g in (m.groups() if m else ()) if g), None)
-        if grade is not None and not 0 <= int(grade) <= 6:
-            return GateResult(
-                rejected=True,
-                reason=f"위험등급 {grade} 는 정의 범위(0~6)를 벗어남",
-                answer=f"위험등급은 0~6 범위로 정의되어 있습니다. {grade}등급은 존재하지 않습니다.",
-            )
+        if grade is not None:
+            g = int(grade)
+            specs = {t: ctx.grade_ranges[t] for t in (tables or list(ctx.grade_ranges)) if t in ctx.grade_ranges}
+            lo = min((r["min"] for r in specs.values()), default=0)
+            hi = max((r["max"] for r in specs.values()), default=6)
+            if not lo <= g <= hi:
+                if len(tables) == 1 and tables[0] in specs:
+                    r, name = specs[tables[0]], _TABLE_KO.get(tables[0], tables[0])
+                    answer = (f"{name} 위험등급은 {r['min']}({r.get('label_min', '')})~{r['max']}({r.get('label_max', '')}) "
+                              f"범위로 정의되어 있어 {g}등급은 없습니다." + (f" ({r['note']})" if r.get("note") else ""))
+                else:
+                    answer = f"위험등급은 {lo}~{hi} 범위로 정의되어 있습니다. {g}등급은 존재하지 않습니다."
+                return GateResult(
+                    rejected=True,
+                    reason=f"위험등급 {g} 는 정의 범위({lo}~{hi}, 테이블별 선언 range_by_table)를 벗어남",
+                    answer=answer,
+                )
 
     return GateResult(rejected=False)

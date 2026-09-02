@@ -42,7 +42,17 @@ def main() -> None:
     ap.add_argument("questions")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--base", default=DEFAULT_BASE)
+    ap.add_argument("--resume", action="store_true",
+                    help="출력 파일에 이미 있는 qid 는 건너뛴다 (10분 제한 등으로 끊긴 실측을 이어 돌릴 때)")
     a = ap.parse_args()
+
+    results: list[dict] = []
+    if a.resume:
+        try:
+            results = json.load(open(a.out, encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            results = []
+    done = {r["qid"] for r in results}
 
     items = []
     for i, line in enumerate(open(a.questions, encoding="utf-8"), 1):
@@ -52,7 +62,10 @@ def main() -> None:
         qid, _, q = line.partition("\t") if "\t" in line else (f"P{i:03d}", "", line)
         items.append((qid.strip(), q.strip()))
 
-    results = []
+    if done:
+        skipped = [qid for qid, _ in items if qid in done]
+        items = [(qid, q) for qid, q in items if qid not in done]
+        print(f"resume: {len(skipped)} 건 건너뜀, {len(items)} 건 남음", flush=True)
     for qid, q in items:
         print(f"[{qid}] {q}", flush=True)
         r = ask(a.base, qid, q)

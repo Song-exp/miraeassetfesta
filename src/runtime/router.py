@@ -39,6 +39,11 @@ PRODUCT: dict[str, frozenset[str]] = {
     #    답변 규칙이 12,443자로 희석되고 residual_name_token(이름 필터)이 꺼졌다. 결정층 본체는 pipeline 의
     #    SQL 사후 라우팅 보정이고 이것은 벨트-멜빵(비용 0). 표현형은 무한하므로 이것으로 닫았다고 보지 않는다.
     "펌드": frozenset({"public_funds"}),
+    # 3R A-3 — 도메인 정식 용어(§3.3 법적형태): 기본모수 8,969행 중 '투자신탁' 8,629 · '투자회사' 87. '…증권자투자신탁 1년 수익률' 처럼
+    #    '펀드' 명사 없이 정식명만 적은 질의(T7)가 미특정 4테이블로 빠지는 것을 막는다. '상장지수투자신탁' 은 ETF 의 정식명(긴 키 우선).
+    "투자신탁": frozenset({"public_funds"}),
+    "투자회사": frozenset({"public_funds"}),
+    "상장지수투자신탁": _ETF_TABLES,
 }
 # 머리 명사 바로 앞의 지역 수식어 — 마스터 파일 이름의 '국내/해외' 그대로. '미국' 은 해외ETF 의 투자지역 값.
 QUALIFIER: dict[str, frozenset[str]] = {
@@ -51,6 +56,10 @@ QUALIFIER: dict[str, frozenset[str]] = {
 #    근거문서가 39,403자로 불어나 HCX 가 펀드 컬럼(zrin_*)을 domestic_etfs 에 써서 재생성까지 실패했다.
 # 긴 이름을 먼저 — '상장지수펀드' 가 '펀드' 로 잘리면 안 된다
 _PRODUCT_TOKEN = re.compile("|".join(re.escape(w) for w in sorted(PRODUCT, key=len, reverse=True)), re.I)
+_MANAGER_WORD = re.compile(r"운용사|자산운용")
+# 3R B-2 정정 — 2R 의 3테이블은 실측 2/2(S11·T2)에서 HCX 가 ETF 를 골라 템플릿이 불발했다. 운용사 코드·순자산·펀드수를 다 가진
+#    테이블은 public_funds 뿐(ETF cu_fund_mgmt_co 는 브랜드 약칭 — 법인 집계 축이 못 된다). 상품 명사가 있으면 그것이 머리(변경 없음).
+_MANAGER_TABLES = frozenset({"public_funds"})
 # 병렬 표지 — 한국어 접속 조사·접속사.
 # 🔴 받침 없는 체언 뒤의 `나` 를 빼먹고 있었다 (`이나` 만 있었다).
 #    2026-08-31 서버 실측: "삼성전자가 들어 있는 ETF나 펀드 중에…" 가 'ETF나' 를 병렬로 못 읽어
@@ -88,6 +97,11 @@ def product_route(question: str) -> tuple[set[str], str, int]:
     #    포장(ETF·ETN)을 가리키는 말만 예외로 둔다. (2026-08-31 로컬 일제점검)
     if not toks:
         toks = [(w, p) for w, p, _ in hits if PRODUCT[w] == _ETF_TABLES]
+    if not toks and _MANAGER_WORD.search(question):
+        # 🔴 '운용사'·'자산운용' 만 있는 질의(2026-09-02 S11 "순자산이 가장 큰 운용사 상위 3개") — 상품 명사가 없어
+        #    미특정 4테이블 51,788자로 빠졌다. 운용사 컬럼은 펀드(or_co_xtn_itt_cd)·ETF(cu_fund_mgmt_co)에만 있고
+        #    채권엔 없으므로 3테이블로 좁힌다(문서 1/3 감량). 상품 명사가 있으면 그것이 머리다("펀드를 … 운용사" → 펀드).
+        return set(_MANAGER_TABLES), "운용사 표현 → 운용사 집계 정본 = 공모펀드 마스터(코드·순자산·펀드수 보유 유일 테이블)", 1
     if not toks:
         return set(), "", 0
     heads: list[tuple[str, int]] = []
@@ -136,18 +150,24 @@ def onto_route(question: str, ctx: RuntimeContext) -> tuple[set[str], dict[str, 
     squeezed = re.sub(r"\s+", "", question)
     score: dict[str, float] = {}
     hits: dict[str, list[str]] = {}
+    prod_tables: set[str] = set()
     for t in TABLES:
         s, h = 0.0, []
+        prods = ctx.route_products.get(t) or ()
         for term, w in (ctx.route_vocab.get(t) or {}).items():
             if _bound_in(term, question, squeezed):
                 s += w * (1 + 0.1 * len(term))    # 긴 값이 더 확실한 신호다
                 h.append(term)
+                if term in prods:
+                    prod_tables.add(t)
         score[t] = round(s, 1)
         hits[t] = sorted(h, key=len, reverse=True)[:3]
     best = max(score, key=score.get)
     if score[best] == 0:
         return set(), score, hits
-    return {t for t in TABLES if score[t] >= _SCORE_KEEP * score[best]}, score, hits
+    # 🔴 상품명(약어명·티커) 직격 매치 테이블은 상대 점수컷 면제 — "TIGER 미국S&P500 이랑
+    #    VOO 중 뭐가 나아" 에서 긴 국내 상품명이 점수를 부풀려 해외가 잘렸다(2026-09-01).
+    return {t for t in TABLES if score[t] >= _SCORE_KEEP * score[best]} | prod_tables, score, hits
 
 
 def route(question: str, ctx: RuntimeContext) -> Route:

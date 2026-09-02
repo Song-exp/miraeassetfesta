@@ -46,14 +46,16 @@ def test_think_trace_carries_full_sql(ctx):
     """실행한 SQL 전문이 think_trace 에 남는다 — 잘리면 조건식을 검토할 수 없다."""
     assert len(LONG_SQL) > 120, "잘림을 검출하려면 120자를 넘겨야 한다"
     r = answer_question("T-SQL", "순자산이 큰 국내 ETF 5개", planner=FakePlanner(LONG_SQL), ctx=ctx)
-    assert LONG_SQL in r.think_trace
+    # 4R B-4: SELECT 의 du_last_aum 에 억원 열이 병기되므로 원문 그대로가 아니라 "FROM 이하 + 억원" 이 잘리지 않고 실린다
+    tail = LONG_SQL.split(" FROM ", 1)[1]
+    assert tail in r.think_trace and "억원" in r.think_trace and LONG_SQL.split(" FROM ", 1)[0] in r.think_trace
 
 
 @needs_db
 def test_result_exposes_executed_sql(ctx):
     """로그·UI 가 쓸 수 있도록 SQL 이 별도 필드로 나온다."""
     r = answer_question("T-SQL2", "순자산이 큰 국내 ETF 5개", planner=FakePlanner(LONG_SQL), ctx=ctx)
-    assert r.sql == LONG_SQL
+    assert r.sql.endswith(LONG_SQL.split(" FROM ", 1)[1]) and r.sql.startswith(LONG_SQL.split(" FROM ", 1)[0]) and "억원" in r.sql
 
 
 @needs_db

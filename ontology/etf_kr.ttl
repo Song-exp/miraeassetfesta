@@ -20,3 +20,15 @@ fp:leverageMultiple a owl:DatatypeProperty ;
 
 # ABSENT: fp:DomesticETF 에는 fp:hasCreditGrade 없음 — 신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음. 위험등급(RiskGrade)과 별개 축
 fp:DomesticETF rdfs:comment "hasCreditGrade 속성 없음: 신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음. 위험등급(RiskGrade)과 별개 축"@ko .
+# 값 범위 — fp:DomesticETF 의 fp:riskGradeValue 는 1~6 (0등급 없음)
+fp:riskGradeValue_DomesticETF rdfs:subPropertyOf fp:riskGradeValue ;
+    rdfs:domain fp:DomesticETF ;
+    rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;
+                 owl:withRestrictions ( [ xsd:minInclusive 1 ] [ xsd:maxInclusive 6 ] ) ] ;
+    rdfs:comment "1(매우높은위험)~6(매우낮은위험) — 0등급 없음"@ko .
+
+# ABSENT: fp:DomesticETF 에는 fp:hasHoldingsHistory 없음 — ETF 구성종목은 수집 기준일 1시점(ext_etf_holdings)만 있고 시계열(변화·추이)은 수록되어 있지 않습니다. (대체: ext_etf_holdings)
+fp:DomesticETF rdfs:comment "hasHoldingsHistory 속성 없음: ETF 구성종목은 수집 기준일 1시점(ext_etf_holdings)만 있고 시계열(변화·추이)은 수록되어 있지 않습니다."@ko .
+# ABSENT: fp:DomesticETF 에는 fp:hasNavHistory 없음 — ETF 시세·기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동)은 수록되어 있지 않습니다.
+fp:DomesticETF rdfs:comment "hasNavHistory 속성 없음: ETF 시세·기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동)은 수록되어 있지 않습니다."@ko .
+

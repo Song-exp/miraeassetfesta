@@ -4,6 +4,8 @@ import glob
 import json
 import os
 
+import re
+
 import pytest
 
 from src.runtime import guard
@@ -224,7 +226,7 @@ def test_residual_name_token():
     assert f("미래에셋 펀드 보수 알려줘", L) is None
     assert f("미래에셋이 운용하는 공모펀드는 몇 개야?", L) is None
     assert f("미래에셋증권에서 살 수 있는 공모펀드는 몇 개야?", L) is None    # '증권' 은 일반어
-    assert f("코어테크 펀드 수익률", []) is None
+    assert f("코어테크 펀드 수익률", []) == "코어테크"          # 4R K-1: Ground 0 이어도 상품 명사 앞 덩어리는 후보(FND-016 문형)
 
 
 def test_fund_name_filter_injected():
@@ -314,7 +316,8 @@ def test_fund_country_tag_canonicalized():
            "AND sale_yn = '판매중' LIMIT 30")
     s, ok = f(bad, q)
     assert ok and "fd_ivst_rgn_desc" not in s
-    assert s.count("',' || prfd_attr_cds || ',' LIKE '%,CHN,%'") == 2
+    assert s.count("',' || prfd_attr_cds || ',' LIKE '%,CHN,%'") == 1     # 2R Q3: 같은 정식형 OR 중복은 하나로 접는다
+    assert " OR " not in s
     assert not f(s, q)[1]                                  # 멱등
     # 불개입 — 국가어 없음(지역어 질의) · 펀드 테이블 아님
     assert not f(bad, "글로벌 펀드 알려줘")[1]
@@ -377,7 +380,7 @@ def test_fund_series_boundary_injected():
            "AND '2호' IN (REPLACE(itm_nm,' ','') LIKE '%[^0-9]2호%' OR REPLACE(itm_nm,' ','') LIKE '%2호[^0-9]%') "
            "LIMIT 30")
     s, ok = f(bad, q)
-    assert ok and "GLOB '*[^0-9]2호*'" in s and "IN (" not in s
+    assert ok and "GLOB '*[^0-9.]2호*'" in s and "GLOB '*[^0-9.]2[([]*'" in s and "IN (" not in s   # 2R Q6: 'N(' 표기 병행
     assert "LIKE '%미래에셋디스커버리증권투자신탁%'" in s          # 이름 절은 보존
     assert not f(s, q)[1]                                          # 멱등
     # 불개입 — 호수 없음 · 이름 검색 없음 · 펀드 테이블 아님
@@ -718,9 +721,11 @@ def test_fund_lookup_grouping():
     assert ok6 and "MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm" in s6 and "LIMIT 1" not in s6
     s6, ok6b = ev(s6)
     assert ok6b and "zrin_fd_ivst_risk_gcd" in s6
-    rows6 = con.execute(s6).fetchall()
-    assert rows6 and all(r[4] == "높은 위험" and r[5] == 2 for r in rows6) and sum(r[2] for r in rows6) == 7
-    assert sum(r[3] for r in rows6) == 7                           # 7클래스 전부 판매중 (리뷰 ②-7)
+    cols6 = [d[0] for d in con.execute(s6).description]
+    rows6 = [dict(zip(cols6, r)) for r in con.execute(s6).fetchall()]
+    assert rows6 and all(r["zrin_fd_ivst_risk_grd_nm"] == "높은 위험" and r["zrin_fd_ivst_risk_gcd"] == 2 for r in rows6)
+    assert sum(r["클래스수"] for r in rows6) == 7 and sum(r["판매중클래스수"] for r in rows6) == 7   # 7클래스 전부 판매중 (리뷰 ②-7)
+    assert all(r["대표번호"] == "031910531100" for r in rows6)         # 2R Q4-b 표시 단위 — 조립기가 1줄로 접는 근거
     # 비발동 — '클래스' 열거(033) · 보수(020) · ORDER BY 랭킹(P1 담당) · COUNT 집계 · 이름 필터 없음
     q33 = "미래에셋코어테크 펀드는 어떤 클래스들이 있어?"
     s33 = ("SELECT itm_no, TRIM(itm_nm) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' "
@@ -742,7 +747,8 @@ def test_fund_evidence_grade_code_symmetric():
     assert ok and s.startswith("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, itm_nm, zrin_fd_ivst_risk_gcd FROM")
     assert not f(s)[1]                                             # 멱등
     s2, ok2 = f("SELECT itm_no, itm_nm FROM public_funds WHERE zrin_fd_ivst_risk_gcd = 2 LIMIT 30")
-    assert ok2 and "zrin_fd_ivst_risk_grd_nm" in s2 and s2.count("zrin_fd_ivst_risk_gcd") == 1
+    assert ok2 and "zrin_fd_ivst_risk_grd_nm" in s2 and s2.count("zrin_fd_ivst_risk_gcd") == 2   # WHERE 1 + SELECT 쌍 병기 1 (2R Q4-d)
+    assert not f(s2)[1]                                            # 멱등 — 쌍은 한 패스에 붙는다
 
 
 _R3_SQL = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
@@ -809,26 +815,30 @@ def test_hide_answer_columns():
 
 
 def test_r3_pipeline_markers(ctx):
-    """R3 경로 통합 — 목록 묶기 · 내부 코드 숨김 · 커버리지 병기 · 이름 교정이 한 번에 발동한다 (HCX 0회)."""
+    """HCX 경로 통합 — 내부 코드 숨김 · 커버리지 병기 · 이름 교정이 한 번에 발동한다.
+    (2R Q5 이후 R3 원형은 목록 조립기에서 끝나므로, ORDER BY 가 있어 목록 묶기가 안 도는 형제 SQL 로 HCX 경로를 검증한다.)"""
     from src.runtime.pipeline import answer_question
+
+    hcx_path = _R3_SQL.replace("LIMIT 30", "ORDER BY itm_nm LIMIT 30")
 
     class P:
         def plan_sql(self, q, g):
-            return _R3_SQL
+            return hcx_path
 
         def compose_answer(self, q, rows, answer_rules=""):
             self.rows = rows
-            return "* KB중국본토A주증권자투자신닥[주식]A 등이 있습니다."
+            self.first = rows.splitlines()[2].split(" | ")[1].strip()
+            return f"* {self.first.replace('투자신탁', '투자신닥')} 등이 있습니다."
 
     p = P()
     r = answer_question("T-R3", "중국에 투자하는 공모펀드 알려줘", planner=p, ctx=ctx)
-    assert "[Guard] 목록 펀드 묶기" in r.think_trace and "[Answer] 내부 코드 컬럼 숨김 — prfd_attr_cds" in r.think_trace
+    assert "[Guard] 목록 펀드 묶기" not in r.think_trace and "[Answer] 내부 코드 컬럼 숨김 — prfd_attr_cds" in r.think_trace
     assert "[Answer] 커버리지 병기 — LIMIT 도달, 전체 560행 / 248펀드" in r.think_trace
-    assert p.rows.startswith("(조회 결과: 전체 560행 / 248펀드 중 30펀드 표시") and "prfd_attr_cds" not in p.rows
+    assert p.rows.startswith("(조회 결과: 전체 560행 / 248펀드 중 30행 표시") and "prfd_attr_cds" not in p.rows
     assert "prfd_attr_cds" in r.retrieved_context                    # 조회 원문은 그대로
-    assert "[Guard] 상품명 전사 교정" in r.think_trace and "신닥" not in r.answer and "KB중국본토A주증권자투자신탁[주식]A" in r.answer
+    assert "[Guard] 상품명 전사 교정" in r.think_trace and "신닥" not in r.answer and p.first in r.answer
     # LIMIT 미도달이면 종전 머리줄 그대로
-    P.plan_sql = lambda self, q, g: _R3_SQL.replace("LIMIT 30", "LIMIT 5")
+    P.plan_sql = lambda self, q, g: hcx_path.replace("LIMIT 30", "LIMIT 5")
     r2 = answer_question("T-R3b", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
     assert "커버리지 병기" not in r2.think_trace
 
@@ -1015,7 +1025,9 @@ def test_distribution_not_for_topn_or_entity_axis(ctx):
             return "x"
 
     r = answer_question("T-TOP5", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
-    assert P.calls == 1 and "분포 답변 기계 조립" not in r.think_trace and "분포 펀드수 병기" not in r.think_trace
+    assert "분포 답변 기계 조립" not in r.think_trace and "분포 펀드수 병기" not in r.think_trace
+    # 2R Q2 이후 운용사 집계는 템플릿 + 전용 조립기(HCX 0회)가 받는다 — 분포 조립기가 아니라는 점은 그대로
+    assert P.calls == 0 and "[Answer] 운용사 집계 답변 기계 조립" in r.think_trace and "823개" in r.answer
     # 절단된 분포(n == MAX_ROWS)는 전체/복수 범주 문장을 굽지 않는다
     sql3 = ("SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*), COUNT(DISTINCT x) AS 펀드수 FROM public_funds "
             "WHERE sale_yn = '판매중' GROUP BY zrin_btyp_nm LIMIT 30")
@@ -1199,3 +1211,773 @@ def test_explicit_limit_hit_and_hedge_exemption():
     # 잘린 개체 목록의 '더 있다' 는 참 — 걷어내지 않는다 / COUNT 정렬 top-k 는 전수 집계 — 종전대로 걷어낸다
     assert not h("상위 5개입니다. 이외에도 더 많은 채권이 있을 수 있습니다.", top5, 5)[1]
     assert h("A: 3개. 이는 일부일 수 있습니다.", "SELECT a, COUNT(*) FROM public_funds GROUP BY 1 ORDER BY 2 DESC LIMIT 5", 5)[0] == "A: 3개."
+
+
+# ── 2026-09-02 라운드 2 (docs/recheck_2026-09-02_round2.md §③ Q1~Q7) ──
+_R2_FIRST_SQL = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS 운용사코드, MAX(mtco_nm) AS 운용사명, "
+                 "COUNT(DISTINCT CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END) AS 펀드수 "
+                 "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+                 "WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5")
+_R2_REGEN_SQL = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS 운용사코드, MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || mgmt_co_nm "
+                 "NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', "
+                 "'00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN mgmt_co_nm END) AS 운용사명, "
+                 "COUNT(DISTINCT COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS 펀드수 "
+                 "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+                 "WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5")
+_S11_REGEN_SQL = ("SELECT mgmt_co_nm, COUNT(*) as cnt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+                  "GROUP BY mgmt_co_nm ORDER BY cnt DESC LIMIT 3")
+_R2_GOLD = [("00080008", "미래에셋자산운용", 823), ("00040007", "우리자산운용", 235), ("00040010", "삼성자산운용", 207),
+            ("00080035", "iM에셋자산운용", 205), ("00040024", "한국투자신탁운용", 142)]
+
+
+def test_join_ambiguous_itm_no_qualified(ctx):
+    """Q1-b — R2 2R 재생성 SQL(비한정 itm_no) 이 모호 컬럼 기각 → 거절. 기각 대신 FROM 테이블로 기계 한정한다."""
+    from src.runtime.pipeline import qualify_join_columns as f, _apply_sql_guards
+
+    assert guard.ambiguous_columns(_R2_REGEN_SQL, ctx) == ["itm_no"]          # 검사기 단독은 여전히 기각(안전망)
+    s, cols = f(_R2_REGEN_SQL, ctx)
+    assert cols == ["itm_no"] and guard.ambiguous_columns(s, ctx) == [] and "public_funds.itm_no)" in s
+    assert "ext_fund_page.itm_no = public_funds.itm_no" in s                    # 이미 한정된 ON 절은 불변
+    assert f(s, ctx) == (s, [])                                                 # 멱등
+    rows = _ro().execute(s).fetchall()
+    assert [tuple(r) for r in rows] == _R2_GOLD
+    # 체인 통과(재생성 경로와 동일) 후에도 모호 컬럼 0 · 값 gold
+    chained = _apply_sql_guards(_R2_REGEN_SQL, "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", None, None, lambda m: None, ctx)
+    assert guard.ambiguous_columns(chained, ctx) == []
+    # 1R 재생성 SQL(COALESCE 없음)은 무변경
+    one_r = _R2_REGEN_SQL.replace("COALESCE(", "(").replace(", itm_no))", "))")
+    assert f(one_r, ctx) == (one_r, [])
+
+
+def test_ext_join_injected(ctx):
+    """Q1-c(일반화) — 마스터 단독 SQL 이 1:1 외부 테이블 전용 컬럼을 쓰면 JOIN_KEYS 의 ON 절로 LEFT JOIN 을 주입하고,
+    없는 컬럼이 그 ext 전용 컬럼의 유일 근사면 치환한다(mtco_nm → mgmt_co_nm 이 그 한 사례 — 하드코딩 아님)."""
+    from src.runtime.pipeline import ensure_ext_join as f
+
+    s, notes = f(_R2_FIRST_SQL, ctx)                                             # R2 1차: JOIN 있음 · 환각 컬럼만 치환
+    assert notes == ["mtco_nm → mgmt_co_nm(유일 근사)"] and "MAX(mgmt_co_nm)" in s and s.count("ext_fund_page") == 2
+    assert guard.unknown_columns(s, ctx) == []
+    s2, notes2 = f(_S11_REGEN_SQL, ctx)                                          # S11 재생성: JOIN 주입
+    assert notes2 and "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE" in s2
+    assert guard.unknown_columns(s2, ctx) == [] and len(_ro().execute(s2).fetchall()) == 3
+    assert f(s2, ctx) == (s2, [])                                                # 멱등
+    s3, _ = f("SELECT p.itm_nm, mgmt_co_nm FROM public_funds p WHERE p.sale_yn='판매중' LIMIT 5", ctx)   # 별칭
+    assert "FROM public_funds p LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = p.itm_no WHERE" in s3
+    # 비발동 — 마스터 컬럼만 · 타 도메인 · 팬아웃 테이블(ext_fund_holdings) 전용 컬럼은 자동 주입 대상 아님
+    assert f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5", ctx) == ("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5", [])
+    assert f("SELECT pd_nm FROM domestic_bonds LIMIT 5", ctx)[1] == []
+    assert "ext_fund_holdings" not in f("SELECT itm_nm, weight_pct FROM public_funds LIMIT 5", ctx)[0]
+
+
+def test_r2_pipeline_no_longer_rejected(ctx):
+    """R2 회귀 통합 — 1차 mtco_nm 환각이 기각 없이 JOIN·치환으로 살아나 재생성 예산이 보존되고, 값 gold 5행이 조회된다."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        plans = 0
+
+        def plan_sql(self, q, g):
+            P.plans += 1
+            return _R2_FIRST_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-R2", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
+    # 3R ④-2 — 템플릿(Q2-a)이 JOIN 주입(Q1-c)보다 먼저: R2 는 템플릿이 SQL 을 통째로 만들어 JOIN 주입 마커가 남지 않는다(작업 1회)
+    assert P.plans == 1 and "[Guard] SQL 기각" not in r.think_trace and "[Guard] 운용사 집계 확정식" in r.think_trace
+    assert "[Guard] 외부 테이블 JOIN 주입" not in r.think_trace
+    assert "823" in r.retrieved_context and "우리자산운용" in r.retrieved_context and "142" in r.retrieved_context
+
+
+_S11_FIRST_SQL = ("SELECT mtco_nm, COUNT(*) as cnt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+                  "GROUP BY mtco_nm ORDER BY cnt DESC LIMIT 3")
+
+
+def test_fund_manager_ranking_template(ctx):
+    """Q2-a/b — S11: 이름 GROUP BY + COUNT(*) 로 순자산 질의를 오해. 코드 GROUP BY·최빈 이름·펀드수·클래스수·순자산 억원
+    템플릿으로 교체하고 5열 결과는 기계 조립한다."""
+    from src.runtime.pipeline import ensure_fund_manager_ranking as f, _manager_rank_answer as a, _apply_sql_guards, _execute
+
+    q11 = "순자산이 가장 큰 운용사 상위 3개 알려줘"
+    s, ok = f(_S11_FIRST_SQL, q11)
+    assert ok and "GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 3" in s and "MAX(e.mgmt_co_nm)" in s
+    assert not f(s, q11)[1]                                                    # 멱등
+    chained = _apply_sql_guards(_S11_FIRST_SQL, q11, None, None, lambda m: None, ctx)
+    assert guard.unknown_columns(chained, ctx) == [] and guard.ambiguous_columns(chained, ctx) == []
+    rows, n = _execute(chained)
+    body = [ln.split(" | ") for ln in rows.splitlines()[1:]]
+    assert n == 3 and [(b[0], b[1], b[4]) for b in body] == [("00080008", "미래에셋자산운용", "377707억원"),
+                                                             ("00040010", "삼성자산운용", "331097억원"),
+                                                             ("00040035", "KB자산운용", "278196억원")]
+    ans = a(chained, rows, n)
+    assert ans and ans.startswith("조회 결과 순자산 상위 3개 운용사입니다") and "1. 미래에셋자산운용(00080008): 순자산 377,707억원 · 펀드 823개(클래스 2,066개)" in ans
+    # R2 질문 → 펀드수 축 5행 = gold (최빈 이름 가드가 우리자산운용으로)
+    q2 = "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘"
+    chained2 = _apply_sql_guards(_R2_FIRST_SQL, q2, None, None, lambda m: None, ctx)
+    rows2, n2 = _execute(chained2)
+    body2 = [ln.split(" | ") for ln in rows2.splitlines()[1:]]
+    assert [(b[0], b[1], int(b[2])) for b in body2] == _R2_GOLD
+    assert "1. 미래에셋자산운용(00080008): 펀드 823개(클래스 2,066개) · 순자산 377,707억원" in a(chained2, rows2, n2)
+    # 부가 조건 보존 · 비발동('클래스' 명시 · 운용사 컬럼 없음 · 랭킹어 없음)
+    s3, ok3 = f("SELECT or_co_xtn_itt_cd, COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '주식형' GROUP BY 1 ORDER BY 2 DESC LIMIT 5",
+                "주식형 펀드를 가장 많이 운용하는 운용사 상위 5개")
+    assert ok3 and "AND zrin_btyp_nm = '주식형'" in s3
+    assert not f(_S11_FIRST_SQL, "운용사별 클래스 수 상위 3개")[1]
+    assert not f("SELECT itm_nm FROM public_funds ORDER BY fd_nast_suma DESC LIMIT 3", q11)[1]
+    assert not f(_S11_FIRST_SQL, "운용사 목록 알려줘")[1]
+    assert a("SELECT COUNT(*) FROM public_funds LIMIT 1", "COUNT(*)\n5", 1) is None
+
+
+def test_s11_pipeline_assembled(ctx):
+    """S11 통합 — 라우터 3테이블 → 사후 보정(FROM public_funds · 재생성 문서 교체) → 템플릿 → 기계 조립(HCX 답변기 0회)."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return _S11_FIRST_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-S11", "순자산이 가장 큰 운용사 상위 3개 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Guard] SQL 기각" not in r.think_trace
+    # 3R B-2 — 상품 명사 없는 운용사 집계는 라우터가 public_funds 로 확정(사후 보정 불필요)
+    assert "운용사 집계 정본 = 공모펀드 마스터" in r.think_trace and "SQL 사후 보정" not in r.think_trace
+    assert "[Guard] 운용사 집계 확정식" in r.think_trace and "[Answer] 운용사 집계 답변 기계 조립" in r.think_trace
+    assert "377,707억원" in r.answer and "삼성자산운용(00040010)" in r.answer and "KB자산운용(00040035)" in r.answer
+
+
+def test_country_tag_guard_catches_bare_and_name_forms():
+    """2R Q3 — S6: `prfd_attr_cds LIKE '%IND%'`(콤마 없음) · `zrin_attr_nms LIKE '%인도%'` 가 정규식 밖이라 가드 미발동 →
+    인도네시아 7행 혼입(142행/59펀드, gold 135/58). 두 표현형을 정식형으로 치환하고 중복 OR 은 접는다."""
+    from src.runtime.pipeline import ensure_fund_country_tag as f, _FUND_KEY_EXPR
+
+    con = _ro()
+    s6 = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds, zrin_attr_nms FROM public_funds WHERE prvo_pbff_desc = '공모' "
+          "AND (prfd_attr_cds LIKE '%IND%' OR zrin_attr_nms LIKE '%인도%') AND sale_yn = '판매중' LIMIT 30")
+    s, ok = f(s6, "인도에 투자하는 공모펀드 알려줘")
+    canon = "',' || prfd_attr_cds || ',' LIKE '%,IND,%'"
+    assert ok and "zrin_attr_nms LIKE" not in s and s.count(canon) == 1 and "'%IND%'" not in s
+    assert not f(s, "인도에 투자하는 공모펀드 알려줘")[1]                      # 멱등
+    cnt = s.replace("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds, zrin_attr_nms", f"SELECT COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})").replace(" LIMIT 30", "")
+    assert con.execute(cnt).fetchone() == (135, 58)
+    assert con.execute(cnt.replace("COUNT(*), COUNT(DISTINCT " + _FUND_KEY_EXPR + ")", "COUNT(*)") + " AND itm_nm LIKE '%인도네시아%'").fetchone() == (0,)
+    # 인도네시아 질문은 IDN 경로 그대로(부분어 역방향)
+    s2, ok2 = f("SELECT itm_nm FROM public_funds WHERE zrin_attr_nms LIKE '%인도네시아%' LIMIT 30", "인도네시아에 투자하는 공모펀드 알려줘")
+    assert ok2 and "'%,IDN,%'" in s2 and "IND" not in s2
+    # S7: 정식형 + 콤마 없는 둘째 절 → 하나로 접힘 · 119행
+    s7 = ("SELECT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND (',' || prfd_attr_cds || ',' LIKE '%,VNM,%' "
+          "OR prfd_attr_cds LIKE '%VNM%') AND sale_yn = '판매중' LIMIT 30")
+    s3, ok3 = f(s7, "베트남에 투자하는 공모펀드 알려줘")
+    assert ok3 and s3.count("'%,VNM,%'") == 1 and " OR " not in s3
+    assert con.execute(s3.replace("SELECT itm_no, itm_nm", "SELECT COUNT(*)").replace(" LIMIT 30", "")).fetchone() == (119,)
+
+
+_R4_ROWS = ("대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | fd_yr1_ern_r_최고 | fd_yr1_ern_r_최저\n"
+            "KR5153450780 | 미래에셋코어테크증권자투자신탁(주식) 종류A | 9 | 9 | 189.77 | 187.09\n"
+            "KR5153450910 | 미래에셋코어테크청년소득공제증권자투자신탁(주식) 종류A | 4 | 4 | 188.63 | 186.98\n"
+            "KR5153451151 | 미래에셋차이나코어테크증권자투자신탁(주식)(H) 종류C-I | 3 | 3 | 13.66 | 13.19\n"
+            "KR5153451160 | 미래에셋차이나코어테크증권자투자신탁(주식)(UH) 종류A-e | 5 | 5 | 15.98 | 15.21")
+_S3_ROWS = ("대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | fd_yr1_ern_r_최고 | fd_yr1_ern_r_최저\n"
+            "KR5114450100 | 삼성코리아대표분할매수증권투자신탁 1[주식혼합] | 1 | 1 | 105.49 | 105.49\n"
+            "KR5114450011 | 삼성코리아대표증권자투자신탁 제1호[주식](A) | 9 | 9 | 109.72 | 106.71\n"
+            "KR5114450170 | 삼성코리아대표그룹목표전환증권투자신탁 제1호[채권] A | 2 | 0 |  | \n"
+            "KR5114440010 | 삼성코리아대표분할매수목표전환증권투자신탁 1[채권]_A | 2 | 0 |  | ")
+_R6_ROWS = ("대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | zrin_fd_ivst_risk_grd_nm | zrin_fd_ivst_risk_gcd | 대표번호\n"
+            + "\n".join(f"KR51090268{i}M | 미래에셋차이나솔로몬증권투자신탁2호(주식)C{i+1} | 1 | 1 | 높은 위험 | 2 | 031910531100" for i in range(5))
+            + "\nKR510902045M | 미래에셋차이나솔로몬증권투자신탁2호(주식)(C-A) | 2 | 2 | 높은 위험 | 2 | 031910531100")
+
+
+def test_fund_stem():
+    from src.runtime.pipeline import _fund_stem as f
+
+    assert f("미래에셋코어테크증권자투자신탁(주식) 종류A") == "미래에셋코어테크증권자투자신탁(주식)"
+    assert f("삼성코리아대표증권자투자신탁 제1호[주식](A)") == "삼성코리아대표증권자투자신탁 제1호[주식]"
+    assert f("미래에셋차이나코어테크증권자투자신탁(주식)(UH) 종류A-e") == "미래에셋차이나코어테크증권자투자신탁(주식)(UH)"
+    assert f("미래에셋차이나본토증권자투자신탁2호(UH)(주식)C3") == "미래에셋차이나본토증권자투자신탁2호(UH)(주식)"
+    assert f("KB차이나고배당40증권자투자신탁(채권혼합)C-P클래스") == "KB차이나고배당40증권자투자신탁(채권혼합)"
+    assert f("Plus신종개인용MMF2호 종류CP-1") == "Plus신종개인용MMF2호"
+    assert f("삼성MMF법인제1호 C 클래스") == "삼성MMF법인제1호"
+
+
+def test_lookup_answer_assembled(ctx):
+    """2R Q4 — R4·S3: '종류A: 최고 189.77%'(종류A 실값 187.94)·판매완료 재료 미전달 · R6: '등급 지수 2.0'. 기계 조립."""
+    from src.runtime.pipeline import _lookup_answer as f, _cell, ensure_fund_evidence_columns as ev, answer_question
+
+    a = f(_R4_SQL, _R4_ROWS, 4, "코어테크")
+    assert a.startswith("'코어테크' 이름의 공모펀드 4개가 조회됐습니다")
+    assert "- 미래에셋코어테크증권자투자신탁(주식): 1년 수익률 187.09%~189.77% (클래스에 따라 다름, 누적) · 클래스 9개(전부 판매중)" in a
+    assert "종류A" not in a and "(H)" in a and "(UH)" in a
+    b = f("SELECT x FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%' AND prvo_pbff_desc = '공모' LIMIT 30", _S3_ROWS, 4)
+    assert "'삼성코리아대표' 이름의 공모펀드 4개" in b and "(A)" not in b and "106.71%~109.72%" in b
+    assert b.count("판매완료(신규 가입 불가)") == 2 and "1년 수익률 105.49% (누적)" in b
+    c = f(_R6_SQL, _R6_ROWS, 6)
+    assert c.count("\n- ") == 1 and "- 미래에셋차이나솔로몬증권투자신탁2호(주식): 위험등급 2등급(높은 위험) · 클래스 7개(전부 판매중)" in c
+    assert _cell(2.0, "zrin_fd_ivst_risk_gcd") == "2" and _cell(2.5, "zrin_fd_ivst_risk_gcd") == "2.5"
+    # 비발동 — lookup 형이 아닌 결과
+    assert f(_R4_SQL, "itm_no | itm_nm\nA | B", 1) is None
+    # S4: WHERE 에 gcd IS NOT NULL 이 있어도 SELECT 에 없으면 gcd 병기 (역방향 판정은 head 기준)
+    s4 = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm "
+          "FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나%' AND zrin_fd_ivst_risk_gcd IS NOT NULL GROUP BY itm_no LIMIT 30")
+    s, ok = ev(s4)
+    assert ok and ", zrin_fd_ivst_risk_gcd FROM" in s
+    # 통합 — R4 SQL → 묶기(대표번호 포함) → 기계 조립(HCX 0회), 6펀드
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return _R4_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-R4", "미래에셋코어테크 펀드 1년 수익률 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Answer] 개별 조회 답변 기계 조립" in r.think_trace and "대표번호" in r.retrieved_context
+    assert "미래에셋코어테크증권자투자신탁(주식): 1년 수익률 187.09%~189.77%" in r.answer and "종류A" not in r.answer
+    assert r.answer.count("\n- ") == 6
+    # R6 통합 — 6행이 1줄 '클래스 7개' 로 접힌다 (표시 단위만 rptt · 카운트 gold 불변)
+    P.plan_sql = lambda self, q, g: _R6_SQL
+    r6 = answer_question("T-R6", "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert r6.answer.count("\n- ") == 1 and "위험등급 2등급(높은 위험) · 클래스 7개" in r6.answer
+
+
+def test_list_answer_assembled(ctx):
+    """2R Q5 — R3·S7: 커버리지를 구워 줘도 5·10행만 옮기고 "일부입니다" · S6: 총량 대신 "더 있을 수 있음". 목록은 전 행 + 총량 머리줄로 기계 조립."""
+    from src.runtime.pipeline import answer_question, _list_answer as f
+
+    class P:
+        calls = 0
+        sql = _R3_SQL
+
+        def plan_sql(self, q, g):
+            return P.sql
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-R3L", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Answer] 목록 답변 기계 조립" in r.think_trace
+    assert r.answer.startswith("조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드는 다음과 같습니다")
+    body = [ln for ln in r.answer.splitlines() if re.match(r"\d+\. ", ln)]
+    assert len(body) == 30 and body[0].startswith("1. KB중국본토A주증권자투자신탁[주식]: 순자산 1,453억원 · 클래스 14개")
+    assert "일부" not in r.answer and "있을 수 있" not in r.answer
+    # S7 베트남 — 38펀드 · 30줄
+    P.sql = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
+             "AND (',' || prfd_attr_cds || ',' LIKE '%,VNM,%' OR prfd_attr_cds LIKE '%VNM%') AND sale_yn = '판매중' LIMIT 30")
+    r7 = answer_question("T-S7", "베트남에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "전체 38개(클래스 119개)" in r7.answer and sum(1 for ln in r7.answer.splitlines() if re.match(r"\d+\. ", ln)) == 30
+    # 절단 없음(LIMIT 5) → "전체 5개"
+    P.sql = _R3_SQL.replace("LIMIT 30", "LIMIT 5")
+    r5 = answer_question("T-R3s", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "상위 5개" in r5.answer or "전체 5개" in r5.answer
+    # 비발동 — 목록 형이 아닌 결과
+    assert f("SELECT itm_nm FROM public_funds LIMIT 5", "itm_nm\nA", 1) is None
+
+
+def test_series_boundary_covers_paren_notation():
+    """2R Q6 — S5: `GLOB '*[^0-9]3호*'` 가 ' 3(주식)' 표기 4클래스를 놓쳐 4/8. 'N호'·'N(' 두 표기를 함께 잡고 12호·2.2배는 배제."""
+    from src.runtime.pipeline import ensure_fund_series_boundary as f
+
+    con = _ro()
+    base = "SELECT itm_no FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND itm_nm LIKE '%3호%' LIMIT 30"
+    s, ok = f(base, "미래에셋차이나솔로몬증권투자신탁 3호 위험등급 알려줘")
+    assert ok and len(con.execute(s).fetchall()) == 8                     # 3호 4 + ' 3(주식)' 4 = 같은 대표번호 8클래스
+    assert not f(s, "미래에셋차이나솔로몬증권투자신탁 3호 위험등급 알려줘")[1]   # 멱등
+    s2, _ = f(base.replace("3호", "2호"), "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘")
+    assert len(con.execute(s2).fetchall()) == 7                           # R6 2호 그대로
+    # 배제 — 12호 · 2.2배 (앞 글자가 숫자·소수점)
+    assert con.execute("SELECT COUNT(*) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%한화2.2배레버리지%' "
+                       "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')").fetchone() == (0,)
+    s12 = "SELECT COUNT(*) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%12호%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')"
+    assert con.execute(s12).fetchone() == (0,)
+    # 'GS지속가능성장 1[주식]' 형이 '1호' 질문에 잡힌다
+    s3, _ = f("SELECT itm_no, itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표분할매수%' AND itm_nm LIKE '%1호%' LIMIT 30",
+              "삼성코리아대표분할매수 1호 알려줘")
+    assert any("1[" in r[1] for r in con.execute(s3))
+
+
+
+def test_count_answer_offshore_sibling_note():
+    """2R Q7 — S9 피델리티: 국내 코드 00080029 106펀드로 답이 끝나면 브랜드 펀드 전부로 읽힌다. 같은 이름 접두의 역외 코드(종별 0013)
+    행수를 별도 병기. S8 KB(역외 없음)는 무병기. 특정 운용사 하드코딩 없이 코드 종별 + 이름 접두로 판정."""
+    from src.runtime.pipeline import _count_answer as f
+
+    sql = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (TRIM(or_co_xtn_itt_cd) IN ('00080029') AND prvo_pbff_desc = '공모') LIMIT 30")
+    g = ["'피델리티' → Org_00080029 (Organization) → public_funds.or_co_xtn_itt_cd='00080029'"]
+    a = f(sql, "펀드수 | 클래스수\n106 | 246", 1, g)
+    assert "피델리티가 운용하는 공모펀드는 106개(클래스 246개)" in a
+    assert "종목명이 '피델리티' 로 시작하는 역외펀드 47개(클래스 47개, 해외 운용법인 코드 00130001)는 별도 법인이라" in a
+    kb = f(sql.replace("00080029", "00040035"), "펀드수 | 클래스수\n129 | 625", 1,
+           ["'KB자산운용' → Org_00040035 (Organization) → public_funds.or_co_xtn_itt_cd='00040035'"])
+    assert "129개(클래스 625개)" in kb and "역외" not in kb
+    # 운용사 매핑이 없으면 병기 없음
+    assert "역외" not in f(sql, "펀드수 | 클래스수\n1 | 2", 1, [])
+
+
+# ── KG 구조 검증 1R (docs/kg_structure_probe_round1_2026-09-02.md) — 런타임 큐 ──
+_KG002_FIRST = ("SELECT DISTINCT itm_no, itm_nm FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+                "WHERE public_funds.or_co_xtn_itt_cd = '00040022' AND public_funds.prvo_pbff_desc = '공모' AND public_funds.sale_yn = '판매중' "
+                "AND ext_fund_page.mgmt_co_nm LIKE '%템플턴%' AND itm_nm LIKE '%템플턴%' LIMIT 30")
+_KG002_REGEN = ("SELECT DISTINCT p.itm_no, p.itm_nm FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+                "WHERE p.or_co_xtn_itt_cd = '00040022' AND p.prvo_pbff_desc = '공모' AND p.sale_yn = '판매중' "
+                "AND e.mgmt_co_nm LIKE '%템플턴%' AND p.itm_nm LIKE '%템플턴%' LIMIT 30")
+
+
+def test_guard_keeps_qualifier_inside_function(ctx):
+    """R3-⑤ (KG-002 실측) — TRIM 가드가 `public_funds.TRIM(or_co…)`, 공백무시 가드가 `p.REPLACE(itm_nm,…)` 을 만들어
+    1차 기각·재생성 OperationalError → "오류" 무응답. 일반 규칙: 컬럼을 함수로 감쌀 때 한정자는 인자 안에 남는다."""
+    from src.runtime.pipeline import ensure_trimmed_compare as t, ensure_spaceless_name_match as sp, _apply_sql_guards, _has_name_filter
+
+    s, ok = t(_KG002_FIRST)
+    assert ok and "TRIM(public_funds.or_co_xtn_itt_cd) = '00040022'" in s and "public_funds.TRIM(" not in s
+    s2, ok2 = sp(_KG002_REGEN)
+    assert ok2 and "REPLACE(p.itm_nm,' ','') LIKE '%템플턴%'" in s2 and "p.REPLACE(" not in s2
+    assert _has_name_filter(s2)
+    for raw in (_KG002_FIRST, _KG002_REGEN):
+        chained = _apply_sql_guards(raw, "프랭클린템플턴이 운용하는 공모펀드 알려줘", "템플턴", None, lambda m: None, ctx)
+        assert ".TRIM(" not in chained and ".REPLACE(" not in chained
+        assert guard.unknown_columns(chained, ctx) == [] and guard.ambiguous_columns(chained, ctx) == []
+        _ro().execute(chained).fetchall()                                   # 실행 가능
+    # 무한정 형은 종전대로
+    assert t("SELECT 1 FROM public_funds WHERE or_co_xtn_itt_cd = '00040022' LIMIT 1")[0].count("TRIM(or_co_xtn_itt_cd)") == 1
+
+
+def test_absent_properties_gate(ctx):
+    """KG 1R S5/R2 (KG-027) — 좌수 환각: fd_set_pcd '10' 을 "10좌" 로 6펀드 단언. 일반 규칙: enums absent_properties 선언 =
+    ttl ABSENT = 게이트 어휘 → HCX 0회 즉답. 기준가(있음)는 통과, '기준가 추이'(시계열)는 기각. 4도메인 같은 형식."""
+    from src.runtime import gate
+    from src.runtime.pipeline import answer_question
+
+    assert ctx.absent_props.get("public_funds") and ctx.absent_props.get("domestic_etfs") and ctx.absent_props.get("domestic_bonds")
+    g = gate.check("미래에셋코어테크 펀드 설정 좌수 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "좌수" in g.answer and "좌입니다" not in g.answer and "억좌" not in g.answer and "순자산" in g.answer
+    assert gate.check("미래에셋코어테크 펀드 잔존좌수 알려줘", ctx, ["public_funds"]).rejected
+    assert gate.check("미래에셋코어테크 펀드 운용역이 누구야?", ctx, ["public_funds"]).rejected
+    assert gate.check("미래에셋코어테크 펀드 기준가 추이 알려줘", ctx, ["public_funds"]).rejected
+    assert not gate.check("미래에셋코어테크 펀드 기준가 알려줘", ctx, ["public_funds"]).rejected        # U14 대조군
+    assert not gate.check("변동성이 낮은 공모펀드 알려줘", ctx, ["public_funds"]).rejected
+    assert gate.check("KODEX 200 구성종목 변화 알려줘", ctx, ["domestic_etfs"]).rejected
+    assert not gate.check("KODEX 200 구성종목 알려줘", ctx, ["domestic_etfs"]).rejected
+    assert gate.check("한국전력 채권 신용등급 추이 알려줘", ctx, ["domestic_bonds"]).rejected
+    assert not gate.check("한국전력 채권 신용등급 알려줘", ctx, ["domestic_bonds"]).rejected
+    assert not gate.check("설정 좌수 알려줘", ctx, []).rejected                                           # 미특정은 불개입
+    # 파이프라인 — HCX 0회 · trace 에 ABSENT 근거
+    r = answer_question("T-KG027", "미래에셋코어테크 펀드 설정 좌수 알려줘", planner=None, ctx=ctx)
+    assert "[Gate] 기각 — 온톨로지 ABSENT" in r.think_trace and "좌수" in r.answer and "좌입니다" not in r.answer
+    # ttl 사영
+    ttl = open("ontology/fund_pub.ttl", encoding="utf-8").read()
+    assert "# ABSENT: fp:PublicFund 에는 fp:hasUnitsOutstanding 없음" in ttl
+    assert "fp:hasCreditGradeHistory" in open("ontology/bond_kr.ttl", encoding="utf-8").read()
+
+
+def test_risk_grade_range_by_table(ctx):
+    """KG 1R S6/R16 (KG-013·014) — 공용 상수 0~6 이 펀드 0등급을 허용(NULL 422 ≠ 0)하고 즉답 문구도 "0~6". 일반 규칙: enum 제약은
+    테이블별 선언(range_by_table)에서 판정·문구·ttl 제약을 생성한다. 채권 0(미분류 '00')은 답변 가능."""
+    from src.runtime import gate
+    from src.runtime.pipeline import answer_question
+
+    assert ctx.grade_ranges["public_funds"]["min"] == 1 and ctx.grade_ranges["domestic_bonds"]["min"] == 0
+    g = gate.check("위험등급 7등급인 공모펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "1(매우 높은 위험)~6(매우 낮은 위험)" in g.answer and "0~6" not in g.answer and "7등급은 없습니다" in g.answer
+    g0 = gate.check("위험등급 0등급 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert g0.rejected and "0등급은 없습니다" in g0.answer and "NULL" in g0.answer
+    assert not gate.check("위험등급 0등급 국내채권은 몇 개야?", ctx, ["domestic_bonds"]).rejected        # U25 — 미분류 '00' 답변 가능
+    assert gate.check("위험등급 7등급 국내채권 알려줘", ctx, ["domestic_bonds"]).rejected
+    assert gate.check("위험등급 0등급 ETF 알려줘", ctx, ["domestic_etfs"]).rejected
+    assert not gate.check("위험등급 0등급 상품 알려줘", ctx, []).rejected                                # 미특정 = 합집합 0~6
+    assert not gate.check("위험등급 2등급 공모펀드 알려줘", ctx, ["public_funds"]).rejected
+    r = answer_question("T-KG014", "위험등급 0등급 공모펀드는 몇 개야?", planner=None, ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "0등급은 없습니다" in r.answer and "422" not in r.answer
+    ttl = open("ontology/fund_pub.ttl", encoding="utf-8").read()
+    assert "fp:riskGradeValue_PublicFund rdfs:subPropertyOf fp:riskGradeValue" in ttl and "xsd:minInclusive 1 ] [ xsd:maxInclusive 6" in ttl
+    assert "xsd:minInclusive 0 ] [ xsd:maxInclusive 6" in open("ontology/bond_kr.ttl", encoding="utf-8").read()
+
+
+def test_org_label_slots_ground(ctx):
+    """KG 1R S1 — Organization 라벨 슬롯 체계(정식명·영문·구상호·후계·provenance) 와 Ground 정규화 키.
+    KG-004 공백 표기 · KG-001 영문(파생 'Asset' 오매칭 제거) · KG-002 구상호→후계 · KG-003 구상호(코드북 밖) · KG-015 alias raw 승격."""
+    from src.runtime.pipeline import _ground, ground_notes
+
+    def g(q, tables=("public_funds",)):
+        hits, lines = _ground(q, ctx, list(tables))
+        return [h.node_id for h in hits], lines
+
+    ids, lines = g("한국 투자 신탁 운용 이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040024"] and "'00040024'" in lines[0] and "'00040105'" in lines[0] and "정식명 한국투자신탁운용" in lines[0]
+    ids, lines = g("Mirae Asset이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00080008"] and "Org_fund_" not in " ".join(lines)
+    ids, _ = g("Samsung Asset Management가 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040010"]
+    ids, lines = g("프랭클린템플턴이 운용하는 공모펀드 알려줘")
+    assert ids[:2] == ["Org_00040022", "Org_00040007"] and "'00040007'" in lines[0] and "우리자산운용" in lines[0]
+    assert ground_notes(lines) and "현재 우리자산운용" in ground_notes(lines)[0]
+    ids, lines = g("메리츠자산운용이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040087"] and "구상호" in lines[0] and "케이씨지아이자산운용" in lines[0]
+    ids, lines = g("위험등급이 '높은위험'인 공모펀드는 몇 개야?")
+    assert ids == ["RiskGrade_2"] and "'높은위험'" in lines[0] and "'2.0'" in lines[0]
+    # 파생(derived) 노드는 매칭 키에서 제외 — 'Asset' 단독 질문도 Org_fund_00080164 로 가지 않는다
+    assert ctx.kg_node_by_id["Org_fund_00080164"].provenance == "derived"
+    ids, _ = g("Asset 펀드 알려줘")
+    assert "Org_fund_00080164" not in ids
+    # 회귀 — 합성어(FND-016)·정식명(034)·2코드(R5)·ETF 오염 raw 강등(KG-025)
+    ids, lines = g("미래에셋코어테크 펀드 1년 수익률 알려줘")
+    assert ids == ["Org_00080008"]
+    ids, _ = g("삼성자산운용이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040010"]
+    ids, lines = g("삼성자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?", ("public_funds", "domestic_etfs"))
+    assert "Org_00040010" in ids and "투자신탁" not in lines[0] and "외 " not in lines[0]
+    # 개수 조립기 주어는 정식명, 구상호 주석 병기
+    from src.runtime.pipeline import _count_answer
+    _, lines = g("한국 투자 신탁 운용 이 운용하는 공모펀드는 몇 개야?")
+    a = _count_answer("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn='판매중' AND TRIM(or_co_xtn_itt_cd) IN ('00040024','00040105') AND prvo_pbff_desc='공모' LIMIT 30",
+                      "펀드수 | 클래스수\n143 | 541", 1, lines)
+    assert a.startswith("한국투자신탁운용이 운용하는 공모펀드는 143개(클래스 541개)")
+    _, lines2 = g("메리츠자산운용이 운용하는 공모펀드는 몇 개야?")
+    a2 = _count_answer("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn='판매중' AND TRIM(or_co_xtn_itt_cd) = '00040087' AND prvo_pbff_desc='공모' LIMIT 30",
+                       "펀드수 | 클래스수\n27 | 133", 1, lines2)
+    assert "케이씨지아이자산운용이 운용하는 공모펀드는 27개" in a2 and "구상호" in a2
+    # ttl 사영
+    ttl = open("ontology/common.ttl", encoding="utf-8").read()
+    assert 'fp:Org_00040007 fp:formerName "프랭클린템플턴투자신탁운용"@ko' in ttl and "fp:Org_00040022 fp:successor fp:Org_00040007" in ttl
+
+
+def test_country_attr_tags_from_kg(ctx):
+    """KG 1R S3/S4 + 3R C — 국가·속성 태그가 KG 개체(token alias)가 됐다. 국가어 사전 상수 제거 · 어떤 태그/컬럼/낱말을 썼든 canon 하나 ·
+    희소 태그는 이름 폴백 · '유형' 이면 zrin_ptn_nm · 설정형태 어휘는 token 확정식 · Region_Korea 는 권역 후손 아님."""
+    from src.runtime.pipeline import (_ground, ensure_fund_country_tag as ct, ensure_fund_attr_tag as at, _has_name_filter as hnf,
+                                      _country_tag_map, ensure_fund_list_grouping)
+    con = _ro()
+    base = "sale_yn='판매중' AND prvo_pbff_desc='공모'"
+    def cnt(where):
+        return con.execute(f"SELECT COUNT(*), COUNT(DISTINCT {__import__('src.runtime.pipeline', fromlist=['x'])._FUND_KEY_EXPR}) FROM public_funds WHERE {base} AND {where}").fetchone()
+    assert {w for w, _, _ in _country_tag_map()} >= {"중국", "차이나", "대만", "호주", "인도네시아", "인도"}
+    # Ground — token alias 확정식 렌더링 · 2자 국가어 · '유형'
+    _, lines = _ground("대만에 투자하는 공모펀드 있어?", ctx, ["public_funds"])
+    assert lines and "Country_TWN" in lines[0] and "',' || public_funds.prfd_attr_cds || ',' LIKE '%,TWN,%'" in lines[0]
+    _, lines = _ground("아시아에 투자하는 공모펀드 중 순자산 큰 5개 알려줘", ctx, ["public_funds"])
+    assert "Region_Asia" in lines[0] and "Region_Korea" not in lines[0] and "'국내'" not in lines[0]          # S4 (KG-023)
+    # C-1 태그 무관 교정(T4 IND→IDN) + 속성명 절 + 뒤콤마
+    t4 = "SELECT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND (prfd_attr_cds LIKE '%IND%' OR zrin_attr_nms LIKE '%인도네시아,%') AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(t4, "인도네시아에 투자하는 공모펀드 알려줘")
+    assert ok and s.count("'%,IDN,%'") == 1 and "IND" not in s.replace("IDN", "") and " OR " not in s
+    assert cnt("',' || prfd_attr_cds || ',' LIKE '%,IDN,%'") == (7, 1)
+    # S6 — 이름절 OR 소멸 → 135/58 · 목록 묶기 발동
+    s6 = "SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' AND (',' || prfd_attr_cds || ',' LIKE '%,IND,%' OR REPLACE(itm_nm,' ','') LIKE '%인도%') AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(s6, "인도에 투자하는 공모펀드 알려줘")
+    assert ok and "itm_nm" not in s.split("WHERE")[1] and s.count("'%,IND,%'") == 1 and not hnf(s)
+    assert ensure_fund_list_grouping(s, "인도에 투자하는 공모펀드 알려줘")[1]
+    assert cnt("',' || prfd_attr_cds || ',' LIKE '%,IND,%'") == (135, 58)
+    # T13 미국 — 이름절(통화 표기 혼입) 제거 → 333/98
+    t13 = "SELECT itm_no, itm_nm FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,USA,%' OR itm_nm LIKE '%미국%') AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30"
+    s, ok = ct(t13, "미국에 투자하는 공모펀드 알려줘")
+    assert ok and "itm_nm LIKE" not in s and cnt("',' || prfd_attr_cds || ',' LIKE '%,USA,%'") == (333, 98)
+    # KG-021 대만 — 설립국 컬럼 오용 → 희소 태그라 (TWN OR 이름) 폴백 → 피델리티대만 1행
+    k21 = "SELECT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND fd_estb_ctry_cd = 410 AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(k21, "대만에 투자하는 공모펀드 있어?")
+    assert ok and "fd_estb_ctry_cd" not in s and "'%,TWN,%'" in s and "LIKE '%대만%'" in s
+    rows = con.execute(s).fetchall()
+    assert len(rows) == 1 and "피델리티대만" in rows[0][1]
+    # KG-012 — 템플릿 잔재 <CHN> + '유형' → zrin_ptn_nm 등호 → 205/522
+    k12 = "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND zrin_btyp_nm = '해외주식형' AND ',' || prfd_attr_cds || ',' LIKE '%,<CHN>,%' AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(k12, "해외주식형 중에서 중국주식 유형인 공모펀드는 몇 개야?")
+    assert ok and "zrin_ptn_nm = '중국주식'" in s and "CHN" not in s
+    assert cnt("zrin_btyp_nm = '해외주식형' AND zrin_ptn_nm = '중국주식'") == (522, 205)
+    # 대조군 — 이미 정식형(R3 중국 560/248)은 무변경
+    r3 = "SELECT itm_no FROM public_funds WHERE prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,CHN,%' AND sale_yn = '판매중' LIMIT 30"
+    assert ct(r3, "중국에 투자하는 공모펀드 알려줘") == (r3, False)
+    # R11 — 설정형태 token 확정식 (KG-017 폐쇄 3/6 · KG-018 단위∧개방 31/189)
+    k17 = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND han_clas_policies LIKE '%폐쇄형%' LIMIT 30"
+    s, ok = at(k17, "폐쇄형 공모펀드는 몇 개야?")
+    assert ok and "han_clas_policies" not in s and "'%,C104,%'" in s and cnt("',' || prfd_attr_cds || ',' LIKE '%,C104,%'") == (6, 3)
+    k18 = "SELECT DISTINCT zrin_btyp_nm, itm_no FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_btyp_nm IS NOT NULL LIMIT 30"
+    s, ok = at(k18, "단위형이면서 개방형인 공모펀드도 있어?")
+    assert ok and "'%,C102,%'" in s and "'%,C103,%'" in s and not at(s, "단위형이면서 개방형인 공모펀드도 있어?")[1]
+    assert cnt("',' || prfd_attr_cds || ',' LIKE '%,C102,%' AND ',' || prfd_attr_cds || ',' LIKE '%,C103,%'") == (189, 31)
+    _, lines = _ground("폐쇄형 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert any("FundAttr_C104" in ln for ln in lines)
+    # C-3 — OR 묶인 이름절은 개별 조회가 아니다
+    assert not hnf("SELECT itm_nm FROM public_funds WHERE (or_attr_desc LIKE '%주식%' OR itm_nm LIKE '%배당%') LIMIT 30")
+    assert hnf("SELECT itm_nm FROM public_funds WHERE itm_nm LIKE '%코어테크%' AND sale_yn='판매중' LIMIT 30")
+    assert hnf("SELECT itm_nm FROM public_funds WHERE (REPLACE(itm_nm,' ','') LIKE '%코어%' OR REPLACE(itm_nm,' ','') LIKE '%테크%') LIMIT 30")
+
+
+def test_sql_precheck_generalized(ctx):
+    """KG 1R R3 — 리터럴·구조 검증 일반화: 코드 컬럼 리터럴 실존(KG-003 'A011' · KG-004 80000000 · KG-025 IN('삼성','삼성KODEX')) ·
+    템플릿 잔재(KG-012 <CHN>) · 비-SQLite TOP(KG-028) · 라우팅 대상 밖 테이블(KG-028). 전부 실행 전 기각 → 재생성 사유."""
+    from src.runtime.pipeline import _sql_precheck as pc, validate_sql, answer_question
+
+    k = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = 'A011' AND prvo_pbff_desc = '공모') LIMIT 30"
+    assert "A011" in (pc(k, ctx, ["public_funds"], False) or "") and "없는 코드" in pc(k, ctx, ["public_funds"], False)
+    k4 = "SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = 80000000 AND prvo_pbff_desc = '공모' LIMIT 30"
+    assert "따옴표 없는 숫자" in pc(k4, ctx, ["public_funds"], False)
+    k25 = "SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('삼성', '삼성KODEX') AND prvo_pbff_desc = '공모' LIMIT 30"
+    assert "'삼성'" in pc(k25, ctx, ["public_funds", "domestic_etfs"], False)
+    ok = "SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040010', '00040024') AND sale_yn='판매중' LIMIT 30"
+    assert pc(ok, ctx, ["public_funds"], False) is None
+    assert pc("SELECT COUNT(*) FROM public_funds WHERE trim(trusc_xtn_itt_cd) = '0016022' LIMIT 1", ctx, ["public_funds"], False) is None   # 7자리 raw 도 실재
+    assert "템플릿 자리표시자 <CHN>" in validate_sql("SELECT COUNT(*) FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,<CHN>,%' LIMIT 30")
+    assert "TOP" in validate_sql("SELECT TOP 1 pd_nm FROM domestic_etfs LIMIT 30")
+    k28 = "SELECT constituent, weight_pct FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE domestic_etfs.pd_abrv_nm LIKE '%코어테크%' ORDER BY weight_pct DESC LIMIT 30"
+    assert "밖 테이블 사용: domestic_etfs" in pc(k28, ctx, ["public_funds"], False)
+    # KG 2R N1 — 교차 판정이어도 허용 집합은 라우터 마스터 + 짝 ext 뿐(KG-028 ETF 종목 환각) · 라우팅 일치는 통과
+    assert "밖 테이블 사용" in pc(k28, ctx, ["public_funds"], True) and pc(k28, ctx, ["domestic_etfs"], False) is None
+    # 통합 — KG-004 형(날조 코드)이 "0개" 단언으로 나가지 않는다 (1차 기각 → 재생성 → 재기각 → 유보)
+    class P:
+        def plan_sql(self, q, g):
+            return k4
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-KG004", "XYZ자산운용이 운용하는 공모펀드는 몇 개야?", planner=P(), ctx=ctx)
+    assert "0개" not in r.answer and "[Guard] SQL 기각" in r.think_trace and "따옴표 없는 숫자" in r.think_trace
+
+
+def test_count_answer_subject_all_roles():
+    """KG 1R R1 (KG-011) — 주어에 Ground 의 모든 기관(운용/수탁)을 역할과 함께 · 0 이면 센 조건을 굽는다."""
+    from src.runtime.pipeline import _count_answer as f
+
+    g = ["'KB자산운용' → Org_00040035 (Organization) → public_funds.or_co_xtn_itt_cd='00040035'",
+         "'국민은행' → Org_trustee_00020004 (Organization) → public_funds.trusc_xtn_itt_cd='00020004'"]
+    sql = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' "
+           "AND TRIM(trusc_xtn_itt_cd) = '00020004' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30")
+    a = f(sql, "펀드수 | 클래스수\n0 | 0", 1, g)
+    assert a.startswith("KB자산운용이 운용하고 국민은행이 수탁하는 공모펀드는 0개(클래스 0개)") and "교집합이 0" in a
+    assert "129" not in a and "역외" not in a
+
+
+def test_r3_name_resolution_A(ctx):
+    """3R 부류 A — 이름 등호 → 공백무시 LIKE(T7) · Fund 접두 절단 라벨은 코드 핀 생략 + 결합 토큰(T12) · 라우터 '투자신탁' · 되묻기 후보 itm_nm."""
+    from src.runtime.pipeline import (ensure_spaceless_name_match as sp, _ground, residual_name_token, answer_question,
+                                      _suggest_similar_products)
+
+    t7 = "SELECT fd_yr1_ern_r, itm_nm FROM public_funds WHERE itm_nm = '삼성코리아대표증권자투자신탁' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30"
+    s, ok = sp(t7)
+    assert ok and "REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표증권자투자신탁%'" in s and " = '삼성" not in s
+    assert sp("SELECT 1 FROM public_funds p WHERE TRIM(p.itm_nm) = '피델리티 인도네시아 펀드' LIMIT 1")[0].count("REPLACE(p.itm_nm,' ','') LIKE '%피델리티인도네시아펀드%'") == 1
+
+    class P:
+        sql = t7
+
+        def plan_sql(self, q, g):
+            return P.sql
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-T7", "삼성코리아대표증권자투자신탁 1년 수익률 알려줘", planner=P(), ctx=ctx)
+    assert "머리명사 투자신탁" in r.think_trace and "[Answer] 개별 조회 답변 기계 조립" in r.think_trace
+    assert "106.71%~109.72%" in r.answer and "클래스 9개" in r.answer and "(A)" not in r.answer
+    # T12 — 접두 절단 Fund 라벨 → 코드 핀 생략 · 결합 토큰
+    q12 = "NH-Amundi 1.5배레버리지인덱스 펀드 1년 수익률 알려줘"
+    _, lines = _ground(q12, ctx, ["public_funds"])
+    assert lines and "rptt_ksd_itm_no=" not in " ".join(lines) and "접두 절단 라벨" in lines[0]
+    assert residual_name_token(q12, lines) == "NH-Amundi1.5배레버리지인덱스"
+    P.sql = "SELECT fd_yr1_ern_r, itm_nm FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30"
+    r12 = answer_question("T-T12", q12, planner=P(), ctx=ctx)
+    assert "254.16%~257.14%" in r12.answer and "클래스 5개" in r12.answer and r12.answer.count("\n- ") == 1
+    # R6 2호(호수 분기 흡수) 그대로 7클래스
+    P.sql = _R6_SQL
+    r6 = answer_question("T-R6b", "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert "클래스 7개" in r6.answer
+    # A-4 — 펀드 되묻기 후보
+    assert _suggest_similar_products("SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋 코어테크%' LIMIT 1")
+
+
+def test_r3_manager_scope_and_amount_B(ctx):
+    """3R 부류 B — 컬럼 동의어는 라우팅 어휘 아님(B-1) · 원 단위 금액 숨김+억원(B-4) · 집계 head 에 식별 컬럼 미주입."""
+    from src.runtime.pipeline import _hide_answer_columns as hide, ensure_fund_evidence_columns as ev
+
+    assert "순자산" not in ctx.route_vocab["domestic_etfs"] and "순자산" not in ctx.route_vocab["public_funds"]
+    out, hidden = hide("itm_nm | fd_nast_suma | 순자산_억원\nA | 145347201786.0 | 1453억원")
+    assert "fd_nast_suma" in hidden and "145347201786" not in out and "1453억원" in out
+    s, ok = ev("SELECT SUM(fd_nast_suma) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040010' AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 1")
+    assert ok and '"순자산합계_억원"' in s and "itm_nm" not in s
+    row = _ro().execute(s).fetchone()
+    assert row[1] == "331098억원"
+
+
+def test_r3_name_mode_D(ctx):
+    """3R 부류 D (T11) — '이름이 들어간' 질의는 이름 모드: Org 코드 핀 생략 → itm_nm LIKE → 154/301 + 운용사 코드별 분해(역외 포함)."""
+    from src.runtime.pipeline import _ground, residual_name_token, answer_question
+
+    q = "피델리티 이름이 들어간 공모펀드는 몇 개야?"
+    _, lines = _ground(q, ctx, ["public_funds"])
+    assert lines and "이름 모드" in lines[0] and "or_co_xtn_itt_cd=" not in lines[0] and residual_name_token(q, lines) == "피델리티"
+
+    class P:
+        def plan_sql(self, q, g):
+            return "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30"
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-T11", q, planner=P(), ctx=ctx)
+    assert "'피델리티' 이름이 들어간 공모펀드는 154개(클래스 301개)" in r.answer and "00130001 47개(역외)" in r.answer
+    assert "별도 법인" not in r.answer                                   # 이름 모드는 역외가 이미 포함 — 병기 문장 없음
+
+
+# ── 4R (docs/recheck_2026-09-02_round4.md §③) · KG 2R (docs/kg_structure_probe_round2_2026-09-02.md §④) ──
+_T6_SQL = ("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3[([]*') LIMIT 5")
+_T14_SQL = ("SELECT itm_no, itm_nm, fd_nast_suma FROM public_funds WHERE (TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') "
+            "AND ',' || prfd_attr_cds || ',' LIKE '%,VNM,%' AND REPLACE(itm_nm,' ','') LIKE '%베트남그로스%') AND sale_yn = '판매중' "
+            "AND prvo_pbff_desc = '공모' AND fd_nast_suma IS NOT NULL LIMIT 30")
+
+
+def test_r4_country_name_component_I(ctx):
+    """4R 부류 I — Country 개체는 독립 낱말일 때만(S4 'KB차이나'·T14 '베트남그로스'·V15 'NH-Amundi 인도네시아 포커스' 회귀).
+    경계 = 이름 문자 전체, 상품명 성분(DB 부분열)이면 매핑 생략 + 이름 토큰, 국가 가드도 같은 판정, 통칭은 테이블 범위."""
+    from src.runtime.pipeline import _ground, residual_name_token, _boundary_hit, ensure_fund_country_tag as ct, answer_question
+
+    def g(q):
+        hits, lines = _ground(q, ctx, ["public_funds"])
+        return [h.node_id for h in hits], lines, residual_name_token(q, lines)
+
+    ids, lines, tok = g("KB차이나 펀드 위험등급 알려줘")
+    assert not [i for i in ids if i.startswith("Country_")] and tok == "KB차이나"
+    ids, lines, tok = g("한국투자베트남그로스 펀드 순자산 알려줘")
+    assert ids == ["Org_00040024"] and tok == "베트남그로스"
+    ids, lines, tok = g("NH-Amundi 인도네시아 포커스 펀드 순자산 알려줘")
+    assert "Country_IDN" not in ids and tok == "인도네시아포커스" and any("상품명 성분" in ln for ln in lines)
+    assert g("인도네시아에 투자하는 공모펀드 알려줘")[0] == ["Country_IDN"] and g("미국에 투자하는 공모펀드는 몇 개야?")[0] == ["Country_USA"]
+    assert _boundary_hit("차이나", "KB차이나") is False and _boundary_hit("차이나", "차이나에 투자") is True
+    assert _boundary_hit("기아", "기아자동차") is False and _boundary_hit("기아", "기아를 담은") is True
+    s = "SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나%' LIMIT 1"
+    assert ct(s, "KB차이나 펀드 위험등급 알려줘") == (s, False)
+    assert ct(_T14_SQL, "한국투자베트남그로스 펀드 순자산 알려줘") == (_T14_SQL, False)
+    # T14 통합 — 국가 태그 절이 이름절을 지우지 않고 개별 조회 묶기(SUM·4펀드)로 복귀
+    class P:
+        sql = _T14_SQL
+
+        def plan_sql(self, q, g):
+            return P.sql
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-T14", "한국투자베트남그로스 펀드 순자산 알려줘", planner=P(), ctx=ctx)
+    assert "[Answer] 개별 조회 답변 기계 조립" in r.think_trace and "순자산" in r.answer and "억원 (클래스 합계)" in r.answer
+    # S4 통합 — HCX 가 국가 태그로 바꿔 쓴 SQL 도 이름 토큰이 강제되어 KB차이나 4펀드
+    P.sql = ("SELECT DISTINCT zrin_fd_ivst_risk_grd_nm, itm_no, TRIM(itm_nm) AS itm_nm, zrin_fd_ivst_risk_gcd FROM public_funds "
+             "WHERE ',' || prfd_attr_cds || ',' LIKE '%,CHN,%' AND zrin_fd_ivst_risk_gcd IS NOT NULL LIMIT 30")
+    r4 = answer_question("T-S4", "KB차이나 펀드 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert "itm_nm LIKE '%KB차이나%'" in r4.sql.replace("REPLACE(itm_nm,' ','') LIKE", "itm_nm LIKE") and r4.answer.count("\n- ") == 4 and "DB차이나" not in r4.answer
+
+
+def test_r4_skip_pin_token_J_K_L(ctx):
+    """4R 부류 J·K·L — 코드 핀 생략 분기는 항상 이름 검색 토큰(T6 호수 → 8클래스) · 다중 토큰 LIKE 접기(R6) ·
+    Ground 0 이어도 상품 고유명 후보(T8·T7 형) · 내부 지시문(⚙)은 답에 노출되지 않고 ℹ(구상호)만 병기."""
+    from src.runtime.pipeline import (_ground, residual_name_token, ensure_spaceless_name_match as sp, answer_question,
+                                      _standalone_name_token as st, ground_notes, _count_answer)
+
+    q6 = "미래에셋차이나솔로몬증권투자신탁 3호는 클래스가 몇 개야?"
+    _, lines = _ground(q6, ctx, ["public_funds"])
+    assert residual_name_token(q6, lines) == "미래에셋차이나솔로몬증권투자신탁" and "⚙" in lines[0] and "rptt_ksd_itm_no=" not in lines[0]
+    assert ground_notes(lines) == []                                          # L: 지시문은 답변 주석이 아니다
+
+    class P:
+        sql = _T6_SQL
+
+        def plan_sql(self, q, g):
+            return P.sql
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-T6", q6, planner=P(), ctx=ctx)
+    assert "LIKE '%미래에셋차이나솔로몬증권투자신탁%'" in r.sql and "8" in r.retrieved_context.splitlines()[1]
+    # J-2 — 4토큰 AND → 1토큰
+    s4 = ("SELECT itm_no FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋%' AND REPLACE(itm_nm,' ','') LIKE '%차이나%' "
+          "AND REPLACE(itm_nm,' ','') LIKE '%솔로몬%' AND REPLACE(itm_nm,' ','') LIKE '%증권투자신탁%' AND REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' LIMIT 30")
+    s, ok = sp(s4, "미래에셋차이나솔로몬증권투자신탁")
+    assert ok and s.count("LIKE '%") == 1 and "'%미래에셋차이나솔로몬증권투자신탁%'" in s and "1=1" not in s
+    assert len(_ro().execute(s).fetchall()) == 7
+    # K-1 — 독립 후보
+    assert st("KB차이나 펀드 위험등급 알려줘") == "KB차이나" and st("삼성코리아대표증권자투자신탁 1년 수익률 알려줘") == "삼성코리아대표증권자투자신탁"
+    assert st("삼성 펀드 보수 알려줘") is None and st("공모펀드는 유형별로 몇 개씩 있어?") is None and st("한국투자신탁운용이 운용하는 공모펀드는 몇 개야?") is None
+    # K-2 — 이름 모드 주어는 질문 + SQL 리터럴 (V11 '삼성' 은 Ground 0)
+    a = _count_answer("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
+                      "펀드수 | 클래스수\n229 | 962", 1, [], "삼성 이름이 들어간 공모펀드는 몇 개야?")
+    assert a.startswith("'삼성' 이름이 들어간 공모펀드는 229개(클래스 962개)") and "운용사 코드별" in a
+
+
+def test_kg2r_table_scope_and_name_pin_N1_N2_M(ctx):
+    """KG 2R N1·N2 + 4R M — 교차 플래그여도 허용 = 라우터 마스터 + 짝 ext(KG-028 ETF 종목 환각) · 이름 리터럴이 토큰을 포함하지 않으면
+    토큰 치환(T8 'KB차이나'→'KB차이나그로스' · KG-034 '코어텍') · 코드 핀 개별 조회도 묶기(V4)."""
+    from src.runtime.pipeline import _sql_precheck as pc, ensure_fund_name_filter as nf, ensure_fund_lookup_grouping as lg, _has_fund_key_pin, answer_question
+
+    k28 = ("SELECT domestic_etfs.pd_abrv_nm, ext_etf_holdings.weight_pct FROM domestic_etfs JOIN ext_etf_holdings "
+           "ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE domestic_etfs.pd_nm LIKE '%코어테크%' ORDER BY 2 DESC LIMIT 1")
+    assert "domestic_etfs" in (pc(k28, ctx, ["public_funds"], True) or "")                 # cross=True 여도 기각
+    ok28 = ("SELECT h.holding_nm, h.weight_pct FROM ext_fund_holdings h WHERE h.itm_no IN (SELECT p.itm_no FROM public_funds p "
+            "WHERE REPLACE(p.itm_nm,' ','') LIKE '%코어테크%') ORDER BY h.weight_pct DESC LIMIT 3")
+    assert pc(ok28, ctx, ["public_funds"], True) is None                                    # 짝 ext 는 허용
+    assert pc("SELECT pd_nm FROM domestic_etfs LIMIT 5", ctx, ["domestic_etfs", "public_funds"], True) is None
+    # N2
+    s = "SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나%' LIMIT 30"
+    out, ok = nf(s, "KB차이나그로스")
+    assert ok and "'%KB차이나그로스%'" in out and out.count("LIKE") == 1
+    out2, ok2 = nf("SELECT 1 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어텍%' LIMIT 30", "코어테크")
+    assert ok2 and "'%코어테크%'" in out2
+    assert not nf("SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나그로스증권자투자신탁%' LIMIT 30", "KB차이나그로스")[1]   # 더 긴 정식명 존중
+    # M — 코드 핀 개별 조회(V4)
+    v4 = ("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, TRIM(itm_nm) AS itm_nm, zrin_fd_ivst_risk_gcd FROM public_funds "
+          "WHERE TRIM(rptt_ksd_itm_no) IN ('030230002D36') AND zrin_fd_ivst_risk_grd_nm IS NOT NULL LIMIT 1")
+    assert _has_fund_key_pin(v4) and lg(v4, "KB중국본토A주증권자투자신탁 위험등급 알려줘")[1]
+
+    class P:
+        def plan_sql(self, q, g):
+            return v4
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-V4", "KB중국본토A주증권자투자신탁 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert "KB중국본토A주증권자투자신탁(주식): 위험등급 2등급(높은 위험) · 클래스 14개(전부 판매중)" in r.answer
+
+
+def test_attr_tag_all_axes_N4(ctx):
+    """KG 2R N4 (KG-024 회귀) — FundAttribute 전 축 token canon · 테마/섹터 축은 이름 병기 · 동일 라벨 노드 병합 · wrap 없는 태그 절 교정."""
+    from src.runtime.pipeline import ensure_fund_attr_tag as at, _attr_word_map, _FUND_KEY_EXPR
+
+    m = {w: (codes, nu) for w, codes, nu, _ in _attr_word_map()}
+    assert m["반도체"] == (("N144",), True) and set(m["럭셔리"][0]) == {"N118", "N147"} and m["개방형"] == (("C103",), False)
+    k24 = ("SELECT COUNT(*) FROM public_funds WHERE prfd_attr_cds LIKE '%,N144,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    s, ok = at(k24, "반도체 테마 공모펀드는 몇 개야?")
+    assert ok and "(',' || prfd_attr_cds || ',' LIKE '%,N144,%' OR REPLACE(itm_nm,' ','') LIKE '%반도체%')" in s and s.count("N144") == 1
+    assert not at(s, "반도체 테마 공모펀드는 몇 개야?")[1]
+    cnt = _ro().execute(s.replace("COUNT(*)", f"COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})")).fetchone()
+    assert cnt == (78, 12)                                                       # gold 12/78 (태그 ∪ 이름)
+    # 기준선 HCX 형(이름 OR 속성명)도 같은 canon 으로 접힌다
+    k24b = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%반도체%' OR zrin_attr_nms LIKE '%반도체%')) LIMIT 30"
+    s2, ok2 = at(k24b, "반도체 테마 공모펀드는 몇 개야?")
+    assert ok2 and "'%,N144,%'" in s2 and "zrin_attr_nms" not in s2
+    # 비발동 — 라벨이 낱말 안에 붙은 경우('고배당' 의 '배당주' 아님) · 설정형태 통칭은 종전대로
+    assert not at("SELECT 1 FROM public_funds LIMIT 1", "KB고배당주 펀드 알려줘")[1]
+    assert "'%,C104,%'" in at("SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매중' LIMIT 30", "폐쇄형 공모펀드는 몇 개야?")[0]
+
+
+def test_amount_eok_common_B4(ctx):
+    """4R B-4 확장 (V7) — 원 단위 집계의 HCX 별칭(total_aum)·ETF 도메인도 억원 병기 + 원값 숨김. 펀드 순자산 경로는 종전 이름(순자산_억원) 유지."""
+    from src.runtime.pipeline import ensure_amount_eok_columns as f, _hide_answer_columns as hide, ensure_fund_evidence_columns as ev, _execute, _list_answer
+
+    v7 = "SELECT cu_fund_mgmt_co, SUM(du_last_aum) as total_aum FROM domestic_etfs GROUP BY cu_fund_mgmt_co ORDER BY total_aum DESC LIMIT 3"
+    s, ok = f(v7)
+    assert ok and '"total_aum_억원"' in s and not f(s)[1]
+    rows, n = _execute(s)
+    hidden_rows, hidden = hide(rows, s)
+    assert n == 3 and "total_aum" in hidden and "억원" in hidden_rows.splitlines()[1] and "967341" not in hidden_rows
+    # 펀드 — 종전 이름·값 그대로(순자산_억원 1453억원 · 순자산합계_억원 331098억원)
+    r3 = ev("SELECT itm_no, TRIM(itm_nm), fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' ORDER BY 3 DESC LIMIT 5")[0]
+    assert r3.count('"순자산_억원"') == 1
+    s2 = ev("SELECT SUM(fd_nast_suma) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040010' AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 1")[0]
+    assert _ro().execute(s2).fetchone()[1] == "331098억원"
+    assert not f("SELECT pd_nm FROM domestic_bonds LIMIT 5")[1]

@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import os
 import re
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -45,10 +46,19 @@ class KGNode:
     node_type: str
     label_ko: str | None
     label_en: str | None
+    # KG 1R S1 — 라벨 슬롯 체계: 정식명(코드북)·구상호·후계 노드·출처(curated/auto/derived). derived(종목명 접두 최빈값)는 매칭 키에서 제외
+    label_official: str | None = None
+    former_names: list = field(default_factory=list)
+    successor: str | None = None
+    provenance: str = "curated"
 
     @property
     def labels(self) -> list[str]:
-        return [x for x in (self.label_ko, self.label_en) if x]
+        out = []
+        for x in (self.label_ko, self.label_official, self.label_en):
+            if x and x not in out:
+                out.append(x)
+        return out
 
 
 @dataclass
@@ -60,6 +70,8 @@ class RuntimeContext:
     entity_property: dict = field(default_factory=dict)  # entity -> .ttl property 이름
     kg_nodes: list[KGNode] = field(default_factory=list)
     kg_aliases: dict = field(default_factory=dict)     # node_id -> [(table, column, raw)]
+    kg_node_by_id: dict = field(default_factory=dict)  # node_id -> KGNode (S1 후계 노드 조회)
+    kg_alias_kind: dict = field(default_factory=dict)  # (node_id, table, column, raw) -> match_kind ('token' 등, 'eq' 는 생략) — S3 token alias
     # 계층 — 조상 -> 후손 목록 (kg_closure, 이미 이행적). 정본 노드(Sec_m_*·CG_*·Idx_a_*)는 alias 가 0개고
     # 실물 노드가 여기 매달려 있다. 런타임이 이걸 안 읽으면 정본에 매칭돼도 SQL 에 넣을 값이 없다 (2026-08-30 ㉡).
     kg_closure: dict = field(default_factory=dict)     # ancestor_id -> [descendant_id]
@@ -68,12 +80,15 @@ class RuntimeContext:
     crd_grades: set = field(default_factory=set)       # 채권 신용등급 — 2차 데이터에 실제로 있는 값 (value_semantics)
     std_grades: set = field(default_factory=set)       # 신용등급 표준표 (credit_grade_scale.csv, DB 표기+표준 표기)
     route_vocab: dict = field(default_factory=dict)    # table -> {term: weight} — 라우팅 ② 겹 어휘. DB·yaml synonyms 에서 자동 생성
+    route_products: dict = field(default_factory=dict) # table -> {상품명 term} — 이 매치가 있는 테이블은 라우팅 점수컷 면제
     schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
     # ── 2026-08-30 개선 (docs/research/온톨로지_개정안_2026-08-30.md) ──
     refusal_rules: dict = field(default_factory=dict)  # R-5 ② 층 — enums/_refusal.yaml (사유명 -> 규칙 문장). 플래너가 REFUSE: 를 내는 근거
     value_vocab: dict = field(default_factory=dict)    # R-1 — (table, column) -> [값…]  범주형 컬럼의 실제 값 목록 (enums/<domain>.vocab.yaml, 생성물)
     value_index: dict = field(default_factory=dict)    # R-4 — (table, column) -> {정규화 값}  WHERE 리터럴 검사용. **전 값을 아는 컬럼만** 들어간다
     gate_constants: dict = field(default_factory=dict) # R-5 ① 층 — table -> [{column, value, triggers[], answer}] 상수 컬럼 위반 (enums yaml gate_constants)
+    grade_ranges: dict = field(default_factory=dict)   # KG 1R S6 — table -> {min,max,label_min,label_max,note} (shared/risk_grade.yaml range_by_table)
+    absent_props: dict = field(default_factory=dict)   # KG 1R S5 — table -> [{property, why, vocab[], substitute}] 부재 속성 선언 (enums yaml absent_properties → ttl ABSENT + 게이트 어휘)
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
@@ -112,8 +127,13 @@ class RuntimeContext:
                 if str(name).startswith("_"):
                     continue
                 if isinstance(rule, dict) and "triggers" in rule:
-                    if question is not None and not any(w in question for w in rule.get("triggers") or []):
-                        continue
+                    # 🔴 대소문자 무시 — 사람은 'kodex'·'ai' 라고도 쓴다. 트리거가 대문자(KODEX·AI)로만
+                    #    등록돼 있으면 소문자 질의에서 규칙이 통째로 빠진다 (2026-09-01, ETF triggers 도입 시 실측).
+                    #    트리거 누락은 규칙 미주입 = 오답이고, 과잉 주입은 무해하므로 casefold 로 넓게 맞춘다.
+                    if question is not None:
+                        q_cf = question.casefold()
+                        if not any(str(w).casefold() in q_cf for w in rule.get("triggers") or []):
+                            continue
                     rule = rule.get("text", "")
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")
@@ -225,6 +245,8 @@ def load_context() -> RuntimeContext:
             ctx.enums[doc["domain"]] = doc
             for item in doc.get("gate_constants") or []:
                 ctx.gate_constants.setdefault(doc["domain"], []).append(item)
+            for item in doc.get("absent_properties") or []:
+                ctx.absent_props.setdefault(doc["domain"], []).append(item)
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
         doc = _load_yaml(p, header_only_if_big=True)
@@ -234,6 +256,8 @@ def load_context() -> RuntimeContext:
         ctx.entity_property[entity] = doc.get("property") or entity
         for table, why in (doc.get("absent_in") or {}).items():
             ctx.absent[(entity, table)] = why
+        for table, spec in (doc.get("range_by_table") or {}).items():
+            ctx.grade_ranges[table] = dict(spec, entity=entity)
 
     # 신용등급 화이트리스트 — 채권 yaml value_semantics 가 원천 (2차 데이터 15종 + 무접미 표기 'AA' 등)
     # 컬럼 키는 대문자(1차)·소문자(2차) 어느 쪽이든 받는다.
@@ -245,14 +269,22 @@ def load_context() -> RuntimeContext:
     ctx.std_grades = _load_std_grades()
 
     with connect_readonly() as con:
-        for nid, ntype, lko, len_ in con.execute(
-            "select node_id, node_type, label_ko, label_en from kg_node"
+        node_cols = {r[1] for r in con.execute("pragma table_info(kg_node)")}
+        extra = "label_official, former_names, successor, provenance" if "provenance" in node_cols else "NULL, NULL, NULL, 'curated'"
+        for nid, ntype, lko, len_, lof, former, succ, prov in con.execute(
+            f"select node_id, node_type, label_ko, label_en, {extra} from kg_node"
         ):
-            ctx.kg_nodes.append(KGNode(nid, ntype, lko, len_))
-        for nid, t, c, raw in con.execute(
-            "select node_id, table_name, column_name, raw_value from kg_alias"
+            node = KGNode(nid, ntype, lko, len_, lof, json.loads(former) if former else [], succ, prov or "curated")
+            ctx.kg_nodes.append(node)
+            ctx.kg_node_by_id[nid] = node
+        alias_cols = {r[1] for r in con.execute("pragma table_info(kg_alias)")}
+        kind_col = "match_kind" if "match_kind" in alias_cols else "'eq'"
+        for nid, t, c, raw, kind in con.execute(
+            f"select node_id, table_name, column_name, raw_value, {kind_col} from kg_alias"
         ):
             ctx.kg_aliases.setdefault(nid, []).append((t, c, raw))
+            if kind and kind != "eq":
+                ctx.kg_alias_kind[(nid, t, c, raw)] = kind
         for anc, desc in con.execute("select ancestor_id, descendant_id from kg_closure"):
             ctx.kg_closure.setdefault(anc, []).append(desc)
         for child, parent in con.execute(
@@ -276,7 +308,7 @@ def load_context() -> RuntimeContext:
             cols = [(r[1], "", r[2]) for r in con.execute(f"pragma table_info({t})")]
             if cols:
                 ctx.schema[t] = cols
-        ctx.route_vocab = _build_route_vocab(con, ctx)
+        ctx.route_vocab, ctx.route_products = _build_route_vocab(con, ctx)
         ctx.value_index = _build_value_index(con, ctx)
     # validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사할 수 있게 색인을 넘긴다
     # (ctx 를 못 받는 순수 함수라 모듈 캐시로 준다 — 2026-08-31 'domestic_etfs.weight_pct' 실측)
@@ -363,10 +395,27 @@ def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
             if 1 < n <= ROUTE_CATEGORICAL_MAX:
                 for (v,) in con.execute(f"select distinct trim({col}) from {t} where {col} is not null"):
                     add(t, v, 2)
+    # 상품명(약어명·티커)은 별도 집합에도 담는다 — "TIGER 미국S&P500 이랑 VOO 중 뭐가 나아" 에서
+    # 긴 국내 상품명이 점수를 부풀려 해외(VOO 직격 매치)가 70% 컷에 잘렸다(2026-09-01 로컬 점검).
+    # 상품명이 직접 나온 테이블은 상대 점수와 무관하게 라우팅에서 탈락하면 안 된다.
+    products: dict[str, set] = {t: set() for t in TABLES}
     for t in ("domestic_etfs", "overseas_etfs"):
         for (v,) in con.execute(f"select distinct trim(pd_abrv_nm) from {t} where pd_abrv_nm is not null"):
             add(t, v, 3)
+            term = _VOCAB_STRIP.sub("", str(v or "")).strip()
+            if term in vocab[t]:
+                products[t].add(term)
     for t in TABLES:
-        for term in ((ctx.enums.get(t) or {}).get("synonyms") or {}):
+        cols = {r[1].lower() for r in con.execute(f"pragma table_info({t})")}
+        for term, canon in (((ctx.enums.get(t) or {}).get("synonyms") or {}).items()):
+            # 3R B-1 — 값이 **컬럼명**인 동의어('순자산 → du_last_aum')는 측정축 낱말이지 그 테이블의 값이 아니다.
+            #    T2 "순자산 합계가 가장 큰 자산운용사" 가 값 ['순자산'] 로 ETF 단독 라우팅된 직접 원인. 값 동의어(통안채→통화안정채권)만.
+            if isinstance(canon, str) and canon.strip().lower() in cols:
+                continue
             add(t, term, 2, min_len=2)          # '국채'·'만기' 같은 2자 통칭 — yaml 이 고른 것만
-    return vocab
+    # 다의어 상품명은 면제 자격 박탈 — 'AAA' 는 해외 ETF 티커이자 채권 신용등급이라
+    # "은행채 중 AAA" 를 해외로 끌고 갔다(2026-09-01). 그 테이블에만 있는 상품명만 남긴다.
+    for t in products:
+        products[t] = {p for p in products[t]
+                       if not any(p in vocab[u] for u in TABLES if u != t)}
+    return vocab, products

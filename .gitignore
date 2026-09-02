@@ -118,3 +118,4 @@ docs/research/papers/
 #    실물은 드라이브 공유로 받는다.
 *.zip
 AI페스티벌_*.pdf
+server_check_last.json

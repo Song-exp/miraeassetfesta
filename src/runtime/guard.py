@@ -204,6 +204,54 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     return out
 
 
+_CODE_COL = re.compile(r"_itt_cd$", re.I)
+_CODE_NUM_EQ = re.compile(r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*_itt_cd)\s*=\s*(\d+)\b(?!\s*')", re.I)
+
+
+def check_code_literals(sql: str, ctx: RuntimeContext) -> list[str]:
+    """KG 1R R3 ①② — 기관코드 컬럼(`*_itt_cd`)의 리터럴은 DB 에 실재하는 코드여야 한다. 등호·IN 원소 전부 대조, 따옴표 없는
+    숫자 비교(`= 80000000` — 코드는 문자열)도 기각. 값 사전(check_values)은 alias 커버리지 98% 컬럼만 보므로 코드 컬럼은
+    여기서 직접 실존 조회(SQLite 1회/리터럴). KG-003 `'A011'` · KG-004 `80000000` · KG-025 `IN ('삼성','삼성KODEX')` 날조가
+    검사기를 통과해 "0개"·"미수록" 단언으로 나갔다.
+    """
+    tables = [t for t in sql_tables(sql) if t in TABLES]
+    if not tables:
+        return []
+    schema = getattr(ctx, "schema", {}) or {}
+    problems: list[str] = []
+    sql = re.sub(r"\bTRIM\(\s*((?:\w+\.)?\w+)\s*\)", r"\1", sql, flags=re.I)   # TRIM(col) = 'x' 도 등호 쌍으로 본다
+    for tbl, col, num in _CODE_NUM_EQ.findall(sql):
+        problems.append(f"{col} = {num} (따옴표 없는 숫자 — 코드는 '{num.zfill(8)}' 같은 문자열)")
+    pairs: list[tuple[str, str]] = []
+    for tbl, col, lit in _EQ.findall(sql):
+        if _CODE_COL.search(col):
+            pairs.append((col, lit))
+    for tbl, col, body in _IN.findall(sql):
+        if _CODE_COL.search(col):
+            pairs += [(col, lit) for lit in _LIT.findall(body)]
+    if not pairs:
+        return problems
+    con = None
+    try:
+        from .loader import connect_readonly
+        con = connect_readonly()
+        for col, lit in pairs:
+            owner = next((t for t in tables if any(c.lower() == col.lower() for c, *_ in schema.get(t, ()))), None)
+            if not owner or not lit.strip():
+                continue
+            row = con.execute(
+                f"SELECT 1 FROM {owner} WHERE TRIM({col}) = ? OR printf('%08d', CAST({col} AS INTEGER)) = ? LIMIT 1",
+                (lit.strip(), lit.strip().zfill(8))).fetchone()
+            if row is None:
+                problems.append(f"{col} = '{lit}' 은 데이터에 없는 코드")
+    except Exception:  # noqa: BLE001 — 검사기 자체 오류로 실행을 막지 않는다
+        return problems
+    finally:
+        if con is not None:
+            con.close()
+    return problems
+
+
 def _value_hints(raw, literal: str) -> list[str]:
     """기각된 리터럴과 비슷한 실제 값을 예시 맨 앞에 놓는다.
 

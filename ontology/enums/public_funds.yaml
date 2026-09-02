@@ -810,7 +810,8 @@ query_rules:
   펀드단위: >-
     GROUP BY or_co_xtn_itt_cd,
              COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no
-                           ELSE substr('0000000' || mtco_itm_no, -7) END, itm_no)
+                           ELSE substr('0000000' || mtco_itm_no, -7) END, public_funds.itm_no)
+  # 🔴 itm_no 는 반드시 한정한다(JOIN 시 별칭을 쓰면 p.itm_no) — 2026-09-02 R2 재검: 비한정 itm_no 를 LEFT JOIN ext_fund_page 에 옮겨 모호 컬럼 기각
   # 펀드단위 근거(사람용 — 프롬프트 비대상): zero-pad 7자 규약 정본은 리드 판정 08-31. 실측 — 기본모수 패딩 병합
   # 전수 대조 충돌 0건 · 짧은 mtco 7,962행 정상(가변 길이). 검증 수치(08-31 재실측): 더미 배제 후 합성키 distinct
   # 14,467(원값 · 판매중 4,340) · zero-pad 후 14,409(판매중 4,305). 구 08-25 의 14,522·4,342 는 반복문자 규칙 미적용
@@ -1337,3 +1338,37 @@ external_facts:
     fee_total_pct: >-
       클래스별 총보수(근사). ✅ 단위 대조 완료(2026-08-25, ext_fund_page 8,925건 — 비율 10.0) — 이제 "간이투자설명서 기재 총보수(TER)" 보완 인용 전용.
       마스터 4종 합÷10(derivation_rules.totalFeeApprox)은 기타비용 미포함이므로 TER 질의에는 이 값을 병기.
+
+# ── 부재 속성 선언 (2026-09-02 KG 1R S5) — 도메인 문서 §5 "답할 수 없는 것" 의 각 행 = ttl ABSENT 1건 = 게이트 어휘 1건.
+#    build_ontology 가 fund_pub.ttl 에 `# ABSENT:` 로 사영하고, gate 가 vocab(정규식)으로 HCX 0회 즉답한다.
+#    🔴 좌수 환각(KG-027: fd_set_pcd '10' 을 "10좌" 로 단언)의 결정층. 대체 안내는 **있는** 컬럼만 적는다.
+#    기준가(bns_bpr)는 있다 — ABSENT 는 '추이·변동' 어휘에만 걸고 '기준가 얼마' 는 답한다.
+absent_properties:
+  - property: hasUnitsOutstanding
+    why: "공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다."
+    vocab: ["좌[ ]?수", "설정[ ]?좌", "잔존[ ]?좌", "잔고[ ]?좌"]
+    substitute: {column: "fd_nast_suma·bns_bpr", note: "규모는 순자산(fd_nast_suma), 가격은 기준가(bns_bpr, 기준일 단일 스냅샷)로 안내할 수 있습니다."}
+  - property: hasFundManager
+    why: "펀드 운용역(펀드매니저) 정보는 마스터·설명서 수집분에 없어 답할 수 없습니다."
+    vocab: ["운용역", "펀드[ ]?매니저", "운용[ ]?인력", "책임[ ]?운용"]
+    substitute: {column: "or_co_xtn_itt_cd", note: "운용사(운용회사 코드 → 법인명)는 안내할 수 있습니다."}
+  - property: hasNavHistory
+    why: "기준가는 기준일 단일 스냅샷(bns_bpr)만 있고 시계열(추이·변동·과거 기준가)은 수록되어 있지 않습니다."
+    vocab: ["기준가[ ]?(?:추이|변동(?!성)|흐름|변화|이력|그래프|히스토리)", "과거[ ]?기준가"]
+    substitute: {column: "bns_bpr", note: "기준일 현재 기준가와 기간 수익률(1개월~5년 누적)은 안내할 수 있습니다."}
+  - property: hasHoldingsHistory
+    why: "보유 종목은 설명서 수집 기준일 1시점(ext_fund_holdings)만 있고 시계열(변화·추이)은 수록되어 있지 않습니다."
+    vocab: ["(?:보유|구성|편입)[ ]?종목.{0,8}?(?:추이|변동(?!성)|변화|이력|히스토리)"]
+    substitute: {column: "ext_fund_holdings", note: "수집 기준일의 보유 종목·비중은 안내할 수 있습니다."}
+
+# ── 국가어 통칭 (KG 1R S3) — Ground 보조 키(_synonym_keys): 통칭 → Country 노드 라벨. 값 동의어이며 컬럼명이 아니다.
+synonyms:
+  차이나: 중국
+  재팬: 일본
+  인디아: 인도
+  아메리카: 미국
+  # 설정형태 축(FundAttribute C) 어휘 규칙 — 사용자 낱말 = 코드북 이름 + '형' (KG 1R R11). 라벨 2자('개방')는 Ground 하한 미만이라 통칭으로 잇는다
+  개방형: 개방
+  폐쇄형: 폐쇄
+  단위형: 단위
+  추가형: 추가

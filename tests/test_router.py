@@ -31,6 +31,10 @@ ROUTE_CASES = [
     # 채권 19 — '채권' 글자 없는 통칭(국고채·통안채·지방채·영구채·코코본드·은행채·카드채)도 채권으로
     ("신용등급 AA- 이상 채권 알려줘", {B}), ("국고채 수익률 알려줘", {B}), ("통안채 몇 개 있어?", {B}),
     ("지방채 알려줘", {B}), ("은행채 중 AAA", {B}), ("MBS 채권 수익률", {B}), ("카드채 수익률", {B}),
+    # 국내상품 vs 해외티커 비교 — 긴 국내 상품명이 점수를 부풀려 해외가 70% 컷에 잘렸다(2026-09-01).
+    # 상품명 직격 매치 테이블은 컷 면제. 단 'AAA'(티커=신용등급 다의어)는 면제 자격 없음 — 위 은행채 케이스.
+    ("TIGER 미국S&P500 이랑 VOO 중 뭐가 나아", ETFS),
+    ("SCHD랑 TIGER 미국배당다우존스 비교", ETFS),
     ("한국전력 채권 알려줘", {B}), ("LH 채권", {B}), ("산업은행 채권", {B}), ("삼성전자 채권", {B}),
     ("현대카드 채권 수익률", {B}), ("영구채 알려줘", {B}), ("코코본드 알려줘", {B}), ("듀레이션 짧은 채권", {B}),
     ("표면금리 높은 채권", {B}), ("위험등급 낮은 채권", {B}), ("만기 2027년 채권", {B}), ("잔존만기 1년 이내 채권", {B}),
@@ -246,3 +250,17 @@ def test_router_typo_펌드(ctx):
     assert r.tables == [PF] and r.decided
     assert route("코어테크 펌드 1년 수익률 알려줘", ctx).tables == [PF]
     assert not route("공모 펀 드 알려줘", ctx).decided
+
+
+def test_router_manager_word_narrows_to_three_tables(ctx):
+    """2R Q2-c — '운용사' 만 있는 질의(S11)는 미특정 4테이블 대신 펀드·ETF 3테이블(채권엔 운용사 컬럼 없음).
+    상품 명사가 있으면 그것이 머리다("펀드를 … 운용사" → 펀드)."""
+    r = route("순자산이 가장 큰 운용사 상위 3개 알려줘", ctx)
+    # 3R B-2 정정 — 실측 2/2 에서 HCX 가 ETF 를 골라 템플릿 불발 → 운용사 집계 정본 = 공모펀드 마스터로 확정
+    assert r.tables == [PF] and r.decided
+    assert route("순자산 합계가 가장 큰 자산운용사 3곳 알려줘", ctx).tables == [PF]           # T2 (B-1: '순자산' 은 컬럼 동의어라 어휘 아님)
+    assert set(route("ETF 순자산이 가장 큰 운용사 3곳 알려줘", ctx).tables) <= {DE, OE}         # 상품 명사가 있으면 그것이 머리
+    assert route("삼성코리아대표증권자투자신탁 1년 수익률 알려줘", ctx).tables == [PF]           # 3R A-3 (T7)
+    assert set(route("KODEX200 증권상장지수투자신탁 알려줘", ctx).tables) <= {DE, OE}
+    assert route("운용 펀드 수가 가장 많은 자산운용사 5곳 알려줘", ctx).tables == [PF]
+    assert route("펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", ctx).tables == [PF]

@@ -44,7 +44,8 @@ def test_enum_crd_valid_not_rejected(ctx):
 
 def test_risk_grade_out_of_range(ctx):
     r = answer_question("T-05", "위험등급 9등급 펀드 보여줘", ctx=ctx)
-    assert "[Gate] 기각" in r.think_trace and "0~6" in r.think_trace
+    # 2026-09-02 KG 1R S6 — 범위는 테이블별 선언(range_by_table)에서: 펀드는 1~6 (종전 공용 상수 0~6)
+    assert "[Gate] 기각" in r.think_trace and "1~6" in r.think_trace and "1(매우 높은 위험)~6" in r.answer
 
 
 def test_risk_grade_6_valid(ctx):
@@ -123,11 +124,12 @@ def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):
        코드 매핑을 싣지 않고 이름 검색을 지시한다 — 4호 값이 2호의 답으로 나가는 것을 막는다.
     """
     r = answer_question("T-032", "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘", ctx=ctx)
-    assert "미특정 보정" in r.think_trace and "public_funds" in r.think_trace
+    # 3R A-3 — '투자신탁' 이 상품 명사(§3.3 법적형태)라 라우터가 바로 public_funds 를 정한다(종전 미특정 → Ground 보정 경로)
+    assert "머리명사 투자신탁" in r.think_trace and "public_funds" in r.think_trace
     assert "코드 매핑을 싣지 않는다" in r.think_trace and "rptt_ksd_itm_no" not in r.think_trace
-    # 호수 없는 질의는 코드 매핑 유지(불개입) — 좁히기는 동일하게 발동
+    # 호수 없는 질의는 코드 매핑 유지(불개입)
     r2 = answer_question("T-032b", "미래에셋디스커버리증권투자신탁 위험등급 알려줘", ctx=ctx)
-    assert "미특정 보정" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
+    assert "public_funds" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
 
 
 def test_cutoff_august_allowed(ctx):
@@ -1099,7 +1101,7 @@ def test_ground_uses_yaml_synonyms(ctx):
     HCX 가 컬럼명을 추측해 holding_nm 을 만들어 냈다(실제 컬럼은 constituent).
     """
     from src.runtime.pipeline import _ground, _synonym_keys
-    assert "하이닉스" in _synonym_keys(ctx).get("SK하이닉스", [])
+    assert "하이닉스" in [t for t, _ in _synonym_keys(ctx).get("SK하이닉스", [])]    # 4R I-3: (통칭, 테이블) 쌍
     _, lines = _ground("국내 etf중 하이닉스가 가장많이 편입된상품은 무어야", ctx, ["domestic_etfs"], cross=True)
     assert any("Sec_kr_000660" in l for l in lines), lines
     # 정식 표기로 물어도 같은 노드
@@ -1230,3 +1232,92 @@ def test_zero_row_lookup_suggests_similar(ctx):
     # 단일 토큰·미매칭 이름은 빈 목록 — 되묻기 없이 종전 확인불가 문구로
     assert _suggest_similar_products(
         "SELECT * FROM domestic_etfs WHERE TRIM(pd_abrv_nm) = 'VOO' LIMIT 30") == []
+
+
+# ── R-2 triggers 도입 (2026-09-01) — 규칙 선별주입이 필요 규칙을 빠뜨리지 않는지 ──
+
+def test_triggers_cover_regression_questions(ctx):
+    """회귀 문항마다 그 문항이 의존하는 규칙이 프롬프트에 실려야 한다.
+
+    always-on 39개 → triggered 27개로 바꾸면서 생기는 유일한 위험은 **누락**이다
+    (과잉 주입은 무해). 문항-규칙 대응을 못박아 트리거를 좁힐 때 여기서 걸리게 한다.
+    """
+    NEED = {
+        "인버스 ETF 3개 알려줘": ["인버스", "개수만_준_질의"],
+        "총보수 낮은 국내 ETF 5개 알려줘": ["보수유효", "국내는_지역필터가_아니다"],
+        "KODEX 200 총보수 알려줘": ["보수개별조회", "상품명조회"],
+        "kodex 200 총보수 알려줘": ["보수개별조회"],          # 소문자 — loader casefold
+        "Li Auto를 담은 국내 ETF 알려줘": ["편입비중상위", "국내는_지역필터가_아니다"],
+        "레버리지제외하고 국내 etf중 하이닉스가 가장많이 편입된상품은 뭐야":
+            ["편입비중상위", "레버리지"],
+        "헬스케어 섹터 ETF 알려줘": ["섹터_한영대응", "섹터테마질의"],
+        "에코프로의 자회사를 편입한 ETF 중 순자산이 큰 상품의 위험요인 알려줘":
+            ["위험요인질의", "편입비중상위"],
+        "환헤지된 미국 ETF 알려줘": ["환헤지"],
+        "선물 ETF 알려줘": ["선물"],
+    }
+    for q, rules in NEED.items():
+        p = ctx.planner_context(["domestic_etfs"], question=q)
+        for r in rules:
+            assert f"- {r}:" in p, f"'{q}' 에 규칙 {r} 미주입"
+
+
+def test_triggers_cover_overseas(ctx):
+    NEED = {
+        "수수료 저렴한 해외 ETF 5개 알려줘": ["보수유효", "개수만_준_질의"],
+        "해외 인버스 ETF 3개 알려줘": ["인버스숏"],
+        "VOO 정보 알려줘": ["개별조회_별칭", "상품명조회"],
+        "캠브리콘이 편입된 중국 반도체 ETF를 알려줘": ["ISIN조인금지", "종목질의_회사채포함"],
+    }
+    for q, rules in NEED.items():
+        p = ctx.planner_context(["overseas_etfs"], question=q)
+        for r in rules:
+            assert f"- {r}:" in p, f"'{q}' 에 규칙 {r} 미주입"
+
+
+def test_triggers_trim_prompt(ctx):
+    """트리거 도입의 목적 — 무관 규칙이 빠져 프롬프트가 줄어야 한다 (도입 전 11,760자 고정)."""
+    p = ctx.planner_context(["domestic_etfs"], question="ETF 알려줘")
+    # 6000 → 7000 (2026-09-02): 바이오 실측 수리로 always-on 3건 추가(질문에_없는_필터금지 등).
+    # 도입 전 11,760자 대비 여전히 40%+ 절감 — 상한은 "다시 무한정 붇지 않게" 만 지킨다.
+    assert len(p) < 7000, len(p)
+    assert "- 환헤지:" not in p and "- 선물:" not in p     # 무관 규칙은 빠진다
+    assert "- ETF만:" in p                                  # 보편 제약은 남는다
+
+
+def test_paraphrases_still_get_critical_rules(ctx):
+    """🔴 2026-09-01 2차 점검 — 트리거식 전환 직후 바꿔 말한 질의 7/9에서 규칙이 빠졌다.
+    오답을 만드는 규칙(보수·인버스·편입비중·위험)은 always-on 으로 복귀했다 — 이 테스트는
+    누군가 다시 트리거식으로 바꾸면 같은 사고가 재발한다는 것을 잡는 회귀 담장이다."""
+    cases = [
+        ("돈 제일 조금 떼가는 국내 ETF 5개", "보수유효"),
+        ("제일 싸게 살 수 있는 ETF", "보수유효"),
+        ("운용 코스트 낮은 ETF", "보수유효"),
+        ("지수 반대로 가는 ETF 3개", "인버스"),
+        ("떨어질 때 버는 ETF", "인버스"),
+        ("삼성전자 제일 많이 갖고 있는 ETF", "편입비중상위"),
+        ("원금 잃기 싫은데 뭐 사", "위험요인질의"),
+        ("ETF 아무거나 5개", "개수만_준_질의"),
+    ]
+    misses = [f"{q} → {rule}" for q, rule in cases
+              if f"- {rule}:" not in ctx.planner_context(["domestic_etfs"], question=q)]
+    assert not misses, f"바꿔 말한 질의에서 규칙 누락: {misses}"
+
+
+def test_validate_sql_rejects_unparenthesized_or_and():
+    """서버 실측 2026-09-02 '바이오 ETF 추천' — OR 사슬 뒤 괄호 없는 AND 필터는
+    마지막 가지에만 걸린다. validate_sql 이 기계적으로 기각해야 한다."""
+    from src.runtime.pipeline import validate_sql
+    bad = ("SELECT pd_nm FROM domestic_etfs WHERE pd_nm LIKE '%바이오%' "
+           "OR ref_base_index LIKE '%Bio%' AND pd_grp_no='ETF' LIMIT 5")
+    assert validate_sql(bad) and "괄호" in validate_sql(bad)
+    ok = [
+        ("SELECT pd_nm FROM domestic_etfs WHERE (pd_nm LIKE '%바이오%' "
+         "OR ref_base_index LIKE '%Bio%') AND pd_grp_no='ETF' LIMIT 5"),
+        "SELECT pd_nm FROM domestic_etfs WHERE pd_nm LIKE '%a%' OR pd_nm LIKE '%b%' LIMIT 5",
+        ("SELECT pd_nm FROM domestic_etfs WHERE pd_grp_no='ETF' AND "
+         "(pd_nm LIKE '%a%' OR (pd_nm LIKE '%b%' AND du_clpr>0)) LIMIT 5"),
+        "SELECT pd_nm FROM domestic_etfs WHERE pd_nm LIKE '% OR %' AND du_clpr>0 LIMIT 5",
+    ]
+    for q in ok:
+        assert validate_sql(q) is None, q

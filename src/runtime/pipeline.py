@@ -119,8 +119,14 @@ def _name_owners(cols: list[str], ctx) -> str:
 
 
 def validate_sql(sql: str) -> str | None:
-    """위반 사유를 반환. None 이면 통과."""
+    """위반 사유를 반환. None 이면 통과.
+
+    🔴 10R gold N2 — **서로 독립인 위반은 전부 모아 한 문자열로 돌려준다.** 첫 사유에서 return 하면 재생성 1회가
+       사유 하나만 고치고 다음 사유에 다시 걸려 예산이 소진된다(OFFICIAL-004: 1차 괄호 · 2차 테이블 참조 → 무응답).
+       구조 게이트(다중문·SELECT 여부·완결성·EXPLAIN)만 조기 반환한다 — 이게 깨져 있으면 뒤 검사가 무의미하다.
+    """
     s = sql.strip().rstrip(";")
+    errs: list[str] = []
     if ";" in s:
         return "다중 문장 금지"
     if not re.match(r"^\s*(?:select|with)\b", s, re.I):
@@ -135,8 +141,9 @@ def validate_sql(sql: str) -> str | None:
         while prev != seg:                                # 괄호 안쪽부터 반복 제거 → 최상위만 남긴다
             prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
         if re.search(r"\sOR\s", seg, re.I) and re.search(r"\sAND\s", seg, re.I):
-            return ("WHERE 최상위에 괄호 없는 OR 와 AND 가 섞여 있다 — AND 가 먼저 묶여 "
-                    "필터가 마지막 OR 가지에만 걸린다. OR 가지 전체를 괄호로 감싸라: (A OR B) AND 필터")
+            errs.append("WHERE 최상위에 괄호 없는 OR 와 AND 가 섞여 있다 — AND 가 먼저 묶여 "
+                        "필터가 마지막 OR 가지에만 걸린다. OR 가지 전체를 괄호로 감싸라: (A OR B) AND 필터")
+            break
     used = {t for t in TABLES if re.search(rf"\b{t}\b", s, re.I)}
     if not used:
         m = re.search(r"\bfrom\s+([\w.]+)", s, re.I)
@@ -144,9 +151,10 @@ def validate_sql(sql: str) -> str | None:
     # FROM/JOIN 에 등장하는 모든 테이블이 마스터 4 + 외부 ext_* 안에 있어야 한다 (교차질의 조인 허용, 그 외 차단)
     ctes = {n.lower() for n in re.findall(r"\b([A-Za-z_]\w*)\s+as\s*\(", s, re.I)}  # WITH 별칭은 테이블이 아니다
     declared = {t.lower() for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", s, re.I)} | ctes
-    for t in declared - ctes:
+    for t in sorted(declared - ctes):
         if t not in TABLES and t not in EXT_TABLES:
-            return f"허용 테이블 밖: {t}"
+            errs.append(f"허용 테이블 밖: {t}")
+            break
     # 🔴 FROM/JOIN 에 없는 테이블을 `테이블.컬럼` 으로 참조하면 실행 시 OperationalError 가 난다.
     #    2026-08-31 서버 실측 — "Li Auto를 담은 국내 ETF":
     #      SELECT pd_nm FROM domestic_etfs WHERE TRIM(ext_etf_holdings.ticker)='LI' … → 실행 실패.
@@ -154,9 +162,10 @@ def validate_sql(sql: str) -> str | None:
     #    여기서 기각하면 재생성 1회(R-4)가 사유를 받아 JOIN 을 붙일 기회를 얻는다.
     #    별칭(`d.pd_nm`)은 걸리지 않는다 — 아는 테이블 이름일 때만 본다.
     known = set(TABLES) | set(EXT_TABLES)
-    for qual in {m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}:
+    for qual in sorted({m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}):
         if qual in known and qual not in declared:
-            return f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)"
+            errs.append(f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)")
+            break
     # 🔴 ext_* 는 조인 짝이 정해져 있다 — 다른 마스터와 섞으면 의미가 틀린 조인이 된다.
     #    2026-09-01 서버 실측(공식 예시 #3): domestic_etfs 를 ext_fund_holdings(펀드 보유)와
     #    d.pd_itm_no = h.grp 로 조인 — 컬럼은 각자 실존해서 수식자 검사를 통과했지만 키가 남남이라 0행.
@@ -164,8 +173,9 @@ def validate_sql(sql: str) -> str | None:
     #    **다른 마스터가 선언돼 있는데 제 짝이 없을 때만** 기각한다.
     for ext, master in _EXT_PAIR.items():
         if ext in declared and master not in declared and (declared & set(TABLES)):
-            return (f"{ext} 의 조인 짝은 {master} 다 — 다른 마스터와 조인 금지"
-                    f" (교차질의 조인 키 목록의 짝을 그대로 쓴다)")
+            errs.append(f"{ext} 의 조인 짝은 {master} 다 — 다른 마스터와 조인 금지"
+                        f" (교차질의 조인 키 목록의 짝을 그대로 쓴다)")
+            break
     # 🔴 선언된 테이블이어도 **그 테이블에 없는 컬럼**을 수식자로 붙이면 실행이 깨진다.
     #    2026-08-31 서버 실측 — "하이닉스가 가장많이 편입된 상품":
     #      SELECT ... SUM(domestic_etfs.weight_pct) FROM domestic_etfs JOIN ext_etf_holdings ...
@@ -179,23 +189,25 @@ def validate_sql(sql: str) -> str | None:
             if cols and col not in cols:
                 owner = next((o for o, c in _COLUMNS_OF.items() if col in c), None)
                 hint = f" ({owner} 컬럼이다)" if owner else ""
-                return f"{t} 에 없는 컬럼: {col}{hint}"
+                errs.append(f"{t} 에 없는 컬럼: {col}{hint}")
+                break
     # KG 1R R3 — 구조 검증 일반화: ③ 템플릿 자리표시자 잔재(`<코드>` 를 리터럴로 복사 — KG-012 `'%,<CHN>,%'` 0행 "0개") ·
     #    비-SQLite 토큰(`TOP n` — KG-028 OperationalError "오류"). 재생성 사유로 돌려준다.
     m_tpl = re.search(r"<[A-Za-z가-힣_][A-Za-z가-힣_ ]*>", s)
     if m_tpl:
-        return f"템플릿 자리표시자 {m_tpl.group(0)} 잔재 — 규칙의 <…> 는 실제 값으로 치환해 쓴다"
+        errs.append(f"템플릿 자리표시자 {m_tpl.group(0)} 잔재 — 규칙의 <…> 는 실제 값으로 치환해 쓴다")
     if re.search(r"\bselect\s+(?:distinct\s+)?top\s+\d+", s, re.I):
-        return "SQLite 문법이 아니다(TOP n) — LIMIT n 을 쓴다"
+        errs.append("SQLite 문법이 아니다(TOP n) — LIMIT n 을 쓴다")
     if not re.search(r"\blimit\s+\d+", s, re.I):
-        return "LIMIT 누락"
+        errs.append("LIMIT 누락")
     # KG 4R G6 — **실행 전에 파싱한다.** 여기까지 정규식 검사를 다 통과해도 문법이 깨져 있으면 실행 예외가
     #    "데이터 조회 중 오류가 발생해 확인할 수 없습니다" 로 사용자에게 나간다 — 오거절보다 나쁜 표면이다.
     #    Z13 실측: `… prvo_pbff_desc = '공모') UNION ALL (SELECT …` 괄호 불균형이 "[Guard] SQL 검사 통과" 뒤
     #    OperationalError: near ")" 로 죽었다. complete_statement 로 미완결문을, EXPLAIN 드라이런으로 문법을 잡고
     #    재생성 피드백으로 돌린다(실행은 하지 않는다 — EXPLAIN 은 계획만 낸다).
     if not sqlite3.complete_statement(s + ";"):
-        return "SQL 이 완결된 한 문장이 아니다(괄호·따옴표 불균형) — 괄호 짝과 따옴표를 맞춰 한 문장으로 낸다"
+        errs.append("SQL 이 완결된 한 문장이 아니다(괄호·따옴표 불균형) — 괄호 짝과 따옴표를 맞춰 한 문장으로 낸다")
+        return " / ".join(errs)          # 미완결문에 EXPLAIN 을 태우면 사유가 중복된다
     try:
         con = connect_readonly()
         try:
@@ -207,10 +219,10 @@ def validate_sql(sql: str) -> str | None:
         #    더 나은 사유(어느 테이블 컬럼인지)를 내는 자리이고, 스키마가 다른 환경에서 정답 SQL 을 버릴 수 있다
         #    (같은 목적 가드 중복 0 — 2026-09-02 실측: ext_etf_holdings 별칭 JOIN 이 오탐 기각됐다).
         if re.search(r'near "|unrecognized token|incomplete input|syntax error', str(e), re.I):
-            return f"SQL 문법 오류(실행 전 파싱): {e}"
+            errs.append(f"SQL 문법 오류(실행 전 파싱): {e}")
     except sqlite3.Error:
         pass                     # 파서 밖 오류(연결 등)로 정상 SQL 을 막지 않는다
-    return None
+    return " / ".join(errs) if errs else None
 
 
 _WHERE_AGG = re.compile(r"\bOVER\s*\(|\b(?:SUM|COUNT|AVG|MIN|MAX|TOTAL|GROUP_CONCAT|ROW_NUMBER|RANK|DENSE_RANK)\s*\(", re.I)
@@ -242,12 +254,82 @@ def _strip_subselects(text: str) -> str:
 def where_window_or_aggregate(sql: str) -> str | None:
     """6R P (5R V5) — WHERE 최상위에 쓴 윈도우·집계 함수(`WHERE RANK() OVER(...) <= 5` · `WHERE COUNT(*) > 3`).
     SQLite 는 실행 시 'misuse of window function' / 'misuse of aggregate' 로 죽는다 — 실행 전에 잡아 재생성 1회를 준다.
-    서브쿼리 안의 집계는 제외. 걸린 함수 표기를 돌려주고, 없으면 None."""
-    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-    if not m_w:
+    서브쿼리 안의 집계는 제외. 걸린 함수 표기를 돌려주고, 없으면 None.
+
+    🔴 10R KG 부류 Q — WHERE 추출을 `_WHERE_SEG`(종료어에 **UNION 포함**)로 통일한다. 종전 정규식은 종료어에
+       UNION 이 없어 `… WHERE … UNION ALL SELECT '국내 ETF', COUNT(*) FROM …` 에서 **둘째 가지의 SELECT 목록**까지
+       WHERE 로 읽고 `COUNT(` 를 오탐 기각했다(X8·X9·X15·KG-025·KG-026 오거절 5건). UNION 가지는 각각 독립 스코프다.
+    """
+    for m_w in _WHERE_SEG.finditer(sql):
+        m = _WHERE_AGG.search(_strip_subselects(m_w.group(1)))
+        if m:
+            return m.group(0).strip()
+    return None
+
+
+# ── 10R gold N1 — 최상위 OR/AND 혼용은 기각이 아니라 보정한다 ───────────────
+def _split_top_level(where: str) -> list[str] | None:
+    """WHERE 본문을 최상위 AND/OR 로 가른 [피연산자, 연산자, 피연산자, …]. 최상위 연산자가 없으면 None.
+    괄호·문자열 리터럴 안은 건드리지 않는다(`split_conjuncts` 와 같은 주사 방식, OR 도 함께 본다)."""
+    out, depth, buf, i, in_q = [], 0, [], 0, False
+    while i < len(where):
+        ch = where[i]
+        if ch == "'":
+            in_q = not in_q
+        elif not in_q:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif depth == 0:
+                for op in (" AND ", " OR "):
+                    if where[i:i + len(op)].upper() == op:
+                        out += ["".join(buf).strip(), op.strip().upper()]
+                        buf, i = [], i + len(op)
+                        break
+                else:
+                    buf.append(ch)
+                    i += 1
+                continue
+        buf.append(ch)
+        i += 1
+    tail = "".join(buf).strip()
+    if not out or not tail:
         return None
-    m = _WHERE_AGG.search(_strip_subselects(m_w.group(1)))
-    return m.group(0).strip() if m else None
+    return out + [tail]
+
+
+def ensure_or_group_parens(sql: str) -> tuple[str, bool]:
+    """최상위에 괄호 없이 섞인 `A AND B OR C AND D` 를 `A AND (B OR C) AND D` 로 재괄호화. (SQL, 보정했는지)
+
+    🔴 10R gold N1 — 8R 이 넣은 괄호 검사(`validate_sql`)가 **우리가 근거문서에 실은 규칙 원문**을 기각했다:
+       `ontology/enums/public_funds.yaml:949 자산군_주식형` 이 바깥 괄호 없이 `A OR (B)` 로 정의돼 있고, 플래너가
+       그대로 싣고 HCX 가 그대로 베껴 1·2차 모두 기각 → FND-009 무응답(회귀) · OFFICIAL-004 1차 소진.
+       자연어 피드백으로는 못 고친다(모델이 베낀 원본이 우리 문장이다). yaml 을 고치지 않고 **런타임이 접는다.**
+    규칙: OR 를 AND 보다 강하게 묶는다 = 가드 사유 문구("OR 가지 전체를 괄호로 감싸라: (A OR B) AND 필터")의 기계 구현.
+    괄호가 이미 있어 최상위에 OR 와 AND 가 섞이지 않았으면 불개입 — 의도적인 `(A AND B) OR (C AND D)` 는 안 뒤집는다.
+    체인 맨 앞에서 돈다: 뒤의 모든 가드가 `split_conjuncts`(최상위 AND 분해)를 전제하므로 여기서 접어야 안전하다.
+    """
+    out, changed = [], False
+    last = 0
+    for m_w in _WHERE_SEG.finditer(sql):
+        parts = _split_top_level(m_w.group(1))
+        if not parts or "OR" not in parts[1::2] or "AND" not in parts[1::2]:
+            continue
+        # OR 로 이어진 최대 연속 구간을 괄호로 묶는다 → 최상위에는 AND 만 남는다
+        groups, cur = [], [parts[0]]
+        for op, operand in zip(parts[1::2], parts[2::2]):
+            if op == "OR":
+                cur.append(operand)
+            else:
+                groups.append(cur)
+                cur = [operand]
+        groups.append(cur)
+        body = " AND ".join(g[0] if len(g) == 1 else "(" + " OR ".join(g) + ")" for g in groups)
+        out.append(sql[last:m_w.start(1)] + " " + body + " ")
+        last = m_w.end(1)
+        changed = True
+    return ("".join(out) + sql[last:], True) if changed else (sql, False)
 
 
 def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
@@ -256,13 +338,16 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
     KG 1R R3 ④ 라우팅 대상 밖 테이블(KG-028: 펀드 질의에 domestic_etfs JOIN) — 교차 질의가 아니고 라우터가 정한 테이블이 있으면
     그 밖의 마스터 사용은 기각한다(사후 보정이 FROM 으로 tables 를 확정한 뒤라 단일 테이블만 남는다).
     """
-    err = validate_sql(sql) or forbidden_column_use(sql)
-    if not err:
-        agg = where_window_or_aggregate(sql)
-        if agg:
-            err = (f"WHERE 절에 윈도우·집계 함수 사용({agg}) — 실행 시 misuse 오류. 집계 조건은 HAVING 으로, "
-                   "순위·윈도우 조건은 서브쿼리(WITH … AS (SELECT …, RANK() OVER(…) rk …) SELECT … WHERE rk <= n) 로 옮긴다")
-    if not err and tables:
+    # 🔴 10R gold N2 — **위반을 전부 모아 한 번에 돌려준다.** 첫 사유에서 return 하면 재생성 1회가 사유 하나만
+    #    고치고 다음 가드에 다시 걸려 예산이 소진된다(OFFICIAL-004 실측: 1차 괄호 가드 · 2차 테이블 참조로
+    #    서로 다른 두 가드가 재생성 1회를 나눠 쓰고 무응답). 가드를 늘릴수록 이 곱셈이 나빠진다.
+    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql)) if e]
+    agg = where_window_or_aggregate(sql)
+    if agg:
+        errs.append(f"WHERE 절에 윈도우·집계 함수 사용({agg}) — 실행 시 misuse 오류. 집계 조건은 HAVING 으로, "
+                    "순위·윈도우 조건은 서브쿼리(WITH … AS (SELECT …, RANK() OVER(…) rk …) SELECT … WHERE rk <= n) 로 옮긴다")
+    err = None
+    if tables:
         # 6R F3 — 테이블 범위를 컬럼 검사 **앞**에 둔다: 잘못된 테이블의 컬럼을 '없는 컬럼' 이라 하면 재생성이 컬럼만 고친다.
         # KG 2R N1 — 교차 판정이어도 허용 집합은 **라우터가 정한 마스터 + 그 짝 ext_***. `not cross` 로 검사를 끄면 펀드 질의에
         #    domestic_etfs + ext_etf_holdings 가 통과해 엉뚱한 ETF 종목이 답으로 나간다(KG-028 'IBK K-AI반도체코어테크' 57.12% 환각).
@@ -272,22 +357,29 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
         if outside:
             err = (f"라우팅 대상({', '.join(tables)} + 짝 ext_*) 밖 테이블 사용: {', '.join(outside)} — "
                    "질문의 상품군 테이블(과 그 외부 수집 테이블)로만 쓴다")
-    if not err:
+    if err:
+        # 6R F3 — 테이블 범위가 틀렸으면 그 테이블의 컬럼 검사는 잡음이다(재생성이 컬럼만 고친다). 여기서 끊는다.
+        errs.append(err)
+    else:
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
         if unk:
-            err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
-    if not err:
+            errs.append("스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx))
         # 🔴 JOIN 의 모호 컬럼 — 실행 오류는 재생성 경로가 없어 그대로 "조회 중 오류" 가 나간다
         amb = guard.ambiguous_columns(sql, ctx)
         if amb:
-            err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
-                   + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
-    if not err:
+            errs.append("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
+                        + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
         bad = guard.check_code_literals(sql, ctx)
         if bad:
-            err = "코드 컬럼 리터럴 검증 실패: " + "; ".join(bad[:3]) + " — 코드는 'KG 개체 매핑' 의 값만 쓴다. 매핑이 없으면 지어내지 말고 REFUSE: 로 답한다"
-    return err
+            errs.append("코드 컬럼 리터럴 검증 실패: " + "; ".join(bad[:3])
+                        + " — 코드는 'KG 개체 매핑' 의 값만 쓴다. 매핑이 없으면 지어내지 말고 REFUSE: 로 답한다")
+    # 재생성 프롬프트가 희석되지 않게 3사유까지만. 번호를 붙여 "전부 고쳐라" 를 명시한다.
+    if not errs:
+        return None
+    return errs[0] if len(errs) == 1 else \
+        "아래 " + str(min(len(errs), 3)) + "가지를 **한 번에** 고친다 — " + \
+        " / ".join(f"({i}) {e}" for i, e in enumerate(errs[:3], 1))
 
 
 def ensure_limit(sql: str) -> tuple[str, bool]:
@@ -4845,6 +4937,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
        답변기가 27행을 조회하고도 "정보를 찾을 수 없습니다" 로 버렸다.
        가드를 한 곳에 모아 두 경로가 같은 보정을 받게 한다.
     """
+    # 🔴 10R gold N1 — **체인 맨 앞.** 뒤의 모든 가드가 `split_conjuncts`(최상위 AND 분해)를 전제하므로
+    #    최상위 bare OR 를 먼저 접어야 그 가드들이 조건을 잘못 자르지 않는다.
+    sql, or_fixed = ensure_or_group_parens(sql)
+    if or_fixed:
+        step("[Guard] 최상위 OR 재괄호화 — 괄호 없이 섞인 `A AND B OR C` 를 `A AND (B OR C)` 로 보정 "
+             "(10R gold N1 · FND-009 실측: 기각당한 문장이 근거문서에 실은 우리 규칙 원문 enums:949 라 "
+             "자연어 피드백으로는 1·2차 모두 못 고쳐 무응답)")
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
         step(f"[Guard] 만기 하한 보정 — mat_dt >= {BUYABLE_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외 — 구매가능 판정일 8/24, as-of 8/22 와 분리)")

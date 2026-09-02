@@ -110,6 +110,51 @@ def _owner_column(index: dict, table: str, column: str, literal: str) -> str:
 
 
 _QUALIFIED = re.compile(r"[A-Za-z_]\w*\s*\.\s*([A-Za-z_]\w*)")
+_UNION = re.compile(r"^union(?:\s+all)?\b", re.I)
+_SUBSELECT = re.compile(r"\(\s*select\b", re.I)
+
+
+def sql_scopes(sql: str) -> list[str]:
+    """SQL 을 **독립 스코프**(UNION 가지 · 괄호 서브쿼리)로 가른다.
+
+    🔴 10R KG 부류 Q — 문장 전역 검사는 스코프를 넘어 매칭한다: `FROM ext_fund_page WHERE itm_no IN
+       (SELECT itm_no FROM public_funds …)` 는 SQLite 에서 모호하지 않은데 "테이블 2개 + 공유 컬럼 itm_no" 로
+       판정돼 기각됐고(X8·X9·X15·KG-025·KG-026 오거절), UNION 둘째 가지도 첫 가지의 WHERE 로 읽혔다.
+    """
+    body = _SQL_STR.sub("''", sql)
+    scopes, cur, depth, i = [], [], 0, 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "(":
+            if depth == 0 and _SUBSELECT.match(body[i:]):
+                # 괄호 서브쿼리 — 통째로 떼어 별도 스코프로 (재귀적으로 다시 가른다)
+                d, j = 0, i
+                while j < len(body):
+                    if body[j] == "(":
+                        d += 1
+                    elif body[j] == ")":
+                        d -= 1
+                        if d == 0:
+                            break
+                    j += 1
+                scopes += sql_scopes(body[i + 1:j])
+                cur.append(" ")
+                i = j + 1
+                continue
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and (i == 0 or not body[i - 1].isalnum() and body[i - 1] != "_"):
+            m = _UNION.match(body[i:])
+            if m:
+                scopes.append("".join(cur))
+                cur = []
+                i += m.end()
+                continue
+        cur.append(ch)
+        i += 1
+    scopes.append("".join(cur))
+    return [s for s in scopes if s.strip()]
 
 
 def ambiguous_columns(sql: str, ctx: RuntimeContext) -> list[str]:
@@ -118,29 +163,30 @@ def ambiguous_columns(sql: str, ctx: RuntimeContext) -> list[str]:
     2026-08-31 밤 실측(설정일 질의): public_funds JOIN ext_fund_page 에서 SELECT itm_no 가
     양쪽에 있어 "ambiguous column name: itm_no" 로 죽었다. 실행 오류는 재생성 경로가 없어
     그대로 "조회 중 오류" 응답이 나간다 — 실행 전에 잡아 재생성 1회를 준다.
+    🔴 10R KG 부류 Q — 판정 단위는 문장이 아니라 **스코프**다(`sql_scopes`).
     """
-    body = _SQL_STR.sub("''", sql)
-    used = sql_tables(body)
-    if len(used) < 2:
-        return []
     schema = getattr(ctx, "schema", {}) or {}
-    owners: dict[str, set] = {}
-    for t in used:
-        for c, *_ in (schema.get(t) or ()):
-            owners.setdefault(c.lower(), set()).add(t)
-    shared = {c for c, ts in owners.items() if len(ts) > 1}
-    if not shared:
-        return []
-    aliases = {a.lower() for a in _AS_ALIAS.findall(body)}
-    out = []
-    for c in sorted(shared):
-        if c in aliases:
+    out: list[str] = []
+    for body in sql_scopes(sql):
+        used = sql_tables(body)
+        if len(used) < 2:
             continue
-        # 🔴 이름이 아니라 **등장 위치**로 판정한다 — `public_funds.itm_no` 가 한 번 있다고 해서
-        #    SELECT 의 맨 itm_no 가 한정된 것은 아니다(앞의 점 없는 등장이 곧 모호 컬럼이다).
-        if re.search(rf"(?<![\w.]){c}\b", body, re.I):
-            out.append(c)
-    return out
+        owners: dict[str, set] = {}
+        for t in used:
+            for c, *_ in (schema.get(t) or ()):
+                owners.setdefault(c.lower(), set()).add(t)
+        shared = {c for c, ts in owners.items() if len(ts) > 1}
+        if not shared:
+            continue
+        aliases = {a.lower() for a in _AS_ALIAS.findall(body)}
+        for c in sorted(shared):
+            if c in aliases or c in out:
+                continue
+            # 🔴 이름이 아니라 **등장 위치**로 판정한다 — `public_funds.itm_no` 가 한 번 있다고 해서
+            #    SELECT 의 맨 itm_no 가 한정된 것은 아니다(앞의 점 없는 등장이 곧 모호 컬럼이다).
+            if re.search(rf"(?<![\w.]){c}\b", body, re.I):
+                out.append(c)
+    return sorted(out)
 
 
 _SUFFIX_NOISE = ("형", "型", "펀드", " ", "(주)")   # '(주)' — 발행사 법인 접미(2026-09-02: '한국전력공사' → '한국전력공사(주)' 유일 후보)

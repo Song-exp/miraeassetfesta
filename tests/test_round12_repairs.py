@@ -195,3 +195,31 @@ def test_rank_axis_ignores_base_population_cols():
     body = [ln.split(" | ") for ln in p._execute(out)[0].splitlines()[1:]]
     assert [r[2] for r in body] == ["387.66", "362.53", "361.3"], body
     assert [r[3] for r in body] == ["6", "4", "7"], body
+
+
+# ── P11 · 재검 ③-10·③-6 — 억원 병기도 「불일치 시 교체」 · 표시는 전부 ROUND ──
+def test_eok_display_replaced_on_mismatch():
+    """부류 Z 잔존: 「표시 열이 이미 있으면 불개입」이라 HCX 가 분모를 틀리면 가드가 자기를 껐다(9R U2·Y7)."""
+    wrong = ("SELECT itm_nm, fd_nast_suma, CAST(fd_nast_suma/1000000 AS INTEGER) || '억원' AS \"순자산_억원\" "
+             "FROM public_funds LIMIT 5")
+    out, ok = p.ensure_amount_eok_columns(wrong)
+    assert ok and "/1000000 " not in out and "CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER)" in out, out
+    assert p.ensure_amount_eok_columns(out)[1] is False, "멱등이 아니다"
+
+    # 분모·단위가 확정식과 같으면 종전대로 불개입
+    right = out
+    assert p.ensure_amount_eok_columns(right)[1] is False
+
+
+def test_eok_rounding_is_consistent_across_paths():
+    """③-6: 같은 금액을 T3 은 331,098(ROUND) · T2·V5 는 331,097(절사)로 적었다 — 경로 무관 ROUND."""
+    con = connect_readonly()
+    total = con.execute("SELECT SUM(fd_nast_suma) FROM public_funds WHERE sale_yn='판매중' "
+                        "AND prvo_pbff_desc='공모' AND or_co_xtn_itt_cd='00040010'").fetchone()[0]
+    bare, _ = p.ensure_amount_eok_columns("SELECT fd_nast_suma FROM public_funds LIMIT 1")
+    assert "ROUND(" in bare, bare
+    agg, _ = p.ensure_amount_eok_columns("SELECT SUM(fd_nast_suma) FROM public_funds LIMIT 1")
+    assert "ROUND(" in agg, agg
+    assert round(total / 100000000) == int(con.execute(
+        "SELECT CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) FROM public_funds "
+        "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' AND or_co_xtn_itt_cd='00040010'").fetchone()[0])

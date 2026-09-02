@@ -1308,24 +1308,37 @@ def ensure_amount_eok_columns(sql: str) -> tuple[str, bool]:
     head = sql[:frm.start()]
     existing = [it for it in _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I))
                 if _DISPLAY_UNIT.search(it)]
+    # 🔴 11R 재검 ③-10 — 부류 Z 형태(「있으면 불개입」)를 **「불일치 시 교체」**로 바꾼다. 다른 여섯 확정식
+    #    가드는 이미 이 형태다(심사관이 코드로 전수 확인). 9R U2·Y7 이 정확히 이 형태에서 터졌다:
+    #    HCX 가 분모·단위를 틀리게 쓰면 가드가 자기를 껐다. 확정식과 분모·단위가 다른 표시 열은 걷어낸다.
+    stale = [it for it in existing
+             if _AMOUNT_COL_RX.search(it) and not (f"/{div}" in it.replace(" ", "") and f"'{unit}'" in it)]
+    for it in stale:
+        head = head.replace(it, "", 1)
+        existing.remove(it)
+    head = re.sub(r",\s*,", ",", head)
+    head = re.sub(r",\s*(?=\bFROM\b|$)", " ", head.rstrip(), flags=re.I)
     add = []
     for expr, header, col in items:
         if any(col in e or header in e for e in existing):
             continue
         if header == col or header == expr and expr.lower() == col.lower():
             name = f"순자산_{unit}"
-            e = f"CAST({col}/{div} AS INTEGER) || '{unit}' AS \"{name}\""
+            # 🔴 11R 재검 ③-6 — 억원 표시는 **전부 ROUND** 다. 종전엔 이 분기만 절사(CAST(x/1e8))라
+            #    같은 33,109,784,036,579원을 경로에 따라 331,097(절사)/331,098(ROUND)로 달리 적었다(T3 vs T2·V5).
+            e = f"CAST(ROUND({col}/{div}.0) AS INTEGER) || '{unit}' AS \"{name}\""
         elif header == expr:
             name = f"순자산합계_{unit}" if re.match(r"(?i)sum\s*\(", expr) else f"{col}_{unit}"
             e = f"CAST(ROUND(({expr})/{div}.0) AS INTEGER) || '{unit}' AS \"{name}\""
         else:
             name = f"{header}_{unit}"
             e = f"CAST(ROUND(({expr})/{div}.0) AS INTEGER) || '{unit}' AS \"{name}\""
-        if name not in sql:
+        if name not in head:                       # 걷어낸 표시 열은 head 에서 이미 빠졌다(멱등 판정도 head 기준)
             add.append(e)
-    if not add:
+    if not add and not stale:
         return sql, False
-    return head.rstrip() + ", " + ", ".join(add) + " " + sql[frm.start():], True
+    new = head.rstrip() + (", " + ", ".join(add) if add else "") + " " + sql[frm.start():]
+    return (new, True) if new != sql else (sql, False)
 
 
 # 결과에 다시 실을 필요가 없는 컬럼 — 기본모수·식별자·이미 다루는 축·결측 판정용
@@ -1731,7 +1744,7 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
                 #    코어테크 본체 10클래스 합 2조9,148억 vs 최대 클래스 7,348억 · 삼성MMF법인제1호 4클래스 12.4조/1,051억/…).
                 #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
                 new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
-                        "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\""]
+                        "CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\""]
             elif col in _FUND_RETURN_COLS or col in _class_dependent_cols():
                 # 6R F2 — 클래스별로 값이 다른 컬럼(수익률·기준가·보수…)은 단일 MAX 로 대표하지 않는다: MIN~MAX 범위. 종속 여부는 DB 실측
                 #   (다클래스 펀드에서 값이 갈리는 비율)로 판정 — X25: 종류A 라벨에 종류F 기준가가 붙었다
@@ -3454,7 +3467,7 @@ def ensure_fund_manager_ranking(sql: str, question: str, notes: list | None = No
     where = " AND ".join(["p.sale_yn = '판매중'", "p.prvo_pbff_desc = '공모'"] + extra)
     return (f"SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(e.mgmt_co_nm) AS \"운용사명\", "
             f"COUNT(DISTINCT {key}) AS \"펀드수\", COUNT(*) AS \"클래스수\", "
-            f"CAST(SUM(p.fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\" "
+            f"CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" "
             f"FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no "
             f"WHERE {where} GROUP BY 1 ORDER BY {order} LIMIT {k}"), True
 

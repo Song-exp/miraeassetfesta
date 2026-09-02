@@ -1321,7 +1321,7 @@ def test_fund_manager_ranking_template(ctx):
     body = [ln.split(" | ") for ln in rows.splitlines()[1:]]
     # 10R ③-6 — 표시 열은 천 단위 구분자까지 완성해 내보낸다
     assert n == 3 and [(b[0], b[1], b[4]) for b in body] == [("00080008", "미래에셋자산운용", "377,707억원"),
-                                                             ("00040010", "삼성자산운용", "331,097억원"),
+                                                             ("00040010", "삼성자산운용", "331,098억원"),   # 11R ③-6: 억원 표시는 전부 ROUND(절사 아님)
                                                              ("00040035", "KB자산운용", "278,196억원")]
     ans = a(chained, rows, n)
     assert ans and ans.startswith("조회 결과 순자산 상위 3개 운용사입니다") and "1. 미래에셋자산운용(00080008): 순자산 377,707억원 · 펀드 823개(클래스 2,066개)" in ans

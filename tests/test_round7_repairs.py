@@ -265,7 +265,8 @@ def test_axis_clause_preserved(ctx):
     # '기타'·'MMF'·'특별자산' 같은 보통명사 값은 확정식 대상이 아니다 ('…형' 3자 이상만)
     assert f(base, "기타 운용사 알려줘")[1] is False
 
-    # 전 체인 — gold: 미래에셋 69,336(142펀드) · NH-Amundi 46,152(28) · 신영 41,914(18)
+    # 전 체인 — gold: 미래에셋 69,336(142펀드) · NH-Amundi 46,152(28) · 신영 41,915(18)
+    #   11R 재검 ③-6 — 억원 표시 열은 경로 무관 ROUND 로 통일(T3 331,098 vs T2·V5 331,097 불일치 해소)
     class P:
         def plan_sql(self, q, g):
             return base
@@ -274,7 +275,7 @@ def test_axis_clause_preserved(ctx):
             return "x"
 
     r = answer_question("T-Y7", "주식형 펀드 순자산이 가장 큰 운용사 3곳 알려줘", planner=P(), ctx=ctx)
-    for frag in ("69,336억원", "펀드 142개", "46,152억원", "41,914억원"):
+    for frag in ("69,336억원", "펀드 142개", "46,152억원", "41,915억원"):
         assert frag in r.answer, (frag, r.answer)
     assert "377,707" not in r.answer                     # 6R 은 전체 랭킹(V5)을 그대로 냈다
 

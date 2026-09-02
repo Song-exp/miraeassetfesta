@@ -178,3 +178,20 @@ def test_lookup_class_only_ignores_id_cols():
     ans = p._lookup_answer(sql, rows, n, "미래에셋차이나솔로몬", [])
     assert ans and ans.count("\n- ") == n, ans        # 받은 행이 전부 답변에 실린다
     assert "클래스 7개" in ans and "클래스 8개" in ans, ans
+
+
+# ── P10 · 재검 ③-3 (부류 V′) — 랭킹 축 판정에서 기본모수 컬럼은 뺀다 ──
+def test_rank_axis_ignores_base_population_cols():
+    """U14: 축이 {or_co_xtn_itt_cd, prvo_pbff_desc} 라 정본 교체를 못 하고 무음 종료했다.
+
+    심사관 gold: 한화2.2배 6 · NH-Amundi코리아2배 4 · 삼성KOSPI200 제1호 7.
+    """
+    s = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm FROM public_funds "
+         "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+         "GROUP BY or_co_xtn_itt_cd, prvo_pbff_desc ORDER BY SUM(fd_yr1_ern_r) DESC LIMIT 3")
+    s, _ = p.ensure_fund_return_error_exclusion(s)
+    out, ok = p.ensure_fund_rank_representative(s, "1년 수익률이 가장 높은 공모펀드 3개")
+    assert ok and f"GROUP BY {p._FUND_GROUP_EXPR}" in out and "SUM(" not in out, out
+    body = [ln.split(" | ") for ln in p._execute(out)[0].splitlines()[1:]]
+    assert [r[2] for r in body] == ["387.66", "362.53", "361.3"], body
+    assert [r[3] for r in body] == ["6", "4", "7"], body

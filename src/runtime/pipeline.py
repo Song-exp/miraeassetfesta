@@ -1023,7 +1023,11 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
         #    목록 경로의 축은 재검 ③-7·③-11(리드 판단 대기)이라 이 라운드에서 건드리지 않는다.
         gexpr = m_grp.group(1).strip()
         if gexpr not in (_FUND_GROUP_EXPR, _FUND_KEY_EXPR):
-            gcols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", gexpr)} & set(_fund_col_types())
+            # 🔴 11R 재검 ③-3 (부류 V′) — **축 판정에서 기본모수 컬럼은 뺀다.** 전 행이 같은 값이라 축으로서
+            #    정보가 0이다. U14 실측: 축이 {or_co_xtn_itt_cd, prvo_pbff_desc} 라 ⊆ _FUND_ID_COLS 가 깨져
+            #    정본 교체를 못 하고 폴백으로 갔다가 `_wrap_sort_col` 이 False 를 돌려 가드가 통째로 비켜갔다
+            #    (트레이스에 마커도 안 남는 무음 종료). 빼고 나면 {or_co_xtn_itt_cd} 라 정본 펀드키 교체가 걸린다.
+            gcols = ({w.lower() for w in re.findall(r"[A-Za-z_]\w*", gexpr)} & set(_fund_col_types())) - set(_BASE_STRICT)
             if not gcols or not gcols <= _FUND_ID_COLS:
                 # 축을 못 읽었거나(위치 표기) 펀드 식별 축이 아니다 — 종전 동작(정렬 컬럼만 감싼다)
                 if not re.search(r"\bor_co_xtn_itt_cd\b", gexpr, re.I):
@@ -1057,6 +1061,7 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
         head = head.rstrip() + ", " + ", ".join(add) + " "
     if in_func:
         tail = _wrap_order_by_col(tail, col, agg)
+    tail, _ = _reagg_class_axis(tail, col, agg)   # ORDER BY SUM(수익률) — 정렬 축에도 같은 규칙(U14)
     new = _class_count_off_value_predicate(head + tail, col, agg)
     return (new, True) if new != orig else (sql, False)          # 멱등
 
@@ -1107,6 +1112,20 @@ def _insert_having(rest: str, conds: list[str]) -> str:
     return rest[:at].rstrip() + " HAVING " + " AND ".join(conds) + " " + rest[at:]
 
 
+def _reagg_class_axis(text: str, col: str, agg: str) -> tuple[str, bool]:
+    """클래스 축을 감싼 `SUM`·`AVG`·`TOTAL` 을 방향에 맞는 `MAX`/`MIN` 으로 교체. (텍스트, 바꿨는지)
+
+    🔴 11R gold ③-12 (부류 W) — 클래스 수익률·보수의 **합은 도메인상 아무 뜻이 없다.** FND-005 실측:
+       `SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)` 가 클래스 11개짜리
+       다올전단채 보수를 11배로 부풀려 top5 밖으로 밀었다(MIN 으로 바꾸면 gold 5건 완전 일치).
+    순자산(`fd_nast_suma`)만 SUM 축을 허용한다 — 이 DB 의 순자산은 클래스별 값이라 펀드 순자산이 합계다.
+    """
+    if col == "fd_nast_suma":
+        return text, False
+    m = re.search(rf"\b(sum|avg|total)\s*\((?:[^()]|\([^()]*\))*\b{col}\b", text, re.I)
+    return (text[:m.start(1)] + agg + text[m.end(1):], True) if m else (text, False)
+
+
 def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
     """SELECT 목록의 bare 정렬 컬럼을 agg(col) 로 감싼다. (새 head, 감쌌는지, 함수 인자 위치였는지)
 
@@ -1118,10 +1137,10 @@ def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
     #    통과시켜, `SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)` 가 클래스 11개짜리
     #    다올전단채 보수를 11배로 부풀려 top5 밖으로 밀었다(FND-005 — 심사관 실측: MIN 으로 바꾸면 gold 5건 완전 일치).
     #    클래스 수익률·보수의 합은 도메인상 아무 뜻이 없다. 순자산(fd_nast_suma)만 SUM 축을 허용한다.
-    m_agg = re.search(rf"\b(max|min|avg|sum|total)\s*\((?:[^()]|\([^()]*\))*\b{col}\b", head, re.I)
-    if m_agg:
-        if m_agg.group(1).upper() in ("SUM", "AVG", "TOTAL") and col != "fd_nast_suma":
-            return head[:m_agg.start(1)] + agg + head[m_agg.end(1):], True, False
+    swapped, ok = _reagg_class_axis(head, col, agg)
+    if ok:
+        return swapped, True, False
+    if re.search(rf"(?:max|min|avg|sum|total)\s*\((?:[^()]|\([^()]*\))*\b{col}\b", head, re.I):
         return head, False, False
     m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
     if not m:

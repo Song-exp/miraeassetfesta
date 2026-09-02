@@ -2054,8 +2054,8 @@ def _attr_word_map() -> tuple:
     ctx = _ev_ctx()
     by_word: dict[str, dict] = {}
     for node in ctx.kg_nodes:
-        if node.node_type != "FundAttribute" or not node.label_ko:
-            continue
+        if node.node_type != "FundAttribute" or not node.label_ko or getattr(node, "provenance", "") == "label_conflict":
+            continue                       # F1: 라벨 충돌 노드는 확정식 어휘에서도 뺀다
         raws = [raw for t, c, raw in ctx.kg_aliases.get(node.node_id, ()) if t == "public_funds"]
         if not raws:
             continue
@@ -2949,8 +2949,10 @@ def _ground(
         """노드의 매칭 키 — 정식 라벨 + 접미어 제거 + 결합 라벨 조각 + yaml 동의어 + (S1) 구상호 · 이름형 alias raw.
         (키, 경계검사여부, 종류)  종류: label | short | former | alias | syn"""
         prov = getattr(node, "provenance", "curated")
-        if prov == "derived":
-            return                         # S1: 종목명 접두 최빈값 라벨(Org_fund_* 'Asset' 등) — 코드 alias 로만 산다 (KG-001 오매칭)
+        if prov in ("derived", "label_conflict"):
+            # S1: 종목명 접두 최빈값 라벨(Org_fund_* 'Asset' 등) · F1: Region/상품군 명사와 충돌하는 FundAttribute 라벨('ETF'·'중국'·'국내')
+            #   — 코드 alias 로만 산다 (KG-001 오매칭 · KG-023/025/026 회귀)
+            return
         # FundAttribute(S3 태그 축 179노드 — '인덱스'·'배당주'…)·Country(4R I: 상품명 성분 '차이나'·'베트남')는 항상 경계 검사 조건부
         attr = node.node_type in ("FundAttribute", "Country")
         for label in node.labels:

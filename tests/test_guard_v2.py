@@ -1993,3 +1993,21 @@ def test_r6_N_standalone_token_product_keys():
     assert st("삼성코리아대표증권자투자신탁 1년 수익률 알려줘") == "삼성코리아대표증권자투자신탁"
     assert st("KB차이나그로스 펀드 위험등급 알려줘") == "KB차이나그로스"
     assert st("코어테크 펌드 1년 수익률 알려줘") == "코어테크"
+
+
+def test_r6_F1_label_conflict_excluded(ctx):
+    """6R F1 (KG-023·025·026·X8·X9·X15·X16 회귀) — Region/AssetClass/Country 라벨·상품군 명사와 같은 FundAttribute 라벨('ETF'·'중국'·'국내')은
+    빌더가 provenance=label_conflict 로 사영하고 런타임은 매칭 키·속성 확정식에서 뺀다. 정상 라벨(반도체·폐쇄형)은 불변."""
+    from src.runtime.pipeline import _ground, _attr_word_map
+
+    conflicts = {n.node_id: n.label_ko for n in ctx.kg_nodes if n.node_type == "FundAttribute" and n.provenance == "label_conflict"}
+    assert conflicts and "FundAttr_M113" in conflicts and any(v == "국내" for v in conflicts.values()) and any(v == "아시아" for v in conflicts.values())
+    assert "ETF" not in {w for w, *_ in _attr_word_map()} and "아시아" not in {w for w, *_ in _attr_word_map()}
+    ids = [h.node_id for h in _ground("ETF에 투자하는 공모펀드는 몇 개야?", ctx, ["public_funds"])[0]]
+    assert "FundAttr_M113" not in ids
+    ids = [h.node_id for h in _ground("중국에 투자하는 공모펀드와 국내 ETF는 각각 몇 개야?", ctx, ["public_funds", "domestic_etfs"])[0]]
+    assert not [i for i in ids if i.startswith("FundAttr_")] and ("Country_CHN" in ids or "Region_China" in ids)
+    ids = [h.node_id for h in _ground("아시아에 투자하는 공모펀드 중 순자산 큰 5개 알려줘", ctx, ["public_funds"])[0]]
+    assert ids == ["Region_Asia"]
+    assert "FundAttr_N144" in [h.node_id for h in _ground("반도체 테마 공모펀드는 몇 개야?", ctx, ["public_funds"])[0]]
+    assert "FundAttr_C104" in [h.node_id for h in _ground("폐쇄형 공모펀드는 몇 개야?", ctx, ["public_funds"])[0]]

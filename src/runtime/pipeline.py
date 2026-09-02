@@ -189,6 +189,43 @@ def validate_sql(sql: str) -> str | None:
     return None
 
 
+_WHERE_AGG = re.compile(r"\bOVER\s*\(|\b(?:SUM|COUNT|AVG|MIN|MAX|TOTAL|GROUP_CONCAT|ROW_NUMBER|RANK|DENSE_RANK)\s*\(", re.I)
+
+
+def _strip_subselects(text: str) -> str:
+    """괄호 균형을 세며 `(SELECT …)` 구간만 지운다 — WHERE 안의 서브쿼리 집계는 합법이라 검사 대상이 아니다."""
+    out, depth, skip_from = [], 0, None
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "(":
+            depth += 1
+            if skip_from is None and re.match(r"\(\s*select\b", text[i:], re.I):
+                skip_from = depth
+        elif ch == ")":
+            if skip_from == depth:
+                skip_from = None
+                depth -= 1
+                i += 1
+                continue
+            depth -= 1
+        if skip_from is None:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def where_window_or_aggregate(sql: str) -> str | None:
+    """6R P (5R V5) — WHERE 최상위에 쓴 윈도우·집계 함수(`WHERE RANK() OVER(...) <= 5` · `WHERE COUNT(*) > 3`).
+    SQLite 는 실행 시 'misuse of window function' / 'misuse of aggregate' 로 죽는다 — 실행 전에 잡아 재생성 1회를 준다.
+    서브쿼리 안의 집계는 제외. 걸린 함수 표기를 돌려주고, 없으면 None."""
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return None
+    m = _WHERE_AGG.search(_strip_subselects(m_w.group(1)))
+    return m.group(0).strip() if m else None
+
+
 def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
     """실행 전 기각 사유 — 문법·테이블·컬럼·모호 컬럼·라우팅 범위·코드 리터럴. None 이면 통과. 1차·재생성 공통(중복 코드 0).
 
@@ -196,6 +233,11 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
     그 밖의 마스터 사용은 기각한다(사후 보정이 FROM 으로 tables 를 확정한 뒤라 단일 테이블만 남는다).
     """
     err = validate_sql(sql) or forbidden_column_use(sql)
+    if not err:
+        agg = where_window_or_aggregate(sql)
+        if agg:
+            err = (f"WHERE 절에 윈도우·집계 함수 사용({agg}) — 실행 시 misuse 오류. 집계 조건은 HAVING 으로, "
+                   "순위·윈도우 조건은 서브쿼리(WITH … AS (SELECT …, RANK() OVER(…) rk …) SELECT … WHERE rk <= n) 로 옮긴다")
     if not err:
         # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
         unk = guard.unknown_columns(sql, ctx)
@@ -1935,7 +1977,10 @@ _MGR_COLS = ["운용사코드", "운용사명", "펀드수", "클래스수", "�
 _MGR_SKIP_CONJ = re.compile(r"\b(?:sale_yn|prvo_pbff_desc|mgmt_co_nm|mtco_nm|ext_fund_page)\b", re.I)
 
 
-def ensure_fund_manager_ranking(sql: str, question: str) -> tuple[str, bool]:
+_MGR_COMPLEX_CONJ = re.compile(r"\bOVER\s*\(|\b(?:SUM|COUNT|AVG|MIN|MAX|TOTAL|GROUP_CONCAT|ROW_NUMBER|RANK|DENSE_RANK)\s*\(|\bSELECT\b", re.I)
+
+
+def ensure_fund_manager_ranking(sql: str, question: str, notes: list | None = None) -> tuple[str, bool]:
     """운용사 집계 질의의 SQL 을 확정 템플릿으로 교체. (보정된 SQL, 보정했는지)
 
     2026-09-02 S11 재검 — HCX 가 두 번 다 **이름 컬럼 GROUP BY**(합병 코드가 갈린다) + **COUNT(*)**(순자산 질의를 오해)
@@ -1963,6 +2008,12 @@ def ensure_fund_manager_ranking(sql: str, question: str) -> tuple[str, bool]:
     if m_w:
         for c in guard.split_conjuncts(m_w.group(1)):
             if _MGR_SKIP_CONJ.search(c):
+                continue
+            if _MGR_COMPLEX_CONJ.search(c):
+                # 6R P (5R V5) — 윈도우·집계·서브쿼리 절은 템플릿의 GROUP BY 와 어긋나 실행 오류(misuse of window function)를 낸다.
+                #    부가 절은 **단순 술어(col op 리터럴 · IN · LIKE · IS NULL)** 만 옮기고 나머지는 폐기·기록한다.
+                if notes is not None:
+                    notes.append(f"부가 절 폐기(단순 술어 아님): {c.strip()[:60]}")
                 continue
             c = re.sub(r"\bpublic_funds\.", "p.", c)
             if old_alias:
@@ -3973,10 +4024,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
-    sql, mgr_fixed = ensure_fund_manager_ranking(sql, q)
+    mgr_notes: list[str] = []
+    sql, mgr_fixed = ensure_fund_manager_ranking(sql, q, mgr_notes)
     if mgr_fixed:
         step("[Guard] 운용사 집계 확정식 — 코드 GROUP BY + 최빈 이름 + 펀드수·클래스수·순자산 억원 템플릿 "
-             "(2026-09-02 S11: 이름 GROUP BY + COUNT(*) 로 순자산 질의를 오해 · mtco_nm 3라운드)")
+             "(2026-09-02 S11: 이름 GROUP BY + COUNT(*) 로 순자산 질의를 오해 · mtco_nm 3라운드)"
+             + (" · " + " · ".join(mgr_notes) if mgr_notes else ""))
     sql, ext_notes = ensure_ext_join(sql, ctx)
     if ext_notes:
         step(f"[Guard] 외부 테이블 JOIN 주입 — {' · '.join(ext_notes)} "
@@ -4271,32 +4324,45 @@ def answer_question(
 
     err = _sql_precheck(sql, ctx, tables, cross)
     violations = [] if err else guard.check_values(sql, ctx)
+    regen_used = False
+
+    def _regen(problem: str):
+        """재생성 1회 — 문제를 근거문서에 붙여 다시 요청하고 같은 가드 체인·precheck 를 태운다.
+        (sql, err, violations) 또는 REFUSE 면 그 사유 문자열. 예산(누적 12초) 밖·이미 썼으면 None. 기각·값 위반·실행 오류가 공유(중복 0)."""
+        nonlocal regen_used
+        elapsed = time.monotonic() - t0
+        if regen_used or elapsed >= REGEN_BUDGET_S:
+            return None
+        regen_used = True
+        feedback = (grounding + "\n\n# 이전 SQL 의 문제 — 아래를 고쳐 다시 SQL 한 문장만 낸다\n"
+                    f"- 이전 SQL: {sql}\n- 문제: {problem}\n"
+                    "- 값은 'KG 개체 매핑'·'범주형 컬럼의 실제 값' 목록의 표기 그대로만 쓴다. 없는 값이면 그 조건을 빼지 말고 REFUSE: 로 답한다.")
+        step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
+        raw2 = planner.plan_sql(q, feedback)
+        if raw2.strip().upper().startswith(REFUSE_PREFIX):
+            return raw2.strip()[len(REFUSE_PREFIX):].strip()
+        # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
+        #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
+        sql2, _ = normalize_date_literals(raw2)
+        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx)
+        result.sql = sql2
+        step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql2)
+        err2 = _sql_precheck(sql2, ctx, tables, cross)
+        return sql2, err2, ([] if err2 else guard.check_values(sql2, ctx))
+
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
         problem = err or "; ".join(str(v) for v in violations)
         step(f"[Guard] {'SQL 기각' if err else '값 검사 실패'} — {problem}")
-        elapsed = time.monotonic() - t0
-        if elapsed < REGEN_BUDGET_S:
-            feedback = (grounding + "\n\n# 이전 SQL 의 문제 — 아래를 고쳐 다시 SQL 한 문장만 낸다\n"
-                        f"- 이전 SQL: {sql}\n- 문제: {problem}\n"
-                        "- 값은 'KG 개체 매핑'·'범주형 컬럼의 실제 값' 목록의 표기 그대로만 쓴다. 없는 값이면 그 조건을 빼지 말고 REFUSE: 로 답한다.")
-            step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
-            raw2 = planner.plan_sql(q, feedback)
-            if raw2.strip().upper().startswith(REFUSE_PREFIX):
-                why = raw2.strip()[len(REFUSE_PREFIX):].strip()
-                step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {why}")
-                result.think_trace = "\n".join(trace)
-                result.answer = (f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
-                                 + _issuer_clarify_text(_violated_issuer(violations)))
-                return result
-            # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
-            #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
-            sql, _ = normalize_date_literals(raw2)
-            sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
-            result.sql = sql
-            step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
-            err = _sql_precheck(sql, ctx, tables, cross)
-            violations = [] if err else guard.check_values(sql, ctx)
+        rg = _regen(problem)
+        if isinstance(rg, str):
+            step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {rg}")
+            result.think_trace = "\n".join(trace)
+            result.answer = (f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {rg}"
+                             + _issuer_clarify_text(_violated_issuer(violations)))
+            return result
+        if rg is not None:
+            sql, err, violations = rg
         if err or violations:
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
             step("[Decision] 값이 DB 에 없거나 SQL 이 안전하지 않아 종료 (조건을 완화하지 않는다)")
@@ -4309,10 +4375,26 @@ def answer_question(
     try:
         rows, n = _execute(sql)
     except sqlite3.Error as e:
-        step(f"[Execute] 실행 실패 — {type(e).__name__}")
-        result.think_trace = "\n".join(trace)
-        result.answer = "데이터 조회 중 오류가 발생해 확인할 수 없습니다."
-        return result
+        # 6R P (5R V5) — 실행 오류도 재생성 1회 경로를 탄다 (예산·횟수는 기각·값 위반과 공유). 재생성 SQL 은 같은 가드·precheck 후 실행.
+        step(f"[Execute] 실행 실패 — {type(e).__name__}: {e}")
+        rg = _regen(f"실행 오류 {type(e).__name__}: {e}")
+        ok = False
+        if isinstance(rg, str):
+            step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {rg}")
+        elif rg is not None:
+            sql, err, violations = rg
+            if err or violations:
+                step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
+            else:
+                try:
+                    rows, n = _execute(sql)
+                    ok = True
+                except sqlite3.Error as e2:
+                    step(f"[Execute] 재생성 SQL 도 실행 실패 — {type(e2).__name__}: {e2}")
+        if not ok:
+            result.think_trace = "\n".join(trace)
+            result.answer = "데이터 조회 중 오류가 발생해 확인할 수 없습니다."
+            return result
     step(f"[Execute] {n}행 조회 (상한 {MAX_ROWS})")
     if n == 0:
         # 6R O — 질문에 없는 숫자로 만든 수치 비교 절이 단독 0행이면 그 절만 떼고 **1회** 재실행 (5R S2 `fd_yr3_ern_r < -100`)

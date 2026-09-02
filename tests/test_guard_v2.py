@@ -2140,3 +2140,35 @@ def test_r6_O_numeric_clause_rerun(ctx):
 
     r = answer_question("T-S2", "3년 수익률이 가장 낮은 공모펀드 5개 알려줘", planner=P(), ctx=ctx)
     assert "-100" not in r.sql and "수치 절 폐기" in r.think_trace and "확인되지 않습니다" not in r.answer
+
+
+def test_r6_P_template_simple_predicates(ctx):
+    """6R P (5R V5) — 운용사 템플릿 부가 절은 단순 술어만(윈도우·집계·서브쿼리 절은 폐기·기록) · precheck 가 WHERE 의 윈도우·집계를 기각
+    (서브쿼리 안 집계는 합법) · 실행 오류도 재생성 1회 경로."""
+    from src.runtime.pipeline import ensure_fund_manager_ranking as mgr, where_window_or_aggregate as wwa, answer_question
+
+    v5 = ("SELECT mtco_nm, COUNT(*) AS n FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+          "AND zrin_btyp_nm = '해외주식형' AND RANK() OVER (ORDER BY fd_nast_suma DESC) <= 5 GROUP BY mtco_nm ORDER BY n DESC LIMIT 5")
+    notes = []
+    out, ok = mgr(v5, "해외주식형 펀드를 가장 많이 운용하는 운용사 5곳", notes)
+    assert ok and "OVER" not in out and "zrin_btyp_nm = '해외주식형'" in out and notes and "부가 절 폐기" in notes[0]
+    assert wwa(v5) and "RANK(" in wwa(v5)
+    assert wwa("SELECT 1 FROM public_funds WHERE fd_nast_suma > 1 AND COUNT(*) > 3 LIMIT 1")
+    assert wwa("SELECT 1 FROM public_funds WHERE itm_no IN (SELECT itm_no FROM public_funds GROUP BY itm_no HAVING COUNT(*) > 1) LIMIT 1") is None
+    assert wwa("WITH r AS (SELECT itm_nm, RANK() OVER (ORDER BY fd_nast_suma DESC) rk FROM public_funds WHERE sale_yn = '판매중') SELECT * FROM r WHERE rk <= 5 LIMIT 5") is None
+
+    # 실행 오류 → 재생성 1회: 1차 SQL 은 precheck 를 통과하나 실행이 죽는(윈도우를 HAVING 에) 문장, 2차는 정상
+    calls = []
+
+    class P:
+        def plan_sql(self, q, g):
+            calls.append(g)
+            if len(calls) == 1:
+                return "SELECT itm_nm FROM public_funds WHERE sale_yn = '판매중' GROUP BY itm_nm HAVING RANK() OVER (ORDER BY MAX(fd_nast_suma)) <= 3 LIMIT 3"
+            return "SELECT itm_nm, fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' ORDER BY fd_nast_suma DESC LIMIT 3"
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-V5", "순자산 상위 펀드 3개", planner=P(), ctx=ctx)
+    assert len(calls) == 2 and "실행 오류" in calls[1] and "실행 실패" in r.think_trace and "오류가 발생해" not in r.answer

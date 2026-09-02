@@ -860,3 +860,45 @@ def test_count_answer_assembled(ctx):
     r = answer_question("T-R5", "한국투자신탁운용이 운용하는 공모펀드는 몇 개야?", planner=P(), ctx=ctx)
     assert P.calls == 0 and "[Answer] 개수 답변 기계 조립" in r.think_trace
     assert "143개(클래스 541개)" in r.answer and "00040105" in r.answer
+
+
+def test_distribution_fund_count_three_columns(ctx):
+    """R1 재검 — 분포 답변의 '건' 이 클래스 행 수인데 펀드 수 미병기(구분 누락 7번째). 가드가 COUNT(DISTINCT 펀드키)
+    3열을 붙이고 조립기가 `펀드 953개 (클래스 2,784개)` 로 옮긴다. 전체 펀드는 별도 DISTINCT(3,040 ≠ 범주 합 3,222)."""
+    from src.runtime.pipeline import ensure_fund_distribution_fund_count as f, _distribution_answer as d, answer_question
+
+    sql = ("SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*) FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (prvo_pbff_desc = '공모') GROUP BY zrin_btyp_nm LIMIT 30")
+    s, ok = f(sql)
+    assert ok and 'COUNT(DISTINCT printf' in s and '"펀드수"' in s and s.index('"펀드수"') < s.upper().index("FROM")
+    assert not f(s)[1]                                             # 멱등
+    # 비발동 — JOIN · SELECT 3항목 · GROUP BY 없음 · 둘째가 COUNT(*) 아님
+    assert not f("SELECT p.zrin_btyp_nm, COUNT(*) FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no GROUP BY 1 LIMIT 30")[1]
+    assert not f("SELECT a, b, COUNT(*) FROM public_funds GROUP BY 1, 2 LIMIT 30")[1]
+    assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1")[1]
+    assert not f("SELECT zrin_btyp_nm, AVG(fd_yr1_ern_r) FROM public_funds GROUP BY 1 LIMIT 30")[1]
+    # 조립기 3열 — 가짜 행
+    rows = 'COALESCE | COUNT(*) | 펀드수\n(미수록) | 418 | 308\nMMF | 108 | 64'
+    a = d(s, rows, 2)
+    assert a and "- (미수록): 펀드 308개 (클래스 418개)" in a and "- MMF: 펀드 64개 (클래스 108개)" in a
+    assert "2개 범주 · 클래스 526개 · 펀드 3,040개" in a               # 전체는 같은 WHERE 의 DISTINCT
+    # 2열 입력은 종전 출력 그대로 (회귀 보호)
+    a2 = d(sql, "COALESCE | COUNT(*)\n(미수록) | 418\nMMF | 108", 2)
+    assert a2 and "2개 범주, 합계 526건" in a2 and "- MMF: 108건" in a2 and "펀드" not in a2
+    # 통합 — R1 원 SQL → 19범주 · 클래스 8,969 · 펀드 3,040 · 복수 범주 182 (HCX 답변기 0회)
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return "SELECT zrin_btyp_nm, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' GROUP BY zrin_btyp_nm"
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-R1", "공모펀드는 유형별로 몇 개씩 있어?", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Guard] 분포 펀드수 병기" in r.think_trace and "[Answer] 분포 답변 기계 조립" in r.think_trace
+    assert "19개 범주 · 클래스 8,969개 · 펀드 3,040개" in r.answer
+    assert "- 해외주식형: 펀드 953개 (클래스 2,784개)" in r.answer and "- (미수록): 펀드 308개 (클래스 418개)" in r.answer
+    assert "182건은 복수 범주에 계수" in r.answer and "합(3,222)" in r.answer
+    assert sum(1 for ln in r.answer.splitlines() if ln.startswith("- ")) == 19

@@ -828,6 +828,26 @@ def ensure_group_null_label(sql: str) -> tuple[str, bool]:
     return fixed + sql[frm.start():], True
 
 
+def ensure_fund_distribution_fund_count(sql: str) -> tuple[str, bool]:
+    """분포 집계(라벨 · COUNT(*))에 COUNT(DISTINCT 펀드키) AS 펀드수 를 3번째로 병기. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R1 재검: 분포 답변의 '건' 이 **클래스 행 수**인데 클래스/펀드 구분이 답에 없다(7~9번째 재발).
+    yaml `유형별분포` 규칙("클래스 수와 펀드 수를 함께")이 조립기(2열 전용)에 내려가 있지 않았다.
+    발동 조건: ① public_funds 단독(JOIN·UNION 없음) ② GROUP BY 존재 ③ SELECT 가 정확히 (라벨, COUNT(*)) 2항목.
+    끝에 붙이므로 위치 ORDER BY 번호는 안 흔들린다. 조립기 _distribution_answer 가 3열을 받아 옮긴다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    if not re.search(r"\bgroup\s+by\b", sql, re.I) or "펀드수" in sql:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I))
+    if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+        return sql, False
+    return head.rstrip() + f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수" ' + sql[frm.start():], True
+
+
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
 # 뒤집힘은 등호만이 아니다 — 9/1 서버 실측: BETWEEN 1 AND 3 으로 우회해 높은위험 30행이
 # 조회됐다. '낮은 숫자 = 안전' 오해의 표현형 전부(=1·2, BETWEEN 1~n<6, <=3, IN(1..3))를 잡는다.
@@ -927,7 +947,11 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
         return None
     sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
     items = _split_select_items(sel)
-    if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+    if len(items) not in (2, 3) or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+        return None
+    # 3열 — ensure_fund_distribution_fund_count 가 붙인 COUNT(DISTINCT 펀드키) AS 펀드수 (2026-09-02 R1 재검)
+    with_funds = len(items) == 3
+    if with_funds and not re.match(r"\s*count\s*\(\s*distinct\b", items[2], re.I):
         return None
     body = rows.splitlines()[1:]
     if len(body) != n:
@@ -935,16 +959,38 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     pairs = []
     for ln in body:
         parts = ln.split(" | ")
-        if len(parts) != 2:
+        if len(parts) != len(items):
             return None
         try:
             cnt = int(float(parts[1]))
+            funds = int(float(parts[2])) if with_funds else None
         except ValueError:
             return None
-        pairs.append((parts[0].strip(), cnt))
-    total = sum(c for _, c in pairs)
-    lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 2026-08-22).", ""]
-    lines += [f"- {lab}: {c:,}건" for lab, c in pairs]
+        pairs.append((parts[0].strip(), cnt, funds))
+    total = sum(c for _, c, _ in pairs)
+    if not with_funds:
+        lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 {gate.DATA_CUTOFF}).", ""]
+        lines += [f"- {lab}: {c:,}건" for lab, c, _ in pairs]
+        return "\n".join(lines)
+    # 🔴 유형별 펀드 수의 단순 합(3,222)은 전체 펀드 수(3,040)가 아니다 — 실측 182펀드가 클래스별로 유형이 갈린다
+    #    (176건은 일부 클래스만 평가 미수록·6건은 실제 상이). 전체는 같은 WHERE 로 COUNT(DISTINCT 펀드키) 를
+    #    따로 세고(SQLite 1회), 차이를 문자열로 굽는다 — 모델이 산술하지 않게.
+    fund_sum = sum(f for _, _, f in pairs)
+    distinct = None
+    m_fw = _SIMPLE_FROM_WHERE.search(sql)
+    if m_fw:
+        con = connect_readonly()
+        try:
+            distinct = con.execute(f"SELECT COUNT(DISTINCT {_FUND_KEY_EXPR}) FROM {m_fw.group(1).strip()}").fetchone()[0]
+        except sqlite3.Error:
+            distinct = None
+        finally:
+            con.close()
+    head = f"조회 결과 {len(pairs)}개 범주 · 클래스 {total:,}개 · 펀드 {(distinct if distinct is not None else fund_sum):,}개 (기준일 {gate.DATA_CUTOFF})."
+    lines = [head, ""]
+    lines += [f"- {lab}: 펀드 {f:,}개 (클래스 {c:,}개)" for lab, c, f in pairs]
+    if distinct is not None and fund_sum != distinct:
+        lines += ["", f"클래스별 유형이 갈리는 펀드 {abs(fund_sum - distinct):,}건은 복수 범주에 계수되어 범주별 펀드 수의 합({fund_sum:,})은 전체 펀드 수({distinct:,})와 다릅니다."]
     return "\n".join(lines)
 
 
@@ -2300,6 +2346,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "
              "(2026-09-01 FND-038 실측: 라벨이 빈칸이라 답변기가 418행 그룹을 통째로 빠뜨렸다)")
+    sql, fdist_fixed = ensure_fund_distribution_fund_count(sql)
+    if fdist_fixed:
+        step("[Guard] 분포 펀드수 병기 — COUNT(DISTINCT 펀드키) 3열 주입 "
+             "(2026-09-02 R1 재검: '건' 이 클래스 행 수임을 답이 밝히지 못함 — 클래스/펀드 구분 누락 7번째)")
     sql, enum_fixed = ensure_enum_value_fix(sql, ctx)
     if enum_fixed:
         step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "

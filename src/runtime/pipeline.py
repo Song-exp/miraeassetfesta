@@ -656,6 +656,128 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
             f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
 
 
+def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
+    """ORDER BY 없는 펀드 목록(태그·유형 필터)을 펀드키로 묶어 순자산순 대표행으로. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R3 재검 — `LIMIT 30` 에 ORDER BY 가 없어 **임의 30행**(재현성 없음)이 나갔고, 같은 펀드(솔로몬 2호)의
+    C2·C5 가 별개 항목으로 나열됐다. 발동 조건(전부): ① public_funds 단독(JOIN·UNION·GROUP BY 없음)
+    ② SELECT 에 itm_no/itm_nm(목록 꼴)이 있고 집계·`*` 없음 ③ ORDER BY 없음(랭킹은 대표행 가드)
+    ④ 이름 필터 없음(개별 조회는 ensure_fund_lookup_grouping) ⑤ 질문에 '클래스' 없음.
+    조치: SELECT 끝에 `COUNT(*) AS 클래스수, MAX(fd_nast_suma) AS fd_nast_suma` + `GROUP BY 펀드키` +
+    `ORDER BY fd_nast_suma DESC`(실측 상위: KB중국본토A주 14클래스 1,453억 · 미래에셋차이나솔로몬1호 · 신한중국의꿈2호).
+    MAX 하나뿐인 집계라 bare 컬럼(itm_no·itm_nm·태그)은 그 MAX 클래스 행을 따라온다(SQLite).
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
+        return sql, False
+    if _NAME_FILTER.search(sql) or "클래스" in question:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    if "itm_nm" not in head and "itm_no" not in head:
+        return sql, False
+    if re.search(r"\b(?:count|sum|avg|min|max|total)\s*\(", head, re.I) or "*" in head:
+        return sql, False
+    tail = sql[frm.start():].rstrip()
+    m_lim = re.search(r"\blimit\s+\d+\s*$", tail, re.I)
+    body, lim = (tail[:m_lim.start()].rstrip(), tail[m_lim.start():]) if m_lim else (tail, "")
+    add = 'COUNT(*) AS "클래스수"' + (", MAX(fd_nast_suma) AS fd_nast_suma" if "fd_nast_suma" not in head else "")
+    return (f"{head.rstrip()}, {add} {body} GROUP BY {_FUND_KEY_EXPR} ORDER BY fd_nast_suma DESC {lim}").rstrip(), True
+
+
+# ── 답변 입력 조립 3종 (2026-09-02 R3 재검 — 목록 답변의 총량 병기·내부 코드 숨김·이름 전사 교정) ──
+_HIDE_FROM_ANSWER = {"prfd_attr_cds"}      # 내부 태그 코드(C101·M109…) — 근거컬럼 가드는 명칭(zrin_attr_nms)을 병기하므로 답변 재료가 아니다
+_SIMPLE_FROM_WHERE = re.compile(r"\bfrom\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
+
+
+def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
+    """LIMIT 에 잘린 목록의 전체 규모 — (전체 행수, 펀드수|None, 펀드 단위로 묶인 SQL 인지). 단순 SELECT 가 아니면 None.
+
+    SQLite 재실행 1회·HCX 0회. public_funds 단독이면 펀드키 DISTINCT 도 센다. GROUP BY 는 펀드키 묶기
+    (ensure_fund_list_grouping·lookup_grouping·대표행 가드가 만든 형태)만 허용 — 그때 표시 행은 펀드다.
+    """
+    if re.search(r"\b(?:union|having)\b|\(\s*select\b", sql, re.I):
+        return None
+    grouped = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    if grouped and f"GROUP BY {_FUND_KEY_EXPR}" not in sql:
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    frm = m.group(1).strip()
+    fund_only = _FUND_TBL.search(sql) and not re.search(r"\bjoin\b", sql, re.I)
+    cols = f"COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})" if fund_only else "COUNT(*)"
+    con = connect_readonly()
+    try:
+        row = con.execute(f"SELECT {cols} FROM {frm}").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return int(row[0]), (int(row[1]) if fund_only else None), grouped
+
+
+def _hide_answer_columns(rows: str) -> tuple[str, list[str]]:
+    """답변 입력에서 내부 코드 컬럼을 뺀다 — retrieved_context 는 그대로. (정리된 표, 뺀 컬럼)"""
+    lines = rows.splitlines()
+    if not lines:
+        return rows, []
+    cols = lines[0].split(" | ")
+    drop = [i for i, c in enumerate(cols) if c.strip().lower() in _HIDE_FROM_ANSWER]
+    if not drop or len(drop) == len(cols):
+        return rows, []
+    keep = [i for i in range(len(cols)) if i not in drop]
+    out = []
+    for ln in lines:
+        parts = ln.split(" | ")
+        out.append(" | ".join(parts[i] for i in keep if i < len(parts)))
+    return "\n".join(out), [cols[i].strip() for i in drop]
+
+
+_NAME_COL = re.compile(r"\b(?:itm_nm|itm_abrv_nm|pd_nm|pd_abrv_nm|etf_name)\b", re.I)
+_NAME_TOKEN = re.compile(r"[0-9A-Za-z가-힣]{8,}")
+
+
+def verify_product_names(answer: str, rows: str) -> tuple[str, list[str]]:
+    """답변의 상품명 토큰을 조회 원문 사전과 대조해 근사 전사 오류를 DB 원문으로 되돌린다. (교정된 답변, 교정 목록)
+
+    2026-09-02 R3 재검: "삼성중국본토중소형**FOSS**" — 실제 FOCUS, DB 에 'FOSS' 0행. 자릿수 훼손과 같은 계열
+    (모델은 복사만 하게 하라). 사전 = 결과의 이름 컬럼(itm_nm·pd_nm 등) 값의 공백 제거 8자 이상 연속 토큰.
+    답변의 8자 이상 연속 토큰이 어느 이름의 부분문자열이면 정확 — 불개입. 아니면 difflib 근사(0.85 이상)일 때만
+    사전 토큰으로 치환한다. 4도메인 공통(ETF 종목명에도 그대로 유효). 🔴 줄 삭제는 하지 않는다 — 한국어 서술
+    ('알려드리겠습니다' 8자)도 토큰으로 잡히므로 "어떤 이름과도 안 닮은 줄 제거" 는 문장을 죽인다.
+    """
+    lines = rows.splitlines()
+    if len(lines) < 2:
+        return answer, []
+    cols = lines[0].split(" | ")
+    idx = [i for i, c in enumerate(cols) if _NAME_COL.search(c)]
+    if not idx:
+        return answer, []
+    names = set()
+    for ln in lines[1:]:
+        parts = ln.split(" | ")
+        for i in idx:
+            if i < len(parts) and parts[i].strip():
+                names.add(parts[i].replace(" ", ""))
+    if not names:
+        return answer, []
+    vocab = sorted({t for nm in names for t in _NAME_TOKEN.findall(nm)}, key=len, reverse=True)
+    fixes: list[str] = []
+
+    def _fix(m: re.Match) -> str:
+        tok = m.group(0)
+        if any(tok in nm for nm in names):
+            return tok
+        close = difflib.get_close_matches(tok, vocab, n=1, cutoff=0.85)
+        if not close or close[0] == tok:
+            return tok
+        fixes.append(f"'{tok}' → '{close[0]}'")
+        return close[0]
+
+    out = _NAME_TOKEN.sub(_fix, answer)
+    return (out, fixes) if fixes else (answer, [])
+
+
 def ensure_enum_value_fix(sql: str, ctx) -> tuple[str, bool]:
     """WHERE 리터럴이 실제 enum 값과 접미사·공백만 다르면 실제 값으로 치환. (보정된 SQL, 보정했는지)
 
@@ -2159,6 +2281,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if lookup_fixed:
         step("[Guard] 개별 조회 펀드 묶기 — 이름 검색 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값 병기 "
              "(2026-09-02 R4 재검: 6펀드 37클래스를 1클래스로 답함 3회째 · R6 LIMIT 1 이라 클래스수 병기 불가)")
+    sql, flist_fixed = ensure_fund_list_grouping(sql, q)
+    if flist_fixed:
+        step("[Guard] 목록 펀드 묶기 — ORDER BY 없는 펀드 목록을 펀드키 GROUP BY + 순자산순 대표행으로 "
+             "(2026-09-02 R3 재검: LIMIT 30 이 임의 30행 + 같은 펀드 C2·C5 별개 나열)")
     sql, ev_fixed = ensure_fund_evidence_columns(sql)
     if ev_fixed:
         step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
@@ -2469,7 +2595,21 @@ def answer_question(
     # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
     #    "총 10개" 라고 셌다. 순자산 자릿수 훼손과 같은 계열 — 모델에게 산술(개수 세기)을 시키지
     #    말고 복사만 하게 한다. retrieved_context(조회 원문)는 건드리지 않고 답변 입력에만 붙인다.
-    rows_for_answer = f"(조회 결과: 총 {n}행)\n{rows}"
+    answer_rows, hidden = _hide_answer_columns(rows)
+    if hidden:
+        step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
+    header = f"(조회 결과: 총 {n}행)"
+    if n >= MAX_ROWS:
+        # 🔴 LIMIT 에 잘린 목록은 전체 규모를 굽는다 — 2026-09-02 R3 재검: 30행 중 5행만 옮기고 "다음과 같습니다" 전칭,
+        #    총량(560행/248펀드) 미고지. SQLite 재실행 1회·HCX 0회 — 모델이 세지 않게 문자열로 준다.
+        cov = _coverage_counts(sql)
+        if cov and (cov[1] if cov[2] else cov[0]) > n:
+            total, funds, grouped = cov
+            scope = f"전체 {total:,}행" + (f" / {funds:,}펀드" if funds is not None else "")
+            unit = "펀드" if grouped else "행"
+            header = f"(조회 결과: {scope} 중 {n}{unit} 표시 — 나머지는 표시되지 않았으므로 전체를 나열한 것처럼 말하지 않는다)"
+            step(f"[Answer] 커버리지 병기 — LIMIT 도달, {scope} 를 답변 입력에 굽는다 (2026-09-02 R3 재검: 30행 중 5행 나열 + 총량 미고지)")
+    rows_for_answer = f"{header}\n{answer_rows}"
     # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
     if _accepts_answer_rules(planner):
         result.answer = planner.compose_answer(q, rows_for_answer, answer_rules)
@@ -2479,6 +2619,10 @@ def answer_question(
     if stripped:
         step("[Guard] 면책 문구 제거 — '금융기관 문의·전문가 상담' 류 문장을 답변에서 걷어냄 "
              "(answer_rules 금지 규칙 미준수 5회 재발 — 2026-09-01 결정층行)")
+    result.answer, name_fixes = verify_product_names(result.answer, rows)
+    if name_fixes:
+        step(f"[Guard] 상품명 전사 교정 — {' · '.join(name_fixes[:3])} (조회 원문 밖 이름 {len(name_fixes)}건 — "
+             "2026-09-02 R3 재검: '삼성중국본토중소형FOSS' 는 DB 에 0행, 실제 FOCUS)")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

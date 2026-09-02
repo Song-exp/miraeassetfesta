@@ -741,3 +741,91 @@ def test_fund_evidence_grade_code_symmetric():
     assert not f(s)[1]                                             # 멱등
     s2, ok2 = f("SELECT itm_no, itm_nm FROM public_funds WHERE zrin_fd_ivst_risk_gcd = 2 LIMIT 30")
     assert ok2 and "zrin_fd_ivst_risk_grd_nm" in s2 and s2.count("zrin_fd_ivst_risk_gcd") == 1
+
+
+_R3_SQL = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND (',' || prfd_attr_cds || ',' LIKE '%,CHN,%' OR ',' || prfd_attr_cds || ',' LIKE '%,CHN,%') "
+           "AND sale_yn = '판매중' LIMIT 30")
+_R3_ROWS = ("itm_no | itm_nm | prfd_attr_cds\n"
+            "KR510502099M | 삼성중국본토중소형FOCUS증권자투자신탁UH(주식)Ce | C103,CHN\n"
+            "KR5127450020 | KB중국본토A주증권자투자신탁[주식]A | CHN")
+
+
+def test_fund_list_grouping():
+    """R3 재검 — ORDER BY 없는 LIMIT 30 이 임의 30행(재현성 없음) + 같은 펀드 C2·C5 별개 나열.
+    펀드키 GROUP BY + 순자산순 대표행으로 30개 서로 다른 펀드, 1행 KB중국본토A주(14클래스)."""
+    from src.runtime.pipeline import ensure_fund_list_grouping as f, ensure_fund_evidence_columns as ev
+
+    q = "중국에 투자하는 공모펀드 알려줘"
+    s, ok = f(_R3_SQL, q)
+    assert ok and "GROUP BY printf" in s and "ORDER BY fd_nast_suma DESC" in s and '"클래스수"' in s
+    assert not f(s, q)[1]                                          # 멱등
+    s, _ = ev(s)
+    assert "순자산_억원" in s                                       # 순자산 정렬 → 억원 병기가 따라온다
+    rows = _ro().execute(s).fetchall()
+    assert len(rows) == 30 and len({r[0] for r in rows}) == 30
+    assert rows[0][1].startswith("KB중국본토A주") and rows[0][3] == 14 and rows[0][-1] == "1453억원"
+    # 비발동 — '클래스' 질문 · 이미 ORDER BY · 이름 필터(개별 조회 가드 담당) · SELECT 에 식별 컬럼 없음
+    assert not f(_R3_SQL, "중국 펀드 클래스 알려줘")[1]
+    assert not f(_R3_SQL.replace("LIMIT 30", "ORDER BY itm_nm LIMIT 30"), q)[1]
+    assert not f("SELECT itm_no, itm_nm FROM public_funds WHERE itm_nm LIKE '%중국%' LIMIT 30", q)[1]
+    assert not f("SELECT fd_yr1_ern_r FROM public_funds WHERE sale_yn='판매중' LIMIT 30", q)[1]
+
+
+def test_coverage_counts():
+    """R3 재검 — LIMIT 도달 목록의 전체 규모(560행/248펀드)를 SQLite 재실행 1회로 센다."""
+    from src.runtime.pipeline import _coverage_counts as f, ensure_fund_list_grouping as fl
+
+    assert f(_R3_SQL) == (560, 248, False)
+    assert f(fl(_R3_SQL, "q")[0]) == (560, 248, True)               # 펀드키 GROUP BY 는 허용 — 표시 단위가 펀드
+    total, funds, grouped = f("SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) = '국고채권' LIMIT 30")
+    assert total > 30 and funds is None and not grouped              # 타 도메인은 행수만
+    assert f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY 1 LIMIT 30") is None   # 분포 집계는 대상 아님
+
+
+def test_verify_product_names():
+    """R3 재검 — 답변의 '삼성중국본토중소형FOSS' 는 DB 0행(실제 FOCUS). 조회 원문 사전으로 근사 토큰만 교정."""
+    from src.runtime.pipeline import verify_product_names as f
+
+    a = "* 삼성중국본토중소형FOSS증권자투자신탁UH(주식)Ce(C101, M109, CHN)\n* KB중국본토A주증권자투자신탁[주식]A"
+    out, fixes = f(a, _R3_ROWS)
+    assert "FOCUS" in out and "FOSS" not in out and len(fixes) == 1 and "KB중국본토A주증권자투자신탁[주식]A" in out
+    assert f(out, _R3_ROWS) == (out, [])                              # 정확 일치는 무변경
+    prose = "레버리지 펀드는 변동성이 큽니다. 알려드리겠습니다. 1. 한화2.2배레버리지인덱스 펀드"
+    assert f(prose, _R3_ROWS) == (prose, [])                          # 무관 문장·8자 서술 토큰 불개입
+    assert f(a, "COUNT(*)\n5") == (a, [])                             # 이름 컬럼 없는 결과
+
+
+def test_hide_answer_columns():
+    from src.runtime.pipeline import _hide_answer_columns as f
+
+    out, hidden = f(_R3_ROWS)
+    assert hidden == ["prfd_attr_cds"] and "prfd_attr_cds" not in out and "C103,CHN" not in out
+    assert out.splitlines()[1] == "KR510502099M | 삼성중국본토중소형FOCUS증권자투자신탁UH(주식)Ce"
+    assert f("prfd_attr_cds\nCHN") == ("prfd_attr_cds\nCHN", [])       # 유일 컬럼이면 남긴다
+    assert f("itm_no | itm_nm\nA | B") == ("itm_no | itm_nm\nA | B", [])
+
+
+def test_r3_pipeline_markers(ctx):
+    """R3 경로 통합 — 목록 묶기 · 내부 코드 숨김 · 커버리지 병기 · 이름 교정이 한 번에 발동한다 (HCX 0회)."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        def plan_sql(self, q, g):
+            return _R3_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            self.rows = rows
+            return "* KB중국본토A주증권자투자신닥[주식]A 등이 있습니다."
+
+    p = P()
+    r = answer_question("T-R3", "중국에 투자하는 공모펀드 알려줘", planner=p, ctx=ctx)
+    assert "[Guard] 목록 펀드 묶기" in r.think_trace and "[Answer] 내부 코드 컬럼 숨김 — prfd_attr_cds" in r.think_trace
+    assert "[Answer] 커버리지 병기 — LIMIT 도달, 전체 560행 / 248펀드" in r.think_trace
+    assert p.rows.startswith("(조회 결과: 전체 560행 / 248펀드 중 30펀드 표시") and "prfd_attr_cds" not in p.rows
+    assert "prfd_attr_cds" in r.retrieved_context                    # 조회 원문은 그대로
+    assert "[Guard] 상품명 전사 교정" in r.think_trace and "신닥" not in r.answer and "KB중국본토A주증권자투자신탁[주식]A" in r.answer
+    # LIMIT 미도달이면 종전 머리줄 그대로
+    P.plan_sql = lambda self, q, g: _R3_SQL.replace("LIMIT 30", "LIMIT 5")
+    r2 = answer_question("T-R3b", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "커버리지 병기" not in r2.think_trace

@@ -91,7 +91,22 @@ ontology/shared/*.yaml   (개체 · alias · 계층)      ── build_ontology.
 | `shared/*.yaml` · `codebooks/*.csv` | `python scripts/build_ontology.py` | `deploy.sh --db-only` | `kg_node·kg_alias·kg_edge·kg_closure` 가 **DB 안에** 있다 |
 | `enums/<domain>.vocab.yaml` · `enums/_refusal.yaml` · `gate_constants`/`triggers` 블록 | (`gen_value_vocab.py` 는 DB 재생성 뒤에만) | `deploy.sh --yaml-only` | 런타임이 파일로 읽는다 (2026-08-30 R-1·R-5·R-2). 단 **로더 코드가 같이 바뀐 첫 배포는 `--code-only`** |
 | 코드 (`src/`) | `pytest` · `run_gold_check` | `deploy.sh --code-only` | 이미지 재빌드가 필요하다 |
+| **`scripts/build_ontology.py` · `scripts/gen_*.py` · `ontology/*.ttl`** | `python scripts/build_ontology.py` | `deploy.sh --db-only` (+ 코드 바뀌었으면 전체) | 빌더가 바뀌면 같은 yaml 에서도 **다른 kg_\* 스키마·행**이 나온다 (2026-09-02 실측: kg_node 9열·kg_alias `match_kind` 추가) |
 | 위 둘 이상 | 위와 같음 | `deploy.sh` (전체) | — |
+
+### 0-C-1. 🔴 동시 작업 기간 배포 규칙 (2026-09-02 추가 — 리드 결정)
+
+재검 루프처럼 **여러 사람의 커밋이 한 배포에 섞이는 기간**에는 위 표의 "어느 모드로 충분한가" 판단을 사람에게 맡기지 않는다.
+
+1. **배포는 항상 재빌드 + 전체 모드다.** `python scripts/build_ontology.py` → `bash deploy/deploy.sh` (코드 + DB + 기동). `--code-only`·`--yaml-only` 는 **아래 검사가 비어 있을 때만** 허용한다:
+   ```bash
+   git diff --name-only <직전 배포 커밋>..HEAD -- ontology/shared ontology/codebooks ontology/*.ttl \
+       scripts/build_ontology.py scripts/build_db.py scripts/gen_*.py
+   ```
+   한 줄이라도 나오면 KG 입력이 바뀐 것이고, 코드만 보내면 **새 코드가 옛 `kg_*` 스키마 위에서 돌아 Ground·게이트가 조용히 실패**한다. 이때 실측은 수리 효과가 아니라 스키마 불일치를 재는 것이 된다.
+2. **왜 py 파일 전부가 아니라 위 목록인가.** `src/` 의 런타임 py 는 이미지 재빌드(`--code-only`)로 끝난다. DB 를 다시 만들어야 하는 py 는 **DB 를 만드는 스크립트**(`build_ontology.py`·`build_db.py`·`gen_*.py`)뿐이다. 이 구분이 헷갈리면 1번대로 전체 모드를 쓰면 된다 — DB 전송 2분이 추가될 뿐 손해가 없다.
+3. **팀원은 pull 뒤 반드시 `python scripts/build_ontology.py`.** KG 는 DB 안에 있어 pull 로 오지 않는다(`HANDOFF` §2-2). 옛 DB 위에서 pytest 를 돌리면 Ground·게이트 테스트가 깨지고, 그 상태로 서버에 질문하면 "내 수리가 반영 안 됐다" 로 보인다 — 실제로는 **서버가 아직 배포 전**이거나 **로컬 DB 가 구버전**인 경우가 대부분이다. 서버 반영 여부는 `git log <서버 배포 커밋>..main` 으로 확인한다(배포 커밋은 `deploy.sh` 1단계 출력의 마지막 줄).
+4. **DB 내용 동일성 확인은 md5 가 아니라 행 집합으로.** 같은 입력이라도 SQLite 페이지 배치 때문에 md5 는 달라진다. `kg_node·kg_alias·kg_edge·kg_closure` 를 `EXCEPT` 로 양방향 대조해 0행이면 같은 KG 다 (2026-09-02 실측: md5 상이·행 집합 동일).
 
 > 🔴 **`shared/` 를 고치고 `--yaml-only` 를 돌리면 아무 일도 일어나지 않습니다.** 파일은 갱신되지만
 > 런타임이 개체를 읽는 곳은 DB 의 `kg_*` 이기 때문입니다. 증상은 "yaml 을 고쳤는데 답이 그대로" 이고,

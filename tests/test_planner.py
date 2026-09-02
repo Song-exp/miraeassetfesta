@@ -111,7 +111,10 @@ def test_grounding_gives_values_not_node_ids(ctx):
     org = next(n for n in ctx.kg_nodes if n.node_id == "Org_00080008")
     g = build_grounding(ctx, [org], ["domestic_etfs"], cross=False)
     assert "Org_00080008" not in g
-    assert "'미래에셋'" in g and "cu_fund_mgmt_co" in g
+    # 🔴 11R KG ③-4 — 같은 테이블에 정본 `ref_*` 슬롯이 있으면 오염 `cu_*` 슬롯은 싣지 않는다(AA21 뿌리:
+    #    두 슬롯을 나란히 실어 주니 HCX 가 `cu_fund_mgmt_co IN ('삼성','Samsung…')` 로 섞어 2회 기각당했다)
+    mapping = [l for l in g.splitlines() if l.startswith("- 미래에셋 (Organization)")]
+    assert mapping and "ref_fund_mgmt_co" in mapping[0] and "cu_fund_mgmt_co" not in mapping[0], mapping
     assert "or_co_xtn_itt_cd" not in g            # 대상 아닌 테이블(public_funds) alias 는 빠진다
 
 

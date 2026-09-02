@@ -120,3 +120,28 @@ def test_rank_axis_respects_list_grouping():
               f"GROUP BY {p._FUND_KEY_EXPR} ORDER BY fd_nast_suma DESC LIMIT 30")
     out, _ = p.ensure_fund_rank_representative(listed, "순자산이 큰 공모펀드 알려줘")
     assert f"GROUP BY {p._FUND_KEY_EXPR}" in out, out
+
+
+# ── P6 · KG ③-4 (부류 T-2) — ETF 운용사 축은 ref_fund_mgmt_co 정확일치 ──
+def test_etf_mgmt_canon_240():
+    """🔴 접두 LIKE 금지 — Samsung Active Asset Management 25행은 별개 법인이다(265 = 240 + 25)."""
+    con = connect_readonly()
+    base = " AND pd_grp_no='ETF' AND pd_sale_yn=1"
+    for pred in ("cu_fund_mgmt_co = '삼성'",
+                 "cu_fund_mgmt_co IN ('삼성','Samsung Asset Management Co Ltd')",
+                 "cu_fund_mgmt_co LIKE '%삼성%'"):
+        out, ok = p.ensure_etf_mgmt_canon(f"SELECT COUNT(*) FROM domestic_etfs WHERE {pred}{base}")
+        assert ok and "ref_fund_mgmt_co = 'Samsung Asset Management Co Ltd'" in out, out
+        assert con.execute(out).fetchone()[0] == 240, out                       # gold
+    # 매핑을 못 만들면 아무것도 지우지 않는다 (확정식 원자성)
+    unk = "SELECT COUNT(*) FROM domestic_etfs WHERE cu_fund_mgmt_co = '없는이름xyz'"
+    assert p.ensure_etf_mgmt_canon(unk) == (unk, False)
+
+
+def test_ground_drops_contaminated_slot():
+    """AA21 뿌리 — 오염·정본 슬롯을 한 줄에 나란히 실어 HCX 가 섞었다. 정본이 있으면 오염은 싣지 않는다."""
+    aliases = [("domestic_etfs", "cu_fund_mgmt_co", "삼성"),
+               ("domestic_etfs", "ref_fund_mgmt_co", "Samsung Asset Management Co Ltd"),
+               ("domestic_etfs", "cu_strtegy", "패시브")]
+    kept = p._drop_contaminated_slots(aliases)
+    assert [a[1] for a in kept] == ["ref_fund_mgmt_co", "cu_strtegy"], kept     # 짝 없는 cu_* 는 남는다

@@ -866,6 +866,63 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
     return (new, True) if new != sql else (sql, False)
 
 
+_ETF_MGMT_PRED = re.compile(r"\(?\s*(?:TRIM\(\s*)?(?:\w+\.)?cu_fund_mgmt_co\s*\)?\s*"
+                            r"(?:=|LIKE|GLOB|IN)\s*(\([^)]*\)|'(?:[^']|'')*')", re.I)
+
+
+@lru_cache(maxsize=256)
+def _ref_mgmt_of(lit: str) -> str | None:
+    """오염 컬럼 값 → 정본 운용사명. DB 역조회 최빈값(하드코딩 0). 못 찾으면 None.
+
+    🔴 **접두 LIKE 를 운용사 축에 쓰지 않는다** — `LIKE 'Samsung%'` 은 `Samsung Active Asset Management`
+       (삼성액티브자산운용, 별개 법인·별개 Org 노드) 25행을 삼성자산운용 240행에 합산해 265 를 만든다.
+       정본은 `ref_fund_mgmt_co` **정확일치**다(심사관 실측 240/243).
+    """
+    lit = re.sub(r"[%*]", "", lit.strip().strip("'")).strip()
+    if len(lit) < 2:
+        return None
+    con = connect_readonly()
+    try:
+        row = con.execute(
+            "SELECT ref_fund_mgmt_co FROM domestic_etfs WHERE TRIM(cu_fund_mgmt_co) = ? "
+            "AND ref_fund_mgmt_co IS NOT NULL AND TRIM(ref_fund_mgmt_co) <> '' "
+            "GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1", (lit,)).fetchone()
+        if not row:                                  # 이미 정본값을 오염 컬럼에 실은 경우(AA21 혼합 IN)
+            row = con.execute("SELECT ref_fund_mgmt_co FROM domestic_etfs WHERE TRIM(ref_fund_mgmt_co) = ? "
+                              "LIMIT 1", (lit,)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return str(row[0]).strip() if row and row[0] else None
+
+
+def ensure_etf_mgmt_canon(sql: str) -> tuple[str, bool]:
+    """국내 ETF 운용사 절을 `ref_fund_mgmt_co` **정확일치**로 정본화. (SQL, 교체했는지)
+
+    🔴 11R KG ③-4 (부류 T-2) — `cu_fund_mgmt_co` 는 판매사·브랜드·상품명이 섞인 오염 컬럼이다(DB 실측:
+       '삼성' 227 · '삼성KODEX' 3 · '삼성증권(주)' 70 = 판매사 · 상품명 통째 13종). 이 컬럼으로는 운용사를 셀 수 없다.
+       정본은 `ref_fund_mgmt_co` 이고 gold 는 240(판매중 ETF) / 243(전체)이다.
+    매핑을 못 만들면 **아무것도 지우지 않는다** — 확정식 원자성(가드가 조건을 지우고 대체를 못 넣는 상태를 만들지 않는다).
+    """
+    if not re.search(r"\bfrom\s+domestic_etfs\b", sql, re.I) \
+            or re.search(r"\bunion\b|\bjoin\b|\bfrom\s+(?!domestic_etfs\b)\w+", sql, re.I):
+        return sql, False
+    out, at = [], 0
+    for m in _ETF_MGMT_PRED.finditer(sql):
+        names = [n for n in (_ref_mgmt_of(l) for l in _SQL_LITERAL.findall(m.group(1)) or [m.group(1)]) if n]
+        if not names:
+            continue                                             # 대체를 못 만들면 원 술어를 남긴다
+        uniq = sorted(dict.fromkeys(names))
+        cond = (f"ref_fund_mgmt_co = '{uniq[0]}'" if len(uniq) == 1
+                else "ref_fund_mgmt_co IN (" + ", ".join(f"'{n}'" for n in uniq) + ")")
+        out.append(sql[at:m.start()] + " " + _GUARD_MARK + cond)
+        at = m.end()
+    if not out:
+        return sql, False
+    return "".join(out) + sql[at:], True
+
+
 _FUND_RETURN_COLS = ("fd_mm1_ern_r", "fd_mm3_ern_r", "fd_mm6_ern_r", "fd_mm18_ern_r",
                      "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r")
 # 🔴 10R gold ③-B 5 — 보수 4컬럼도 랭킹 축이다('총보수가 가장 낮은 펀드'). 종전엔 축 목록에 없어
@@ -5050,9 +5107,22 @@ def target_aliases(
        호출부(_ground)가 그 노드를 버린다.
     """
     aliases = _member_aliases(ctx, node.node_id, relations)
-    if not target:
-        return aliases
-    return [a for a in aliases if a[0] in target]
+    if target:
+        aliases = [a for a in aliases if a[0] in target]
+    return _drop_contaminated_slots(aliases)
+
+
+def _drop_contaminated_slots(aliases: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """같은 테이블에 정본 `ref_X` 슬롯이 있으면 오염 `cu_X` 슬롯은 싣지 않는다 (11R KG ③-4).
+
+    🔴 AA21 뿌리 — Ground 가 `cu_fund_mgmt_co='삼성'` 과 `ref_fund_mgmt_co='Samsung Asset Management Co Ltd'`
+       를 **한 매핑 줄에 나란히** 실어 주니 HCX 가 `cu_fund_mgmt_co IN ('삼성','Samsung…')` 로 섞었고,
+       값 검사가 2회 기각해 거절로 끝났다(9R 의 ✅ 240 이 날아갔다). `cu_fund_mgmt_co` 실태(DB 실측):
+       '삼성' 227 · '삼성KODEX' 3 · **'삼성증권(주)' 70(판매사)** · 상품명이 통째로 든 값 13종 — 운용사 축이 아니다.
+    컬럼 접두 규약(`cu_` 수집 / `ref_` 정본)으로만 판정한다 — 이름 하드코딩 0.
+    """
+    canon = {(t, c[4:].lower()) for t, c, _ in aliases if c.lower().startswith("ref_")}
+    return [a for a in aliases if not (a[1].lower().startswith("cu_") and (a[0], a[1][3:].lower()) in canon)]
 
 
 MAX_ALIAS_VALUES = 60   # 한 컬럼에 실을 값 상한. 병목이 rate limit 이라 토큰이 곧 처리량이다
@@ -5546,6 +5616,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 지수 확정식이 **모수 가드보다 먼저** 돌아야 한다 — 모수 가드의 날조 술어 제거가 오염 컬럼의
     #    지수 절을 '근거 없는 술어' 로 보고 지워 버린다(순서가 뒤면 지수 조건이 통째로 사라진다).
     sql, idx_fixed = ensure_etf_index_canon(sql)
+    sql, mgmt_fixed = ensure_etf_mgmt_canon(sql)
+    if mgmt_fixed:
+        step("[Guard] ETF 운용사 확정식 — 오염 컬럼 cu_fund_mgmt_co(판매사·브랜드·상품명 혼재: '삼성증권(주)' 70행 "
+             "판매사 · 상품명 통째 13종)를 정본 ref_fund_mgmt_co **정확일치**로 교체 "
+             "(11R KG ③-4 · 실측 삼성자산운용 240 = gold. 접두 LIKE 는 별개 법인 Samsung Active 25행을 합산해 265 를 만든다)")
     injected = marked_conjuncts(sql)          # 체인 끝 사후조건의 재료 (1순위 — 확정식 원자성)
     if idx_fixed:
         step("[Guard] ETF 기초지수 확정식 — 오염 컬럼 cu_base_index(95.5% 공백 · 값 있는 9행은 무관 상품)를 "

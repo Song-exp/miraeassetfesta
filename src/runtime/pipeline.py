@@ -2385,10 +2385,13 @@ def ensure_fund_holdings_template(sql: str, question: str, ctx) -> tuple[str, bo
     domestic_etfs·ext_etf_holdings 로 새어 나갔다(KG-028 'IBK K-AI반도체코어테크' ETF 종목 환각 · KG-034 · X1 · X2).
     확정식: 원문 WHERE 의 펀드 술어(p. 한정)로 펀드를 고르고, 그 펀드 그룹(grp+or_co = JOIN_KEYS)의 보유 목록이 실린 대표 클래스
     (순자산 최대) itm_no 하나의 종목을 비중순으로 낸다 — 클래스 팬아웃 없이 한 펀드 = 한 목록. 컬럼명은 스키마(ext_fund_holdings)에서."""
-    if not _HOLD_Q.search(question) or re.search(r"\bext_fund_holdings\b|\bunion\b", sql, re.I):
+    # 🔴 7R F3 — 「이미 ext_fund_holdings 를 쓰고 있으면 손 떼기」를 그만둔다. 6R 실측: KG-028 은 정답 JOIN 까지 도달하고도
+    #    `SELECT TOP 1`(SQLite 문법 아님)과 `f.weight_pct = 1.0`(무의미 절)이 남았고, Z8 은 FROM 이 holdings 쪽이라
+    #    팬아웃 중복(VINCOM 5행)이 났다. FROM/JOIN 이 HCX 재량인 한 이 결함은 라운드마다 모양만 바꿔 재발한다 —
+    #    확정식이 **이미 만든 SQL**(비중_pct 표기)일 때만 불개입한다(멱등).
+    if not _HOLD_Q.search(question) or re.search(r"\bunion\b", sql, re.I) or '"비중_pct"' in sql:
         return sql, False
-    m = _FROM_MASTER.search(sql)
-    if not m or m.group(1).lower() != "public_funds" or not (_has_name_filter(sql) or _has_fund_key_pin(sql)):
+    if not re.search(r"\b(?:from|join)\s+public_funds\b", sql, re.I) or not (_has_name_filter(sql) or _has_fund_key_pin(sql)):
         return sql, False
     schema = getattr(ctx, "schema", {}) or {}
     hcols = {c.lower() for c, *_ in schema.get("ext_fund_holdings", ())}
@@ -2397,9 +2400,19 @@ def ensure_fund_holdings_template(sql: str, question: str, ctx) -> tuple[str, bo
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m_w:
         return sql, False
-    alias = m.group(2)
+    m_f = re.search(r"\bfrom\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", sql, re.I) \
+        or re.search(r"\bjoin\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", sql, re.I)
+    alias = m_f.group(1) if m_f else None
+    m_h = re.search(r"\b(?:from|join)\s+ext_fund_holdings\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", sql, re.I)
+    h_alias = m_h.group(1) if m_h else None
+    # 펀드 쪽 술어만 남긴다 — 보유 테이블 쪽 절(`f.weight_pct = 1.0`)은 HCX 가 지어낸 무의미 조건이라 버린다
+    h_only = {c.lower() for c, *_ in schema.get("ext_fund_holdings", ())} - {c.lower() for c, *_ in schema.get("public_funds", ())}
     preds = []
     for c in guard.split_conjuncts(m_w.group(1)):
+        masked = _SQL_LITERAL.sub("''", c)
+        if (h_alias and re.search(rf"\b{re.escape(h_alias)}\.", masked)) or "ext_fund_holdings." in masked.lower() \
+                or any(re.search(rf"(?<![\w.])({w})\b", masked, re.I) for w in h_only):
+            continue
         c = re.sub(r"\bpublic_funds\.", "p.", c)
         if alias:
             c = re.sub(rf"\b{re.escape(alias)}\.", "p.", c)

@@ -374,3 +374,34 @@ def test_class_notation_is_name_suffix(ctx):
 
     r = answer_question("T-Z1", "미래에셋코어테크 펀드 종류A 기준가 알려줘", planner=P(), ctx=ctx)
     assert "4,726.41" in r.answer and "클래스에 따라 다름" not in r.answer, r.answer
+
+
+# ── F3 — 구성종목 확정식이 HCX 의 JOIN 을 덮는다 (KG-028 · Z8) ──
+
+def test_holdings_template_overrides_hcx_join(ctx):
+    """F3 — FROM/JOIN 이 HCX 재량인 한 결함은 모양만 바꿔 재발한다. 이미 ext_fund_holdings 를 쓰고 있어도 확정식으로 덮는다."""
+    from src.runtime.pipeline import ensure_fund_holdings_template as f, _execute
+
+    kg28 = ("SELECT TOP 1 f.holding_nm, f.weight_pct FROM public_funds p JOIN ext_fund_holdings f "
+            "ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd WHERE p.or_co_xtn_itt_cd = '00080008' "
+            "AND p.prvo_pbff_desc = '공모' AND p.sale_yn = '판매중' AND f.weight_pct = 1.0 "
+            "AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' ORDER BY 2 DESC LIMIT 30")
+    out, ok = f(kg28, "미래에셋코어테크 펀드가 가장 많이 보유한 종목은 뭐야?", ctx)
+    assert ok and "TOP 1" not in out and "weight_pct = 1.0" not in out      # 무의미 절·비-SQLite 문법 소멸
+    rows, n = _execute(out)
+    assert n and rows.splitlines()[1].startswith("삼성전자 | 24.95"), rows[:200]
+
+    # Z8 — FROM 이 holdings 쪽이어도 대표 클래스 1개로 접어 팬아웃 중복(VINCOM 5행)을 없앤다
+    z8 = ("SELECT h.holding_nm, h.weight_pct FROM ext_fund_holdings h JOIN public_funds p "
+          "ON h.grp = p.mtco_itm_no AND h.or_co = p.or_co_xtn_itt_cd "
+          "WHERE REPLACE(p.itm_nm,' ','') LIKE '%한국투자베트남그로스%' ORDER BY h.weight_pct DESC LIMIT 5")
+    out2, ok2 = f(z8, "한국투자베트남그로스 펀드가 가장 많이 보유한 종목 5개 알려줘", ctx)
+    assert ok2
+    rows2, n2 = _execute(out2)
+    names = [ln.split(" | ")[0] for ln in rows2.splitlines()[1:]]
+    assert n2 == 5 and len(set(names)) == 5 and names[0] == "VINCOM JSC", rows2
+
+    # 멱등 — 확정식이 만든 SQL 은 다시 덮지 않는다
+    assert f(out, "미래에셋코어테크 펀드가 가장 많이 보유한 종목은 뭐야?", ctx)[1] is False
+    # 불개입 — 구성종목 질의가 아니거나 펀드를 특정하지 않은 SQL
+    assert f(kg28, "미래에셋코어테크 펀드 순자산 알려줘", ctx)[1] is False

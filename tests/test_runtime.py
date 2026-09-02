@@ -1322,3 +1322,19 @@ def test_validate_sql_rejects_unparenthesized_or_and():
     ]
     for q in ok:
         assert validate_sql(q) is None, q
+
+
+def test_risk_ambiguity_clarify(ctx):
+    """리드 결정 2026-09-02 — '가장 위험한 채권' 은 투자위험등급/신용등급/금리위험 세 축이라 축 단서 없으면 되묻는다 (서버 실측: 1등급+수익률순 단정)."""
+    from src.runtime.pipeline import risk_ambiguity_clarify as f, answer_question
+    a = f("가장 위험한 채권 뭐야?", ["domestic_bonds"])
+    assert a and "투자위험등급" in a and "신용등급" in a and "듀레이션" in a and "1,394종목" in a and "103종목" in a and "어느 기준" in a
+    assert f("위험 높은 순으로 채권 알려줘", ["domestic_bonds"]) and f("제일 위험한 채권 추천해줘", ["domestic_bonds"])
+    # 축 단서가 있으면 되묻지 않는다 · 채권 밖 테이블 불개입 · '안전' 질의는 별도 규칙(최상급 안전 = 6등급)
+    assert f("위험등급 1등급 채권 알려줘", ["domestic_bonds"]) is None
+    assert f("신용등급이 가장 낮은 채권", ["domestic_bonds"]) is None
+    assert f("수익률 높은 위험한 채권", ["domestic_bonds"]) is None
+    assert f("가장 위험한 펀드 뭐야?", ["public_funds"]) is None
+    assert f("가장 안전한 채권 뭐야?", ["domestic_bonds"]) is None
+    r = answer_question("T-RISK", "가장 위험한 채권 뭐야?", ctx=ctx)
+    assert "[Clarify] 되묻기(결정층)" in r.think_trace and "728" not in r.answer and r.retrieved_context == ""

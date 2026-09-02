@@ -605,8 +605,66 @@ def test_strip_fabricated_risk_filter():
         "SELECT pd_nm FROM domestic_bonds WHERE (pd_risk_gcd = '16' OR crd_grd='AAA') LIMIT 5", q)[1]
     assert not strip_fabricated_risk_filter(
         "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 5", q)[1]
-    assert not strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]
     assert not strip_fabricated_risk_filter("SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_risk_cd='PD_RISK_GCD_16' LIMIT 5", q)[1]
+    # 2026-09-02 확장 — 추천·구매의향 문형도 받는다 ('1년만 굴릴 건데 어떤 채권 사면 돼?' 가
+    # 최상급·_RECO_Q 어느 쪽에도 안 걸려 날조 '16' 통과 → 6등급 2·4·5·6·7위 답변 실측)
+    win = ("SELECT DISTINCT pd_no, pd_nm, applied_yield, remaining_days FROM domestic_bonds "
+           "WHERE mat_dt >= 20260822 AND mat_dt <= 20270822 AND pd_risk_gcd = '16' "
+           "ORDER BY applied_yield DESC LIMIT 30")
+    f4, c4 = strip_fabricated_risk_filter(win, "1년만 굴릴 건데 어떤 채권 사면 돼?")
+    assert c4 and "pd_risk_gcd" not in f4 and "mat_dt >= 20260822" in f4
+    assert strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]  # 옛 불개입 케이스 → 확장 후 양성
+    # 부도-공포 서술형(_TOP_SAFE_Q)은 _RISK_VOCAB 밖이지만 '16' 이 정답 — 불개입 (오폭 봉인)
+    assert not strip_fabricated_risk_filter(win, "망하지 않을 회사 채권만 골라줘")[1]
+    assert not strip_fabricated_risk_filter(win, "돈 떼일 걱정 없는 채권 중 수익률 최고는?")[1]
+
+
+def test_ensure_grade_select_column():
+    from src.runtime.pipeline import ensure_grade_select_column
+    # 2026-09-02 서버 실측 — '등급 높은 채권으로 골라줘' 가 crd_grd IN 필터(15,845종목)를 제대로
+    # 걸고도 SELECT 가 pd_no·pd_nm 뿐이라 답변기가 "등급 정보가 포함되어 있지 않다" 오거절
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm) FROM domestic_bonds "
+           "WHERE crd_grd IN ('AAA', 'AA+', 'AA0', 'AA-') AND applied_yield > 0 LIMIT 30")
+    fixed, changed = ensure_grade_select_column(sql)
+    assert changed and "TRIM(crd_grd) AS crd_grd" in fixed
+    assert fixed.index("crd_grd") < fixed.upper().index("FROM")
+    # 불개입 — 이미 SELECT 에 있음 / 집계 / GROUP BY / crd_grd 미사용(crd_grd_dt 는 별개) / 타 테이블
+    assert not ensure_grade_select_column(fixed)[1]
+    assert not ensure_grade_select_column(
+        "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE crd_grd='AAA'")[1]
+    assert not ensure_grade_select_column(
+        "SELECT TRIM(crd_grd), pd_no FROM domestic_bonds WHERE TRIM(crd_grd)='AAA' LIMIT 5")[1]
+    assert not ensure_grade_select_column(
+        "SELECT pd_no FROM domestic_bonds WHERE crd_grd_dt >= 20260101 LIMIT 5")[1]
+    assert not ensure_grade_select_column(
+        "SELECT pd_no, COUNT(*) FROM domestic_bonds WHERE crd_grd='AAA' GROUP BY pd_no")[1]
+
+
+def test_ensure_top_row_cited():
+    from src.runtime.pipeline import ensure_top_row_cited
+    # 2026-09-02 서버 실측 — '1년만 굴릴 건데' 답변이 정렬 결과의 2·4·5·6·7위만 나열,
+    # 1위(KR354404GC55 3.986%)·3위(KR356501GG82 3.94%) 증발. 값이 전부 실제 행이라 환각 검사 밖
+    sql = ("SELECT pd_no, pd_nm, applied_yield FROM domestic_bonds "
+           "WHERE pd_risk_gcd='16' ORDER BY applied_yield DESC LIMIT 30")
+    rows = "\n".join([
+        "pd_no | pd_nm | applied_yield",
+        "KR354404GC55 | MBS2022-9 | 3.986",
+        "KR356601GF82 | 용인도시공사2025-2 | 3.957",
+        "KR356501GG82 | 평택도시공사 2026-2(사) | 3.94",
+        "KR354405GC62 | MBS2022-11 | 3.914",
+        "KR354427GC41 | MBS2022-8 | 3.866",
+    ])
+    ans = "추천드립니다.\n* KR356601GF82: 용인 3.957%\n* KR354405GC62: MBS11 3.914%\n* KR354427GC41: MBS8 3.866%"
+    fixed, changed = ensure_top_row_cited(ans, sql, rows)
+    assert changed and "KR354404GC55" in fixed and "KR356501GG82" in fixed
+    assert "1위" in fixed and "3위" in fixed and fixed.startswith(ans)
+    # 불개입 — 상위부터 순서대로 인용(누락 없음) / 인용 pd_no 2개 미만(이름만 답변) /
+    # 집계·GROUP BY / ORDER BY 없음
+    assert not ensure_top_row_cited(
+        "* KR354404GC55 3.986%\n* KR356601GF82 3.957%", sql, rows)[1]
+    assert not ensure_top_row_cited("용인도시공사2025-2 를 추천합니다 (KR356601GF82)", sql, rows)[1]
+    assert not ensure_top_row_cited(ans, "SELECT pd_risk_gcd, COUNT(*) FROM domestic_bonds GROUP BY 1", rows)[1]
+    assert not ensure_top_row_cited(ans, "SELECT pd_no FROM domestic_bonds LIMIT 30", rows)[1]
 
 
 def test_ensure_ktb_kind_and_distinct_count():

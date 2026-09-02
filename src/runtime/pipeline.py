@@ -696,6 +696,46 @@ def strip_disclaimer(text: str) -> tuple[str, bool]:
     return (out, True) if out else (text, False)
 
 
+_PDNO_TOKEN = re.compile(r"\bKR[0-9A-Z]{10}\b")
+
+
+def ensure_top_row_cited(answer: str, sql: str, rows: str) -> tuple[str, bool]:
+    """정렬 목록 답변이 결과 하위 행을 인용하며 상위 행을 건너뛰면 누락 행을 답변에 되살린다.
+
+    2026-09-02 서버 실측: '1년만 굴릴 건데 어떤 채권 사면 돼?' — ORDER BY applied_yield DESC
+    결과의 2·4·5·6·7위만 나열, 1위(MBS2022-9 3.986%)·3위(평택도시공사 3.94%) 증발.
+    무정렬 LIMIT 30 시뮬레이션으로 '임의 행' 가설 기각 — 결과셋에 1위가 있었는데 답변층이
+    떨어뜨렸다. 값이 전부 실제 행이라 환각 검사에 안 걸리는 선별 누락이고, 추천·목록에서
+    1위 누락은 그 자체로 오답이다. 목록 전사는 LLM 에게 맡길 수 없다(_distribution_answer 와
+    같은 교훈)의 목록판 — 전면 기계 조립 전의 최소 보정.
+    발동(전부): ① ORDER BY 존재 ② GROUP BY·COUNT 없음 ③ 결과 2행 이상에 pd_no 수록
+    ④ 답변이 결과 pd_no 를 2개 이상 인용 ⑤ 인용된 최하위 순위 위의 행 중 미인용이 있음.
+    보정: 누락 행을 순위와 함께 답변 끝에 덧붙인다(결과 원문 행 그대로 — 창작 없음, 최대 5행).
+    이름만 인용한 답변(pd_no 0~1개)에는 불개입 — 오폭보다 미개입."""
+    if not re.search(r"\bORDER\s+BY\b", sql, re.I) or re.search(
+            r"\bGROUP\s+BY\b|\bCOUNT\s*\(", sql, re.I):
+        return answer, False
+    ranked = []
+    for ln in rows.splitlines()[1:]:
+        m = _PDNO_TOKEN.search(ln)
+        if m:
+            ranked.append((m.group(0), ln.strip()))
+    if len(ranked) < 2:
+        return answer, False
+    cited = set(_PDNO_TOKEN.findall(answer))
+    idx_cited = [i for i, (p, _) in enumerate(ranked) if p in cited]
+    if len(idx_cited) < 2:
+        return answer, False
+    missing = [(i, ln) for i, (p, ln) in enumerate(ranked[:max(idx_cited)])
+               if p not in cited][:5]
+    if not missing:
+        return answer, False
+    lines = [f"- {i + 1}위: {ln}" for i, ln in missing]
+    return (answer.rstrip()
+            + "\n\n(보정) 조회 결과 순위에서 위 목록에 빠진 상위 행을 추가합니다:\n"
+            + "\n".join(lines)), True
+
+
 def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     """2열(범주 라벨 · COUNT(*)) GROUP BY 분포 결과의 답변을 기계 조립한다. 아니면 None.
 
@@ -1267,23 +1307,33 @@ _TOP_YIELD_Q = re.compile(
     rf"(?:수익률|표면금리|이자율|이율|금리|이자)[이가은는도의]?\s*{_SUP}\s*(?:높|낮)"
     rf"|{_SUP}\s*(?:높|낮)은\s*(?:수익률|표면금리|이자율|이율|금리|이자)")
 _RISK_VOCAB = re.compile(r"위험|리스크|안전|안정|원금|성향|등급")
+# 구매 의향 문형 — 추천 신호(_RECO_Q) 밖의 사각 (2026-09-02 서버 실측: '1년만 굴릴 건데 어떤 채권
+# 사면 돼?' 가 추천·최상급 어느 정규식에도 안 걸려 날조 '16' 이 통과 — 6등급 2·4·5·6·7위 답변)
+_BUY_INTENT_Q = re.compile(r"사면|사고\s*싶|살까|살\s*만한?|매수하|뭐\s*사|뭘\s*사")
 
 
 def strip_fabricated_risk_filter(sql: str, question: str) -> tuple[str, bool]:
-    """수익률·금리 최상급 조회 SQL 에서 질문에 없는 위험등급 필터를 떼어낸다. (보정된 SQL, 보정했는지)
+    """수익률 최상급·추천·구매의향 조회 SQL 에서 질문에 없는 위험등급 필터를 떼어낸다. (보정된 SQL, 보정했는지)
 
     2026-09-01 서버 실측: '수익률이 제일 높은 채권' 에 HCX 가 pd_risk_gcd = '16' 을 끼워
     6등급 최고(한국수출입금융 6.231%)를 답함 — 진짜 최고는 신보 유동화 728.524%(C0·1등급)다.
     '가장/제일' 최상급을 보고 위험등급방향의 '16 단독' 을 수익률 축에 옮겨 붙인 조건 날조
     (_TOP_SAFE_Q 는 이 질문에 매치되지 않음 — 가드 주입분 아님, 로컬 재현 확인). 조회는
     제외하지 않는다는 고위험제외 규칙 그대로, 위험 어휘가 질문에 없으면 위험등급 절을 제거한다.
-    불개입 3종: ① 질문에 위험·리스크·안전·안정·원금·성향·등급(그 필터를 정당화하는 어휘)
+    2026-09-02 서버 실측으로 발동 범위 확장: '1년만 굴릴 건데 어떤 채권 사면 돼?' (최상급도
+    _RECO_Q 도 아닌 구매 의향 문형)에 같은 날조 '16' — 창 내 수익률 ≥3.861 이 정확히 7행이
+    되는 필터는 '16' 단독뿐임을 배타 증명. 추천(_RECO_Q)·구매의향(_BUY_INTENT_Q)까지 받는다.
+    불개입 4종: ① 질문에 위험·리스크·안전·안정·원금·성향·등급(그 필터를 정당화하는 어휘)
+    ①' 부도-공포 서술형(_TOP_SAFE_Q — '망하지 않을 회사' 류는 _RISK_VOCAB 밖인데 '16' 이 정답:
+    확장 전에도 '망하지 않을 회사 중 수익률 최고' 가 오폭 경로였다 — 함께 봉인)
     ② WHERE 에 OR 가 있으면 — 절 제거가 그룹 논리를 바꾼다 ③ 최상위 AND 결합이 아니면.
     추천 질의의 고위험제외(<> '11' 꼴)는 _RISK_POS 에 안 걸려 건드리지 않고, 떼어낸 경우에도
     ensure_reco_exclusions 가 필요분을 다시 넣는다."""
-    if "domestic_bonds" not in sql or not _TOP_YIELD_Q.search(question):
+    if "domestic_bonds" not in sql or not (
+            _TOP_YIELD_Q.search(question) or _RECO_Q.search(question)
+            or _BUY_INTENT_Q.search(question)):
         return sql, False
-    if _RISK_VOCAB.search(question):
+    if _RISK_VOCAB.search(question) or _TOP_SAFE_Q.search(question):
         return sql, False
     wm = re.search(r"\bWHERE\b", sql, re.I)
     if not wm:
@@ -1412,6 +1462,32 @@ def ensure_risk_name_column(sql: str) -> tuple[str, bool]:
     if not m or (m.start() > 0 and head[m.start() - 1] == "("):
         return sql, False
     return sql[: m.end()] + ", pd_risk_nm" + sql[m.end():], True
+
+
+_AGG_HEAD = re.compile(r"\b(?:COUNT|AVG|SUM|MIN|MAX|GROUP_CONCAT)\s*\(", re.I)
+
+
+def ensure_grade_select_column(sql: str) -> tuple[str, bool]:
+    """WHERE 에 신용등급(crd_grd) 조건을 쓰고 SELECT 에는 안 실은 목록 조회에 crd_grd 를 주입.
+
+    2026-09-02 서버 실측: '등급 높은 채권으로 골라줘' 가 crd_grd IN ('AAA'..'AA-') 로
+    15,845종목을 제대로 필터하고도 SELECT 가 pd_no·pd_nm 뿐이라, 답변기가 결과만 보고
+    "등급 정보가 포함되어 있지 않다" 오거절 — 데이터가 있는데 없다고 말한 사실 왜곡.
+    ensure_risk_name_column(위험등급판)과 같은 계열: 답변기는 SELECT 된 컬럼만 본다 —
+    필터에 쓴 판단 근거는 접시에 올려야 인용할 수 있다.
+    불개입: 집계 SELECT(COUNT·AVG…)·GROUP BY — 컬럼 주입이 집계 형태를 깬다.
+    crd_grd_dt 는 \\b 경계로 매치되지 않는다(등급일사용금지 규칙과 무관하게 별개 컬럼)."""
+    if "domestic_bonds" not in sql:
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head, rest = sql[:frm.start()], sql[frm.start():]
+    if not re.search(r"\bcrd_grd\b", rest) or re.search(r"\bcrd_grd\b", head):
+        return sql, False
+    if _AGG_HEAD.search(head) or re.search(r"\bGROUP\s+BY\b", sql, re.I):
+        return sql, False
+    return head.rstrip() + ", TRIM(crd_grd) AS crd_grd " + rest, True
 
 
 # ── 엣지케이스 가드 2건 (리드 서버 실검증 2026-08-31 · ask_lead_2026-08-31_reply.md) ─────────
@@ -2095,6 +2171,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, riskname_fixed = ensure_risk_name_column(sql)
     if riskname_fixed:
         step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
+    sql, gradecol_fixed = ensure_grade_select_column(sql)
+    if gradecol_fixed:
+        step("[Guard] 신용등급 컬럼 보강 — WHERE 의 crd_grd 조건이 SELECT 에 없어 주입 (2026-09-02 서버 실측: '등급 높은 채권' 이 AA- 이상 15,845종목을 필터하고도 SELECT 미포함으로 '등급 정보가 없다' 오거절)")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
@@ -2373,6 +2452,10 @@ def answer_question(
     if stripped:
         step("[Guard] 면책 문구 제거 — '금융기관 문의·전문가 상담' 류 문장을 답변에서 걷어냄 "
              "(answer_rules 금지 규칙 미준수 5회 재발 — 2026-09-01 결정층行)")
+    result.answer, topcited_fixed = ensure_top_row_cited(result.answer, sql, rows)
+    if topcited_fixed:
+        step("[Guard] 목록 상위 행 복원 — 답변이 정렬 결과의 하위 행을 인용하며 상위 행을 건너뛰어 누락 행을 덧붙임 "
+             "(2026-09-02 서버 실측: '1년만 굴릴 건데' 답변에서 6등급 정렬 1·3위 증발 — 값이 전부 실제 행이라 환각 검사 밖)")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

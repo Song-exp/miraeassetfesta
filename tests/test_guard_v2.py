@@ -1549,3 +1549,63 @@ def test_org_label_slots_ground(ctx):
     # ttl 사영
     ttl = open("ontology/common.ttl", encoding="utf-8").read()
     assert 'fp:Org_00040007 fp:formerName "프랭클린템플턴투자신탁운용"@ko' in ttl and "fp:Org_00040022 fp:successor fp:Org_00040007" in ttl
+
+
+def test_country_attr_tags_from_kg(ctx):
+    """KG 1R S3/S4 + 3R C — 국가·속성 태그가 KG 개체(token alias)가 됐다. 국가어 사전 상수 제거 · 어떤 태그/컬럼/낱말을 썼든 canon 하나 ·
+    희소 태그는 이름 폴백 · '유형' 이면 zrin_ptn_nm · 설정형태 어휘는 token 확정식 · Region_Korea 는 권역 후손 아님."""
+    from src.runtime.pipeline import (_ground, ensure_fund_country_tag as ct, ensure_fund_attr_tag as at, _has_name_filter as hnf,
+                                      _country_tag_map, ensure_fund_list_grouping)
+    con = _ro()
+    base = "sale_yn='판매중' AND prvo_pbff_desc='공모'"
+    def cnt(where):
+        return con.execute(f"SELECT COUNT(*), COUNT(DISTINCT {__import__('src.runtime.pipeline', fromlist=['x'])._FUND_KEY_EXPR}) FROM public_funds WHERE {base} AND {where}").fetchone()
+    assert {w for w, _, _ in _country_tag_map()} >= {"중국", "차이나", "대만", "호주", "인도네시아", "인도"}
+    # Ground — token alias 확정식 렌더링 · 2자 국가어 · '유형'
+    _, lines = _ground("대만에 투자하는 공모펀드 있어?", ctx, ["public_funds"])
+    assert lines and "Country_TWN" in lines[0] and "',' || public_funds.prfd_attr_cds || ',' LIKE '%,TWN,%'" in lines[0]
+    _, lines = _ground("아시아에 투자하는 공모펀드 중 순자산 큰 5개 알려줘", ctx, ["public_funds"])
+    assert "Region_Asia" in lines[0] and "Region_Korea" not in lines[0] and "'국내'" not in lines[0]          # S4 (KG-023)
+    # C-1 태그 무관 교정(T4 IND→IDN) + 속성명 절 + 뒤콤마
+    t4 = "SELECT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND (prfd_attr_cds LIKE '%IND%' OR zrin_attr_nms LIKE '%인도네시아,%') AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(t4, "인도네시아에 투자하는 공모펀드 알려줘")
+    assert ok and s.count("'%,IDN,%'") == 1 and "IND" not in s.replace("IDN", "") and " OR " not in s
+    assert cnt("',' || prfd_attr_cds || ',' LIKE '%,IDN,%'") == (7, 1)
+    # S6 — 이름절 OR 소멸 → 135/58 · 목록 묶기 발동
+    s6 = "SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' AND (',' || prfd_attr_cds || ',' LIKE '%,IND,%' OR REPLACE(itm_nm,' ','') LIKE '%인도%') AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(s6, "인도에 투자하는 공모펀드 알려줘")
+    assert ok and "itm_nm" not in s.split("WHERE")[1] and s.count("'%,IND,%'") == 1 and not hnf(s)
+    assert ensure_fund_list_grouping(s, "인도에 투자하는 공모펀드 알려줘")[1]
+    assert cnt("',' || prfd_attr_cds || ',' LIKE '%,IND,%'") == (135, 58)
+    # T13 미국 — 이름절(통화 표기 혼입) 제거 → 333/98
+    t13 = "SELECT itm_no, itm_nm FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,USA,%' OR itm_nm LIKE '%미국%') AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30"
+    s, ok = ct(t13, "미국에 투자하는 공모펀드 알려줘")
+    assert ok and "itm_nm LIKE" not in s and cnt("',' || prfd_attr_cds || ',' LIKE '%,USA,%'") == (333, 98)
+    # KG-021 대만 — 설립국 컬럼 오용 → 희소 태그라 (TWN OR 이름) 폴백 → 피델리티대만 1행
+    k21 = "SELECT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND fd_estb_ctry_cd = 410 AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(k21, "대만에 투자하는 공모펀드 있어?")
+    assert ok and "fd_estb_ctry_cd" not in s and "'%,TWN,%'" in s and "LIKE '%대만%'" in s
+    rows = con.execute(s).fetchall()
+    assert len(rows) == 1 and "피델리티대만" in rows[0][1]
+    # KG-012 — 템플릿 잔재 <CHN> + '유형' → zrin_ptn_nm 등호 → 205/522
+    k12 = "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND zrin_btyp_nm = '해외주식형' AND ',' || prfd_attr_cds || ',' LIKE '%,<CHN>,%' AND sale_yn = '판매중' LIMIT 30"
+    s, ok = ct(k12, "해외주식형 중에서 중국주식 유형인 공모펀드는 몇 개야?")
+    assert ok and "zrin_ptn_nm = '중국주식'" in s and "CHN" not in s
+    assert cnt("zrin_btyp_nm = '해외주식형' AND zrin_ptn_nm = '중국주식'") == (522, 205)
+    # 대조군 — 이미 정식형(R3 중국 560/248)은 무변경
+    r3 = "SELECT itm_no FROM public_funds WHERE prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,CHN,%' AND sale_yn = '판매중' LIMIT 30"
+    assert ct(r3, "중국에 투자하는 공모펀드 알려줘") == (r3, False)
+    # R11 — 설정형태 token 확정식 (KG-017 폐쇄 3/6 · KG-018 단위∧개방 31/189)
+    k17 = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND han_clas_policies LIKE '%폐쇄형%' LIMIT 30"
+    s, ok = at(k17, "폐쇄형 공모펀드는 몇 개야?")
+    assert ok and "han_clas_policies" not in s and "'%,C104,%'" in s and cnt("',' || prfd_attr_cds || ',' LIKE '%,C104,%'") == (6, 3)
+    k18 = "SELECT DISTINCT zrin_btyp_nm, itm_no FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_btyp_nm IS NOT NULL LIMIT 30"
+    s, ok = at(k18, "단위형이면서 개방형인 공모펀드도 있어?")
+    assert ok and "'%,C102,%'" in s and "'%,C103,%'" in s and not at(s, "단위형이면서 개방형인 공모펀드도 있어?")[1]
+    assert cnt("',' || prfd_attr_cds || ',' LIKE '%,C102,%' AND ',' || prfd_attr_cds || ',' LIKE '%,C103,%'") == (189, 31)
+    _, lines = _ground("폐쇄형 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert any("FundAttr_C104" in ln for ln in lines)
+    # C-3 — OR 묶인 이름절은 개별 조회가 아니다
+    assert not hnf("SELECT itm_nm FROM public_funds WHERE (or_attr_desc LIKE '%주식%' OR itm_nm LIKE '%배당%') LIMIT 30")
+    assert hnf("SELECT itm_nm FROM public_funds WHERE itm_nm LIKE '%코어테크%' AND sale_yn='판매중' LIMIT 30")
+    assert hnf("SELECT itm_nm FROM public_funds WHERE (REPLACE(itm_nm,' ','') LIKE '%코어%' OR REPLACE(itm_nm,' ','') LIKE '%테크%') LIMIT 30")

@@ -1,0 +1,2164 @@
+# GENERATED — 편집 금지. 재생성: python scripts/gen_fund_attribute_yaml.py
+# source=ontology/codebooks/fund_country_tag.csv · fund_attr_code.csv — as_of=2026-08-22
+entity: FundAttribute
+description: 펀드별속성 태그(prfd_attr_cds) 15축 — 설정형태(C)·판매채널(D)·세제(F/G)·구조(M)·테마(N)·섹터(O)·스타일(P)·전략(S)·TDF(T)·지역구분(V/W)
+property: hasAttribute
+generated: true
+as_of: '2026-08-22'
+nodes:
+  FundAttr_C101:
+    label_ko: 추가
+    axis: C
+    axis_name: 설정형태(추가/단위·개방/폐쇄)
+    n_rows_selling: 8355
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: C101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+    synonyms:
+    - 추가형
+  FundAttr_C102:
+    label_ko: 단위
+    axis: C
+    axis_name: 설정형태(추가/단위·개방/폐쇄)
+    n_rows_selling: 195
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: C102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+    synonyms:
+    - 단위형
+  FundAttr_C103:
+    label_ko: 개방
+    axis: C
+    axis_name: 설정형태(추가/단위·개방/폐쇄)
+    n_rows_selling: 8544
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: C103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+    synonyms:
+    - 개방형
+  FundAttr_C104:
+    label_ko: 폐쇄
+    axis: C
+    axis_name: 설정형태(추가/단위·개방/폐쇄)
+    n_rows_selling: 6
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: C104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+    synonyms:
+    - 폐쇄형
+  FundAttr_D101:
+    label_ko: 직판
+    axis: D
+    axis_name: 판매채널
+    n_rows_selling: 58
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: D101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_D102:
+    label_ko: 국내위탁판매
+    axis: D
+    axis_name: 판매채널
+    n_rows_selling: 8355
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: D102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_D103:
+    label_ko: 직판&국내위탁판매
+    axis: D
+    axis_name: 판매채널
+    n_rows_selling: 118
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: D103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_D105:
+    label_ko: 국내외혼합판매
+    axis: D
+    axis_name: 판매채널
+    n_rows_selling: 323
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: D105
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_D106:
+    label_ko: 온라인전용
+    axis: D
+    axis_name: 판매채널
+    n_rows_selling: 3223
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: D106
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_E101:
+    label_ko: 개인
+    axis: E
+    axis_name: 가입대상
+    n_rows_selling: 32
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: E101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_E102:
+    label_ko: 법인
+    axis: E
+    axis_name: 가입대상
+    n_rows_selling: 133
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: E102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_E103:
+    label_ko: 가입대상제한없음
+    axis: E
+    axis_name: 가입대상
+    n_rows_selling: 3
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: E103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_F101:
+    label_ko: 단순비과세
+    axis: F
+    axis_name: 세제혜택유형
+    n_rows_selling: 604
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: F101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_F102:
+    label_ko: 단순소득공제
+    axis: F
+    axis_name: 세제혜택유형
+    n_rows_selling: 130
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: F102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_F103:
+    label_ko: 단순세액공제
+    axis: F
+    axis_name: 세제혜택유형
+    n_rows_selling: 2780
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: F103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_F104:
+    label_ko: 소득공제비과세
+    axis: F
+    axis_name: 세제혜택유형
+    n_rows_selling: 75
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: F104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_F106:
+    label_ko: 세금우대
+    axis: F
+    axis_name: 세제혜택유형
+    n_rows_selling: 12
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: F106
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_F107:
+    label_ko: 분리과세
+    axis: F
+    axis_name: 세제혜택유형
+    n_rows_selling: 15
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: F107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G101:
+    label_ko: 개인연금
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 46
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G102:
+    label_ko: 근로자장기저축
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 12
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G110:
+    label_ko: 연금저축
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 1412
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G110
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G113:
+    label_ko: 장기주택마련
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 17
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G113
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G114:
+    label_ko: 장기주식
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 3
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G114
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G115:
+    label_ko: 퇴직연금
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 1909
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G115
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G116:
+    label_ko: 재형저축
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 16
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G116
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G117:
+    label_ko: 소득공제장기펀드
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 36
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G117
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G118:
+    label_ko: 해외비과세
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 1605
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G118
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G119:
+    label_ko: 벤처기업투자신탁
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 21
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G119
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M101:
+    label_ko: 목표달성전환
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 90
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M102:
+    label_ko: 목표달성상환
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 45
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M104:
+    label_ko: 엄브렐러
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 66
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M105:
+    label_ko: Wrap
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 189
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M105
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M106:
+    label_ko: 라이프싸이클
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 700
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M106
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M107:
+    label_ko: 운용펀드
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M109:
+    label_ko: 자펀드
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 5868
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M109
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M110:
+    label_ko: 종류형 운용펀드
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M110
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M111:
+    label_ko: 종류형 클래스펀드
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 8421
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M111
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M112:
+    label_ko: FoFs
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 1454
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M112
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M113:
+    label_ko: ETF
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M113
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M119:
+    label_ko: MoM
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 8
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M119
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M120:
+    label_ko: 역내/역외일치재간접
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 169
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M120
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M121:
+    label_ko: 외화기준가펀드
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 27
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M121
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N101:
+    label_ko: 삼성그룹주
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 52
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N102:
+    label_ko: 현대그룹주
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 6
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N105:
+    label_ko: 5대그룹주
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 12
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N105
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N106:
+    label_ko: SRI
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N106
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N107:
+    label_ko: 어린이펀드
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 36
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N108:
+    label_ko: 적립식펀드
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 51
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N108
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N109:
+    label_ko: 복제
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 143
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N109
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N111:
+    label_ko: 상장지주
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 6
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N111
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N112:
+    label_ko: 현대차그룹
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 13
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N112
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N113:
+    label_ko: 15대그룹
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 12
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N113
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N114:
+    label_ko: 원자재
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 51
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N114
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N115:
+    label_ko: 천연자원
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 10
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N115
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N116:
+    label_ko: 인프라
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 57
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N116
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N118:
+    label_ko: 럭셔리
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 13
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N118
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N119:
+    label_ko: 친환경
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N119
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N121:
+    label_ko: 지배구조
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 17
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N121
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N122:
+    label_ko: 중국본토A
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 227
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N122
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N123:
+    label_ko: 녹색성장
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 3
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N123
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N125:
+    label_ko: 분배식
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 52
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N125
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N126:
+    label_ko: 분할매수
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 14
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N126
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N130:
+    label_ko: 4차산업
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 146
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N130
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N131:
+    label_ko: 성과보수
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 8
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N131
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N132:
+    label_ko: 뉴딜
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 36
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N132
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N134:
+    label_ko: 메타버스
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 37
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N134
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N135:
+    label_ko: 투자전략(전통)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 391
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N135
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N136:
+    label_ko: 투자전략(퀀트)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 66
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N136
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N137:
+    label_ko: 투자전략(배당/우선주)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 70
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N137
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N138:
+    label_ko: 투자전략(우량주/블루칩)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 116
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N138
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N139:
+    label_ko: 투자전략(IPO/SPAC)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 21
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N139
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N140:
+    label_ko: 그룹주
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 21
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N140
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N141:
+    label_ko: 4차산업(메타버스)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 36
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N141
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N142:
+    label_ko: 4차산업(인공지능/로봇)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 119
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N142
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N143:
+    label_ko: 디지털
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 131
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N143
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N144:
+    label_ko: 반도체
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 64
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N144
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N145:
+    label_ko: 2차전지/배터리
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 12
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N145
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N147:
+    label_ko: 럭셔리
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 38
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N147
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N149:
+    label_ko: 금융
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 12
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N149
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N152:
+    label_ko: 방위산업
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 19
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N152
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N153:
+    label_ko: 우주항공
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 38
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N153
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N154:
+    label_ko: 리츠
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 53
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N154
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N155:
+    label_ko: 인프라
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 30
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N155
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N156:
+    label_ko: 헬스케어(바이오)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 98
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N156
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N159:
+    label_ko: 에너지
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 31
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N159
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N160:
+    label_ko: 자동차(미래차)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 44
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N160
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N161:
+    label_ko: 원자재(금)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 49
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N161
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N165:
+    label_ko: 원자재(원유)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 5
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N165
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N166:
+    label_ko: 원자재(농산물)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 6
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N166
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N167:
+    label_ko: ESG
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 301
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N167
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N168:
+    label_ko: 친환경
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 19
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N168
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N175:
+    label_ko: TIF
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 26
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N175
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N176:
+    label_ko: TRF
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 28
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N176
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N177:
+    label_ko: TDF
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 743
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N177
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N178:
+    label_ko: 디딤펀드
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 98
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N178
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O101:
+    label_ko: 에너지섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 36
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O102:
+    label_ko: 기초소재섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 37
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O103:
+    label_ko: 일반산업섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 23
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O117:
+    label_ko: 헬스케어섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 59
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O117
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O120:
+    label_ko: 금융섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 14
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O120
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O125:
+    label_ko: 정보기술섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 11
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O125
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O131:
+    label_ko: 기타섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 14
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O131
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O132:
+    label_ko: 소비재섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 49
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O132
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O133:
+    label_ko: 원자재섹터
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 21
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O133
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P101:
+    label_ko: 배당주
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 496
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P102:
+    label_ko: 가치주
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 296
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P103:
+    label_ko: 성장주
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 231
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P104:
+    label_ko: 중소형주
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 316
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P108:
+    label_ko: Dur 0.5~1
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 7
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P108
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P120:
+    label_ko: 만기매칭
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 5
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P120
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P121:
+    label_ko: 국공채
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 169
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P121
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P122:
+    label_ko: 회사채
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P122
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_Q107:
+    label_ko: 부동산
+    axis: Q
+    axis_name: 실물자산
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: Q107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_Q109:
+    label_ko: 농산물
+    axis: Q
+    axis_name: 실물자산
+    n_rows_selling: 10
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: Q109
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_Q111:
+    label_ko: 천연자원(에너지)
+    axis: Q
+    axis_name: 실물자산
+    n_rows_selling: 5
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: Q111
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R102:
+    label_ko: 전환사채
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 23
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R105:
+    label_ko: 공모주(혼합)
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 218
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R105
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R106:
+    label_ko: 공모주(채권)
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 52
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R106
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R107:
+    label_ko: 하이일드
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 131
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R110:
+    label_ko: ELS
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 8
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R110
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R111:
+    label_ko: 코넥스
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 9
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R111
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R112:
+    label_ko: 메자닌
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R112
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S101:
+    label_ko: 시스템자산배분
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 3
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S102:
+    label_ko: 자산배분
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 90
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S103:
+    label_ko: 원금보존추구
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S104:
+    label_ko: 인덱스
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 414
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S107:
+    label_ko: 차익거래
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 15
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S108:
+    label_ko: 롱/숏
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 127
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S108
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S109:
+    label_ko: 시장매크로
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S109
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S115:
+    label_ko: Covered Call
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 88
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S115
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S116:
+    label_ko: 퀀트
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S116
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S117:
+    label_ko: 레버리지
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 44
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S117
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S118:
+    label_ko: 집중
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 18
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S118
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S119:
+    label_ko: 로보어드바이저
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 57
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S119
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S120:
+    label_ko: 리버스
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S120
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S121:
+    label_ko: EMP
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 158
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S121
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T210:
+    label_ko: TDF(빈티지 없음)
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 22
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T210
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T215:
+    label_ko: TDF2015
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 13
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T215
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T220:
+    label_ko: TDF2020
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 25
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T220
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T225:
+    label_ko: TDF2025
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 65
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T225
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T230:
+    label_ko: TDF2030
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 106
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T230
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T235:
+    label_ko: TDF2035
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 91
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T235
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T240:
+    label_ko: TDF2040
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 105
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T240
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T245:
+    label_ko: TDF2045
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 85
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T245
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T250:
+    label_ko: TDF2050
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 106
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T250
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T255:
+    label_ko: TDF2055
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 68
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T255
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_T260:
+    label_ko: TDF2060
+    axis: T
+    axis_name: TDF 빈티지
+    n_rows_selling: 57
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: T260
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_V101:
+    label_ko: 국내
+    axis: V
+    axis_name: 투자지역구분(국내/국외/국내외)
+    n_rows_selling: 3389
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: V101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_V102:
+    label_ko: 국외
+    axis: V
+    axis_name: 투자지역구분(국내/국외/국내외)
+    n_rows_selling: 4225
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: V102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_V103:
+    label_ko: 국내외
+    axis: V
+    axis_name: 투자지역구분(국내/국외/국내외)
+    n_rows_selling: 928
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: V103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W101:
+    label_ko: 글로벌
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 2708
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W101
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W102:
+    label_ko: 글로벌신흥국
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 128
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W104:
+    label_ko: 북미
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 494
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W105:
+    label_ko: 남미
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 24
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W105
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W106:
+    label_ko: 아태
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 34
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W106
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W107:
+    label_ko: 아-태(ex 일)
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 53
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W108:
+    label_ko: 아시아
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 86
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W108
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W109:
+    label_ko: 아시아(ex 일)
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 94
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W109
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W110:
+    label_ko: 아시아신흥국
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 73
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W110
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W111:
+    label_ko: 동북아
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 40
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W111
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W112:
+    label_ko: 동남아
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 102
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W112
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W114:
+    label_ko: 범유럽
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 94
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W114
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W115:
+    label_ko: 서유럽
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 39
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W115
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W116:
+    label_ko: 동유럽
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 42
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W116
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W118:
+    label_ko: 유로권
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 23
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W118
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W120:
+    label_ko: 브릭스
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 58
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W120
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W121:
+    label_ko: 친디아
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 44
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W121
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W122:
+    label_ko: 범중국
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 166
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W122
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W123:
+    label_ko: 한일
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W123
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W124:
+    label_ko: 한중
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 16
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W124
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W127:
+    label_ko: 한중인
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 13
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W127
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W128:
+    label_ko: 중베트남
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 8
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W128
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W135:
+    label_ko: 브러시아
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 14
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W135
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W137:
+    label_ko: EMEA(동유럽중동아프리카)
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 10
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W137
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W138:
+    label_ko: 인니말레이
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 0
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W138
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W140:
+    label_ko: 차브라질
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 10
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W140
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W142:
+    label_ko: G2
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 15
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W142
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W144:
+    label_ko: 유라시아
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 8
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W144
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_W147:
+    label_ko: 글로벌선진국
+    axis: W
+    axis_name: 세부투자지역
+    n_rows_selling: 22
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: W147
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)

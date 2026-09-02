@@ -43,6 +43,9 @@ nodes:
     label_ko: 국내
     label_en: Korea
     parent: Region_Asia
+    # KG 1R S4 — '국내' 는 국내/해외 분류 축이라 권역(아시아) 후손으로 전개하면 투자지역 질의에 국내 3,513행이 유입된다(KG-023 MMF 도배).
+    #   지리적 계층(skos:broader)은 유지하되 closure 후손 전개에서만 제외한다. 질문이 '국내 포함' 을 명시해야 포함.
+    closure_as_descendant: false
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "국내",  source: manual, evidence: "1,036건"}
       - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "국내",  source: manual, evidence: "33,223건"}

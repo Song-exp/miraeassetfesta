@@ -627,9 +627,44 @@ _NAME_FILTER = re.compile(
 
 
 def _has_name_filter(sql: str) -> bool:
-    """WHERE 절(FROM 뒤)에 좌변 itm_nm 의 LIKE/GLOB 이름 조회가 있는가."""
+    """WHERE 절(FROM 뒤)에 좌변 itm_nm 의 LIKE/GLOB 이름 조회가 있는가.
+
+    3R C-3: 이름 LIKE 가 **비-itm_nm 절과 OR 로 묶인 괄호 안**에 있으면 이름 조회가 아니다(태그 ∪ 이름 목록 — 개별 조회 묶기가
+    아니라 목록 묶기 경로여야 한다). 판정: 그 LIKE 를 감싸는 최소 괄호 그룹에 OR 와 itm_nm 아닌 컬럼 조건이 함께 있음.
+    """
     frm = re.search(r"\bfrom\b", sql, re.I)
-    return bool(frm) and bool(_NAME_FILTER.search(sql[frm.end():]))
+    if not frm:
+        return False
+    tail = sql[frm.end():]
+    for m in _NAME_FILTER.finditer(tail):
+        depth, start = 0, None
+        for i in range(m.start() - 1, -1, -1):
+            ch = tail[i]
+            if ch == ")":
+                depth += 1
+            elif ch == "(":
+                if depth == 0:
+                    start = i
+                    break
+                depth -= 1
+        if start is None:
+            return True
+        depth, end = 0, None
+        for j in range(start + 1, len(tail)):
+            ch = tail[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    end = j
+                    break
+                depth -= 1
+        group = tail[start:end] if end else tail[start:]
+        inner = re.sub(r"REPLACE\(\s*(?:\w+\.)?itm_nm\s*,\s*' '\s*,\s*''\s*\)", "itm_nm", group)
+        other = re.search(r"\b(?!itm_nm\b)[a-z][a-z0-9_]{2,}\b\s*(?:LIKE|GLOB|=|IN\b|<|>)", inner, re.I)
+        if not (re.search(r"\bOR\b", inner, re.I) and other):
+            return True
+    return False
 _LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
 
@@ -1658,9 +1693,8 @@ def ensure_fund_mgmt_modal_name(sql: str) -> tuple[str, bool]:
 
 
 # 국가태그 규칙의 확정 대응 (한국·국내는 제외 — 상장/국내 질의와 충돌)
-_COUNTRY_TAGS = {"중국": "CHN", "차이나": "CHN", "미국": "USA", "베트남": "VNM", "일본": "JPN",
-                 "러시아": "RUS", "브라질": "BRA", "홍콩": "HKG", "독일": "DEU",
-                 "인도네시아": "IDN", "인도": "IND"}
+# (KG 1R S3) 국가어 사전은 코드 상수가 아니라 KG Country 노드(shared/fund_country_auto.yaml, codebooks/fund_country_tag.csv)에서
+#   읽는다 — _country_tag_map(). '대만·호주·말레이시아…' 코드북 17국 전부가 자동으로 확정식 대상이 된다(KG-021 사전 밖 오거절).
 
 
 def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
@@ -1674,29 +1708,149 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql):
         return sql, False
-    word, tag = next(((w, t) for w, t in _COUNTRY_TAGS.items() if w in question), (None, None))
-    if not tag:
+    hits = [(w, t, sp) for w, t, sp in _country_tag_map() if w in question]
+    if not hits:
         return sql, False
-    canon = f"',' || prfd_attr_cds || ',' LIKE '%,{tag},%'"
-    fixed = False
-    m = re.search(r"(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", sql)
-    if m:
-        sql = sql[:m.start()] + canon + sql[m.end():]
-        fixed = True
-    # 🔴 2026-09-02 S6 재검 — HCX 표현형 2종이 정규식 밖이라 가드가 안 돌았다: ① `prfd_attr_cds LIKE '%IND%'`(콤마 없음 —
-    #    S6·S7 둘째 절) ② `zrin_attr_nms LIKE '%인도%'`('인도' 가 '인도네시아' 를 삼켜 7행 혼입 → 142행/59펀드 vs gold 135/58).
-    bare = re.compile(rf"(?<!\|\| ')(?:\b\w+\.)?prfd_attr_cds\s+LIKE\s+'%,?{tag},?%'", re.I)
-    nms = re.compile(rf"(?:\b\w+\.)?zrin_attr_nms\s+LIKE\s+'%{re.escape(word)}%'", re.I)
-    for pat in (bare, nms):
-        if pat.search(sql):
-            sql = pat.sub(canon, sql)
-            fixed = True
-    if fixed:
-        # 같은 정식형이 OR 로 중복되면 하나로 접는다 — `(canon OR canon)` / `canon OR canon`
-        c = re.escape(canon)
-        sql = re.sub(rf"\(\s*{c}\s+OR\s+{c}\s*\)", canon, sql, flags=re.I)
-        sql = re.sub(rf"{c}\s+OR\s+{c}", canon, sql, flags=re.I)
-    return sql, fixed
+    # 긴 낱말 우선 정렬이라 hits[0] 이 주 국가('인도네시아' > '인도'). 부분어 포함 관계의 짧은 낱말은 버린다.
+    primary = hits[0]
+    hits = [h for h in hits if h is primary or h[0] not in primary[0]]
+    q_tags = {t: (w, sp) for w, t, sp in hits}
+
+    def canon_of(tag: str) -> str:
+        c = f"',' || prfd_attr_cds || ',' LIKE '%,{tag},%'"
+        w, sp = q_tags[tag]
+        return f"({c} OR REPLACE(itm_nm,' ','') LIKE '%{w}%')" if sp else c
+
+    # R10 — '유형' 어휘 + 소분류 값(zrin_ptn_nm) 이 질문에 있으면 축은 **유형**이다(KG-012 '중국주식 유형' 205/522 ≠ CHN 태그 248)
+    ptn = _ptn_value_in_question(question) if "유형" in question else None
+    primary_canon = f"zrin_ptn_nm = '{ptn}'" if ptn else canon_of(primary[1])
+    orig = sql
+
+    def _tag_of(literal: str) -> str | None:
+        tok = literal.strip("%,").strip()
+        return tok if tok in q_tags else None
+
+    # ⓐ 지역·설립국 컬럼 오용 → 주 canon (fd_estb_ctry_cd: KG-021 '대만' → 설립국 410=한국 69펀드)
+    sql = re.sub(r"(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", primary_canon, sql)
+    sql = re.sub(r"(?:\b\w+\.)?fd_estb_ctry_cd\s*=\s*'?\d+'?", primary_canon, sql)
+    # ⓑ 태그 절 — HCX 가 **어떤 태그**를 썼든(T4: IND→IDN · S6 콤마 없는 LIKE · 템플릿 잔재 <CHN>) 질문의 국가로 접는다
+    def _fix_tag(m: re.Match) -> str:
+        t = _tag_of(m.group(1))
+        return canon_of(t) if t and not ptn else primary_canon
+    sql = re.sub(r"(?:',' \|\| )?(?:\b\w+\.)?prfd_attr_cds(?: \|\| ',')?\s+LIKE\s+'([^']*)'", _fix_tag, sql, flags=re.I)
+    # ⓒ 속성 명칭 절(zrin_attr_nms LIKE '%인도%') — 낱말 무관하게 국가 조건이면 canon ('인도' 가 '인도네시아' 를 삼킨다)
+    def _fix_nms(m: re.Match) -> str:
+        w = m.group(1).strip("%,")
+        t = next((t for t, (qw, _) in q_tags.items() if qw == w), None)
+        return canon_of(t) if t and not ptn else (primary_canon if any(qw in w or w in qw for qw, _, _ in hits) else m.group(0))
+    sql = re.sub(r"(?:',' \|\| )?(?:\b\w+\.)?zrin_attr_nms(?: \|\| ',')?\s+LIKE\s+'([^']*)'", _fix_nms, sql, flags=re.I)
+    # ⓓ 국가어 이름절(itm_nm LIKE '%미국%')이 태그 절과 OR 로 묶여 있으면 이름절을 걷어낸다(3R C-2 — 통화 표기·역외 무태그 행 혼입,
+    #    T13 미국 611 vs 태그 333). 희소 태그(canon 이 이미 이름 폴백을 품음)도 같은 접기로 수렴한다.
+    for w, t, sp in hits:
+        name = rf"(?:REPLACE\(\s*(?:\w+\.)?itm_nm\s*,\s*' '\s*,\s*''\s*\)|(?:\b\w+\.)?itm_nm)\s+LIKE\s+'%{re.escape(w)}%'"
+        c = re.escape(primary_canon if (ptn or t == primary[1]) else canon_of(t))
+        sql = re.sub(rf"\(\s*{c}\s+OR\s+{name}\s*\)", lambda m: primary_canon if (ptn or t == primary[1]) else canon_of(t), sql, flags=re.I)
+        sql = re.sub(rf"\(\s*{name}\s+OR\s+{c}\s*\)", lambda m: primary_canon if (ptn or t == primary[1]) else canon_of(t), sql, flags=re.I)
+    # 같은 정식형이 OR 로 중복되면 하나로 접는다 — `(canon OR canon)` / `canon OR canon`
+    for c_txt in {primary_canon, *[canon_of(t) for t in q_tags]}:
+        c = re.escape(c_txt)
+        sql = re.sub(rf"\(\s*{c}\s+OR\s+{c}\s*\)", c_txt, sql, flags=re.I)
+        sql = re.sub(rf"{c}\s+OR\s+{c}", c_txt, sql, flags=re.I)
+    return sql, sql != orig
+
+
+@lru_cache(maxsize=1)
+def _sparse_country_tags() -> frozenset:
+    """기본모수(판매중·공모)에서 태그 행이 **0** 인 국가(대만·호주…) — 이름 폴백(itm_nm LIKE)을 병기한다. 태그가 1행이라도 있으면
+    태그가 축이다(3R C-2: 이름절은 통화 표기·역외 무태그 행을 끌어온다). DB 실측, 하드코딩 아님."""
+    ctx = _ev_ctx()
+    tags = [raw for n in ctx.kg_nodes if n.node_type == "Country" for t, c, raw in ctx.kg_aliases.get(n.node_id, ()) if t == "public_funds"]
+    con = connect_readonly()
+    try:
+        out = {tag for tag in tags if con.execute(
+            "SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' AND ','||prfd_attr_cds||',' LIKE ?",
+            (f"%,{tag},%",)).fetchone()[0] == 0}
+    finally:
+        con.close()
+    return frozenset(out)
+
+
+@lru_cache(maxsize=1)
+def _country_tag_map() -> tuple:
+    """(질문 낱말, ISO3 태그, 희소 여부) — Country 노드(shared/fund_country_auto.yaml, token alias) 라벨 + enums 통칭. 긴 낱말 먼저.
+    '한국'·'국내' 는 상장/국내 질의와 충돌하므로 제외(Region_Korea 규칙과 같은 결)."""
+    ctx = _ev_ctx()
+    syn = _synonym_keys(ctx)
+    sparse = _sparse_country_tags()
+    out = []
+    for node in ctx.kg_nodes:
+        if node.node_type != "Country":
+            continue
+        raws = [raw for t, c, raw in ctx.kg_aliases.get(node.node_id, ()) if t == "public_funds"]
+        if not raws or not node.label_ko or node.label_ko in ("한국", "국내"):
+            continue
+        for w in [node.label_ko] + list(syn.get(node.label_ko, ())):
+            out.append((w, raws[0], raws[0] in sparse))
+    return tuple(sorted(out, key=lambda x: -len(x[0])))
+
+
+@lru_cache(maxsize=1)
+def _ptn_values() -> tuple:
+    con = connect_readonly()
+    try:
+        return tuple(sorted({r[0].strip() for r in con.execute("SELECT DISTINCT zrin_ptn_nm FROM public_funds WHERE zrin_ptn_nm IS NOT NULL") if r[0]},
+                            key=len, reverse=True))
+    finally:
+        con.close()
+
+
+def _ptn_value_in_question(question: str) -> str | None:
+    """질문에 든 제로인 소분류(zrin_ptn_nm) 값 — 가장 긴 것. 없으면 None."""
+    q = question.replace(" ", "")
+    return next((v for v in _ptn_values() if len(v) >= 3 and v.replace(" ", "") in q), None)
+
+
+@lru_cache(maxsize=1)
+def _attr_word_map() -> tuple:
+    """(질문 낱말, 태그 코드) — FundAttribute 노드의 enums 통칭(설정형태 축 '개방형' 등). 라벨 자체는 2자('개방')라 쓰지 않는다."""
+    ctx = _ev_ctx()
+    syn = _synonym_keys(ctx)
+    out = []
+    for node in ctx.kg_nodes:
+        if node.node_type != "FundAttribute" or not node.label_ko:
+            continue
+        raws = [raw for t, c, raw in ctx.kg_aliases.get(node.node_id, ()) if t == "public_funds"]
+        for w in syn.get(node.label_ko, ()):
+            if raws:
+                out.append((w, raws[0]))
+    return tuple(sorted(out, key=lambda x: -len(x[0])))
+
+
+def ensure_fund_attr_tag(sql: str, question: str) -> tuple[str, bool]:
+    """속성 태그 축(설정형태 등)의 질문 어휘를 token 확정식으로 주입하고, 같은 낱말을 다른 컬럼에 쓴 절은 걷어낸다.
+
+    일반 규칙(KG 1R R11): FundAttribute 노드 통칭('개방형·폐쇄형·단위형·추가형' = 코드북 이름 + '형')이 질문에 있으면
+    `','||prfd_attr_cds||',' LIKE '%,<code>,%'` 가 유일한 조건식이다. KG-017: yaml 오서술로 `han_clas_policies LIKE '%폐쇄형%'`(클래스 정책
+    컬럼) → 0행 "0개" 단언(실재 3펀드/6클래스). KG-018: 단위∧개방 직교 축을 HCX 가 통째로 버림(31/189).
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, False
+    hits = [(w, code) for w, code in _attr_word_map() if w in question]
+    if not hits:
+        return sql, False
+    orig = sql
+    for w, code in hits:
+        canon = f"',' || prfd_attr_cds || ',' LIKE '%,{code},%'"
+        if canon in sql:
+            continue
+        m = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+        if m:
+            kept = [c for c in guard.split_conjuncts(m.group(1)) if w not in c]
+            sql = sql[:m.start(1)] + " " + " AND ".join(kept + [canon]) + " " + sql[m.end(1):] if kept else \
+                sql[:m.start(1)] + " " + canon + " " + sql[m.end(1):]
+        else:
+            sql, _ = _append_exclusions(sql, [canon])
+    return sql, sql != orig
 
 
 _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
@@ -2497,8 +2651,8 @@ def _ground(
         #    Sec_/Org_ 자동 노드와 라벨이 겹치는 것은 0건으로 확인했다.
         #    ⚠️ AssetClass_ 는 **일부러 제외**했다. '기타'(AssetClass_Other)가 '기타비용'(수수료 항목)에
         #       부분일치해 오탐이 난다. '주식'·'채권' 은 맞는 매칭이나 '기타' 하나 때문에 통째로 뺀다.
-        if node.node_id.startswith(("Region_", "Curr_", "CG_")):
-            return 2
+        if node.node_id.startswith(("Region_", "Curr_", "CG_", "Country_")):
+            return 2          # Country_(KG 1R S3): 코드북 17국 — 닫힌 목록, '중국'·'대만' 2자
         return 4 if node.node_id.startswith(("Idx_a_", "Idx_v_", "Org_issuer_")) else 3
 
     # 후보가 수만 개라 노드당 한 번만 편다
@@ -2529,9 +2683,11 @@ def _ground(
         prov = getattr(node, "provenance", "curated")
         if prov == "derived":
             return                         # S1: 종목명 접두 최빈값 라벨(Org_fund_* 'Asset' 등) — 코드 alias 로만 산다 (KG-001 오매칭)
+        # FundAttribute(S3 태그 축 179노드 — '인덱스'·'배당주'…)는 항상 경계 검사 조건부 — 일반어와 겹치는 라벨이 많다
+        attr = node.node_type == "FundAttribute"
         for label in node.labels:
             if len(label) >= _min_len(node, label):
-                yield label, False, "label"
+                yield label, attr, "label"
             elif _short_ok(node, label):
                 yield label, True, "label"   # 짧은 라벨은 경계 검사를 조건으로 허용
             short = _short_label(label)
@@ -2633,7 +2789,7 @@ def _ground(
                 hits.append(succ)
                 s_off = getattr(succ, "label_official", None) or succ.label_ko
                 note = f" ℹ '{label}' 은(는) 구상호 — 현재 {s_off}({succ.node_id.replace('Org_', '')})이 운용하며 후계 코드를 함께 조회한다"
-        where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
+        where = " · ".join(_alias_expr(ctx, t, c, raw) for t, c, raw in aliases[:4])
         if len(aliases) > 4:
             where += f" … 외 {len(aliases) - 4}종"
         via = ""
@@ -2687,6 +2843,24 @@ def _demote_product_name_raws(node, aliases: list) -> list:
         return aliases
     kept = [a for a in aliases if not _PRODUCT_NAME_RAW.search(a[2])]
     return kept or aliases
+
+
+_TOKEN_COLS: dict[int, set] = {}
+
+
+def _is_token_column(ctx, t: str, c: str) -> bool:
+    """(테이블, 컬럼)에 token 종류 alias 가 하나라도 있으면 그 컬럼은 다중값 콤마 컬럼이다 (kg_alias.match_kind — S3)."""
+    cols = _TOKEN_COLS.get(id(ctx))
+    if cols is None:
+        cols = _TOKEN_COLS[id(ctx)] = {(t_, c_) for (_, t_, c_, _), k in (getattr(ctx, "kg_alias_kind", {}) or {}).items() if k == "token"}
+    return (t, c) in cols
+
+
+def _alias_expr(ctx, t: str, c: str, raw: str) -> str:
+    """Ground 라인의 alias 표기 — 등호 컬럼은 `t.c='raw'`, token 컬럼은 확정식."""
+    if _is_token_column(ctx, t, c):
+        return f"',' || {t}.{c} || ',' LIKE '%,{raw},%'"
+    return f"{t}.{c}={raw!r}"
 
 
 def ground_notes(ground_lines: list[str]) -> list[str]:
@@ -2842,6 +3016,11 @@ def _mapping_block(ctx: RuntimeContext, hits: list, target: set, relations: bool
             uniq = sorted(set(vals), key=lambda v: (len(v), v))
             shown = uniq[:MAX_ALIAS_VALUES]
             more = "" if len(uniq) <= len(shown) else f" … 외 {len(uniq) - len(shown)}종"
+            if _is_token_column(ctx, t, c):
+                # S3 token alias — 다중값 콤마 컬럼은 등호가 아니라 토큰 확정식이다. 조건식을 그대로 준다(모델은 복사만)
+                conds = " OR ".join(f"',' || {c} || ',' LIKE '%,{v},%'" for v in shown)
+                out.append(f"- {name} ({node.node_type}) → {t}.{c} 의 토큰 {', '.join(repr(v) for v in shown)}{more} — 조건식 그대로: {conds}")
+                continue
             out.append(
                 f"- {name} ({node.node_type}) → {t}.{c} 의 값: "
                 + ", ".join(f"'{v}'" for v in shown) + more
@@ -3065,10 +3244,15 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if modal_fixed:
         step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
              "소수 이름 제외로 교정 (2026-09-01 FND-035 재검: 00040007 이 프랭클린템플턴(10행)으로 표기 — 정본은 우리자산운용 373행)")
+    before_ctag = sql
     sql, ctag_fixed = ensure_fund_country_tag(sql, q)
     if ctag_fixed:
-        step("[Guard] 국가 태그 확정식 — 지역 컬럼 등호·미래핑 태그 LIKE 를 ','||prfd_attr_cds||',' 정식형으로 교체 "
-             "(2026-09-01 FND-026 재검: ='글로벌' 오모수 + wrap 없는 LIKE 가 98/560행 누락)")
+        step("[Guard] 국가 태그 확정식 — 국가어 질의의 지역·설립국·태그·속성명·이름 OR 절을 KG Country 토큰 canon 하나로 접음 "
+             f"(KG 1R S3·3R C: 어떤 태그를 썼든 교정 · '유형' 이면 zrin_ptn_nm) · 전: {before_ctag[before_ctag.upper().find('WHERE'):][:120]}")
+    sql, attr_fixed = ensure_fund_attr_tag(sql, q)
+    if attr_fixed:
+        step("[Guard] 속성 태그 확정식 — 설정형태 어휘(개방형·폐쇄형·단위형·추가형)를 KG FundAttribute 토큰 canon 으로 주입, 같은 낱말의 타 컬럼 절 제거 "
+             "(KG-017 han_clas_policies LIKE '%폐쇄형%' → 0행 '0개' · KG-018 직교 축 폐기)")
     sql, fcnt_fixed = ensure_fund_distinct_count(sql, q)
     if fcnt_fixed:
         step("[Guard] 펀드단위 집계 교체 — 펀드 개수 질의의 COUNT(*) 를 COUNT(DISTINCT 펀드키)+클래스수 병기로 "

@@ -200,7 +200,15 @@ def validate(con, enums, shared, codebooks):
             errors.append(f"[V5] 컬럼 없음: {where}")
             continue
         nraw = norm(raw)
-        if nraw not in distinct(t, c):
+        if al.get("match") == "token":
+            # 다중값 콤마 컬럼(prfd_attr_cds)의 토큰 alias — distinct 원소가 아니라 토큰 집합에 실존해야 한다 (KG 1R S3)
+            key = (t, c, "__tokens__")
+            if key not in distinct_cache:
+                distinct_cache[key] = {tok.strip() for v in distinct(t, c) for tok in v.split(",") if tok.strip()}
+            present = nraw in distinct_cache[key]
+        else:
+            present = nraw in distinct(t, c)
+        if not present:
             msg = f"[V1] 죽은 alias — DB distinct 에 없는 값: {where}"
             (warnings if status == "pending" else errors).append(msg)
         if al.get("source") == "rule_component":
@@ -331,7 +339,11 @@ def emit_kg(con, shared):
                              al.get("source", "manual"), al.get("match", "eq")))
                 n_alias += 1
         # 계층 closure 전개 (지역 등) — 런타임 비용 0 을 위해 빌드 타임에 조상 전부 풀어둠
+        no_closure = {nid for nid, node in (doc.get("nodes") or {}).items()
+                      if node.get("closure_as_descendant") is False}
         for child, parent in parents.items():
+            if child in no_closure:
+                continue          # S4: 분류 축 값('국내')은 권역 후손 전개에서 제외 — skos:broader 는 ttl 에 남는다
             anc = parent
             while anc:
                 cur.execute("insert into kg_closure values (?,?)", (anc, child))

@@ -1069,6 +1069,45 @@ def ensure_top_row_cited(answer: str, sql: str, rows: str) -> tuple[str, bool]:
             + "\n".join(lines)), True
 
 
+_REFUSAL_ANSWER = re.compile(
+    r"정보가?\s*(?:포함되어\s*있지\s*않|없)|답변(?:을|이)?\s*드릴\s*수\s*없|확인(?:할|이)\s*(?:수\s*)?(?:없|불가)|알\s*수\s*없")
+_EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
+
+
+def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
+                                   question: str) -> tuple[str, bool]:
+    """양수 단일 집계 결과를 받고도 '정보 없음' 으로 오거절한 답변을 기계 조립으로 교체한다.
+
+    2026-09-02 서버 실측: '퇴직연금으로 살 수 있는 채권 있어?' — SQL 은 pd_pen_tr_yn='Y' +
+    구매가능 모수로 정확했고 COUNT(*)=1,929 가 정상 반환됐는데, 답변기가 "정보가 포함되어
+    있지 않습니다" 오거절. crd_grd 오거절(SELECT 누락)과 달리 이번엔 숫자가 결과에 있는데도
+    집계 1행을 '정보 없음' 으로 오독했다 — 집계 해석은 LLM 에 맡길 수 없다(_count_answer ·
+    _distribution_answer 와 같은 교훈). 0행 '확인 불가' 는 compose 전 조기 반환 경로라 이
+    가드에 오지 않는다 — 여기 오는 답변은 항상 결과가 있다.
+    발동(전부): ① 단일행 결과 ② SELECT 가 집계 1항목 ③ 값이 양수 ④ 답변이 거절 문구.
+    값 0 이면 불개입('없다' 답이 옳을 수 있다). 교체문은 결과 원문 수치만 쓴다 — 창작 없음."""
+    if n != 1 or not _REFUSAL_ANSWER.search(answer):
+        return answer, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return answer, False
+    head = re.sub(r"^\s*SELECT\s+", "", sql[:frm.start()], flags=re.I)
+    if not re.match(r"\s*(?:COUNT|SUM)\s*\(", head, re.I) or "," in head.split("AS")[0]:
+        return answer, False
+    body = rows.splitlines()[1:]
+    if len(body) != 1:
+        return answer, False
+    try:
+        val = int(float(body[0].split(" | ")[0].strip()))
+    except ValueError:
+        return answer, False
+    if val <= 0:
+        return answer, False
+    unit = "종목" if re.search(r"DISTINCT\s+pd_no", sql, re.I) else "건(행 기준 — 종목 수와 다를 수 있음)"
+    prefix = "네, 있습니다 — " if _EXIST_Q.search(question) else ""
+    return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 2026-08-22).", True
+
+
 def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     """2열(범주 라벨 · COUNT(*)) GROUP BY 분포 결과의 답변을 기계 조립한다. 아니면 None.
 
@@ -1850,8 +1889,13 @@ def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     """종목 수 질의의 COUNT(*) 를 COUNT(DISTINCT pd_no) 로 교정. (보정된 SQL, 보정했는지)
 
     채권은 1,078종목이 장내·장외 2~4행이라 COUNT(*) 는 종목 수가 아니다(대표행 규칙).
-    2026-08-31 저녁 실측: '국고채 몇 종목' 에 행수가 나감. 질문에 종목·몇 개·개수가 있을 때만."""
-    if "domestic_bonds" not in sql or not re.search(r"종목|몇\s*개|개수", question):
+    2026-08-31 저녁 실측: '국고채 몇 종목' 에 행수가 나감. 질문에 종목·몇 개·개수가 있을 때만.
+    2026-09-02 확장 — 존재 질문('~채권 있어?')도 받는다: '퇴직연금으로 살 수 있는 채권 있어?' 에
+    HCX 가 스스로 COUNT(*) 를 썼는데 트리거 어휘 밖이라 행수 1,929 가 그대로 남았다(종목 843).
+    COUNT(*) 가 이미 있을 때만 치환하는 가드라 어휘 확장의 부작용이 없다 — COUNT 없는 목록
+    SELECT 는 건드리지 않으므로 존재 질문의 예시 목록 답변은 그대로 산다(ensure_count_query 의
+    _COUNT_Q 는 이 확장에서 제외 — 목록→집계 변환까지 존재 질문에 걸면 예시가 사라진다)."""
+    if "domestic_bonds" not in sql or not re.search(r"종목|몇\s*개|개수|있(?:어|나|습니까|나요|는지)", question):
         return sql, False
     fixed = re.sub(r"COUNT\(\s*\*\s*\)", "COUNT(DISTINCT pd_no)", sql, flags=re.I)
     return (fixed, fixed != sql)
@@ -2929,6 +2973,10 @@ def answer_question(
     if topcited_fixed:
         step("[Guard] 목록 상위 행 복원 — 답변이 정렬 결과의 하위 행을 인용하며 상위 행을 건너뛰어 누락 행을 덧붙임 "
              "(2026-09-02 서버 실측: '1년만 굴릴 건데' 답변에서 6등급 정렬 1·3위 증발 — 값이 전부 실제 행이라 환각 검사 밖)")
+    result.answer, cntfix = ensure_positive_count_answered(result.answer, sql, rows, n, q)
+    if cntfix:
+        step("[Guard] 집계 오거절 교정 — 양수 COUNT 결과를 '정보 없음' 으로 오독한 답변을 기계 조립으로 교체 "
+             "(2026-09-02 서버 실측: '퇴직연금으로 살 수 있는 채권 있어?' 에 COUNT 1,929 반환에도 오거절)")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

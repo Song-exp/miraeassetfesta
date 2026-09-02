@@ -619,6 +619,35 @@ def test_strip_fabricated_risk_filter():
     assert not strip_fabricated_risk_filter(win, "돈 떼일 걱정 없는 채권 중 수익률 최고는?")[1]
 
 
+def test_ensure_positive_count_answered():
+    from src.runtime.pipeline import ensure_positive_count_answered as f
+    # 2026-09-02 서버 실측 — 퇴직연금 COUNT(*)=1,929 정상 반환에도 "정보가 포함되어 있지 않습니다" 오거절
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260822"
+    rows = "COUNT(DISTINCT pd_no)\n843"
+    refusal = "조회 결과에 퇴직연금에서 구매 가능한 특정 채권에 대한 정보가 포함되어 있지 않습니다. 따라서 이에 대해 답변을 드릴 수 없습니다."
+    fixed, changed = f(refusal, sql, rows, 1, "퇴직연금으로 살 수 있는 채권 있어?")
+    assert changed and "843" in fixed and "종목" in fixed and fixed.startswith("네, 있습니다")
+    # 존재 문형 아니면 접두 없음 · COUNT(*) 는 행 기준 단서
+    f2, c2 = f(refusal, "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn='Y'", "COUNT(*)\n1929", 1, "퇴직연금 채권 몇 개야")
+    assert c2 and "1,929" in f2 and "행 기준" in f2
+    # 불개입 — 정상 답변 / 값 0 / 다행 결과 / 집계 아닌 SELECT / 2항목 SELECT
+    assert not f("네, 843종목 있습니다.", sql, rows, 1, "있어?")[1]
+    assert not f(refusal, sql, "COUNT(DISTINCT pd_no)\n0", 1, "있어?")[1]
+    assert not f(refusal, sql, "a\n1\n2", 2, "있어?")[1]
+    assert not f(refusal, "SELECT pd_no FROM domestic_bonds LIMIT 1", "pd_no\nKR123", 1, "있어?")[1]
+    assert not f(refusal, "SELECT COUNT(*), pd_nm FROM domestic_bonds", "c | n\n3 | x", 1, "있어?")[1]
+
+
+def test_ensure_distinct_count_existence():
+    from src.runtime.pipeline import ensure_distinct_count
+    # 2026-09-02 — '있어?' 존재 문형에도 COUNT(*)→DISTINCT 교정 (옛 트리거는 종목·몇 개·개수만)
+    sql = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260822 LIMIT 30"
+    fixed, changed = ensure_distinct_count(sql, "퇴직연금으로 살 수 있는 채권 있어?")
+    assert changed and "COUNT(DISTINCT pd_no)" in fixed
+    # COUNT 없는 목록 SELECT 는 불개입(존재 질문의 예시 목록은 살린다)
+    assert not ensure_distinct_count("SELECT pd_no, pd_nm FROM domestic_bonds LIMIT 30", "채권 있어?")[1]
+
+
 def test_ensure_grade_select_column():
     from src.runtime.pipeline import ensure_grade_select_column
     # 2026-09-02 서버 실측 — '등급 높은 채권으로 골라줘' 가 crd_grd IN 필터(15,845종목)를 제대로

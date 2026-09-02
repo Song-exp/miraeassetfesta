@@ -24,7 +24,19 @@
 - `.env` 는 example 복사본 — HCX 키 없음. **로컬 HCX 경로 실행 불가**, 결정층(라우터·Ground·가드·조립기)만 pytest 로 검증. HCX 실측은 서버 `/answer` 로.
 - git remote 는 `https://Song-exp@github.com/...` 로 사용자명 고정(huhjihye 계정은 쓰기 권한 없음). 부모 폴더 `toxin_2026` 도 별도 레포 — pj 를 거기 커밋하지 않는다.
 - SSH(배포)는 ACG 통과 확인됨(공인 IP 210.183.172.228).
-- **다른 PC 에서 이어가기**: `git pull` → `pip install -r requirements-dev.txt`(`ruamel.yaml` 추가됨) → `python scripts/build_ontology.py`(KG 스키마가 바뀌었으므로 필수) → 기준선 3종. 마스터 DB(`data/financial_products.db`)·`1.금융상품/`·`secrets/` 는 gitignore 라 없으면 드라이브/zip 에서 복사. **오늘 새로 수집한 외부 데이터는 없다**(`data/external` 변경 0) — KG 는 커밋된 yaml·코드북·빌더에서 전부 재생성된다.
+
+### 🔴 다른 PC 에서 이어가기 (pull 하면 바로 이어갈 수 있다 — 조건 3개)
+
+| # | 할 것 | 왜 |
+| :-: | :-- | :-- |
+| 1 | `git pull` | 코드·yaml·문서·eval·테스트 전부 git 에 있다 |
+| 2 | `pip install -r requirements-dev.txt` | **`ruamel.yaml` 추가됨** — `scripts/check_yaml_dupkeys.py`(기준선 3종 중 하나) 의존. 없으면 스크립트가 sys.exit |
+| 3 | `python scripts/build_ontology.py` | 🔴 **필수** — 오늘 KG 스키마가 바뀌었다(kg_alias `match_kind`·kg_node 라벨 슬롯·Country/FundAttribute 노드·`provenance=label_conflict`). pull 만으로는 DB 가 새 코드와 안 맞아 Ground·게이트 테스트가 깨진다 |
+| 4 | 기준선 3종 확인 | pytest **325** · gold **147/147** · dupkeys 0 (+ `tests/test_snapshot_round6.py` 동결선 64) |
+
+- gitignore 라 git 으로 안 오는 것: 마스터 DB `data/financial_products.db`(263MB, 8/22 불변) · `1.금융상품/`(주최 xlsx) · `secrets/`(deploy_key·pem) · `.env`. 그 PC 에 없으면 드라이브 공유 또는 `C:\Users\NT751\Downloads\data` 의 zip 3개(`data.zip`·`1.금융상품_(2).zip`·`secrets.zip`)를 레포 루트에 풀면 된다.
+- **오늘 새로 수집한 외부 데이터는 없다** — `data/external` 변경 0, git 에 데이터·코드북 추가 0. KG 는 커밋된 `ontology/shared/*.yaml`·`ontology/codebooks/*.csv`·`scripts/build_ontology.py` 에서 전부 재생성된다(재빌드 결정성 확인: 같은 입력 → kg_* 행 집합 동일).
+- 서버는 이미 최신(8db421b, 코드+DB) — **배포 없이 §6 P1 의 6R 실측부터 시작**하면 된다.
 
 ---
 

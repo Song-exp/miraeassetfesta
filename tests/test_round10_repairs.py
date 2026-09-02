@@ -255,3 +255,21 @@ def test_r10_rank_head_conditions():
     assert ans and "매우 낮은 위험 기준" in ans.splitlines()[0], ans
     # 모수·식별자 컬럼은 머리줄에 중복해 싣지 않는다
     assert P._rank_filter_labels("SELECT x FROM public_funds WHERE sale_yn='판매중'") == []
+
+
+# ── E1 · 설정일 축은 전용 확정식 ────────────────────────────────────────────────
+def test_r10_estb_lookup_template():
+    """KG 부류 E — 설정일 정본은 ext_fund_page.estb_dt 뿐인데 JOIN 이 묶기를 꺼서 AA5 가 환각했다."""
+    s = ("SELECT itm_no, itm_nm, fd_estb_ctry_cd FROM public_funds "
+         "WHERE REPLACE(itm_nm,' ','') LIKE '%KB중국본토A주%' AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 1")
+    out, ok = P.ensure_fund_estb_lookup(s, "KB중국본토A주 펀드는 운용한 지 얼마나 됐어?")
+    assert ok and "LEFT JOIN ext_fund_page" in out and "ORDER BY MIN(e.estb_dt)" in out and "LIMIT 1" not in out
+    assert P.ensure_fund_estb_lookup(out, "KB중국본토A주 펀드는 운용한 지 얼마나 됐어?")[1] is False   # 멱등
+    rows, n = P._execute(out)
+    ans = P._lookup_answer(out, rows, n, "KB중국본토A주", [])
+    assert ans and "설정일 2011-03-22" in ans and "약 15년 5개월" in ans and "클래스 14개" in ans, ans
+    # 불개입 — 설정 어휘 없음 · 연도 질의(목록 경로 ensure_fund_estb_year 담당) · 이름 필터 없음
+    assert P.ensure_fund_estb_lookup(s, "KB중국본토A주 펀드 위험등급 알려줘")[1] is False
+    assert P.ensure_fund_estb_lookup(s, "2025년에 설정된 KB중국본토A주 펀드")[1] is False
+    nofilter = "SELECT itm_no FROM public_funds WHERE sale_yn='판매중' LIMIT 30"
+    assert P.ensure_fund_estb_lookup(nofilter, "설정일이 오래된 펀드 알려줘")[1] is False

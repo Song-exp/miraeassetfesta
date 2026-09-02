@@ -1577,6 +1577,52 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
 
 
 # ── 개별 조회 답변 기계 조립 (2R Q4 — R4·S3·S4·S5·R6·S12) ──
+def _qualify_fund_cols(expr: str, alias: str) -> str:
+    """식 안의 비한정 public_funds 컬럼에 별칭을 붙인다 — JOIN 의 ambiguous 오류를 막는다(문자열 리터럴 제외)."""
+    types = _fund_col_types()
+    parts, out = _SQL_LITERAL.split(expr), []
+    lits = _SQL_LITERAL.findall(expr)
+    for i, seg in enumerate(parts):
+        out.append(re.sub(r"(?<![\w.])([A-Za-z_]\w*)(?!\s*\()",
+                          lambda m: f"{alias}.{m.group(1)}" if m.group(1).lower() in types else m.group(1), seg))
+        if i < len(lits):
+            out.append(lits[i])
+    return "".join(out)
+
+
+_ESTB_LOOKUP_COLS = ("최초설정일", "최근설정일")
+
+
+def ensure_fund_estb_lookup(sql: str, question: str) -> tuple[str, bool]:
+    """설정일 축 개별 조회를 **전용 확정식**으로 교체. (SQL, 교체했는지)
+
+    🔴 10R KG 부류 E — 설정일 정본은 `ext_fund_page.estb_dt` 뿐인데, 그걸 실으려면 LEFT JOIN 이 따라오고
+       `ensure_fund_lookup_grouping` 이 join 을 불개입 사유로 삼아 개별 조회 묶기가 통째로 꺼진다.
+       그 결과 AA5 는 SELECT 에 없는 설정일을 **환각**했고(2011-06-20, gold 2011-03-22 · '약 12년' 은
+       2011→2026 산술과도 모순), Z9 는 `LIMIT 1` 무정렬로 형제 펀드('청년소득공제')의 값을 답했다.
+    처방(KG 심사관): 묶기 코드·산출 SQL 을 건드리지 않고 **설정일 축 질의만** 전용 확정식으로 바꾼다 —
+    `MIN/MAX(e.estb_dt)` + 클래스수·판매중클래스수 병기 + `ORDER BY MIN(e.estb_dt)`.
+    연도 질의('2025년에 설정된')는 `ensure_fund_estb_year`(목록 경로) 담당이라 여기 오지 않는다(중복 0).
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    if not _ESTB_Q.search(question) or _YEAR_Q.search(question):
+        return sql, False
+    if not (_has_name_filter(sql) or _has_fund_key_pin(sql)) or _ESTB_LOOKUP_COLS[0] in sql:
+        return sql, False
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, False
+    where = _qualify_fund_cols(re.sub(r"\b\w+\.(?=\w)", "", m_w.group(1)).strip(), "p")
+    key = _qualify_fund_cols(_FUND_GROUP_EXPR, "p")
+    sel = ("MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "SUM(CASE WHEN p.sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", "
+           "MIN(e.estb_dt) AS \"최초설정일\", MAX(e.estb_dt) AS \"최근설정일\", "
+           "MIN(p.rptt_ksd_itm_no) AS 대표번호")
+    return (f"SELECT {sel} FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+            f"WHERE {where} GROUP BY {key} ORDER BY MIN(e.estb_dt) ASC LIMIT {MAX_ROWS}"), True
+
+
 _STEM_ASSET = re.compile(
     r"^(.*?[\(\[][^\)\]]*(?:주식|채권|혼합|재간접|파생|MMF|부동산|특별자산|REITs|인프라|자산)[^\)\]]*[\)\]](?:\s*\((?:H|UH)\))?)", re.I)
 _STEM_CLASS_TAIL = re.compile(r"\s*(?:종류|클래스|Class|_?C[A-Za-z0-9\-]*\s*클래스).*$")
@@ -1604,6 +1650,20 @@ def _fund_col_ko(col: str) -> str:
         if c.lower() == col.lower():
             return ko or col
     return col
+
+
+def _ymd_dash(v: str) -> str:
+    return f"{v[:4]}-{v[4:6]}-{v[6:8]}"
+
+
+def _since_text(v: str) -> str:
+    """설정일부터 기준일까지의 기간 — 답변이 산술을 하지 않게 기계가 굽는다 (AA5: 2011→2026 을 '약 12년')."""
+    y0, m0, d0 = int(v[:4]), int(v[4:6]), int(v[6:8])
+    y1, m1, d1 = (int(x) for x in gate.DATA_CUTOFF.split("-"))
+    months = (y1 - y0) * 12 + (m1 - m0) - (1 if d1 < d0 else 0)
+    if months < 0:
+        return "기준일 이후 설정"
+    return f"약 {months // 12}년 {months % 12}개월" if months >= 12 else f"약 {months}개월"
 
 
 def _pct(v: str) -> str:
@@ -1646,8 +1706,9 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
     #    펀드 단위 대표값이 없어 MAX 로 뽑아 봐야 임의 클래스의 라벨이다. 이것 하나 때문에 클래스 개수 질의가
     #    조립기를 못 받고 HCX 산문으로 갔다(W5 — HCX 가 7클래스를 세지 못했다). 판정은 DB 실측(`_class_dependent`).
     noise = {c for c in cols if c.lower() in _class_dependent(False)}
-    class_only = set(cols) - noise <= set(_LOOKUP_HEAD) | {"대표번호"}
-    if not (ret_cols or has_grade or has_nast or class_only):
+    has_estb = _ESTB_LOOKUP_COLS[0] in cols
+    class_only = set(cols) - noise - set(_ESTB_LOOKUP_COLS) <= set(_LOOKUP_HEAD) | {"대표번호"}
+    if not (ret_cols or has_grade or has_nast or has_estb or class_only):
         return None
     groups: dict[str, dict] = {}
     order: list[str] = []
@@ -1658,13 +1719,15 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
         if key in groups and has_grade and groups[key]["grade"] != grade:
             key = f"{key}#{r['대표_itm_no']}"
         if key not in groups:
-            groups[key] = {"stem": stem, "n": 0, "m": 0, "grade": grade, "nast": 0, "ret": {c: [None, None] for c in ret_cols}}
+            groups[key] = {"stem": stem, "n": 0, "m": 0, "grade": grade, "nast": 0, "estb": [],
+                           "ret": {c: [None, None] for c in ret_cols}}
             order.append(key)
         g = groups[key]
         g["n"] += int(float(r["클래스수"] or 0))
         g["m"] += int(float(r["판매중클래스수"] or 0))
         if has_nast and r.get("fd_nast_suma"):
             g["nast"] += int(float(r["fd_nast_suma"]))
+        g["estb"] += [v for c in _ESTB_LOOKUP_COLS for v in (r.get(c, "").strip(),) if re.fullmatch(r"\d{8}", v)]
         for c in ret_cols:
             lo, hi = r.get(f"{c}_최저", ""), r.get(f"{c}_최고", "")
             if lo != "" and hi != "":
@@ -1711,6 +1774,10 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
                 parts.append("위험등급 미수록")
         if has_nast:
             parts.append(f"순자산 {g['nast'] // 100000000:,}억원 (클래스 합계)")
+        if has_estb:
+            # 설정일은 **최초 클래스 기준**이다(뒤에 나온 클래스의 설정일은 그 클래스의 것). 기간은 기준일까지로 센다.
+            parts.append(f"설정일 {_ymd_dash(min(g['estb']))} ({_since_text(min(g['estb']))})"
+                         if g["estb"] else "설정일 미수록")
         tail = f"클래스 {g['n']}개" + ("(전부 판매중)" if g["m"] == g["n"] else f", 판매중 {g['m']}개")
         out.append(f"- {g['stem']}: " + " · ".join(parts + [tail]))     # 값 컬럼이 없는 개수 질의(V12·W5)는 앞이 비어 빈칸이 생겼다
     notes = ground_notes(ground_lines or [])
@@ -5406,6 +5473,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
              "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
+    sql, estb_lookup = ensure_fund_estb_lookup(sql, q)
+    if estb_lookup:
+        step("[Guard] 설정일 개별 조회 확정식 — ext_fund_page LEFT JOIN + MIN/MAX(estb_dt) + 클래스수 병기로 교체 "
+             "(10R KG 부류 E · AA5 실측: SELECT 에 없는 설정일을 환각 · Z9: LIMIT 1 무정렬로 형제 펀드 값)")
     sql, unflip = fix_inverted_name_predicate(sql, q)
     if unflip:
         step("[Guard] 부정 이름 술어 교정 — 질문의 낱말을 NOT LIKE 로 뒤집은 절을 LIKE 로 되돌림 "

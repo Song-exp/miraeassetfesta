@@ -572,6 +572,17 @@ query_rules:
     text: >-
       -100 센티넬은 전 기간에 있다 (2차 실측 2026-08-25) — 1d 1 · 1m 16 · 3m 45 · 6m 66 · ytd 69 · 1y 110건.
       1y 110건 전건이 du_clpr=0 동반(거래중단·상폐). 정렬·필터에 쓰는 바로 그 기간 컬럼에 건다 — public_funds 와 동일 형태.
+  수익률상위질의:
+    triggers: [수익률, 성과, 수익, 많이 오른, 상승률]
+    text: >-
+      기간 수익률 Top-N 은 SELECT 에 **`cu_lev_fector`(배수)를 함께** 넣는다 —
+      `SELECT pd_abrv_nm, <기간컬럼>, cu_lev_fector FROM ...`. 서버 실측 2026-09-02:
+      "3개월 수익률 좋은 국내 ETF 5개" 의 SQL·순위는 정답이었지만 상위 5중 **2개가 인버스**
+      (RISE 2차전지TOP10인버스 · KODEX 미국달러선물인버스2X 2배)인데 SELECT 에 배수가 없어
+      답변이 무경고로 나갔다 — 답변기는 받은 컬럼 밖을 모른다. 🔴 인버스·레버리지가 상위에
+      있어도 **빼지 않는다**(수익률은 사실) — 대신 배수와 이름('인버스')을 근거로 답변에 밝힌다
+      (배수 부호는 88% 소실이라 이름 병행 판별 — 레버리지_인버스혼입경고와 같은 방침).
+      기간 컬럼과 기준(예: 3개월)을 답변에 명시하고, 센티넬 제외는 수익률정상 을 그대로 쓴다.
   종가정상: du_clpr > 0                 # =0 은 192건 = ETF 58 + ETN 134 (2차)
   수치기본배제: "<수치 컬럼> IS NOT NULL AND <수치 컬럼> <> 0 — normalization.zero_is_value_columns 는 예외"   # 🔴 2026-08-25 신설 (주최 공지)
   전부0컬럼금지: "cu_charge_etc_rt · pd_dvid_inc_dist · fn_average_maturity · fn_effective_duration · fn_modified_duration 사용 금지"  # 2차: 100% 결측/전부 0 — 5종 (1차 9종 중 배당·추적오차·괴리율은 채워졌고 pd_net_*·pd_lst_price 는 삭제)
@@ -581,6 +592,18 @@ query_rules:
   월분배:
     triggers: [분배, 배당, 월, 매달, 매월, 다달, 월지급]
     text: pd_dvid_cycl = 'M'                                     # 🟢 신설 — 196건
+  분배금개별조회:
+    triggers: [분배금, 배당금, 분배액, 배당액, 분배, 배당]
+    text: >-
+      🔴 분배금 **절대액 컬럼(pd_divd_amt_pshr·pd_divd_amt_ann)을 SELECT 하지 않는다** —
+      100배 스케일 오염이 확정됐다. 실측 2026-09-02: TIGER 미국배당다우존스 pshr = 3603.4554
+      인데 검산(분배율 2.832% × NAV 15,267.79 ÷ 연 12회)은 **월 36.03원** — 정확히 100배.
+      서버가 "분배금은 3603.4554478원입니다" 오답을 냈다(검수 C 의 절대액 금지는 컬럼 메타에만
+      있어 프롬프트에 실리지 않았다 — 본문 승격). 필터(`pd_divd_amt_pshr > 0`)로는 써도 된다.
+      ✅ 형식: `SELECT pd_abrv_nm, pd_dvid_yield AS 연환산분배수익률pct, pd_dvid_cycl AS 분배주기,
+      pd_dvid_pay_cnt AS 연지급횟수, pd_dvid_pay_months AS 지급월 FROM domestic_etfs
+      WHERE TRIM(pd_abrv_nm) = '<호칭>'` — 답은 분배수익률(%)·주기(M=매월)·지급월로 하고,
+      금액을 물으면 "분배금 액수는 데이터 단위 오염이 확인되어 제공하지 않으며 분배수익률로 안내드립니다".
   기초지수: "COALESCE(NULLIF(TRIM(ref_base_index),''), NULLIF(TRIM(cu_base_index),''))"   # 🟢 신설 — ref 1순위, cu 보조
   복제방식_모수:
     triggers: [복제, 합성, 실물, 액티브, 패시브, 운용방식, 전략]
@@ -766,7 +789,10 @@ query_rules:
     🔴 질문이 요구하지 않은 제한 조건을 임의로 붙이지 않는다 — 서버 실측 2026-09-02
     "바이오 ETF 추천해줘" 에 `cu_charge_rt > 0`(보수 안 물음)과 `ABS(cu_lev_fector) <= 1`
     (레버리지 제외 안 물음)이 붙었다. 전자는 모수를 67건으로 학살하고, 후자는 정상 상품을
-    말없이 뺀다. ✅ 허용되는 기본값은 셋뿐 — `pd_grp_no`(ETF/ETN 구분)·`pd_sale_yn = 1`·
+    말없이 뺀다. 🔴 **개수·집계(COUNT/GROUP BY) 질의에서 특히 치명적** — 서버 실측 2026-09-02
+    "운용사별 ETF 개수 상위 5곳" 에 `cu_charge_rt > 0` 이 붙어 삼성 227개가 **18개**로,
+    실제 3위 KB(150개)가 5위(5개)로 나갔다. 개수를 묻는 질의의 WHERE 에는 질문이 준 조건과
+    `pd_grp_no` 구분 외에 아무것도 넣지 않는다. ✅ 허용되는 기본값은 셋뿐 — `pd_grp_no`(ETF/ETN 구분)·`pd_sale_yn = 1`·
     `pd_tr_yn = 0`(추천·구매 맥락). 나머지는 질문에 그 축이 있을 때만.
   추적오차_괴리율:
     triggers: [추적오차, 괴리율, 괴리, 추적, 벌어]

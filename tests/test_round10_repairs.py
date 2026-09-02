@@ -225,3 +225,33 @@ def test_r10_unsourced_axis_sentence():
     # 날짜 축이 결과에 있으면 그대로 둔다 · 설정 축이 아닌 문장도 그대로
     assert P.strip_unsourced_estb_claim("설정일은 2011-06-20입니다.", "itm_nm | estb_dt\nX | 20110620")[1] is False
     assert P.strip_unsourced_estb_claim("이 펀드의 3년 수익률은 12.3%입니다.", rows)[1] is False
+
+
+# ── T1 · ETF 지수 정본 · S1 · 랭킹 머리줄 조건 ──────────────────────────────────
+def test_r10_etf_ref_index():
+    """KG 부류 T — cu_base_index 는 95.5% 공백이고 값 있는 9행은 무관 상품. 정본은 ref_base_index."""
+    s = ("SELECT COUNT(*) FROM domestic_etfs WHERE pd_grp_no='ETF' AND pd_sale_yn=1 "
+         "AND cu_base_index LIKE '%KOSPI200%' LIMIT 5")
+    out, ok = P.ensure_etf_index_canon(s)
+    assert ok and "ref_base_index" in out and "cu_base_index" not in out
+    assert P._execute(out)[0].splitlines()[1].strip() == "34"          # gold X7 순수추종 34
+    assert P.ensure_etf_index_canon(out)[1] is False                   # 멱등
+    # 해외 ETF 는 cu_base_index 가 정상이라 대상이 아니다
+    ovs = "SELECT COUNT(*) FROM overseas_etfs WHERE cu_base_index LIKE '%S&P500%' LIMIT 5"
+    assert P.ensure_etf_index_canon(ovs)[1] is False
+    for lit, gold in (("NASDAQ100", "16"), ("S&P500", "24")):          # gold Z19 · AA22
+        o2, _ = P.ensure_etf_index_canon(s.replace("KOSPI200", lit))
+        assert P._execute(o2)[0].splitlines()[1].strip() == gold, (lit, o2)
+
+
+def test_r10_rank_head_conditions():
+    """gold N3 — 8R 기계 조립이 정렬축·모수만 굽고 WHERE 조건을 안 구워 '매우 낮은 위험' 이 답변에서 사라졌다."""
+    sql = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm, MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\" "
+           "FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+           "AND zrin_fd_ivst_risk_grd_nm='매우 낮은 위험' "
+           f"GROUP BY {P._FUND_KEY_EXPR} ORDER BY fd_yr1_ern_r DESC LIMIT 3")
+    rows, n = P._execute(sql)
+    ans = P._fund_rank_answer(sql, rows, n)
+    assert ans and "매우 낮은 위험 기준" in ans.splitlines()[0], ans
+    # 모수·식별자 컬럼은 머리줄에 중복해 싣지 않는다
+    assert P._rank_filter_labels("SELECT x FROM public_funds WHERE sale_yn='판매중'") == []

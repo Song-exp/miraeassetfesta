@@ -751,6 +751,40 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
 
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
 #    docs/question_design_public_funds_2026-08-31.md §4. 프롬프트에 실려도 무시되는 규칙의 결정 층) ──
+_ETF_INDEX_PRED = re.compile(r"(?:REPLACE\(\s*)?(?:\w+\.)?(?:cu_base_index|ref_base_index)\b[^']*'%?([^'%]+)%?'", re.I)
+
+
+def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
+    """국내 ETF 의 기초지수 절을 `ref_base_index` **순수추종 확정식**으로 교체. (SQL, 교체했는지)
+
+    🔴 10R KG 부류 T — `cu_base_index` 는 오염 컬럼이다(DB 실측, `pd_grp_no='ETF'` 1,235행 중 **1,179행(95.5%)
+       공백**이고 값이 있는 'KOSPI200' 9행은 전부 무관 상품 — KODEX 200·TIGER 200 은 이 컬럼이 공백).
+       정본은 `ref_base_index`(결측 2.2%)다. 순수추종 = 지수명 그대로이거나 수익 유형 접미(CR·TR·PR)만 붙은 것:
+       실측 KOSPI200 **34**(X7) · NASDAQ100 **16**(Z19) · S&P500 **24**(AA22) — 전부 gold 와 일치한다.
+       파생·섹터 변형(`F-KOSPI 200`·`KOSPI 200 IT`·`KOSPI 200 Covered Call`)은 순수추종이 아니다.
+    해외 ETF(`overseas_etfs`)는 `cu_base_index` 가 정상이라 대상이 아니다.
+    """
+    if not re.search(r"\bfrom\s+domestic_etfs\b", sql, re.I):
+        return sql, False
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, False
+    conjs = _flat_conjuncts(m_w.group(1))
+    kept, hit = [], None
+    for c in conjs:
+        m = _ETF_INDEX_PRED.search(c)
+        if m and not re.search(r"\bNOT\b", c, re.I):
+            hit = re.sub(r"\s+", "", m.group(1))
+            continue
+        kept.append(c)
+    if not hit or re.search(r"[*?\[\]]", hit):
+        return sql, False
+    canon = (f"(REPLACE(ref_base_index,' ','') GLOB '{hit}' "
+             f"OR REPLACE(ref_base_index,' ','') GLOB '{hit}[CTP]R*')")
+    new = sql[:m_w.start(1)] + " " + " AND ".join(kept + [canon]) + " " + sql[m_w.end(1):]
+    return (new, True) if new != sql else (sql, False)
+
+
 _FUND_RANK_COLS = ("fd_mm1_ern_r", "fd_mm3_ern_r", "fd_mm6_ern_r", "fd_mm18_ern_r",
                    "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r", "fd_nast_suma")
 _FUND_RETURN_COLS = _FUND_RANK_COLS[:-1]
@@ -1723,6 +1757,26 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
     return "\n".join(out)
 
 
+_HEAD_SKIP_COLS = frozenset({"sale_yn", "prvo_pbff_desc"}) | _FUND_ID_COLS
+
+
+def _rank_filter_labels(sql: str) -> list[str]:
+    """WHERE 의 값 필터를 사람이 읽는 라벨로 — `zrin_fd_ivst_risk_grd_nm='매우 낮은 위험'` → '매우 낮은 위험'.
+    라벨은 스키마 한글명(loader 원천)에서 가져온다 — 이름 하드코딩 0. 모수·식별자 컬럼은 뺀다(이미 머리줄에 있다)."""
+    out: list[str] = []
+    types = _fund_col_types()
+    for col, lits in ([(c.lower(), [lit]) for _t, c, lit in guard._EQ.findall(sql)]
+                      + [(c.lower(), guard._LIT.findall(body)) for _t, c, body in guard._IN.findall(sql)]):
+        if col in _HEAD_SKIP_COLS or types.get(col) is None or not lits:
+            continue
+        txt = "·".join(dict.fromkeys(lits))
+        # 값이 한글이면 그 자체가 라벨이다('매우 낮은 위험'·'주식형') — 코드 값일 때만 컬럼 한글명을 앞에 붙인다
+        label = txt if re.search(r"[가-힣]", txt) else f"{_fund_col_ko(col)} {txt}"
+        if label not in out:
+            out.append(label)
+    return out
+
+
 def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
     """펀드 랭킹(대표행 가드 산출형)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
 
@@ -1763,7 +1817,10 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
     pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
     basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"))
              if re.search(pat, sql, re.I)]
-    scope = ("·".join(basis) + " 기준, " if basis else "") + \
+    # 🔴 10R gold N3 — **WHERE 의 사람이 읽는 조건을 머리줄에 함께 굽는다.** 8R 기계 조립은 정렬축·모수만
+    #    구웠고 값 필터는 안 구워서, HCX 작문 경로에 있던 '매우 낮은 위험'·'매우 높은 위험' 조건이 답변에서
+    #    새로 사라졌다(FND-001·002·UNANS-006). 라벨은 스키마 한글명(원천)에서 가져온다.
+    scope = ("·".join(basis + _rank_filter_labels(sql)) + " 기준, " if (basis or _rank_filter_labels(sql)) else "") + \
         f"펀드 = 운용사 종목번호 기준·클래스 = 판매 단위, {label} = {axis}, 기준일 {gate.DATA_CUTOFF}"
     out = [f"{label} {'상위' if direction == 'DESC' else '하위'} {n}개 {pop}입니다 ({scope}).", ""]
     extreme = False
@@ -5271,6 +5328,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] ETF 기본모수 주입 — 상품군 확정식(pd_grp_no='ETF' · pd_sale_yn=1)이 SQL 에 없어 주입 "
              "(8R B-4″-b · 7R U8 실측: 모수 절이 없으니 HCX 가 cu_charge_rt>0 · NOT LIKE '%not provided%' 라는 "
              "아무도 요구하지 않은 모수를 지어냈다 · AA22 49 vs gold 45)")
+    sql, idx_fixed = ensure_etf_index_canon(sql)
+    if idx_fixed:
+        step("[Guard] ETF 기초지수 확정식 — 오염 컬럼 cu_base_index(95.5% 공백 · 값 있는 9행은 무관 상품)를 "
+             "정본 ref_base_index 순수추종식(지수명 + CR/TR/PR 접미)으로 교체 "
+             "(10R KG 부류 T · 실측 KOSPI200 34 · NASDAQ100 16 · S&P500 24 = gold)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "

@@ -2079,3 +2079,39 @@ def test_r6_Iprime_Jprime(ctx):
     r6 = answer_question("T-W6", "미래에셋디스커버리증권투자신탁 4호 위험등급 알려줘", planner=P(), ctx=ctx)
     assert "LIKE '%미래에셋디스커버리증권투자신탁%'" in r6.sql and "4호*'" in r6.sql      # 호수 가드가 이름 리터럴을 보존(사후조건은 벨트)
     assert "[Answer] 개별 조회 답변 기계 조립" in r6.think_trace and "위험등급 2등급" in r6.answer and "클래스 2개" in r6.answer
+
+
+def test_r6_F4_zero_row_three_ways(ctx):
+    """6R F4 (KG-012·X16·X3) — 0행 문구 세 갈래: (c) 식별 실패(오타 '코어택' → 가까운 표기) · (b) 기본모수 밖(태그는 있으나 판매중·공모 0) · (a) 교집합 0.
+    국가 확정식 ⓐ의 LIKE 구멍(fd_ivst_rgn_desc LIKE '%중국%') 과 precheck 의 LIKE 리터럴 값사전 대조."""
+    from src.runtime.pipeline import _zero_row_reason, ensure_fund_country_tag as ct, answer_question, _count_answer
+
+    x3 = ("SELECT itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어택%' "
+          "AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    r = _zero_row_reason(x3)
+    assert "「코어택」" in r and "식별하지 못했" in r and "코어테크" in r and "실재" not in r
+    b = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+         "AND ',' || prfd_attr_cds || ',' LIKE '%,M113,%' LIMIT 30")
+    rb = _zero_row_reason(b)
+    assert "판매중·공모 기준 0개" in rb and "클래스가 있습니다" in rb
+    a2 = _count_answer(b, "펀드수 | 클래스수\n0 | 0", 1, [])
+    assert "판매중·공모 기준 0개" in a2 and "실재" not in a2
+    a = _zero_row_reason("SELECT itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND TRIM(trusc_xtn_itt_cd) = '00020004' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    assert "교집합이 0" in a
+    # KG-012 — LIKE 구멍: 확정식 ⓐ + 값사전 LIKE 대조
+    k12 = "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '해외주식형' AND fd_ivst_rgn_desc LIKE '%중국%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30"
+    s, ok = ct(k12, "해외주식형 중에서 중국주식 유형인 공모펀드는 몇 개야?")
+    assert ok and "zrin_ptn_nm = '중국주식'" in s and "fd_ivst_rgn_desc" not in s
+    viol = guard.check_values(k12, ctx)
+    assert viol and any("중국" in str(v) for v in viol)
+    assert not guard.check_values("SELECT 1 FROM public_funds WHERE zrin_btyp_nm LIKE '%주식%' LIMIT 1", ctx)      # 값의 부분열은 통과
+    # 파이프라인 — X3 오타는 (c) 문구로 (0개 단정 없음)
+    class P:
+        def plan_sql(self, q, g):
+            return x3
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r3 = answer_question("T-X3", "미래에셋 코어택 펀드 순자산 알려줘", planner=P(), ctx=ctx)
+    assert "식별하지 못했" in r3.answer and "자체가 없습니다" not in r3.answer

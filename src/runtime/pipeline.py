@@ -1630,6 +1630,74 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     return "\n".join(lines)
 
 
+_BASE_POP_COND = re.compile(r"\b(?:sale_yn|prvo_pbff_desc)\b", re.I)
+_NAME_LIKE_LIT = re.compile(r"(?:REPLACE\((?:\w+\.)?itm_nm,' ',''\)|(?:\b\w+\.)?itm_nm)\s+LIKE\s+'%([^%']+)%'", re.I)
+
+
+def _nearest_fund_names(lit: str, limit: int = 3) -> list[str]:
+    """식별 실패 리터럴의 가까운 종목명 줄기 — 리터럴의 가장 긴 토큰(3자+)으로 LIKE 재조회(SQLite 1회). 없으면 []."""
+    toks = sorted(re.findall(r"[A-Za-z0-9]+|[가-힣]+", lit), key=len, reverse=True)
+    toks = [t for t in toks if len(t) >= 2]
+    if not toks:
+        return []
+    con = connect_readonly()
+    try:
+        for tok in toks[:2]:
+            # 오타는 뒤가 틀리기 쉽다('코어택') — 토큰 → 접두를 한 글자씩 줄이며(최소 2자) 첫 매치를 쓴다
+            for k in range(len(tok), 1, -1):
+                rows = con.execute("SELECT DISTINCT TRIM(itm_nm) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+                                   "AND REPLACE(itm_nm,' ','') LIKE ? ORDER BY fd_nast_suma DESC LIMIT 12", (f"%{tok[:k]}%",)).fetchall()
+                stems = list(dict.fromkeys(_fund_stem(r[0]) for r in rows))
+                if stems:
+                    return stems[:limit]
+    except sqlite3.Error:
+        pass
+    finally:
+        con.close()
+    return []
+
+
+def _zero_row_reason(sql: str) -> str:
+    """0행의 실체를 리터럴 검증으로 가른 사용자 문장 (6R F4 = R1 정정).
+    (c) 죽은 절의 리터럴이 검증 집합 밖(이름 LIKE 0행·값사전 밖) → "「X」를 데이터 표기로 식별하지 못했다(가까운 표기: …)" — '없다/실재' 금지
+    (b) 절 단독은 있으나 기본모수(판매중·공모)와의 교집합 0 → "판매중·공모 기준 0 · 전체 n(판매완료·사모)"
+    (a) 그 밖 → "각 조건은 실재하며 교집합이 0". public_funds 단순 SELECT 기준(서브쿼리·UNION 은 (a))."""
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    frm = re.search(r"\bfrom\s+(public_funds)\b", sql, re.I)
+    if not m_w or not frm or re.search(r"\(\s*select\b|\bunion\b|\bjoin\b", sql, re.I):
+        return "(각 조건의 개체·값은 데이터에 실재하며 그 교집합이 0입니다)"
+    conjs = guard.split_conjuncts(m_w.group(1))
+    base = [c for c in conjs if _BASE_POP_COND.search(c)]
+    others = [c for c in conjs if not _BASE_POP_COND.search(c)]
+    con = connect_readonly()
+    try:
+        for c in others:
+            try:
+                alone = con.execute(f"SELECT COUNT(*) FROM public_funds WHERE {c}").fetchone()[0]
+            except sqlite3.Error:
+                continue
+            if alone == 0:
+                m_nm = _NAME_LIKE_LIT.search(c)
+                if m_nm:
+                    near = _nearest_fund_names(m_nm.group(1))
+                    return (f"질문의 「{m_nm.group(1)}」를 데이터의 종목명으로 식별하지 못했습니다"
+                            + (f" (가까운 표기: {' · '.join(near)})" if near else "") + ".")
+                lit = next((m.group(3) for m in guard._EQ.finditer(c)), None) or next((m.group(3).strip('%') for m in guard._LIKE.finditer(c)), None)
+                desc = guard._humanize_cond(c)
+                return (f"질문의 「{lit or desc or c.strip()}」를 데이터 표기로 식별하지 못했습니다 — 값 사전·개체 매핑에 없는 표기입니다.")
+            if base:
+                try:
+                    with_base = con.execute(f"SELECT COUNT(*) FROM public_funds WHERE {c} AND {' AND '.join(base)}").fetchone()[0]
+                except sqlite3.Error:
+                    continue
+                if with_base == 0:
+                    desc = guard._humanize_cond(c) or "해당 조건"
+                    return (f"{desc}인 펀드는 판매중·공모 기준 0개이고, 전체(판매완료·사모 포함)로는 {alone:,}클래스가 있습니다.")
+    finally:
+        con.close()
+    return "(각 조건의 개체·값은 데이터에 실재하며 그 교집합이 0입니다)"
+
+
 _ORG_CODES = re.compile(r"or_co_xtn_itt_cd='(\d+)'")
 
 
@@ -1702,11 +1770,8 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str], question
                     f"{c} {n:,}개" + ("(역외)" if c.startswith(_OFFSHORE_CLASS) else "") for c, n in rows_b)
     out = f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}." + breakdown
     if funds == 0:
-        # 0행 정책(R1): 무엇을 셌는지 조건을 한 줄로 굽는다 — 코드 리터럴은 _sql_precheck 가 실존을 검증했으므로 진짜 0 이다
-        m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-        conds = [guard._humanize_cond(c) for c in guard.split_conjuncts(m_w.group(1))] if m_w else []
-        conds = [c for c in conds if c and not re.search(r"판매|공모|사모", c)]
-        out += "\n(각 조건의 개체·값은 데이터에 실재하며 그 교집합이 0입니다" + (" — 그 밖의 조건: " + " · ".join(conds) if conds else "") + ")"
+        # 0행 정책(6R F4): 세 갈래 — (a) 교집합 0 / (b) 기본모수 밖 / (c) 식별 실패 — 리터럴 검증으로 가른다
+        out += "\n" + _zero_row_reason(sql)
     if len(used_codes) >= 2:
         out += f"\n운용사 코드 {len(used_codes)}건({'·'.join(used_codes)})을 합산했습니다."
     offshore = _offshore_sibling_note(subject, used_codes, sql)
@@ -2005,7 +2070,8 @@ def ensure_fund_country_tag(sql: str, question: str, name_token: str | None = No
         return tok if tok in q_tags else None
 
     # ⓐ 지역·설립국 컬럼 오용 → 주 canon (fd_estb_ctry_cd: KG-021 '대만' → 설립국 410=한국 69펀드)
-    sql = re.sub(r"(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", primary_canon, sql)
+    # 6R F4 — 등호뿐 아니라 LIKE 도(KG-012: `fd_ivst_rgn_desc LIKE '%중국%'` 이 통과해 0행 "0개")
+    sql = re.sub(r"(?:\b\w+\.)?fd_ivst_rgn_desc\s*(?:=\s*'[^']*'|LIKE\s+'[^']*')", primary_canon, sql, flags=re.I)
     sql = re.sub(r"(?:\b\w+\.)?fd_estb_ctry_cd\s*=\s*'?\d+'?", primary_canon, sql)
     # ⓑ 태그 절 — HCX 가 **어떤 태그**를 썼든(T4: IND→IDN · S6 콤마 없는 LIKE · 템플릿 잔재 <CHN>) 질문의 국가로 접는다
     def _fix_tag(m: re.Match) -> str:
@@ -2034,7 +2100,7 @@ def ensure_fund_country_tag(sql: str, question: str, name_token: str | None = No
 
 
 _TAG_PREDICATE = re.compile(
-    r"(?:',' \|\| )?(?:\b\w+\.)?(?:prfd_attr_cds|zrin_attr_nms)(?: \|\| ',')?\s+LIKE\s+'[^']*'|(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", re.I)
+    r"(?:',' \|\| )?(?:\b\w+\.)?(?:prfd_attr_cds|zrin_attr_nms)(?: \|\| ',')?\s+LIKE\s+'[^']*'|(?:\b\w+\.)?fd_ivst_rgn_desc\s*(?:=\s*'[^']*'|LIKE\s+'[^']*')", re.I)
 
 
 def _strip_tag_predicates(sql: str) -> str:
@@ -4243,7 +4309,8 @@ def answer_question(
             # 답변에 그대로 노출돼 가독성 훼손). 사용자 답변에는 같은 진단의 자연어 사유만 붙인다
             # — 리드 결정: 사유는 넣되 개발자 표기 금지 (guard.ZeroRowDiagnosis.user_text).
             step(f"[Diagnose] 0행 원인 — {diag.text()}")
-            reason = diag.user_text()
+            # 6R F4 — 펀드는 리터럴 검증으로 세 갈래(교집합 0 / 기본모수 밖 / 식별 실패)를 가른다. '없다/실재' 단정은 검증된 리터럴에만
+            reason = _zero_row_reason(sql) if _FUND_TBL.search(sql) else diag.user_text()
             if reason:
                 answer += " " + reason
         step("[Decision] 조회 결과 0건 — 환각 방지 규칙에 따라 '확인할 수 없음'")

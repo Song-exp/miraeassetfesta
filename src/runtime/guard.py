@@ -26,6 +26,7 @@ _UNWRAP = r"\s*\)?(?:\s*,\s*''\s*\))?"
 _EQ = re.compile(_WRAP + r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)" + _UNWRAP + r"\s*=\s*'((?:[^']|'')*)'", re.I)
 _IN = re.compile(_WRAP + r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)" + _UNWRAP + r"\s+IN\s*\(([^)]*)\)", re.I)
 _LIT = re.compile(r"'((?:[^']|'')*)'")
+_LIKE = re.compile(r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)\s+LIKE\s+'((?:[^']|'')*)'", re.I)
 _FROM = re.compile(r"\b(?:from|join)\s+([A-Za-z_]\w*)", re.I)
 _MAX_HINT = 4
 
@@ -184,6 +185,24 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     for tbl, col, body in _IN.findall(sql):
         for lit in _LIT.findall(body):
             pairs.append((tbl or None, col, lit))
+    # 6R F4 — LIKE 리터럴도 값사전 대조: 전 값을 아는 컬럼(지역·유형 enum)에 `LIKE '%중국%'` 처럼 어느 값의 부분열도 아닌 리터럴은 기각
+    #    (KG-012: fd_ivst_rgn_desc LIKE '%중국%' 가 통과해 0행 "0개" — 값은 국내·아시아·글로벌…). 이름·자유 텍스트 컬럼은 사전에 없어 불개입.
+    #    🔴 대조 대상은 **enum 어휘(value_vocab) 컬럼**뿐 — alias 커버리지로 들어온 이름형 컬럼(ref_fund_mgmt_co 등)에 LIKE 는 정당한 부분일치다
+    #    (gold ETF-O-014 'BlackRock' 오탐 실측).
+    vocab_cols = set(getattr(ctx, "value_vocab", {}) or {})
+    like_pairs = [(tbl or None, col, lit) for tbl, col, lit in _LIKE.findall(sql) if lit.strip("%").strip()]
+    for tbl, col, lit in like_pairs:
+        col_l = col.lower()
+        needle = _norm(lit.strip("%"))
+        for t in ([tbl.lower()] if tbl else [t for t in tables if (t, col_l) in index]):
+            vals = index.get((t, col_l))
+            if vals is None or (t, col_l) not in vocab_cols:
+                continue
+            if any(needle in v for v in vals):
+                break
+            hint = _value_hints(index.get(("_raw", t, col_l), ()), lit.strip("%"))
+            out.append(ValueViolation(t, col_l, lit, hint, _owner_column(index, t, col_l, lit.strip("%"))))
+            break
     for tbl, col, lit in pairs:
         # `col = ''` 은 값 조회가 아니라 **결측 관용구**다 (IS NULL OR col='') — 값 사전에 빈 문자열이
         # 있을 리 없으니 검사하면 무조건 오탐 기각이 된다 (2026-09-01 FND-037 실측: 벤치마크 결측

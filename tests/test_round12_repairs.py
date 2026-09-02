@@ -260,3 +260,21 @@ def test_disclaimer_covers_recommend_form():
                  "설정일 2019-10-21 (약 6년 10개월).",
                  "위험등급 6등급(매우 낮은 위험)입니다."):
         assert p.strip_disclaimer(keep) == (keep, False), keep
+
+
+# ── KG ③-10 (부류 D·G) — 개체 개수 랭킹의 정렬 축은 COUNT(DISTINCT 펀드키) ──
+def test_entity_count_ranking_axis():
+    """KG-008: 개수 질문인데 SUM(fd_nast_suma) 정렬 + COUNT(*)(클래스수)를 '257개의 펀드'로 명시했다."""
+    s = ("SELECT trim(trusc_xtn_itt_cd) as 수탁회사명, SUM(fd_nast_suma) as 수탁금액 FROM public_funds "
+         "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
+    out, ok = p.ensure_fund_entity_count_ranking(s, "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘")
+    assert ok and '"펀드수"' in out and '"클래스수"' in out and 'ORDER BY "펀드수" DESC' in out, out
+    body = [ln.split(" | ") for ln in p._execute(out)[0].splitlines()[1:]]
+    assert [r[-2] for r in body] == ["714", "516", "465"], body      # gold 펀드수 축
+    assert [r[-1] for r in body] == ["1827", "1656", "1466"], body   # 클래스수는 구분해 병기
+    assert p.ensure_fund_entity_count_ranking(out, "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘")[1] is False
+
+    # 금액 축 질의·펀드 식별 축은 불개입(랭킹 가드·운용사 템플릿 담당)
+    assert p.ensure_fund_entity_count_ranking(s, "순자산이 가장 많은 수탁사 3개")[1] is False
+    fund_axis = ("SELECT itm_no, COUNT(*) FROM public_funds GROUP BY itm_no ORDER BY 2 DESC LIMIT 3")
+    assert p.ensure_fund_entity_count_ranking(fund_axis, "가장 많은 펀드 3개")[1] is False

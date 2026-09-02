@@ -668,6 +668,11 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
     #    (5R X10·KG-005·KG-035). 그 컬럼**만** 든 절이면 확정식으로 교체하고, 다른 컬럼과 섞인 절은 손대지 않는다(의도 불명).
     #    모수 확장 질의(_POP_WIDEN)는 위에서 이미 돌려보냈다.
     sql, replaced = _strictify_base_population(sql)
+    # 🔴 11R KG ③-9 보류 — 모수 존재 판정을 WHERE 절로 좁히면 AA16(`SUM(CASE WHEN sale_yn=…)` 만 있고 WHERE 가
+    #    없는 SQL, 개체별 COUNT 가 전수 23,676행으로 부푼다)이 닫히지만, **개별 조회 경로가 이 전체 SQL 판정에
+    #    의존한다**: 묶기 가드가 SELECT 에 싣는 `판매중클래스수` CASE 를 모수 언급으로 읽어 '판매중' 주입을 막고
+    #    있다(그 경로는 판매완료 14,707행을 0행 오거절 없이 조회해야 한다). 좁히면 동결선 S5·W5·X18 의 where 가
+    #    바뀐다 — 실측으로 확인했고 별도 판단 사안으로 보고한다(12R 보고 ②).
     missing = [c for c, pat in (("sale_yn = '판매중'", r"\bsale_yn\b"),
                                 ("prvo_pbff_desc = '공모'", r"\bprvo_pbff_desc\b"))
                if not re.search(pat, sql, re.I)]
@@ -3511,6 +3516,42 @@ def ensure_fund_manager_ranking(sql: str, question: str, notes: list | None = No
             f"WHERE {where} GROUP BY 1 ORDER BY {order} LIMIT {k}"), True
 
 
+_COUNT_RANK_Q = re.compile(r"많이|많은|개수\s*(?:기준|순)|수\s*기준")
+_AMOUNT_AXIS_Q = re.compile(r"순자산|규모|자산\s*총|자산이|금액")
+_GROUP_AXIS = re.compile(r"\bgroup\s+by\b(.*?)(?=\bhaving\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
+
+
+def ensure_fund_entity_count_ranking(sql: str, question: str) -> tuple[str, bool]:
+    """개체(수탁사·판매사…) **개수 랭킹**의 정렬 축을 `COUNT(DISTINCT 펀드키)` 로. (SQL, 보정했는지)
+
+    🔴 11R KG ③-10 (부류 D·G) — `KG-008`("공모펀드를 가장 많이 수탁하는 수탁사 상위 3개")이 개수 질문인데
+       `ORDER BY SUM(fd_nast_suma)` 로 정렬하고, `COUNT(*)`(클래스수)를 "257개의 펀드" 라 명시했다(거짓값 2중).
+       형제 `AA16` 은 질문이 명시적으로 '펀드 수 기준' 인데도 1,827·1,656·1,466(클래스수)을 답했다.
+       gold 는 펀드수 축 — 홍콩상하이 **714** · 국민 **516** · 씨티 **465** · 하나 399 · 신한 307(DB 실측).
+    운용사 축(`or_co_xtn_itt_cd`)은 `ensure_fund_manager_ranking` 템플릿이 먼저 처리한다(가드 중복 0 —
+    그 템플릿이 이미 펀드수·클래스수를 싣고 나가므로 여기서는 `"펀드수"` 존재로 걸러진다).
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:union|join)\b", sql, re.I) or '"펀드수"' in sql:
+        return sql, False
+    if not (_COUNT_RANK_Q.search(question) and _MGR_RANK_Q.search(question)) or _AMOUNT_AXIS_Q.search(question):
+        return sql, False
+    m_grp = _GROUP_AXIS.search(sql)
+    m_ord = re.search(r"\border\s+by\b(.*?)(?=\blimit\b|$)", sql, re.I | re.S)
+    if not m_grp or not m_ord:
+        return sql, False
+    axis = m_grp.group(1).strip()
+    if axis.isdigit():                                  # 위치 표기 — SELECT 의 그 항목을 본다
+        frm = re.search(r"\bfrom\b", sql, re.I)
+        items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I))
+        axis = items[int(axis) - 1] if 0 < int(axis) <= len(items) else ""
+    if not _ENTITY_AXIS.search(axis) or re.search(r"\b(?:itm_no|itm_nm|mtco_itm_no|rptt_ksd_itm_no)\b", axis, re.I):
+        return sql, False                               # 펀드 식별 축은 개체 랭킹이 아니다(랭킹 가드 담당)
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()].rstrip()
+    add = f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수" '
+    return head + add + sql[frm.start():m_ord.start()] + ' ORDER BY "펀드수" DESC ' + sql[m_ord.end():], True
+
+
 def _manager_rank_answer(sql: str, rows: str, n: int) -> str | None:
     """운용사 집계 템플릿 결과(운용사코드·운용사명·펀드수·클래스수·순자산_억원)의 답변을 기계 조립한다. 아니면 None."""
     lines = rows.splitlines()
@@ -5732,6 +5773,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 운용사 집계 확정식 — 코드 GROUP BY + 최빈 이름 + 펀드수·클래스수·순자산 억원 템플릿 "
              "(2026-09-02 S11: 이름 GROUP BY + COUNT(*) 로 순자산 질의를 오해 · mtco_nm 3라운드)"
              + (" · " + " · ".join(mgr_notes) if mgr_notes else ""))
+    sql, ecnt_fixed = ensure_fund_entity_count_ranking(sql, q)
+    if ecnt_fixed:
+        step("[Guard] 개체 개수 랭킹 축 — '가장 많이 …하는' 랭킹의 정렬을 COUNT(DISTINCT 펀드키)로 바꾸고 펀드수·클래스수를 구분 병기 "
+             "(11R KG ③-10 · KG-008 실측: 개수 질문인데 SUM(fd_nast_suma) 정렬 + COUNT(*)(클래스수)를 '257개의 펀드'로 명시 — "
+             "gold 홍콩상하이 714 · 국민 516 · 씨티 465)")
     sql, ext_notes = ensure_ext_join(sql, ctx)
     if ext_notes:
         step(f"[Guard] 외부 테이블 JOIN 주입 — {' · '.join(ext_notes)} "

@@ -761,11 +761,27 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     return sql, bool(add) or eok
 
 
-_AMOUNT_COL_RX = re.compile(r"\b(fd_nast_suma|du_last_aum)\b", re.I)   # 원 단위 금액 컬럼 — 펀드 순자산 · 국내ETF 순자산
+_AMOUNT_COL_RX = re.compile(r"\b(fd_nast_suma|du_last_aum)\b", re.I)   # 최소 단위 금액 컬럼 — 펀드 순자산 · ETF 순자산
+# 8R B-4″ — 사람이 읽는 **표시 열**의 단위 표기. 원화는 '억원', 외화는 '백만<통화코드>'.
+_DISPLAY_UNIT = re.compile(r"억원|백만[A-Z]{3}")
+
+
+@lru_cache(maxsize=1)
+def _overseas_currency() -> str | None:
+    """overseas_etfs 의 표시 통화 — DB 실측 최빈값(하드코딩 아님). 못 읽으면 None → 표시 열을 붙이지 않는다."""
+    con = connect_readonly()
+    try:
+        row = con.execute("SELECT pd_trd_ccy FROM overseas_etfs WHERE pd_trd_ccy IS NOT NULL "
+                          "GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return str(row[0]).strip().upper() if row and row[0] else None
 
 
 def _amount_select_items(sql: str) -> list[tuple[str, str, str]]:
-    """SELECT 항목 중 원 단위 금액을 품은 것 — (표현식, 결과 헤더명, 컬럼). 억원 항목 자체는 제외. SQL 텍스트 기준(HCX 별칭 포함)."""
+    """SELECT 항목 중 최소 단위 금액을 품은 것 — (표현식, 결과 헤더명, 컬럼). 표시 열 자체는 제외. SQL 텍스트 기준(HCX 별칭 포함)."""
     frm = re.search(r"\bfrom\b", sql, re.I)
     if not frm:
         return []
@@ -774,7 +790,7 @@ def _amount_select_items(sql: str) -> list[tuple[str, str, str]]:
     for it in _split_select_items(sel):
         it = it.strip()
         m_col = _AMOUNT_COL_RX.search(it)
-        if not m_col or "억원" in it:
+        if not m_col or _DISPLAY_UNIT.search(it):
             continue
         m = re.match(r"(.*?)\s+AS\s+\"?([^\"]+?)\"?\s*$", it, re.I | re.S)
         expr, header = (m.group(1).strip(), m.group(2).strip()) if m else (it, it)
@@ -783,30 +799,45 @@ def _amount_select_items(sql: str) -> list[tuple[str, str, str]]:
 
 
 def ensure_amount_eok_columns(sql: str) -> tuple[str, bool]:
-    """일반 규칙(3R/4R B-4): SELECT 에 원 단위 금액(순자산)이 실리면 — bare·집계·HCX 별칭 무관 — 억원 문자열 열이 항상 함께 실린다.
-    펀드(fd_nast_suma)·국내ETF(du_last_aum) 공통 한 함수. 원값 열은 _hide_answer_columns 가 답변 입력에서 숨긴다(V7 '164,377,105,967,341원').
-    이름: 컬럼 그대로면 '순자산_억원', SUM 무별칭이면 '순자산합계_억원', 별칭이면 '<별칭>_억원'. 이미 같은 컬럼의 억원 열이 있으면 불개입."""
-    if not re.search(r"\bfrom\s+(?:public_funds|domestic_etfs)\b", sql, re.I):
+    """일반 규칙(3R/4R B-4 · 8R B-4″): SELECT 에 최소 단위 금액(순자산)이 실리면 — bare·집계·HCX 별칭 무관, **테이블 무관** —
+    사람이 읽는 표시 열이 항상 함께 실린다. 원값 열은 _hide_answer_columns 가 답변 입력에서 숨긴다(V7 '164,377,105,967,341원').
+
+    🔴 8R B-4″ — 종전엔 `public_funds|domestic_etfs` 화이트리스트라 `overseas_etfs` 에 표시 열도 통화 표기도 안 붙었고,
+    13자리 원값(4,380,604,640,000)이 헤더 `총순자산USD` 하나만 달고 HCX 로 가 **배율이 지어졌다**(7R Y16 "43,806,464
+    백만 달러" = 10배 과대 · U8 은 USD 를 '원' 으로 표기). 값을 숨기는 것도 맨값을 주는 것도 답이 아니고, 사람이 읽는
+    형태로 확정해 주는 것만 답이다. 통화는 DB 실측 최빈값(`pd_trd_ccy`)이고 하드코딩이 아니다.
+    이름: 컬럼 그대로면 '순자산_<단위>', SUM 무별칭이면 '순자산합계_<단위>', 별칭이면 '<별칭>_<단위>'.
+    이미 같은 컬럼의 표시 열이 있으면 불개입."""
+    m_tbl = re.search(r"\bfrom\s+(public_funds|domestic_etfs|overseas_etfs)\b", sql, re.I)
+    if not m_tbl:
         return sql, False
+    if m_tbl.group(1).lower() == "overseas_etfs":
+        cur = _overseas_currency()
+        if not cur:
+            return sql, False          # 통화를 확정 못 하면 표시 열을 붙이지 않는다(단위 없는 수를 만들지 않는다)
+        unit, div, base = f"백만{cur}", "1000000", "백만"
+    else:
+        unit, div, base = "억원", "100000000", "억"
     items = _amount_select_items(sql)
     if not items:
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
-    existing = [it for it in _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I)) if "억원" in it]
+    existing = [it for it in _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I))
+                if _DISPLAY_UNIT.search(it)]
     add = []
     for expr, header, col in items:
         if any(col in e or header in e for e in existing):
             continue
         if header == col or header == expr and expr.lower() == col.lower():
-            name = "순자산_억원"
-            e = f"CAST({col}/100000000 AS INTEGER) || '억원' AS \"{name}\""
+            name = f"순자산_{unit}"
+            e = f"CAST({col}/{div} AS INTEGER) || '{unit}' AS \"{name}\""
         elif header == expr:
-            name = "순자산합계_억원" if re.match(r"(?i)sum\s*\(", expr) else f"{col}_억원"
-            e = f"CAST(ROUND(({expr})/100000000.0) AS INTEGER) || '억원' AS \"{name}\""
+            name = f"순자산합계_{unit}" if re.match(r"(?i)sum\s*\(", expr) else f"{col}_{unit}"
+            e = f"CAST(ROUND(({expr})/{div}.0) AS INTEGER) || '{unit}' AS \"{name}\""
         else:
-            name = f"{header}_억원"
-            e = f"CAST(ROUND(({expr})/100000000.0) AS INTEGER) || '억원' AS \"{name}\""
+            name = f"{header}_{unit}"
+            e = f"CAST(ROUND(({expr})/{div}.0) AS INTEGER) || '{unit}' AS \"{name}\""
         if name not in sql:
             add.append(e)
     if not add:
@@ -1575,10 +1606,10 @@ def _hide_answer_columns(rows: str, sql: str = "") -> tuple[str, list[str]]:
     # 7R B-4′ — 숨김과 병기는 한 쌍이다. 대체 표시 열('…억원')이 결과에 **실제로 없으면** 원값을 숨기지 않는다.
     #    6R Y16 실측: 억원 병기 가드는 public_funds·domestic_etfs 만 다루는데 숨김은 전 테이블이라
     #    overseas_etfs 의 SUM(du_last_aum) 이 대체 열 없이 삭제 → 답변기에 숫자가 0개 → 환각·투자권유가 빈칸을 메웠다.
-    has_display = any("억원" in c for c in cols)
+    has_display = any(_DISPLAY_UNIT.search(c) for c in cols)
     drop = [i for i, c in enumerate(cols)
             if c.strip().lower() in _HIDE_FROM_ANSWER
-            or (has_display and "억원" not in c
+            or (has_display and not _DISPLAY_UNIT.search(c)
                 and (_RAW_AMOUNT_COL.search(c) or c.strip().lower() in amount_headers))]
     if not drop or len(drop) == len(cols):
         return rows, []

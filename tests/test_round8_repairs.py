@@ -145,3 +145,24 @@ def test_series_boundary_drops_other_series():
     out, ok = P.ensure_fund_series_boundary(sql, q)
     assert ok and "'%2호%'" not in out, out
     assert "미래에셋차이나솔로몬" in out and "[^0-9.]3호*" in out, out     # 이름 필터는 살아남는다
+
+
+# ── 항목 10 · 재검 ③-4 부류 B-4″ — 금액 표시 열을 통화까지 포함해 전 테이블로 ────────
+def test_overseas_amount_display_unit():
+    """해외 ETF 순자산도 사람이 읽는 표시 열을 받고, 통화는 DB 실측이다 (Y16 10배 과대 · U8 '원' 오표기)."""
+    y16 = ("SELECT cu_fund_mgmt_co AS 운용사, SUM(du_last_aum) AS 총순자산USD FROM overseas_etfs "
+           "WHERE pd_grp_no='ETF' AND pd_sale_yn=1 GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
+    out, ok = P.ensure_amount_eok_columns(y16)
+    assert ok and "백만USD" in out and "/1000000.0" in out, out
+    assert P.ensure_amount_eok_columns(out) == (out, False)                 # 멱등
+
+    rows = ("운용사 | 총순자산USD | 총순자산USD_백만USD\n"
+            "BlackRock Fund Advisors | 4380604640000 | 4380605백만USD")
+    kept, hidden = P._hide_answer_columns(rows, out)
+    assert hidden == ["총순자산USD"], hidden                                  # 표시 열이 붙었으니 원값을 숨긴다
+    assert "4380605백만USD" in kept and "4380604640000" not in kept, kept
+
+    # 원화 경로는 종전 그대로 — 억원
+    dom = "SELECT cu_fund_mgmt_co, SUM(du_last_aum) as total_aum FROM domestic_etfs GROUP BY 1 LIMIT 3"
+    assert "억원" in P.ensure_amount_eok_columns(dom)[0]
+    assert "억원" in P.ensure_amount_eok_columns("SELECT itm_nm, fd_nast_suma FROM public_funds LIMIT 5")[0]

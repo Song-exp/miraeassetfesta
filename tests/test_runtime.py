@@ -605,8 +605,119 @@ def test_strip_fabricated_risk_filter():
         "SELECT pd_nm FROM domestic_bonds WHERE (pd_risk_gcd = '16' OR crd_grd='AAA') LIMIT 5", q)[1]
     assert not strip_fabricated_risk_filter(
         "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 5", q)[1]
-    assert not strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]
     assert not strip_fabricated_risk_filter("SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_risk_cd='PD_RISK_GCD_16' LIMIT 5", q)[1]
+    # 2026-09-02 확장 — 추천·구매의향 문형도 받는다 ('1년만 굴릴 건데 어떤 채권 사면 돼?' 가
+    # 최상급·_RECO_Q 어느 쪽에도 안 걸려 날조 '16' 통과 → 6등급 2·4·5·6·7위 답변 실측)
+    win = ("SELECT DISTINCT pd_no, pd_nm, applied_yield, remaining_days FROM domestic_bonds "
+           "WHERE mat_dt >= 20260822 AND mat_dt <= 20270822 AND pd_risk_gcd = '16' "
+           "ORDER BY applied_yield DESC LIMIT 30")
+    f4, c4 = strip_fabricated_risk_filter(win, "1년만 굴릴 건데 어떤 채권 사면 돼?")
+    assert c4 and "pd_risk_gcd" not in f4 and "mat_dt >= 20260822" in f4
+    assert strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]  # 옛 불개입 케이스 → 확장 후 양성
+    # 부도-공포 서술형(_TOP_SAFE_Q)은 _RISK_VOCAB 밖이지만 '16' 이 정답 — 불개입 (오폭 봉인)
+    assert not strip_fabricated_risk_filter(win, "망하지 않을 회사 채권만 골라줘")[1]
+    assert not strip_fabricated_risk_filter(win, "돈 떼일 걱정 없는 채권 중 수익률 최고는?")[1]
+
+
+def test_distribution_answer_distinct_bonds():
+    from src.runtime.pipeline import _distribution_answer as d
+    # 2026-09-02 서버 실측 — '신용등급별 몇 종목' 전사 실패(AA+ 2,516 누락 · BB0→'B0' 라벨 뒤틀림 ·
+    # 무등급을 '기타' 창작 · 14/16줄). 조립기가 COUNT(DISTINCT pd_no) 를 안 받아 미발동이 원인
+    sql = ("SELECT TRIM(crd_grd) AS 신용등급, COUNT(DISTINCT pd_no) AS 종목수 FROM domestic_bonds "
+           "GROUP BY 1 ORDER BY 1 LIMIT 30")
+    rows = "신용등급 | 종목수\n | 2954\nAA+ | 2516\nAAA | 8646"
+    out = d(sql, rows, 3)
+    assert out and "AA+" in out and "2,516종목" in out and "(미수록): 2,954종목" in out
+    assert "전체" in out and "중복" in out          # 범주 합 ≠ 전체 DISTINCT 주석 (실제 DB 재계산)
+    # 불개입 — 3열(2열째가 COUNT 아님 · 위험등급 코드+이름 꼴) / 펀드 테이블 COUNT(DISTINCT pd_no) 없음
+    assert d("SELECT pd_risk_gcd, pd_risk_nm, COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY 1,2 LIMIT 30",
+             "a | b | c\n11 | x | 1\n12 | y | 2", 2) is None
+    assert d("SELECT zrin_btyp_nm, COUNT(DISTINCT pd_no) FROM public_funds GROUP BY 1 LIMIT 30",
+             "a | b\nx | 1\ny | 2", 2) is None
+
+
+def test_ensure_positive_count_answered():
+    from src.runtime.pipeline import ensure_positive_count_answered as f
+    # 2026-09-02 서버 실측 — 퇴직연금 COUNT(*)=1,929 정상 반환에도 "정보가 포함되어 있지 않습니다" 오거절
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260822"
+    rows = "COUNT(DISTINCT pd_no)\n843"
+    refusal = "조회 결과에 퇴직연금에서 구매 가능한 특정 채권에 대한 정보가 포함되어 있지 않습니다. 따라서 이에 대해 답변을 드릴 수 없습니다."
+    fixed, changed = f(refusal, sql, rows, 1, "퇴직연금으로 살 수 있는 채권 있어?")
+    assert changed and "843" in fixed and "종목" in fixed and fixed.startswith("네, 있습니다")
+    # 존재 문형 아니면 접두 없음 · COUNT(*) 는 행 기준 단서
+    f2, c2 = f(refusal, "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn='Y'", "COUNT(*)\n1929", 1, "퇴직연금 채권 몇 개야")
+    assert c2 and "1,929" in f2 and "행 기준" in f2
+    # 2026-09-02 확장 — 거절이 아닌 '없습니다' 부정 단정 (COUNT 19 반환에도 '0등급 채권은 없습니다')
+    sql00 = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_risk_gcd = '00'"
+    f3, c3 = f("조회 결과에 따르면, 위험등급 0등급인 채권은 없습니다. 6등급을 추천드립니다.",
+               sql00, "COUNT(*)\n19", 1, "위험등급 0등급인 채권 있어?")
+    assert c3 and "19" in f3 and f3.startswith("네, 있습니다")
+    # 숫자를 인용한 답변은 '없' 이 있어도 불개입 ('0등급은 없고 해당없음 19종목')
+    assert not f("정식 0등급은 없습니다만 등급 미부여(해당없음) 19종목이 있습니다.", sql00, "COUNT(*)\n19", 1, "있어?")[1]
+    # 불개입 — 정상 답변 / 값 0 / 다행 결과 / 집계 아닌 SELECT / 2항목 SELECT
+    assert not f("네, 843종목 있습니다.", sql, rows, 1, "있어?")[1]
+    assert not f(refusal, sql, "COUNT(DISTINCT pd_no)\n0", 1, "있어?")[1]
+    assert not f(refusal, sql, "a\n1\n2", 2, "있어?")[1]
+    assert not f(refusal, "SELECT pd_no FROM domestic_bonds LIMIT 1", "pd_no\nKR123", 1, "있어?")[1]
+    assert not f(refusal, "SELECT COUNT(*), pd_nm FROM domestic_bonds", "c | n\n3 | x", 1, "있어?")[1]
+
+
+def test_ensure_distinct_count_existence():
+    from src.runtime.pipeline import ensure_distinct_count
+    # 2026-09-02 — '있어?' 존재 문형에도 COUNT(*)→DISTINCT 교정 (옛 트리거는 종목·몇 개·개수만)
+    sql = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260822 LIMIT 30"
+    fixed, changed = ensure_distinct_count(sql, "퇴직연금으로 살 수 있는 채권 있어?")
+    assert changed and "COUNT(DISTINCT pd_no)" in fixed
+    # COUNT 없는 목록 SELECT 는 불개입(존재 질문의 예시 목록은 살린다)
+    assert not ensure_distinct_count("SELECT pd_no, pd_nm FROM domestic_bonds LIMIT 30", "채권 있어?")[1]
+
+
+def test_ensure_grade_select_column():
+    from src.runtime.pipeline import ensure_grade_select_column
+    # 2026-09-02 서버 실측 — '등급 높은 채권으로 골라줘' 가 crd_grd IN 필터(15,845종목)를 제대로
+    # 걸고도 SELECT 가 pd_no·pd_nm 뿐이라 답변기가 "등급 정보가 포함되어 있지 않다" 오거절
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm) FROM domestic_bonds "
+           "WHERE crd_grd IN ('AAA', 'AA+', 'AA0', 'AA-') AND applied_yield > 0 LIMIT 30")
+    fixed, changed = ensure_grade_select_column(sql)
+    assert changed and "TRIM(crd_grd) AS crd_grd" in fixed
+    assert fixed.index("crd_grd") < fixed.upper().index("FROM")
+    # 불개입 — 이미 SELECT 에 있음 / 집계 / GROUP BY / crd_grd 미사용(crd_grd_dt 는 별개) / 타 테이블
+    assert not ensure_grade_select_column(fixed)[1]
+    assert not ensure_grade_select_column(
+        "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE crd_grd='AAA'")[1]
+    assert not ensure_grade_select_column(
+        "SELECT TRIM(crd_grd), pd_no FROM domestic_bonds WHERE TRIM(crd_grd)='AAA' LIMIT 5")[1]
+    assert not ensure_grade_select_column(
+        "SELECT pd_no FROM domestic_bonds WHERE crd_grd_dt >= 20260101 LIMIT 5")[1]
+    assert not ensure_grade_select_column(
+        "SELECT pd_no, COUNT(*) FROM domestic_bonds WHERE crd_grd='AAA' GROUP BY pd_no")[1]
+
+
+def test_ensure_top_row_cited():
+    from src.runtime.pipeline import ensure_top_row_cited
+    # 2026-09-02 서버 실측 — '1년만 굴릴 건데' 답변이 정렬 결과의 2·4·5·6·7위만 나열,
+    # 1위(KR354404GC55 3.986%)·3위(KR356501GG82 3.94%) 증발. 값이 전부 실제 행이라 환각 검사 밖
+    sql = ("SELECT pd_no, pd_nm, applied_yield FROM domestic_bonds "
+           "WHERE pd_risk_gcd='16' ORDER BY applied_yield DESC LIMIT 30")
+    rows = "\n".join([
+        "pd_no | pd_nm | applied_yield",
+        "KR354404GC55 | MBS2022-9 | 3.986",
+        "KR356601GF82 | 용인도시공사2025-2 | 3.957",
+        "KR356501GG82 | 평택도시공사 2026-2(사) | 3.94",
+        "KR354405GC62 | MBS2022-11 | 3.914",
+        "KR354427GC41 | MBS2022-8 | 3.866",
+    ])
+    ans = "추천드립니다.\n* KR356601GF82: 용인 3.957%\n* KR354405GC62: MBS11 3.914%\n* KR354427GC41: MBS8 3.866%"
+    fixed, changed = ensure_top_row_cited(ans, sql, rows)
+    assert changed and "KR354404GC55" in fixed and "KR356501GG82" in fixed
+    assert "1위" in fixed and "3위" in fixed and fixed.startswith(ans)
+    # 불개입 — 상위부터 순서대로 인용(누락 없음) / 인용 pd_no 2개 미만(이름만 답변) /
+    # 집계·GROUP BY / ORDER BY 없음
+    assert not ensure_top_row_cited(
+        "* KR354404GC55 3.986%\n* KR356601GF82 3.957%", sql, rows)[1]
+    assert not ensure_top_row_cited("용인도시공사2025-2 를 추천합니다 (KR356601GF82)", sql, rows)[1]
+    assert not ensure_top_row_cited(ans, "SELECT pd_risk_gcd, COUNT(*) FROM domestic_bonds GROUP BY 1", rows)[1]
+    assert not ensure_top_row_cited(ans, "SELECT pd_no FROM domestic_bonds LIMIT 30", rows)[1]
 
 
 def test_ensure_ktb_kind_and_distinct_count():

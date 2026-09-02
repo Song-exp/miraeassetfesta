@@ -1020,6 +1020,58 @@ def ensure_fund_key_column(sql: str) -> tuple[str, list[str]]:
     return sql, fixes
 
 
+# 클래스 표기 — '종류A' · 'A클래스' · '종류 C-P2e' · 'Ce클래스'. 하이픈·공백은 무시하고 맞춘다(질문 'Ce' ↔ DB '종류C-e')
+_CLASS_NOTE_Q = re.compile(r"종류\s*([A-Za-z](?:\s*-?\s*[A-Za-z0-9]){0,4})|(?<![A-Za-z])([A-Za-z](?:-?[A-Za-z0-9]){0,4})\s*클래스")
+_CLASS_NM_CONJ = re.compile(r"\b(?:\w+\.)?han_clas_nm\b", re.I)
+_CLASS_NM_SUFFIX = "REPLACE(REPLACE(itm_nm,' ',''),'-','')"
+
+
+@lru_cache(maxsize=128)
+def _class_suffix_exists(tok: str) -> bool:
+    """'종류<tok>' 로 끝나는 종목명이 실제로 있는가 — DB 실측. 질문의 우연한 영문 토큰('ETF 클래스')을 걸러낸다."""
+    con = connect_readonly()
+    try:
+        return con.execute(f"SELECT 1 FROM public_funds WHERE {_CLASS_NM_SUFFIX} LIKE ? LIMIT 1",
+                           (f"%종류{tok}",)).fetchone() is not None
+    except sqlite3.Error:
+        return False
+    finally:
+        con.close()
+
+
+def _class_notation_in_question(question: str) -> str | None:
+    """질문의 클래스 표기(하이픈·공백 제거, 대문자화). DB 에 실재하는 접미만 돌려준다."""
+    for m in _CLASS_NOTE_Q.finditer(question):
+        tok = re.sub(r"[\s-]", "", m.group(1) or m.group(2) or "")
+        if tok and _class_suffix_exists(tok.upper()):
+            return tok.upper()
+    return None
+
+
+def ensure_fund_class_notation(sql: str, question: str) -> tuple[str, bool]:
+    """KG 4R G7 — '종류A·A클래스·Ce·C-P2' 는 수수료체계(`han_clas_nm`)가 아니라 **종목명 접미**다. (SQL, 교체했는지)
+
+    6R Z1 실측: `TRIM(han_clas_nm) = '종류 A'` — 이 컬럼의 실제 값은 '수수료선취-오프라인' 류라 **0행**이다
+    (DB 전수 확인: han_clas_nm 에 '종류 A' 0건 · itm_nm 접미 '종류A' 3건). 조치: han_clas_nm 절을 걷어내고
+    `REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류X'` 확정식을 AND 로 넣는다. 그러면 F2 의 MIN~MAX 범위가
+    그 단일 클래스 값으로 저절로 좁혀진다(묶기 가드가 뒤에서 받는다).
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    tok = _class_notation_in_question(question)
+    if not tok:
+        return sql, False
+    cond = f"{_CLASS_NM_SUFFIX} LIKE '%종류{tok}'"
+    if cond in sql:
+        return sql, False
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
+        return (f"{sql[:anchor.start()]}WHERE {cond} {sql[anchor.start():]}", True) if anchor else (sql, False)
+    keep = [c for c in guard.split_conjuncts(m_w.group(1)) if not _CLASS_NM_CONJ.search(c)]
+    return sql[:m_w.start()] + " WHERE " + " AND ".join([cond] + keep) + " " + sql[m_w.end():].lstrip(), True
+
+
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
 
 
@@ -4625,6 +4677,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if enum_fixed:
         step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "
              "(2026-08-31 밤 FND-024 실측: '재간접형' → 실제 값 '재간접'. 기각·재생성으로는 못 고쳐 거절로 나갔다)")
+    sql, clsnote_fixed = ensure_fund_class_notation(sql, q)
+    if clsnote_fixed:
+        step("[Guard] 클래스 표기 확정식 — '종류A·Ce' 는 수수료체계(han_clas_nm)가 아니라 종목명 접미라 itm_nm 접미 LIKE 로 교체 "
+             "(KG 4R G7 · Z1 실측: TRIM(han_clas_nm)='종류 A' 는 DB 에 0행 — 실제 값은 '수수료선취-오프라인' 류)")
     sql, space_fixed = ensure_spaceless_name_match(sql, name_token)
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "

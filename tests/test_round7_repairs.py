@@ -333,3 +333,44 @@ def test_estb_year_canonical(ctx):
         assert "ext_fund_page" in r.sql, r.sql
         for frag in want:
             assert frag in r.answer, (q, frag, r.answer)
+
+
+# ── 뿌리⑦-c — 클래스 표기 축 확정식 (G7 · Z1) ──
+
+def test_class_notation_is_name_suffix(ctx):
+    """G7 — '종류A·Ce' 는 수수료체계(han_clas_nm)가 아니라 종목명 접미. DB 전수: han_clas_nm 에 '종류 A' 0건."""
+    from src.runtime.pipeline import ensure_fund_class_notation as f, answer_question
+    from src.runtime.loader import connect_readonly
+
+    con = connect_readonly()
+    try:
+        assert con.execute("SELECT COUNT(*) FROM public_funds WHERE TRIM(han_clas_nm) = '종류 A'").fetchone()[0] == 0
+    finally:
+        con.close()
+
+    z1 = ("SELECT itm_no, itm_nm, bns_bpr FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' "
+          "AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND TRIM(han_clas_nm) = '종류 A' LIMIT 30")
+    out, ok = f(z1, "미래에셋코어테크 펀드 종류A 기준가 알려줘")
+    assert ok and "han_clas_nm" not in out and "LIKE '%종류A'" in out
+    assert f(out, "미래에셋코어테크 펀드 종류A 기준가 알려줘")[1] is False      # 멱등
+    assert f(z1, "미래에셋코어테크 펀드 A클래스 기준가 알려줘")[1] is True     # 'A클래스' 형도 같은 축
+
+    # 하이픈·공백 무시 — 질문 'Ce' ↔ DB '종류C-e'
+    out2, ok2 = f(z1, "미래에셋코어테크 펀드 Ce 클래스 기준가")
+    assert ok2 and "LIKE '%종류CE'" in out2.upper()
+
+    # 불개입 — 표기 없음 · DB 에 없는 우연한 영문 토큰('ETF 클래스'·'클래스가 몇 개')
+    assert f(z1, "미래에셋코어테크 펀드 기준가 알려줘")[1] is False
+    assert f(z1, "미래에셋코어테크 펀드는 클래스가 몇 개야?")[1] is False
+    assert f(z1, "ETF 클래스 알려줘")[1] is False
+
+    # 전 체인 — 단일 클래스 값(F2 범위가 저절로 좁혀진다). 본체 종류A 기준가 4,726.41
+    class P:
+        def plan_sql(self, q, g):
+            return z1
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-Z1", "미래에셋코어테크 펀드 종류A 기준가 알려줘", planner=P(), ctx=ctx)
+    assert "4,726.41" in r.answer and "클래스에 따라 다름" not in r.answer, r.answer

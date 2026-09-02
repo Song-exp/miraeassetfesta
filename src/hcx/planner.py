@@ -96,6 +96,18 @@ _ANSWER_SYSTEM = """너는 금융상품 데이터 질의응답 답변자다. 아
 _FENCE = re.compile(r"```(?:sql)?\s*(.*?)\s*```", re.S | re.I)
 
 
+def _paren_balance(s: str) -> int:
+    """괄호 수지 — 따옴표 밖의 `(` 는 +1, `)` 는 -1. 음수면 여는 괄호가 잘렸다는 뜻이다."""
+    depth, low, in_q = 0, 0, False
+    for ch in s:
+        if ch == "'":
+            in_q = not in_q
+        elif not in_q:
+            depth += 1 if ch == "(" else -1 if ch == ")" else 0
+            low = min(low, depth)
+    return low
+
+
 def extract_sql(text: str) -> str:
     """LLM 출력에서 SQL 한 문장을 꺼낸다.
 
@@ -106,10 +118,14 @@ def extract_sql(text: str) -> str:
     m = _FENCE.search(s)
     if m:
         s = m.group(1).strip()
-    # 앞머리 잡담 제거 — 첫 SELECT 부터가 SQL 이다
+    # 앞머리 잡담 제거 — 첫 SELECT 부터가 SQL 이다.
+    # 🔴 11R gold ③-6 (부류 Z′) — 절단은 **잘라 낼 앞머리가 잡담일 때만** 한다. `(SELECT … ) UNION ALL (SELECT …)`
+    #    의 여는 괄호를 잘라 `near ")"` 문법 오류를 만들었고 재생성이 같은 모양을 내서 예산이 날아갔다
+    #    (CROSS-003 — 우리가 만든 문법 오류다). 절단 후 괄호 균형이 깨지면 절단을 취소한다.
     m = re.search(r"\bselect\b", s, re.I)
     if m:
-        s = s[m.start():]
+        cut = s[m.start():]
+        s = s if _paren_balance(cut) < 0 <= _paren_balance(s) else cut
     s = s.split(";")[0]                      # 세미콜론 이후는 버린다 (다중 문장 방지)
     return re.sub(r"\s+", " ", s).strip()
 

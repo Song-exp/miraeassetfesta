@@ -186,3 +186,17 @@ def test_ensure_limit_appends_when_missing():
 
     keep, changed2 = ensure_limit("SELECT pd_nm FROM domestic_etfs LIMIT 5")
     assert not changed2 and keep.endswith("LIMIT 5")
+
+
+def test_extract_sql_keeps_union_paren():
+    """11R gold ③-6 (부류 Z′) — 「첫 SELECT 부터가 SQL」 절단이 UNION 의 여는 괄호를 잘라 `near ")"` 를 만들었다.
+
+    CROSS-003: 우리가 만든 문법 오류라 재생성도 같은 모양을 내서 예산이 날아갔다.
+    """
+    from src.hcx.planner import extract_sql
+    union = "(SELECT a FROM t LIMIT 5) UNION ALL (SELECT b FROM u LIMIT 5)"
+    assert extract_sql(union) == union
+    assert extract_sql("```sql\n" + union + "\n```") == union
+    # 잡담 절단은 그대로 — 괄호 균형이 깨지지 않는다
+    assert extract_sql("네 알겠습니다. SELECT a FROM t") == "SELECT a FROM t"
+    assert extract_sql("설명입니다(참고). SELECT a FROM t") == "SELECT a FROM t"

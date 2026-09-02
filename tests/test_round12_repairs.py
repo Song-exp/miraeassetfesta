@@ -164,3 +164,17 @@ def test_class_axis_sum_replaced():
             "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 3 DESC LIMIT 5")
     out2, _ = p.ensure_fund_rank_representative(nast, "순자산이 가장 큰 펀드 5개")
     assert "SUM(fd_nast_suma)" in out2, out2
+
+
+# ── P9 · 재검 ③-1 (부류 AA) — 조립 발동 판정에서 식별 컬럼도 잡음이다 ──
+def test_lookup_class_only_ignores_id_cols():
+    """V12 회귀: SELECT 에 섞인 MAX(mtco_itm_no) 하나로 클래스 개수 조립기가 꺼졌다."""
+    sql = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", "
+           "MAX(mtco_itm_no) AS mtco_itm_no, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds "
+           "WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%' "
+           f"GROUP BY {p._FUND_GROUP_EXPR} LIMIT 30")
+    rows, n = p._execute(sql)
+    ans = p._lookup_answer(sql, rows, n, "미래에셋차이나솔로몬", [])
+    assert ans and ans.count("\n- ") == n, ans        # 받은 행이 전부 답변에 실린다
+    assert "클래스 7개" in ans and "클래스 8개" in ans, ans

@@ -1860,7 +1860,10 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
     # 🔴 10R(8R 보류 ③-1 의 짝) — **클래스 종속 문자 컬럼은 값 컬럼이 아니다.** `han_clas_nm`(수수료체계 이름)은
     #    펀드 단위 대표값이 없어 MAX 로 뽑아 봐야 임의 클래스의 라벨이다. 이것 하나 때문에 클래스 개수 질의가
     #    조립기를 못 받고 HCX 산문으로 갔다(W5 — HCX 가 7클래스를 세지 못했다). 판정은 DB 실측(`_class_dependent`).
-    noise = {c for c in cols if c.lower() in _class_dependent(False)}
+    # 🔴 11R 재검 ③-1 (부류 AA) — **식별 컬럼도 잡음이다.** V12 회귀: SELECT 에 섞인 `MAX(mtco_itm_no)` 하나로
+    #    class_only 판정이 꺼져 클래스 개수 질의가 조립기를 못 받고 HCX 산문으로 갔다. 식별 컬럼은 사용자가
+    #    물은 값이 아니므로 조립을 막을 근거가 없다(`_FUND_ID_COLS` 는 이미 정의돼 있다).
+    noise = {c for c in cols if c.lower() in _class_dependent(False) | _FUND_ID_COLS}
     has_estb = _ESTB_LOOKUP_COLS[0] in cols
     class_only = set(cols) - noise - set(_ESTB_LOOKUP_COLS) <= set(_LOOKUP_HEAD) | {"대표번호"}
     if not (ret_cols or has_grade or has_nast or has_estb or class_only):

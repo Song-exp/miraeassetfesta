@@ -231,3 +231,39 @@ def test_base_population_post_chain(ctx):
 
     r = answer_question("T-KG018", "단위형이면서 개방형인 공모펀드도 있어?", planner=P(), ctx=ctx)
     assert "sale_yn = '판매중'" in r.sql and "기본모수 사후조건" in r.think_trace
+
+
+# ── 뿌리⑥ — 질문이 고른 축의 보존·주입 (P′ · G3) ──
+
+def test_axis_clause_preserved(ctx):
+    """Y7 — '주식형' 이 SQL 어디에도 없어 답이 전체 랭킹(V5)과 바이트 단위로 같았다. 확정식은 없으면 주입한다."""
+    from src.runtime.pipeline import ensure_fund_type_axis as f, answer_question
+
+    base = ("SELECT e.mgmt_co_nm, SUM(p.fd_nast_suma) AS total FROM public_funds p "
+            "LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
+    out, ok = f(base, "주식형 펀드 순자산이 가장 큰 운용사 3곳 알려줘")
+    assert ok and "zrin_btyp_nm = '주식형'" in out
+    assert f(out, "주식형 펀드 순자산이 가장 큰 운용사 3곳 알려줘")[1] is False        # 멱등
+
+    # 불개입 — 유형 축이 없는 질의(V5·S11·Y6) · 유형 절이 이미 있음 · 개별 조회 · 보통명사 오탐
+    assert f(base, "순자산이 가장 큰 자산운용사 5곳 알려줘")[1] is False
+    assert f(base + " ", "순자산이 가장 큰 운용사 상위 3개 알려줘")[1] is False
+    have = base.replace("GROUP BY", "WHERE p.zrin_btyp_nm = '해외주식형' GROUP BY")
+    assert f(have, "해외주식형 펀드 순자산이 가장 큰 운용사")[1] is False
+    lookup = "SELECT itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%코어테크%' LIMIT 30"
+    assert f(lookup, "미래에셋코어테크 주식형 펀드 알려줘")[1] is False
+    # '기타'·'MMF'·'특별자산' 같은 보통명사 값은 확정식 대상이 아니다 ('…형' 3자 이상만)
+    assert f(base, "기타 운용사 알려줘")[1] is False
+
+    # 전 체인 — gold: 미래에셋 69,336(142펀드) · NH-Amundi 46,152(28) · 신영 41,914(18)
+    class P:
+        def plan_sql(self, q, g):
+            return base
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-Y7", "주식형 펀드 순자산이 가장 큰 운용사 3곳 알려줘", planner=P(), ctx=ctx)
+    for frag in ("69,336억원", "펀드 142개", "46,152억원", "41,914억원"):
+        assert frag in r.answer, (frag, r.answer)
+    assert "377,707" not in r.answer                     # 6R 은 전체 랭킹(V5)을 그대로 냈다

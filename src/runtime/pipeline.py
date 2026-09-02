@@ -2607,6 +2607,52 @@ def _ptn_value_in_question(question: str) -> str | None:
     return next((v for v in _ptn_values() if len(v) >= 3 and v.replace(" ", "") in q), None)
 
 
+_BTYP_AXIS_COLS = re.compile(r"\b(?:zrin_btyp_nm|zrin_ptn_nm|zrin_pcd)\b", re.I)
+
+
+@lru_cache(maxsize=1)
+def _btyp_values() -> tuple:
+    """유형(zrin_btyp_nm)의 실제 값 — 긴 것부터. 🔴 '…형' 으로 끝나는 3자 이상만 확정식 대상으로 쓴다:
+    '기타'·'MMF'·'특별자산' 같은 값은 질문의 보통명사와 겹쳐 오주입을 낸다."""
+    con = connect_readonly()
+    try:
+        vals = {r[0].strip() for r in con.execute(
+            "SELECT DISTINCT zrin_btyp_nm FROM public_funds WHERE zrin_btyp_nm IS NOT NULL") if r[0]}
+    finally:
+        con.close()
+    return tuple(sorted((v for v in vals if len(v) >= 3 and v.endswith("형")), key=len, reverse=True))
+
+
+def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
+    """KG 4R G3 / 6R P′ — **질문이 고른 유형 축이 SQL 어디에도 없으면 확정식을 AND 로 주입한다.** (SQL, 주입했는지)
+
+    확정식 가드들이 지금까지 「찾아 바꾸기」만 했다: 후보 절이 하나도 없으면 침묵한다. 6R Y7 실측 —
+    "주식형 펀드 순자산이 가장 큰 운용사 3곳" 의 최종 SQL WHERE 가 `p.sale_yn AND p.prvo_pbff_desc` 뿐이라
+    답변이 V5(전체 랭킹)와 바이트 단위로 같았다(trace 의 `[Route] … 값 ['주식형']` 은 라우터가 값을 알아봤다는 뜻).
+    운용사 확정식이 부가 절을 **버린** 것이 아니라(notes 가 비어 있다) HCX 가 애초에 안 쓴 것이므로,
+    처방은 '보존' 이 아니라 '주입' 이다.
+    불개입: 유형 축 절이 이미 있음(zrin_btyp_nm·zrin_ptn_nm·zrin_pcd) · 개별 조회(이름·키로 이미 특정) ·
+            public_funds 아님 · 질문에 유형 값 없음.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    if _BTYP_AXIS_COLS.search(sql) or _has_name_filter(sql) or _has_fund_key_pin(sql):
+        return sql, False
+    q = question.replace(" ", "")
+    val = next((v for v in _btyp_values() if v in q), None)
+    if not val:
+        return sql, False
+    cond = f"zrin_btyp_nm = '{val}'"
+    m = re.search(r"\bwhere\b", sql, re.I)
+    if not m:
+        anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
+        return (f"{sql[:anchor.start()]}WHERE {cond} {sql[anchor.start():]}", True) if anchor else (sql, False)
+    e = m.end()
+    stop = _SQL_ANCHOR.search(sql[e:]) or re.search(r"\blimit\b", sql[e:], re.I)
+    body, rest = (sql[e:e + stop.start()], sql[e + stop.start():]) if stop else (sql[e:], "")
+    return f"{sql[:e]} {cond} AND ({body.strip()}) {rest}".rstrip(), True
+
+
 _NAME_UNION_AXES = ("N", "O")     # 테마·섹터 축 — 태그가 이름보다 성기다(KG-024 반도체: 태그 50 + 이름만 14 + wrap 누락 14 = 78). 코드 첫 글자 = 축
 
 
@@ -4516,6 +4562,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if mixed_fixed:
         step("[Guard] 혼합형 확정식 치환 — 유형 조건을 zrin_btyp_nm IN (주식혼합형·채권혼합형) 으로 교체 "
              "(2026-09-01 FND-023 실측 2회: '혼합형' 이 없는 값 기각→오거절, 재검은 혼합자산·대출형·개발형 오모수)")
+    sql, btyp_fixed = ensure_fund_type_axis(sql, q)
+    if btyp_fixed:
+        step("[Guard] 유형 축 주입 — 질문이 고른 유형(zrin_btyp_nm) 절이 SQL 어디에도 없어 확정식을 AND 로 주입 "
+             "(7R 뿌리⑥ = KG 4R G3 + 6R P′ · Y7 실측: '주식형 … 운용사 3곳' 답이 전체 랭킹 V5 와 바이트 단위로 같았다)")
     sql, gnull_fixed = ensure_group_null_label(sql)
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "

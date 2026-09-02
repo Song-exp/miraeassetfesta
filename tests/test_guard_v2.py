@@ -79,9 +79,16 @@ def test_fund_base_population_injected():
     s, ok = f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매완료' ORDER BY 1 LIMIT 5", "펀드")
     assert ok and "판매완료" in s and "prvo_pbff_desc = '공모'" in s and "'판매중'" not in s
 
-    # 발동 금지 3갈래 — 모수 확장 질문 · 교차(JOIN) · 집계도 랭킹도 아님
+    # 🔴 9/1 FND-R06 실측 — ext_* 설명서 조인도 기본모수 대상이다. JOIN 전체 제외가
+    #    판매완료 펀드(신바람삼성 1997-10-28)를 '가장 오래된 펀드'로 내보냈다.
+    s, ok = f("SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+              "WHERE prvo_pbff_desc = '공모' ORDER BY estb_dt ASC LIMIT 1",
+              "설정일이 가장 오래된 공모펀드 알려줘")
+    assert ok and "sale_yn = '판매중'" in s and s.count("prvo_pbff_desc") == 1
+
+    # 발동 금지 3갈래 — 모수 확장 질문 · 타 상품군 조인(교차질의) · 집계도 랭킹도 아님
     assert not f("SELECT itm_nm FROM public_funds ORDER BY 1 LIMIT 5", "사모 펀드 중 큰 것")[1]
-    assert not f("SELECT 1 FROM public_funds p JOIN ext_fund_holdings h ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
+    assert not f("SELECT 1 FROM public_funds p JOIN domestic_etfs d ON 1=1 ORDER BY 1 LIMIT 5", "펀드")[1]
     assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 5", "펀드")[1]
 
 
@@ -143,6 +150,15 @@ def test_fund_evidence_columns():
     # 단일 건수 질의(COUNT, GROUP BY 없음) — 출력 의미가 바뀌므로 불개입
     assert not f("SELECT COUNT(*) FROM public_funds WHERE zrin_fd_ivst_risk_gcd IS NULL LIMIT 1")[1]
 
+    # 🔴 9/1 서버 실측(021·022·031) — 순자산 랭킹은 억 원 파생 컬럼 병기 (13자리 옮겨쓰기 자릿수 훼손)
+    nast_rank = ("SELECT itm_no, TRIM(itm_nm), fd_nast_suma FROM public_funds "
+                 "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' ORDER BY 3 DESC LIMIT 5")
+    s3, ok3 = f(nast_rank)
+    assert ok3 and "'억원'" in s3 and s3.index("순자산_억원") < s3.upper().index("FROM")
+    assert not f(s3)[1]                                    # 멱등
+    # 수익률 랭킹에는 붙지 않는다
+    assert "순자산_억원" not in f(grade_rank)[0]
+
     # 🔴 식별 컬럼 없는 값-only SQL — 답변기가 이름을 지어낸 배포 실측(§6-2d 후속) 대응
     valonly = ("SELECT fd_yr1_ern_r FROM public_funds WHERE or_co_xtn_itt_cd = '00080008' "
                "AND itm_nm LIKE '%코어테크%' AND sale_yn = '판매중' LIMIT 30")
@@ -178,6 +194,18 @@ def test_fund_safe_grade_direction():
     assert not f(flipped, "위험등급 1등급 펀드 알려줘")[1]
     assert not f(flipped, "위험한 펀드 알려줘")[1]
     assert not f(s, "안전한 펀드 추천해줘")[1]
+    # 9/1 서버 실측 — BETWEEN 1 AND 3 우회(높은위험 30행 조회). 뒤집힘 표현형 확장분
+    between = flipped.replace("zrin_fd_ivst_risk_gcd = 1",
+                              "zrin_fd_ivst_risk_gcd BETWEEN 1 AND 3")
+    s2, ok2 = f(between, "안전한 펀드 추천해줘")
+    assert ok2 and "zrin_fd_ivst_risk_gcd = 6" in s2 and "BETWEEN" not in s2
+    for form in ("zrin_fd_ivst_risk_gcd <= 2", "zrin_fd_ivst_risk_gcd IN (1, 2, 3)"):
+        sx, okx = f(flipped.replace("zrin_fd_ivst_risk_gcd = 1", form), "안전한 펀드 추천해줘")
+        assert okx and "zrin_fd_ivst_risk_gcd = 6" in sx
+    # 안전 방향 범위(4~6·6 포함)는 불개입
+    assert not f(flipped.replace("zrin_fd_ivst_risk_gcd = 1",
+                                 "zrin_fd_ivst_risk_gcd BETWEEN 4 AND 6"),
+                 "안전한 펀드 추천해줘")[1]
 
 
 # ── 상품 고유명 소실 가드 (2026-08-31 밤 — FND-016 최악 등급 오답 §6-2d) ──
@@ -233,6 +261,163 @@ def test_value_violation_names_owner_column():
     sql2 = "SELECT itm_nm FROM public_funds WHERE or_attr_desc = '없는유형ZZZ' LIMIT 5"
     vs2 = guard.check_values(sql2, ctx)
     assert len(vs2) == 1 and not vs2[0].owner and "실제 값 예" in str(vs2[0])
+
+
+def test_distribution_answer_assembled():
+    """FND-038 재검 실측 — 답변기가 19행 중 17행만 나열 + '일부' 서술. 분포는 기계 조립한다."""
+    from src.runtime.pipeline import _distribution_answer as f
+
+    sql = ("SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*) FROM public_funds "
+           "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY zrin_btyp_nm LIMIT 30")
+    rows = "COALESCE | COUNT(*)\n(미수록) | 418\nMMF | 108\n해외기타 | 801"
+    a = f(sql, rows, 3)
+    assert a and "3개 범주" in a and "1,327건" in a
+    assert "(미수록): 418건" in a and "해외기타: 801건" in a       # 전 행 보존
+    # 불개입 — GROUP BY 없음 · SELECT 3항목 · 둘째가 COUNT 아님 · 행 형식 불일치
+    assert f("SELECT COUNT(*) FROM public_funds LIMIT 1", "COUNT(*)\n5", 1) is None
+    assert f("SELECT a, b, COUNT(*) FROM public_funds GROUP BY 1,2 LIMIT 30", rows, 3) is None
+    assert f("SELECT zrin_btyp_nm, AVG(fd_yr1_ern_r) FROM public_funds GROUP BY 1 LIMIT 30", rows, 3) is None
+
+
+def test_fund_mgmt_modal_name():
+    """FND-035 재검 실측 — MAX(mgmt_co_nm) 이 합병 코드 구명칭(프랭클린 10행)을 사전순으로 뽑음.
+    소수 이름 제외(DB 실측 기반)로 정본 이름(우리자산운용 373행)이 나와야 한다."""
+    import sqlite3
+    from src.runtime.pipeline import ensure_fund_mgmt_modal_name as f, _minority_mgmt_names
+
+    assert "00040007/프랭클린템플턴투자신탁운용" in _minority_mgmt_names()
+    # 🔴 쌍 제외 근거 — '우리자산운용' 은 00040007 다수(413)·00040023 소수(1): 전역 이름 제외는 오답
+    assert "00040023/우리자산운용" in _minority_mgmt_names()
+    assert "00040007/우리자산운용" not in _minority_mgmt_names()
+    sql = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS code, MAX(mgmt_co_nm) AS nm "
+           "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+           "WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' "
+           "AND printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) = '00040007' GROUP BY 1 LIMIT 5")
+    s, ok = f(sql)
+    assert ok and "|| '/' || mgmt_co_nm NOT IN" in s
+    assert not f(s)[1]                                     # 멱등
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    code, nm = con.execute(s).fetchone()
+    assert (code, nm) == ("00040007", "우리자산운용")
+    assert not f("SELECT itm_nm FROM public_funds LIMIT 5")[1]
+
+
+def test_fund_country_tag_canonicalized():
+    """FND-026 재검 실측 — ='글로벌' 오모수 + wrap 없는 태그 LIKE 98/560행 누락을 정식형으로 교체."""
+    from src.runtime.pipeline import ensure_fund_country_tag as f
+
+    q = "중국에 투자하는 공모펀드 알려줘"
+    bad = ("SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND (fd_ivst_rgn_desc = '글로벌' OR prfd_attr_cds LIKE '%,CHN,%') "
+           "AND sale_yn = '판매중' LIMIT 30")
+    s, ok = f(bad, q)
+    assert ok and "fd_ivst_rgn_desc" not in s
+    assert s.count("',' || prfd_attr_cds || ',' LIKE '%,CHN,%'") == 2
+    assert not f(s, q)[1]                                  # 멱등
+    # 불개입 — 국가어 없음(지역어 질의) · 펀드 테이블 아님
+    assert not f(bad, "글로벌 펀드 알려줘")[1]
+    assert not f("SELECT 1 FROM domestic_etfs WHERE wu_inv_rgn='중국' LIMIT 5", q)[1]
+
+
+def test_strip_disclaimer():
+    """면책 금지 규칙 5회 재발 실측 — '금융기관 문의·전문가 상담' 문장을 통째로 걷어낸다."""
+    from src.runtime.pipeline import strip_disclaimer as f
+
+    a = ("1. 삼성MMF법인제1호 C 클래스 - 124295억원\n\n"
+         "이 펀드들은 모두 선취 수수료가 없으며, 순자산이 큰 순으로 정렬되어 있습니다. "
+         "더 자세한 내용은 해당 금융기관에 문의하시기 바랍니다.")
+    s, ok = f(a)
+    assert ok and "문의" not in s and "124295억원" in s and "정렬되어 있습니다." in s
+    # 쉼표 낀 긴 문장도 통째로
+    b = "안전성이 중요한 경우 전문가와 상담하여 자신의 투자 목표에 맞는 상품을 선택하는 것이 좋습니다."
+    s2, ok2 = f("위험등급은 6등급입니다. " + b)
+    assert ok2 and "전문가" not in s2 and "6등급입니다." in s2
+    # 불개입 — 면책 없음 · 면책뿐인 답(빈 답변 방지)
+    assert f("위험등급은 6등급입니다.") == ("위험등급은 6등급입니다.", False)
+    only = "자세한 내용은 금융기관에 문의하세요."
+    assert f(only) == (only, False)
+
+
+def test_fund_distinct_count_replaced():
+    """FND-034 실측 — COUNT(*) 가 클래스 850 을 '펀드 850개' 로 (구분 누락 6번째 재발).
+    펀드 개수 질의는 COUNT(DISTINCT 펀드키)+클래스수 병기로 교체하고 DB 실행까지 단언한다."""
+    import sqlite3
+    from src.runtime.pipeline import ensure_fund_distinct_count as f
+
+    q = "삼성자산운용이 운용하는 공모펀드는 몇 개야?"
+    bad = ("SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040010') "
+           "AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    s, ok = f(bad, q)
+    assert ok and '"펀드수"' in s and '"클래스수"' in s
+    assert not f(s, q)[1]                                  # 멱등 (COUNT(*) 단독 형태가 아니게 됨)
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    funds, classes = con.execute(s).fetchone()
+    assert (funds, classes) == (207, 850)                  # 2026-09-01 DB 실측 gold
+    # 불개입 — 클래스 수 질문 · 개수 질의 아님 · GROUP BY 분포
+    assert not f(bad, "삼성자산운용 펀드는 클래스가 몇 개야?")[1]
+    assert not f(bad, "삼성자산운용 펀드 알려줘")[1]
+    assert not f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY 1 LIMIT 30",
+                 "공모펀드는 유형별로 몇 개씩 있어?")[1]
+
+
+def test_fund_series_boundary_injected():
+    """FND-032 실측 — HCX 가 호 경계식을 `'2호' IN (a OR b)`(항상 거짓)로 옮겨 0행 오거절.
+    'N호' 언급 절을 걷어내고 GLOB 확정식을 주입한다."""
+    from src.runtime.pipeline import ensure_fund_series_boundary as f
+
+    q = "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘"
+    bad = ("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, TRIM(itm_nm) AS itm_nm FROM public_funds "
+           "WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋디스커버리증권투자신탁%' "
+           "AND '2호' IN (REPLACE(itm_nm,' ','') LIKE '%[^0-9]2호%' OR REPLACE(itm_nm,' ','') LIKE '%2호[^0-9]%') "
+           "LIMIT 30")
+    s, ok = f(bad, q)
+    assert ok and "GLOB '*[^0-9]2호*'" in s and "IN (" not in s
+    assert "LIKE '%미래에셋디스커버리증권투자신탁%'" in s          # 이름 절은 보존
+    assert not f(s, q)[1]                                          # 멱등
+    # 불개입 — 호수 없음 · 이름 검색 없음 · 펀드 테이블 아님
+    assert not f(bad, "미래에셋디스커버리증권투자신탁 위험등급 알려줘")[1]
+    assert not f("SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매중' LIMIT 1", q)[1]
+    assert not f("SELECT 1 FROM domestic_bonds WHERE pd_nm LIKE '%2호%' LIMIT 5", q)[1]
+
+
+def test_fund_mixed_type_canonical_filter():
+    """FND-023 실측 2회 — '혼합형' 질의의 유형 필터를 zrin 확정식(주식혼합형+채권혼합형)으로 교체."""
+    from src.runtime.pipeline import ensure_fund_mixed_type as f
+
+    q = "혼합형 공모펀드 중 1년 수익률 상위 5개 알려줘"
+    bad = ("SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS r FROM public_funds "
+           "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND or_attr_desc IN ('혼합자산', '대출형', '개발형') "
+           "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 3 DESC LIMIT 5")
+    s, ok = f(bad, q)
+    assert ok and "zrin_btyp_nm IN ('주식혼합형','채권혼합형')" in s and "혼합자산" not in s
+    assert not f(s, q)[1]                                  # 멱등
+    # 불개입 — 구체 유형 명시 · 유형 조건 없음 · 유형 조건 2개(치환이 얽힌다) · '혼합형' 없음
+    assert not f(bad, "혼합자산 펀드 수익률 상위 5개")[1]
+    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5", q)[1]
+    two = bad.replace("AND or_attr_desc IN ('혼합자산', '대출형', '개발형')",
+                      "AND or_attr_desc = '혼합자산' AND zrin_btyp_nm = '주식혼합형'")
+    assert not f(two, q)[1]
+    assert not f(bad, "채권형 펀드 알려줘")[1]
+
+
+def test_value_violation_hints_similar_values_first():
+    """FND-023 실측 — '혼합형' 기각 예시가 임의 표본이라 재생성이 힌트 0 으로 REFUSE.
+    어간('혼합') 포함 실제 값(주식혼합·채권혼합)이 예시 맨 앞에 와야 재생성이 고친다."""
+    from src.runtime.loader import load_context
+    from src.runtime import guard
+
+    ctx = load_context()
+    sql = ("SELECT itm_nm FROM public_funds WHERE or_attr_desc = '혼합형' "
+           "AND sale_yn = '판매중' LIMIT 30")
+    vs = guard.check_values(sql, ctx)
+    assert len(vs) == 1
+    msg = str(vs[0])
+    assert "주식혼합" in msg and "채권혼합" in msg
+    # 유사 값이 없으면 종전처럼 정렬 표본을 보여준다
+    vs2 = guard.check_values(
+        "SELECT itm_nm FROM public_funds WHERE or_attr_desc = '없는유형ZZZ' LIMIT 5", ctx)
+    assert len(vs2) == 1 and "실제 값 예" in str(vs2[0])
 
 
 def test_empty_string_literal_is_missing_idiom_not_value(ctx=None):

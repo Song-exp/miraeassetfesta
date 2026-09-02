@@ -99,6 +99,37 @@ def test_full_path_with_planner(ctx):
     assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측
 
 
+def test_manager_full_name_grounds(ctx):
+    """FND-034 실측 — 라벨이 약칭('삼성', 2자)뿐이라 매칭 하한(한글 3자)에 걸려 Ground 0 →
+    플래너가 수탁사 코드 서브쿼리를 지어내 '0개' 오답. 정식명 라벨 병합('삼성/삼성자산운용')로
+    '삼성자산운용' 질의가 운용사 코드에 매핑돼야 한다."""
+    from src.runtime.pipeline import _ground
+    _, lines = _ground("삼성자산운용이 운용하는 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert any("Org_00040010" in l and "or_co_xtn_itt_cd" in l for l in lines), lines
+    # 약칭 2자('삼성')는 여전히 매칭에 참여하지 않는다 — '삼성전자' 질의 오탐 방지
+    _, l2 = _ground("삼성전자를 담은 공모펀드 알려줘", ctx, ["public_funds"], cross=True)
+    assert not any("Org_00040010" in l for l in l2), l2
+    # 🔴 회귀 보호 — 정식명을 label_ko 에 '/' 병합하면 조각에 단어경계가 붙어 브랜드+상품명
+    #    합성어('미래에셋코어테크')의 브랜드 매칭이 죽는다 (2026-09-01 저녁 FND-016 재검 실측)
+    _, l3 = _ground("미래에셋코어테크 펀드 1년 수익률 알려줘", ctx, ["public_funds"])
+    assert any("Org_00080008" in l for l in l3), l3
+
+
+def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):
+    """FND-032 실측 — '펀드' 명사 없는 질의가 미특정으로 빠져 FROM domestic_bonds 완전일치 → 오거절.
+
+    ① Ground 매핑이 public_funds 만 가리키면 라우팅을 그 상품군으로 좁힌다.
+    ② Fund 노드의 코드가 질문의 호수와 다를 수 있으면(디스커버리 노드 rptt = 4호에 2호 질문)
+       코드 매핑을 싣지 않고 이름 검색을 지시한다 — 4호 값이 2호의 답으로 나가는 것을 막는다.
+    """
+    r = answer_question("T-032", "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘", ctx=ctx)
+    assert "미특정 보정" in r.think_trace and "public_funds" in r.think_trace
+    assert "코드 매핑을 싣지 않는다" in r.think_trace and "rptt_ksd_itm_no" not in r.think_trace
+    # 호수 없는 질의는 코드 매핑 유지(불개입) — 좁히기는 동일하게 발동
+    r2 = answer_question("T-032b", "미래에셋디스커버리증권투자신탁 위험등급 알려줘", ctx=ctx)
+    assert "미특정 보정" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
+
+
 def test_cutoff_august_allowed(ctx):
     # 기준일 2026-08-22 — 8월은 기준일 포함 월이라 게이트를 통과해야 한다 (2차 데이터 전환 회귀 테스트)
     r = answer_question("T-11", "2026년 8월 상장한 국내 ETF 알려줘", ctx=ctx)
@@ -934,6 +965,18 @@ def test_gate_ac_class_choice_is_conditional_answer(ctx):
     assert not g2.rejected
 
 
+def test_gate_no_redemption_fee_is_qualified_answer(ctx):
+    """환매수수료 '없음'은 게이트 즉답 — SQL 은 미수록 30행 조회에 성공했는데 답변기가 통째 거절 (FND-R07 실측)."""
+    from src.runtime import gate
+    g = gate.check("환매 수수료가 없는 펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "단정할 수 없" in g.answer and "297" in g.answer
+    g2 = gate.check("환매수수료 면제되는 펀드 있어?", ctx, ["public_funds"])
+    assert g2.rejected
+    # 조회 질의(조건 알려줘)·안내 요청은 발동하지 않는다
+    for q in ("미래에셋 펀드 환매수수료 알려줘", "환매수수료 안내해줘"):
+        assert not gate.check(q, ctx, ["public_funds"]).rejected
+
+
 def test_ground_uses_yaml_synonyms(ctx):
     """yaml synonyms 가 Ground 매칭 키로도 쓰여야 한다 (서버 실측 2026-08-31 저녁).
 
@@ -1032,3 +1075,43 @@ def test_guard_rejects_wrong_table_qualifier(ctx):
     alias = ("SELECT e.pd_abrv_nm, SUM(h.weight_pct) FROM domestic_etfs e "
              "JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no GROUP BY 1 LIMIT 5")
     assert validate_sql(alias) is None
+
+
+def test_guard_rejects_mismatched_ext_master_pair(ctx):
+    """ext_* 를 남의 마스터와 조인하면 기각 — 컬럼이 각자 실존해 수식자 검사는 통과한다.
+
+    서버 실측 2026-09-01(공식 예시 #3): domestic_etfs ⋈ ext_fund_holdings (d.pd_itm_no=h.grp)
+    가 Guard 를 통과하고 0행 → '확인되지 않습니다' 오답.
+    """
+    bad = ("SELECT d.pd_abrv_nm FROM domestic_etfs d JOIN ext_fund_holdings h "
+           "ON d.pd_itm_no = h.grp WHERE h.holding_nm = '캠브리콘' LIMIT 30")
+    err = validate_sql(bad)
+    assert err and "public_funds" in err, err
+    ok = ("SELECT e.pd_abrv_nm FROM domestic_etfs e JOIN ext_etf_holdings h "
+          "ON h.etf_code = e.pd_itm_no LIMIT 5")
+    assert validate_sql(ok) is None
+
+
+def test_kg_cambricon_domestic_link(ctx):
+    """공식 예시 #3 — 캠브리콘 정본이 국내ETF 구성종목 노드(Sec_d, '688256 C1')까지 편다."""
+    clos = ctx.kg_closure.get("Sec_m_cambricon") or []
+    assert "Sec_d_f186d5f574" in clos, clos
+    from src.runtime.pipeline import _ground
+    _, lines = _ground("캠브리콘이 편입된 중국 반도체 ETF를 알려줘", ctx, ["domestic_etfs"], cross=True)
+    assert any("ext_etf_holdings" in l for l in lines), lines
+
+
+def test_zero_row_lookup_suggests_similar(ctx):
+    """존재하지 않는 상품의 완전일치 조회가 0행이면 유사 후보를 되묻는다 (공식 예시 NA-3).
+
+    '확인할 수 없음' 단문도 정답 처리되지만, clarify.존재하지_않는_개체 의 정답 형태는
+    "혹시 △△ 를 말씀하신 건가요?" 되묻기다 — 후보 4종을 버리면 아깝다.
+    """
+    from src.runtime.pipeline import _suggest_similar_products
+    cand = _suggest_similar_products(
+        "SELECT * FROM domestic_etfs WHERE TRIM(pd_abrv_nm) = 'KODEX AI로봇' LIMIT 30")
+    assert cand, "후보 0건"
+    assert any("로봇" in c for c in cand), cand
+    # 단일 토큰·미매칭 이름은 빈 목록 — 되묻기 없이 종전 확인불가 문구로
+    assert _suggest_similar_products(
+        "SELECT * FROM domestic_etfs WHERE TRIM(pd_abrv_nm) = 'VOO' LIMIT 30") == []

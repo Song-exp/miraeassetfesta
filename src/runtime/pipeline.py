@@ -71,6 +71,9 @@ _FORBIDDEN = re.compile(
 
 
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+# ext_* ↔ 마스터 조인 짝 (external_join 정본). validate_sql 이 남남 조인을 기각하는 근거.
+_EXT_PAIR = {"ext_etf_holdings": "domestic_etfs", "ext_ovs_etf_holdings": "overseas_etfs",
+             "ext_fund_holdings": "public_funds", "ext_fund_page": "public_funds"}
 # 테이블 -> 컬럼 집합. validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사한다.
 # ctx 없이 호출되는 순수 함수라 모듈 수준에 캐시한다 — load_context() 가 채운다(없으면 검사 생략).
 _COLUMNS_OF: dict[str, set] = {}
@@ -139,6 +142,15 @@ def validate_sql(sql: str) -> str | None:
     for qual in {m.group(1).lower() for m in _TABLE_QUALIFIER.finditer(s)}:
         if qual in known and qual not in declared:
             return f"FROM/JOIN 에 없는 테이블 참조: {qual} (JOIN 을 붙이거나 조건을 옮겨야 한다)"
+    # 🔴 ext_* 는 조인 짝이 정해져 있다 — 다른 마스터와 섞으면 의미가 틀린 조인이 된다.
+    #    2026-09-01 서버 실측(공식 예시 #3): domestic_etfs 를 ext_fund_holdings(펀드 보유)와
+    #    d.pd_itm_no = h.grp 로 조인 — 컬럼은 각자 실존해서 수식자 검사를 통과했지만 키가 남남이라 0행.
+    #    ext_* 단독 사용(ext_etf_holdings.etf_name 만 조회 등)은 정상이므로,
+    #    **다른 마스터가 선언돼 있는데 제 짝이 없을 때만** 기각한다.
+    for ext, master in _EXT_PAIR.items():
+        if ext in declared and master not in declared and (declared & set(TABLES)):
+            return (f"{ext} 의 조인 짝은 {master} 다 — 다른 마스터와 조인 금지"
+                    f" (교차질의 조인 키 목록의 짝을 그대로 쓴다)")
     # 🔴 선언된 테이블이어도 **그 테이블에 없는 컬럼**을 수식자로 붙이면 실행이 깨진다.
     #    2026-08-31 서버 실측 — "하이닉스가 가장많이 편입된 상품":
     #      SELECT ... SUM(domestic_etfs.weight_pct) FROM domestic_etfs JOIN ext_etf_holdings ...
@@ -270,12 +282,18 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     2026-08-31 paired v2: answer 실패 1순위(값 불일치 37건)가 기본모수·대표행 규칙 미적용 —
     규칙이 프롬프트에 실려도 무시된다. ensure_limit 원칙(기각이 아니라 보정)의 연장.
     발동 조건(전부 만족할 때만 — 넓히면 사모·판매완료 질의를 다친다):
-      ① FROM public_funds 단일 테이블 (JOIN·UNION 없음 — 교차질의는 손대지 않는다)
+      ① FROM public_funds (+ ext_* 설명서 조인 허용 — 타 상품군 조인·UNION 은 손대지 않는다.
+         🔴 9/1 FND-R06 실측: ext_fund_page 조인 랭킹이 JOIN 제외 조건으로 빠져나가
+         판매완료 펀드 1997-10-28 이 '가장 오래된 펀드'로 나갔다. sale_yn·prvo_pbff_desc 는
+         public_funds 에만 있는 컬럼이라(PRAGMA 전수 확인) 조인문에도 비한정 주입이 모호하지 않다)
       ② ORDER BY 존재 (랭킹·Top-N 꼴)
       ③ SQL 에 sale_yn·prvo_pbff_desc 언급이 전혀 없음 (하나라도 있으면 모델 의도 존중)
       ④ 질문에 모수 확장 토큰(사모·판매완료·역외·전체)이 없음
     """
-    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    if re.search(r"\bjoin\b", sql, re.I) and re.search(
+            r"\b(?:domestic_bonds|domestic_etfs|overseas_etfs)\b", sql, re.I):
         return sql, False
     # 🔴 랭킹(ORDER BY)뿐 아니라 **집계(COUNT/SUM/AVG)** 도 기본모수 대상이다 — 기본모수 규칙이
     #    "집계·Top-N" 을 함께 말한다. 2026-08-31 밤 FND-030 실측: COUNT 질의에 sale_yn 이 빠졌다.
@@ -451,6 +469,12 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     target = _fund_sort_target(sql)
     if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
         add.append("zrin_attr_nms")
+    # 🔴 순자산 랭킹은 억 원 파생 컬럼을 병기한다 — 2026-09-01 서버 실측(021·022·031): 답변기가
+    #    13자리 원 단위를 옮겨 적다 자릿수를 훼손했다(1,024,955,248,968 → "10,249,525,488원").
+    #    억 환산으로 답한 문항(025·029)은 전부 정확 — 안전하게 옮길 수 있는 수를 결과에 실어 준다.
+    #    단위는 값에 구워 넣는다('10249억원') — 숫자만 주면 답변기가 단위를 지어낸다(재검 실측: "십억 원").
+    if target and target[0] == "fd_nast_suma" and "순자산_억원" not in sql:
+        add.append("CAST(fd_nast_suma/100000000 AS INTEGER) || '억원' AS \"순자산_억원\"")
     # 🔴 **조건에 쓴 서술 컬럼이 결과에 없으면 답변기가 결과를 해석하지 못한다** — 2026-08-31 밤 실측(FND-R09):
     #    WHERE han_clas_policies LIKE '%전문투자자%' 로 27행을 정확히 조회하고도 SELECT 에 그 컬럼이 없어
     #    (itm_nm·mtco_itm_no·기준일만), 답변기가 "정보를 찾을 수 없습니다" 로 **조회 결과를 통째로 버렸다**.
@@ -588,7 +612,17 @@ def ensure_group_null_label(sql: str) -> tuple[str, bool]:
 
 
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
-_GCD_HIGHRISK = re.compile(r"zrin_fd_ivst_risk_gcd\s*=\s*'?([12])(?:\.0)?'?", re.I)
+# 뒤집힘은 등호만이 아니다 — 9/1 서버 실측: BETWEEN 1 AND 3 으로 우회해 높은위험 30행이
+# 조회됐다. '낮은 숫자 = 안전' 오해의 표현형 전부(=1·2, BETWEEN 1~n<6, <=3, IN(1..3))를 잡는다.
+_GCD_HIGHRISK = re.compile(
+    r"zrin_fd_ivst_risk_gcd\s*(?:"
+    r"=\s*'?[12](?:\.0)?'?"
+    r"|BETWEEN\s+'?1(?:\.0)?'?\s+AND\s+'?[1-5](?:\.0)?'?"
+    r"|<=?\s*'?[1-3](?:\.0)?'?"
+    r"|IN\s*\(\s*'?[123](?:\.0)?'?(?:\s*,\s*'?[123](?:\.0)?'?)*\s*\)"
+    r")",
+    re.I,
+)
 
 
 def ensure_fund_safe_grade_direction(sql: str, question: str) -> tuple[str, bool]:
@@ -608,6 +642,233 @@ def ensure_fund_safe_grade_direction(sql: str, question: str) -> tuple[str, bool
     if not m:
         return sql, False
     return sql[:m.start()] + "zrin_fd_ivst_risk_gcd = 6" + sql[m.end():], True
+
+
+_MIXED_Q = re.compile(r"혼합형")
+_MIXED_SPECIFIC_Q = re.compile(r"주식\s*혼합|채권\s*혼합|혼합\s*자산|해외\s*혼합")
+_MIXED_FIX = "zrin_btyp_nm IN ('주식혼합형','채권혼합형')"
+_FUND_TYPE_COND = re.compile(
+    r"(?:\b\w+\.)?(?:or_attr_desc|zrin_btyp_nm)\s*(?:=\s*'[^']*'|IN\s*\([^)]*\))", re.I)
+
+
+def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
+    """'혼합형' 질의의 유형 필터를 zrin 확정식(주식혼합형+채권혼합형)으로 교체. (보정된 SQL, 보정했는지)
+
+    2026-09-01 FND-023 실측 2회: ① or_attr_desc='혼합형'(없는 값) 기각 → 재생성 REFUSE(오거절) ·
+    ② 값 힌트 수리 후 재검은 첫 SQL 부터 or_attr_desc IN ('혼합자산','대출형','개발형') — 실제 값이라
+    검사는 통과하지만 모수가 다르다(gold 주식혼합+채권혼합 top1 118.45 vs 혼합자산 32.6). HCX 비결정성이라
+    규칙·힌트로는 못 박는다 — 채권 ensure_kind_filter 와 동형의 확정식 치환.
+    발동 조건: ① public_funds ② 질문에 '혼합형' ③ 구체 유형(주식혼합·채권혼합·혼합자산·해외혼합) 명시
+    없음 ④ SQL 의 유형 조건(or_attr_desc·zrin_btyp_nm)이 정확히 1개 (0개·2개 이상은 불개입 — 치환이
+    다른 조건과 얽히면 0행을 만들 수 있다).
+    """
+    if not _FUND_TBL.search(sql) or not _MIXED_Q.search(question):
+        return sql, False
+    if _MIXED_SPECIFIC_Q.search(question):
+        return sql, False
+    conds = list(_FUND_TYPE_COND.finditer(sql))
+    if len(conds) != 1:
+        return sql, False
+    m = conds[0]
+    if re.sub(r"\s+", "", m.group(0)) == re.sub(r"\s+", "", _MIXED_FIX):
+        return sql, False
+    return sql[:m.start()] + _MIXED_FIX + sql[m.end():], True
+
+
+# 면책 상투구가 든 문장 통째 — 문장 경계는 마침표·물음표·느낌표·줄바꿈 (쉼표는 문장 내부)
+_DISCLAIMER = re.compile(
+    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견))"
+    r"[^.!?\n]*[.!?]?")
+
+
+def strip_disclaimer(text: str) -> tuple[str, bool]:
+    """답변에서 면책 상투구 문장을 걷어낸다. (정리된 답변, 제거했는지)
+
+    2026-09-01 실측 — answer_rules 의 면책 금지가 하루 5회 재발("금융기관에 문의"·"전문가와
+    상담"): 규칙이 실려도 답변기가 습관적으로 붙인다(법칙 1). 값·목록은 그대로 두고 해당 문장만
+    통째로 제거. 전부 지워지면(면책 한 줄짜리 답) 원문 유지 — 빈 답변이 더 나쁘다.
+    """
+    out = _DISCLAIMER.sub("", text)
+    if out == text:
+        return text, False
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return (out, True) if out else (text, False)
+
+
+def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
+    """2열(범주 라벨 · COUNT(*)) GROUP BY 분포 결과의 답변을 기계 조립한다. 아니면 None.
+
+    발동 조건(전부): GROUP BY 존재 · JOIN 없음 · SELECT 가 정확히 2항목이고 둘째가 COUNT(*) ·
+    행 2개 이상 · 전 행이 '라벨 | 정수' 형태. 합계·범주 수를 함께 낸다 — 오계수·행 생략·
+    전칭('일부') 서술이 이 모양의 질의에서 원천적으로 사라진다.
+    """
+    if n < 2 or not re.search(r"\bgroup\s+by\b", sql, re.I) or re.search(r"\bjoin\b", sql, re.I):
+        return None
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm:
+        return None
+    sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+    items = _split_select_items(sel)
+    if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+        return None
+    body = rows.splitlines()[1:]
+    if len(body) != n:
+        return None
+    pairs = []
+    for ln in body:
+        parts = ln.split(" | ")
+        if len(parts) != 2:
+            return None
+        try:
+            cnt = int(float(parts[1]))
+        except ValueError:
+            return None
+        pairs.append((parts[0].strip(), cnt))
+    total = sum(c for _, c in pairs)
+    lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 2026-08-22).", ""]
+    lines += [f"- {lab}: {c:,}건" for lab, c in pairs]
+    return "\n".join(lines)
+
+
+@lru_cache(maxsize=1)
+def _minority_mgmt_names() -> tuple[str, ...]:
+    """합병 이력 코드(이름 2종 이상)의 소수 이름 목록 — DB 실측으로 계산, 하드코딩 아님.
+
+    2026-09-01 FND-035 재검: MAX(mgmt_co_nm) 이 사전순으로 구명칭을 뽑았다
+    (00040007: 우리자산운용 373행 vs 프랭클린템플턴 10행 — 'ㅍ' > 'ㅇ'). 코드가 정본이고
+    이름은 참고 병기인데 참고가 틀리면 답이 틀려 보인다. 코드별 최빈 이름만 남긴다.
+    """
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)), e.mgmt_co_nm, COUNT(*) "
+            "FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+            "WHERE e.mgmt_co_nm IS NOT NULL AND TRIM(e.mgmt_co_nm) <> '' "
+            "GROUP BY 1, 2").fetchall()
+    finally:
+        con.close()
+    by_code: dict[str, list] = {}
+    for code, nm, c in rows:
+        by_code.setdefault(code, []).append((c, nm))
+    minority = set()
+    for code, lst in by_code.items():
+        if len(lst) > 1:
+            lst.sort(reverse=True)
+            # 🔴 코드/이름 **쌍**으로 제외한다 — 전역 이름 목록은 오답이다: '우리자산운용' 은
+            #    00040007 에선 다수(413행)지만 00040023 에선 소수(1행)다 (2026-09-02 실측).
+            minority.update(f"{code}/{nm}" for _, nm in lst[1:])
+    return tuple(sorted(minority))
+
+
+_MGMT_MAX = re.compile(r"MAX\(\s*((?:\w+\.)?mgmt_co_nm)\s*\)", re.I)
+_OR_CO_KEY = "printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER))"
+
+
+def ensure_fund_mgmt_modal_name(sql: str) -> tuple[str, bool]:
+    """MAX(mgmt_co_nm) 이 합병 구명칭을 뽑지 않게 코드/이름 쌍으로 소수 이름을 제외한다."""
+    m = _MGMT_MAX.search(sql)
+    if not m:
+        return sql, False
+    pairs = _minority_mgmt_names()
+    if not pairs:
+        return sql, False
+    lst = ", ".join(f"'{p}'" for p in pairs)
+    col = m.group(1)
+    return _MGMT_MAX.sub(
+        f"MAX(CASE WHEN {_OR_CO_KEY} || '/' || {col} NOT IN ({lst}) THEN {col} END)", sql), True
+
+
+# 국가태그 규칙의 확정 대응 (한국·국내는 제외 — 상장/국내 질의와 충돌)
+_COUNTRY_TAGS = {"중국": "CHN", "차이나": "CHN", "미국": "USA", "베트남": "VNM", "일본": "JPN",
+                 "러시아": "RUS", "브라질": "BRA", "홍콩": "HKG", "독일": "DEU",
+                 "인도네시아": "IDN", "인도": "IND"}
+
+
+def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
+    """국가 질의의 지역 컬럼 오용을 태그 확정식으로 교체. (보정된 SQL, 보정했는지)
+
+    2026-09-01 FND-026 재검 실측 — 국가태그 규칙이 실려도 플래너가 ① fd_ivst_rgn_desc='중국'
+    (없는 값 — 기각) ② 재생성서 ='글로벌' (있는 값 — 통과·오모수: 중국 아닌 글로벌 펀드가 LIMIT 을
+    도배) ③ 태그를 써도 wrap 없는 LIKE '%,CHN,%' 로 목록 처음·끝의 태그 98/560행을 놓친다.
+    조치: 질문의 국가어에 대해 ① fd_ivst_rgn_desc 등호 조건을 정식 태그식으로 교체
+    ② wrap 없는 태그 LIKE 를 ','||…||',' 정식형으로 교정. 국가어 없는 질의·지역어 질의는 불개입.
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, False
+    tag = next((t for w, t in _COUNTRY_TAGS.items() if w in question), None)
+    if not tag:
+        return sql, False
+    canon = f"',' || prfd_attr_cds || ',' LIKE '%,{tag},%'"
+    fixed = False
+    m = re.search(r"(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", sql)
+    if m:
+        sql = sql[:m.start()] + canon + sql[m.end():]
+        fixed = True
+    bare = re.compile(rf"(?<!\|\| ')(?:\b\w+\.)?prfd_attr_cds\s+LIKE\s+'%,{tag},%'")
+    if bare.search(sql):
+        sql = bare.sub(canon, sql)
+        fixed = True
+    return sql, fixed
+
+
+_Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
+_FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
+                  "CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
+                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END")
+
+
+def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
+    """펀드 개수 질의의 COUNT(*) 를 펀드단위 COUNT(DISTINCT 키)+클래스수 병기로 교체.
+
+    2026-09-01 FND-034 실측 — 클래스/펀드 구분 누락 6번째 재발: Ground·코드·기본모수 전부
+    맞았는데 COUNT(*) 가 클래스 850 을 '펀드 850개' 로 답했다(정답 207펀드). 운용사질의 규칙에
+    워크드 예시까지 실려도 무시된다 — HANDOFF 대기 항목 '반복되면 기계 주입' 발동.
+    발동 조건: ① public_funds 단일 테이블(JOIN·GROUP BY 없음) ② SELECT 가 COUNT(*) 단독
+    ③ 질문이 '펀드 … 몇 개/개수' 형 ④ 질문에 '클래스' 없음(클래스 수를 물으면 불개입).
+    클래스 수는 지우지 않고 병기한다 — 답변기가 두 기준을 함께 말할 재료.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by)\b", sql, re.I):
+        return sql, False
+    if not _Q_FUND_COUNT.search(question) or "클래스" in question:
+        return sql, False
+    m = re.match(r"(\s*SELECT\s+)COUNT\(\s*\*\s*\)(?:\s+AS\s+\w+)?(\s+FROM\b)", sql, re.I)
+    if not m:
+        return sql, False
+    head = (f'COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수"')
+    return sql[:m.end(1)] + head + sql[m.start(2):], True
+
+
+def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
+    """N호 질의의 이름 검색에 호 경계식을 기계 주입. (보정된 SQL, 보정했는지)
+
+    2026-09-01 FND-032 실측 2회: ① 미특정 라우팅 수리 후 HCX 가 이름 검색까진 왔는데 호 경계를
+    `'2호' IN (a LIKE .. OR b LIKE ..)` 로 옮겨 적음 — 문법상 유효하나 항상 거짓이라 0행 오거절.
+    LIKE 에 [^0-9] 문자클래스를 쓰는 등 경계식은 HCX 가 반복적으로 망가뜨린다 — 규칙(종목명검색)에
+    정확식이 실려 있어도 소용없어 결정층으로 내린다. GLOB '*[^0-9]N호*' 하나로 '제N호'·'…신탁N호'
+    전부 잡히고 12호·32호는 앞 숫자 때문에 배제된다(디스커버리 2호 2행 정확 일치 실측).
+    발동 조건: ① public_funds ② 질문의 호수가 정확히 1종 ③ SQL 에 itm_nm 이름 검색 존재
+    ④ 올바른 경계식(GLOB [^0-9]N호)이 아직 없음. 조치: 'N호' 를 언급하는 최상위 AND 절을 걷어내고
+    (망가진 시도 제거) 경계식 한 절을 주입한다.
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, False
+    nos = set(_Q_SERIES_NO.findall(question))
+    if len(nos) != 1:
+        return sql, False
+    n = nos.pop()
+    if not re.search(r"\bitm_nm\b", sql, re.I):
+        return sql, False
+    bound = f"REPLACE(itm_nm,' ','') GLOB '*[^0-9]{n}호*'"
+    if bound in sql:
+        return sql, False
+    m = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m:
+        return sql, False
+    body = m.group(1)
+    kept = [c for c in guard.split_conjuncts(body) if f"{n}호" not in c]
+    new_body = " " + " AND ".join(kept + [bound]) + " "
+    return sql[:m.start(1)] + new_body + sql[m.end(1):], True
 
 
 def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
@@ -1263,6 +1524,9 @@ def _region_korea_is_listing(question: str) -> bool:
     return bool(_KR_LISTING.search(question))
 
 
+_Q_SERIES_NO = re.compile(r"(\d+)\s*호")
+
+
 def _ground(
     question: str, ctx: RuntimeContext, tables: list[str] | None = None, cross: bool = False
 ) -> tuple[list, list[str]]:
@@ -1379,6 +1643,18 @@ def _ground(
         aliases = target_aliases(ctx, node, target, relations)
         if target and not aliases:
             # E — 대상 테이블에 값이 없는 노드. 레이블을 소비하지 않아 같은 표기의 다른 노드가 잡힐 수 있게 둔다
+            continue
+        # 🔴 Fund 노드 호수 불일치 (2026-09-01 FND-032 실측) — '미래에셋디스커버리증권투자신탁' 노드의
+        #    rptt 코드는 4호를 가리키는데 질문은 2호였다. 호가 다르면 다른 펀드다 — 코드 매핑을 실으면
+        #    플래너가 4호 값을 2호의 답으로 낼 수 있다. 라벨은 소비하고 코드 대신 이름 검색을 지시한다.
+        ho = _Q_SERIES_NO.search(question)
+        if (node.node_id.startswith("Fund_") and ho
+                and not any(ho.group(1) + "호" in lb.replace(" ", "") for lb in node.labels)):
+            consumed = consumed.replace(label, " ")
+            lines.append(
+                f"'{label}' → {node.node_id} (Fund) — ⚠️ 질문의 '{ho.group(1)}호' 와 이 노드의 코드가 "
+                f"가리키는 펀드가 다를 수 있어 코드 매핑을 싣지 않는다. public_funds.itm_nm 공백무시 LIKE "
+                f"+ 호 경계(종목명검색 규칙)로 푼다")
             continue
         hits.append(node)
         consumed = consumed.replace(label, " ")
@@ -1635,6 +1911,40 @@ def build_grounding(
     return "\n\n".join(parts)
 
 
+
+_NAME_LOOKUP = re.compile(r"TRIM\((?:\w+\.)?(pd_abrv_nm|pd_nm)\)\s*=\s*'([^']+)'", re.I)
+_TOKEN_SPLIT = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
+
+
+def _suggest_similar_products(sql: str) -> list[str]:
+    """개별 상품 완전일치 조회가 0행일 때 유사 후보를 찾는다 — clarify.존재하지_않는_개체 의 되묻기 재료.
+
+    'KODEX AI로봇' → 토큰(KODEX·AI·로봇) 중 첫 토큰(브랜드)을 필수로, 나머지 중 하나 이상이
+    들어간 상품을 순자산 순으로 최대 4개. 실측(2026-09-01): KODEX 로봇액티브·글로벌로봇(합성)·
+    차이나/미국휴머노이드로봇 이 이 방식으로 나온다. LLM 없이 SQLite 재조회 한 번이다.
+    """
+    m = _NAME_LOOKUP.search(sql)
+    if not m:
+        return []
+    name = m.group(2)
+    toks = _TOKEN_SPLIT.findall(name)
+    if len(toks) < 2:
+        return []
+    table = "overseas_etfs" if "overseas_etfs" in sql.lower() else "domestic_etfs"
+    first, rest = toks[0], [t for t in toks[1:] if len(t) >= 2]
+    if not rest:
+        return []
+    cond = " OR ".join("replace(pd_abrv_nm,' ','') LIKE ?" for _ in rest)
+    args = [f"%{first}%"] + [f"%{t}%" for t in rest]
+    q = (f"SELECT DISTINCT TRIM(pd_abrv_nm) FROM {table} "
+         f"WHERE replace(pd_abrv_nm,' ','') LIKE ? AND ({cond}) "
+         f"ORDER BY du_last_aum DESC LIMIT 4")
+    try:
+        with connect_readonly() as con:
+            return [r[0] for r in con.execute(q, args)]
+    except sqlite3.Error:
+        return []
+
 def _grounding_blocks(grounding: str) -> list[str]:
     """근거문서에 실제로 실린 블록 이름 — trace 에 글자 수만 적으면 무엇이 실렸는지 알 수 없다.
 
@@ -1711,6 +2021,26 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, modal_fixed = ensure_fund_mgmt_modal_name(sql)
+    if modal_fixed:
+        step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
+             "소수 이름 제외로 교정 (2026-09-01 FND-035 재검: 00040007 이 프랭클린템플턴(10행)으로 표기 — 정본은 우리자산운용 373행)")
+    sql, ctag_fixed = ensure_fund_country_tag(sql, q)
+    if ctag_fixed:
+        step("[Guard] 국가 태그 확정식 — 지역 컬럼 등호·미래핑 태그 LIKE 를 ','||prfd_attr_cds||',' 정식형으로 교체 "
+             "(2026-09-01 FND-026 재검: ='글로벌' 오모수 + wrap 없는 LIKE 가 98/560행 누락)")
+    sql, fcnt_fixed = ensure_fund_distinct_count(sql, q)
+    if fcnt_fixed:
+        step("[Guard] 펀드단위 집계 교체 — 펀드 개수 질의의 COUNT(*) 를 COUNT(DISTINCT 펀드키)+클래스수 병기로 "
+             "(2026-09-01 FND-034 실측: 클래스 850 을 '펀드 850개' 로 답함 — 구분 누락 6번째 재발)")
+    sql, series_fixed = ensure_fund_series_boundary(sql, q)
+    if series_fixed:
+        step("[Guard] 호수 경계 주입 — N호 조건을 GLOB '*[^0-9]N호*' 확정식으로 교체 "
+             "(2026-09-01 FND-032 실측: HCX 가 경계식을 `'2호' IN (a OR b)` 로 옮겨 항상-거짓 0행)")
+    sql, mixed_fixed = ensure_fund_mixed_type(sql, q)
+    if mixed_fixed:
+        step("[Guard] 혼합형 확정식 치환 — 유형 조건을 zrin_btyp_nm IN (주식혼합형·채권혼합형) 으로 교체 "
+             "(2026-09-01 FND-023 실측 2회: '혼합형' 이 없는 값 기각→오거절, 재검은 혼합자산·대출형·개발형 오모수)")
     sql, gnull_fixed = ensure_group_null_label(sql)
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "
@@ -1805,6 +2135,24 @@ def answer_question(
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
         step("[Ground] KG 개체 매핑 — 매칭 없음" + (" (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)" if tables else ""))
+
+    # 🔴 미특정 라우팅 보정 (2026-09-01 FND-032 실측) — "…증권투자신탁 2호 위험등급" 은 '펀드' 명사가
+    #    없어 미특정 → 4테이블로 빠졌고, KG 가 public_funds 매핑을 찾아 근거문서에 실었는데도 HCX 는
+    #    FROM domestic_bonds 완전일치 SQL 을 내 0행 오거절. Ground 가 테이블을 알아냈으면 라우팅이
+    #    그것을 쓴다 — 매핑이 단일 상품군만 가리킬 때만 좁힌다(지역·등급 노드처럼 여러 테이블에
+    #    걸리면 불개입). §7 구조 리스크 1(미특정 경로 가드 우회)의 부분 해소이기도 하다.
+    if not tables and ground_lines:
+        seen = set(re.findall(r"\b(domestic_bonds|domestic_etfs|overseas_etfs|public_funds)\.",
+                              " ".join(ground_lines)))
+        if len(seen) == 1:
+            tables = [seen.pop()]
+            step(f"[Route] 미특정 보정 — KG 매핑이 {tables[0]} 만 가리켜 그 상품군으로 좁힌다 "
+                 "(2026-09-01 FND-032 실측: 미특정 → 채권 테이블 SQL → 0행 오거절)")
+            cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]
+            if not cross and tables == ["public_funds"] and _FUND_EXT_HINTS.search(q):
+                cross = True
+                step("[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함")
+            hits, ground_lines = _ground(q, ctx, tables, cross)
 
     # Gate — HCX 호출 0회 기각 경로
     g = gate.check(q, ctx, tables)
@@ -1971,9 +2319,20 @@ def answer_question(
     if n == 0:
         # 규칙 §3 — 조회 0건이면 지어내지 않고 즉시 확인 불가.
         # R-4 — 어느 조건 때문인지 조건별 건수를 센다(SQLite 재실행뿐, HCX 0회). 조건을 완화해 다시 답하지는 않는다.
+        # 🆕 2026-09-01 — 개별 상품 조회(약어명/상품명 완전일치)가 0행이면 **유사 후보를 되묻기 형태로** 붙인다.
+        #    clarify.존재하지_않는_개체 의 정답 형태다("혹시 △△ 를 말씀하신 건가요?" 가 정답 처리).
+        #    서버 실측(공식 예시 NA-3 "KODEX AI로봇"): '확인되지 않습니다' 단문으로 끝나 후보 4종을 버렸다.
+        #    LLM 을 거치지 않는 결정 층이다 — 후보는 SQLite 재조회로만 찾는다.
         answer = "조건에 해당하는 상품이 데이터에서 확인되지 않습니다."
+        cand = _suggest_similar_products(sql)
+        if cand:
+            names = " / ".join(cand)
+            answer = (f"요청하신 상품은 제공된 데이터에 없습니다. "
+                      f"혹시 다음 상품을 말씀하신 건가요? — {names}")
+            step(f"[Suggest] 정확 일치 0건 — 유사 후보 {len(cand)}건 되묻기 (clarify.존재하지_않는_개체)")
         try:
-            diag = guard.diagnose_zero_rows(sql)
+            # 후보 되묻기가 이미 사유를 대신한다 — 이름 조건 하나짜리 진단을 겹쳐 붙이지 않는다
+            diag = None if cand else guard.diagnose_zero_rows(sql)
         except sqlite3.Error:
             diag = None
         if diag and diag.text():
@@ -1989,12 +2348,31 @@ def answer_question(
         result.answer = answer
         return result
 
+    # 🔴 분포(2열 GROUP BY COUNT) 답변은 기계 조립 — HCX 0회 (2026-09-01 FND-038 재검 실측:
+    #    행수 병기 후에도 19행 중 17행만 나열 + 금지된 '일부' 서술 재발. 목록 전사는 LLM 에게
+    #    맡길 수 없다 — 결정층에서 전 행을 그대로 옮긴다).
+    dist = _distribution_answer(sql, rows, n)
+    if dist is not None:
+        step("[Answer] 분포 답변 기계 조립 — 2열(범주·건수) GROUP BY 결과는 HCX 없이 전 행을 그대로 옮긴다 "
+             "(2026-09-01 FND-038 재검: 19행 중 17행 나열 + '일부' 서술 재발)")
+        result.think_trace = "\n".join(trace)
+        result.answer = dist
+        return result
+
     answer_rules = ctx.answer_context(tables or list(TABLES))
+    # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
+    #    "총 10개" 라고 셌다. 순자산 자릿수 훼손과 같은 계열 — 모델에게 산술(개수 세기)을 시키지
+    #    말고 복사만 하게 한다. retrieved_context(조회 원문)는 건드리지 않고 답변 입력에만 붙인다.
+    rows_for_answer = f"(조회 결과: 총 {n}행)\n{rows}"
     # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
     if _accepts_answer_rules(planner):
-        result.answer = planner.compose_answer(q, rows, answer_rules)
+        result.answer = planner.compose_answer(q, rows_for_answer, answer_rules)
     else:
-        result.answer = planner.compose_answer(q, rows)
+        result.answer = planner.compose_answer(q, rows_for_answer)
+    result.answer, stripped = strip_disclaimer(result.answer)
+    if stripped:
+        step("[Guard] 면책 문구 제거 — '금융기관 문의·전문가 상담' 류 문장을 답변에서 걷어냄 "
+             "(answer_rules 금지 규칙 미준수 5회 재발 — 2026-09-01 결정층行)")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

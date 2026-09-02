@@ -9711,6 +9711,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "PICC PROPERTY&CASUALTY", source: rule}
   Sec_d_a357a1dde8:
     label_en: "Taiwan Semiconductor Manufact"
+    parent: Sec_m_tsmc
     status: dom_foreign_ticker
     note: "ticker=2330 TT"
     aliases:
@@ -17230,6 +17231,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "SICC Co Ltd", source: rule}
   Sec_d_8c213388d0:
     label_en: "BeOne Medicines Ltd"
+    parent: Sec_m_beone_medicines
     status: dom_foreign_ticker
     note: "ticker=688235 CH"
     ambiguous_names: "BeOne Medicines Ltd"   # 이름이 다른 종목과 겹쳐 alias 제외 — 키(ticker/cusip)로만 매칭
@@ -17251,6 +17253,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "Nexchip Semiconductor Corp", source: rule}
   Sec_d_f186d5f574:
     label_en: "Cambricon Technologies Corp Ltd"
+    parent: Sec_m_cambricon
     status: dom_foreign_ticker
     note: "ticker=688256 C1"
     aliases:
@@ -18971,6 +18974,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "AAON Inc", source: rule}
   Sec_d_58f3e88c79:
     label_en: "애플/Apple Inc"
+    parent: Sec_m_apple
     status: dom_foreign_ticker
     note: "ticker=AAPL US"
     aliases:
@@ -19902,6 +19906,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "Aumovio SE", source: rule}
   Sec_d_22f4631dc9:
     label_en: "아마존/Amazon.com Inc"
+    parent: Sec_m_amazon
     status: dom_foreign_ticker
     note: "ticker=AMZN US"
     aliases:
@@ -25216,6 +25221,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "Gentex Corp", source: rule}
   Sec_d_151431a3c9:
     label_en: "알파벳 C/Alphabet Inc C"
+    parent: Sec_m_alphabet
     status: dom_foreign_ticker
     note: "ticker=GOOG US"
     aliases:
@@ -25223,6 +25229,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "알파벳 C/Alphabet Inc C", source: rule}
   Sec_d_e8c34fae77:
     label_en: "알파벳 A/Alphabet Inc"
+    parent: Sec_m_alphabet
     status: dom_foreign_ticker
     note: "ticker=GOOGL US"
     aliases:
@@ -28899,6 +28906,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "MSCI Inc", source: rule}
   Sec_d_6ba52c8f47:
     label_en: "마이크로소프트/MICROSOFT CORP"
+    parent: Sec_m_microsoft
     status: dom_foreign_ticker
     note: "ticker=MSFT US"
     aliases:
@@ -29599,6 +29607,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "NOVOCURE LTD", source: rule}
   Sec_d_ca3c50c193:
     label_en: "엔비디아/NVIDIA Corp"
+    parent: Sec_m_nvidia
     status: dom_foreign_ticker
     note: "ticker=NVD GY"
     aliases:
@@ -33888,6 +33897,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "TAYSHA GENE THERAPIES INC", source: rule}
   Sec_d_87553d015f:
     label_en: "테슬라/Tesla Inc"
+    parent: Sec_m_tesla
     status: dom_foreign_ticker
     note: "ticker=TSLA US"
     aliases:
@@ -33902,6 +33912,7 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "Yieldmax Tsla Option Income ETF", source: rule}
   Sec_d_8274bbef22:
     label_en: "TSMC/TAIWAN SEMICONDUCTOR-SP ADR"
+    parent: Sec_m_tsmc
     status: dom_foreign_ticker
     note: "ticker=TSM US"
     aliases:
@@ -208248,19 +208259,19 @@ nodes:
     label_ko: "엔비디아"
     label_en: "NVIDIA"
     status: manual
-    note: "수동 정본 — CUSIP 67066G104 (US67066G1040) · GLEIF LEI 549300S4KLFTLO7GSQ80"
+    note: "수동 정본 — CUSIP 67066G104 (US67066G1040) · GLEIF LEI 549300S4KLFTLO7GSQ80 · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
     aliases:
       - {table: ext_ovs_etf_holdings, column: holding_name, raw: "NVIDIA CORPORATION", source: rule}
   Sec_m_apple:
     label_ko: "애플"
     label_en: "Apple"
     status: manual
-    note: "수동 정본 — CUSIP 037833100 (US0378331005) · GLEIF LEI HWUPKR0MPOU8FGXBT394"
+    note: "수동 정본 — CUSIP 037833100 (US0378331005) · GLEIF LEI HWUPKR0MPOU8FGXBT394 · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
   Sec_m_cambricon:
     label_ko: "캠브리콘"
     label_en: "Cambricon Technologies"
     status: manual
-    note: "수동 정본 — SSE 688256 · ISIN CNE1000041R8 (펀드 구성종목 실측) · CINS Y10823105 (NPORT-P 실측) — 주최 예시 질의 3번"
+    note: "수동 정본 — SSE 688256 · ISIN CNE1000041R8 (펀드 구성종목 실측) · CINS Y10823105 (NPORT-P 실측) — 주최 예시 질의 3번 · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
   Sec_m_ecopro:
     label_ko: "에코프로"
     label_en: "ECOPRO"
@@ -208290,31 +208301,31 @@ nodes:
     label_ko: "테슬라"
     label_en: "Tesla"
     status: manual
-    note: "수동 정본 — CUSIP 88160R101 (US88160R1014) · GLEIF LEI"
+    note: "수동 정본 — CUSIP 88160R101 (US88160R1014) · GLEIF LEI · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
     aliases:
       - {table: ext_ovs_etf_holdings, column: holding_name, raw: "TESLA, INC.", source: rule}
   Sec_m_microsoft:
     label_ko: "마이크로소프트"
     label_en: "Microsoft"
     status: manual
-    note: "수동 정본 — CUSIP 594918104 (US5949181045) · GLEIF LEI"
+    note: "수동 정본 — CUSIP 594918104 (US5949181045) · GLEIF LEI · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
     aliases:
       - {table: ext_ovs_etf_holdings, column: holding_name, raw: "MICROSOFT CORPORATION", source: rule}
   Sec_m_alphabet:
     label_ko: "알파벳"
     label_en: "Alphabet"
     status: manual
-    note: "수동 정본 — CUSIP 02079K305(A)/02079K107(C) · GLEIF LEI"
+    note: "수동 정본 — CUSIP 02079K305(A)/02079K107(C) · GLEIF LEI · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
   Sec_m_amazon:
     label_ko: "아마존"
     label_en: "Amazon"
     status: manual
-    note: "수동 정본 — CUSIP 023135106 (US0231351067) · GLEIF LEI"
+    note: "수동 정본 — CUSIP 023135106 (US0231351067) · GLEIF LEI · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
   Sec_m_tsmc:
     label_ko: "TSMC"
     label_en: "Taiwan Semiconductor Manufacturing"
     status: manual
-    note: "수동 정본 — ADR CUSIP 874039100 (US8740391003) — 원주(2330.TW) 는 별도 증권. LEI 는 NPORT-P 실측에 없어 미기입"
+    note: "수동 정본 — ADR CUSIP 874039100 (US8740391003) — 원주(2330.TW) 는 별도 증권. LEI 는 NPORT-P 실측에 없어 미기입 · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
   Sec_m_hyundai_motor:
     label_ko: "현대차"
     label_en: "Hyundai Motor"
@@ -208345,8 +208356,9 @@ nodes:
   Sec_m_beone_medicines:
     label_en: "BeOne Medicines Ltd"
     status: manual
-    note: "수동 정본 — ㉢ 승인 2026-08-31 — kg_dom_ticker_11_2026-08-30.md 실측 (국내ETF 13건)"
+    note: "수동 정본 — ㉢ 승인 2026-08-31 — kg_dom_ticker_11_2026-08-30.md 실측 (국내ETF 13건) · dom_ticker 추가 2026-09-01(공식예시 #3 서버 0건 실측 — 국내ETF 구성종목 티커, constituent 명으로 검증)"
     aliases:
+      - {table: ext_etf_holdings, column: constituent, raw: "BeOne Medicines Ltd", source: rule}
       - {table: ext_ovs_etf_holdings, column: holding_name, raw: "BEONE MEDICINES LTD", source: rule}
       - {table: ext_ovs_etf_holdings, column: holding_name, raw: "BeOne Medicines Ltd", source: rule}
   Sec_m_midea_group:

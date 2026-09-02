@@ -223,3 +223,23 @@ def test_eok_rounding_is_consistent_across_paths():
     assert round(total / 100000000) == int(con.execute(
         "SELECT CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) FROM public_funds "
         "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' AND or_co_xtn_itt_cd='00040010'").fetchone()[0])
+
+
+# ── P12 · gold ③-8 (부류 Y) — 결과 전사는 사람이 읽는 표로 낸다 ──
+def test_rows_answered_uses_ko_labels():
+    """FND-R03·OFFICIAL-005: `TRIM(itm_nm)`·`cu_lev_fector`·`fd_price_bas_dt` 가 사용자 화면에 나갔다."""
+    rows = ("TRIM(itm_nm) | itm_no | fd_yr1_ern_r | or_co_xtn_itt_cd | 순자산_억원\n"
+            "미래에셋코어테크 | KR1234 | 17.41 | 00080008 | 1,234억원")
+    out, ok = p.ensure_rows_answered("조회 결과에 해당 정보가 포함되어 있지 않습니다.", rows, 1)
+    assert ok, out
+    for raw in ("TRIM(itm_nm)", "itm_no", "or_co_xtn_itt_cd", "fd_yr1_ern_r", "KR1234", "00080008"):
+        assert raw not in out, (raw, out)
+    assert "종목명 미래에셋코어테크" in out and "17.41" in out and "1,234억원" in out, out
+
+    # 테이블 무관 — ETF 컬럼도 스키마 한글명으로 (하드코딩 0)
+    out2, _ = p.ensure_rows_answered("알 수 없습니다.",
+                                     "cu_lev_fector | pd_nm\n2.0 | KODEX 레버리지", 1)
+    assert "cu_lev_fector" not in out2 and "배수 2.0" in out2, out2
+
+    # 값을 하나라도 인용한 부분 유보는 불개입(종전 규칙)
+    assert p.ensure_rows_answered("17.41% 는 확인되나 나머지는 알 수 없습니다.", rows, 1)[1] is False

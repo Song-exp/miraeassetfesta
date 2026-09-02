@@ -2795,6 +2795,32 @@ _REFUSAL_ANSWER = re.compile(
 _EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
 
 
+_HEADER_SHELL = re.compile(r"^\s*(?:TRIM|CAST|ROUND|MAX|MIN|SUM|AVG|COUNT|TOTAL)\s*\(\s*(?:\w+\.)?(\w+)", re.I)
+
+
+def _answer_col_label(header: str) -> str:
+    """결과 헤더 → 사람이 읽는 라벨. 식별자·내부코드 컬럼이면 빈 문자열(답변에서 뺀다).
+
+    11R gold ③-8 — `TRIM(x)`·별칭 껍질을 벗기고 스키마 한글명(원천)을 붙인다. 이름 하드코딩 0.
+    """
+    h = header.strip().strip('"')
+    m = re.match(r"(.*?)\s+AS\s+\"?([^\"]+)\"?$", h, re.I | re.S)
+    if m:
+        h = m.group(2).strip()
+    col = (_HEADER_SHELL.match(h).group(1) if _HEADER_SHELL.match(h) else h).strip()
+    if re.search(r"[가-힣]", col):
+        return col                                   # 이미 사람이 읽는 별칭('클래스수'·'순자산_억원')
+    if _NAME_COL.fullmatch(col):
+        return "종목명"                               # 이름은 답의 핵심이라 항상 남긴다
+    if col.lower() in _EVIDENCE_SKIP or col.lower().endswith("_itt_cd") or col.lower() in _FUND_ID_COLS:
+        return ""                                    # 식별자·내부코드 — 사용자 화면에 낼 값이 아니다
+    for cols in (getattr(_ev_ctx(), "schema", {}) or {}).values():     # 테이블 무관 — 스키마 한글명이 원천이다
+        for c, ko, *_ in cols:
+            if c.lower() == col.lower() and ko:
+                return ko
+    return col
+
+
 def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
     """조회 결과가 있는데 결과를 **하나도 인용하지 않고** 거절한 답변을 기계 전사로 교체. (답변, 교체했는지)
 
@@ -2809,8 +2835,15 @@ def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
     body = [[v.strip() for v in ln.split(" | ")] for ln in lines[1:]]
     if any(len(v) >= 2 and v in answer for r in body for v in r):
         return answer, False
+    # 🔴 11R gold ③-8 (부류 Y) — 전사는 **사람이 읽는 표**로 낸다. 종전엔 SQL 헤더 문자열을 그대로 써서
+    #    `TRIM(itm_nm)`·`cu_lev_fector`·`fd_price_bas_dt` 가 사용자 화면에 나갔다(FND-R03·OFFICIAL-005).
+    #    라벨은 스키마 한글명(loader 원천)이고, 식별자·내부코드 컬럼은 뺀다(`_EVIDENCE_SKIP` 과 같은 기준).
+    labels = [_answer_col_label(c) for c in cols]
+    keep = [i for i, c in enumerate(cols) if labels[i]]
+    if not keep:
+        keep, labels = list(range(len(cols))), cols
     out = [f"조회 결과 {n}행입니다 (기준일 {gate.DATA_CUTOFF})."]
-    out += ["- " + " · ".join(f"{c} {v}" for c, v in zip(cols, r) if v) for r in body[:10]]
+    out += ["- " + " · ".join(f"{labels[i]} {r[i]}" for i in keep if i < len(r) and r[i]) for r in body[:10]]
     if n > 10:
         out.append(f"… 외 {n - 10}행")
     return "\n".join(out), True

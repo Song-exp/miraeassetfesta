@@ -121,3 +121,27 @@ def test_strip_wrong_cutoff():
     # Y1 — 근거 없는 품질 추측
     y1, hit1 = P.strip_disclaimer("1위는 660.63%입니다. 다만 기준가 산정에 오류가 있을 가능성도 있습니다.")
     assert hit1 and "가능성" not in y1, y1
+
+
+# ── 항목 9 · KG 부류 B — 확정식 주입은 교체다(같은 축의 잔여 술어 제거) ──────────────
+def test_estb_year_replaces_residual():
+    """설정연도 확정식은 멱등 재작성이고, 체인 뒤에서 되살아난 잔여 술어를 다시 걷어낸다 (X19)."""
+    q = "2025년에 설정된 공모펀드는 몇 개야?"
+    # 초기 가드가 지나간 뒤 ensure_ext_join 이 fd_estb_dt → estb_dt 로 이름을 바꿔 잔여가 되살아난 형태
+    sql = ("SELECT COUNT(*) FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+           "WHERE estb_dt >= '20250101' AND estb_dt < '20260101' AND sale_yn = '판매중' "
+           "AND prvo_pbff_desc = '공모' AND estb_dt <= 20250930 LIMIT 30")
+    out, ok = P.ensure_fund_estb_year(sql, q)
+    assert ok and "20250930" not in out, out
+    assert out.count("estb_dt >= '20250101'") == 1 and "estb_dt < '20260101'" in out, out
+    assert P.ensure_fund_estb_year(out, q) == (out, False)          # 멱등
+
+
+def test_series_boundary_drops_other_series():
+    """호수 확정식은 질문의 호수뿐 아니라 SQL 의 모든 호수 술어를 걷어낸다 (AA20 거짓 0)."""
+    q = "미래에셋차이나솔로몬 시리즈 3호는 클래스가 몇 개야?"
+    sql = ("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%' AND itm_no LIKE '%2호%') LIMIT 30")
+    out, ok = P.ensure_fund_series_boundary(sql, q)
+    assert ok and "'%2호%'" not in out, out
+    assert "미래에셋차이나솔로몬" in out and "[^0-9.]3호*" in out, out     # 이름 필터는 살아남는다

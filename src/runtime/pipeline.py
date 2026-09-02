@@ -457,8 +457,6 @@ def ensure_fund_estb_year(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     y = int(m_y.group(1))
     canon = f"estb_dt >= '{y}0101' AND estb_dt < '{y + 1}0101'"
-    if canon in sql:
-        return sql, False
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m_w:
         anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
@@ -467,8 +465,14 @@ def ensure_fund_estb_year(sql: str, question: str) -> tuple[str, bool]:
     #    쪼개기 전에 통째로 한 토큰으로 접어 둔다.
     where_txt = re.sub(r"(?:\w+\.)?(?:estb_dt|fd_daily_bas_dt)\s+(?:NOT\s+)?BETWEEN\s+\S+\s+AND\s+\S+",
                        "estb_dt IS NOT NULL", m_w.group(1), flags=re.I)
-    keep = [c for c in guard.split_conjuncts(where_txt) if not _ESTB_DATE_CONJ.search(c)]
-    return sql[:m_w.start()] + " WHERE " + " AND ".join([canon] + keep) + " " + sql[m_w.end():].lstrip(), True
+    # 🔴 8R 부류 B — **주입은 교체다**: 이 축(설정일)의 다른 술어는 전부 걷어낸다. 종전엔 `canon in sql` 조기 반환이
+    #    있어 체인 뒤에서 되살아난 잔여 술어를 못 걷어냈다 — 7R X19 실측: HCX 의 `fd_estb_dt <= 20250930` 이
+    #    여기선 컬럼명이 달라 안 걸렸고, 그 뒤 `ensure_ext_join` 이 `estb_dt` 로 이름을 바꿔 놓아 10~12월이 잘렸다
+    #    (82/224, gold 107/305). 이제 멱등 재작성이라 체인 끝에서 한 번 더 태우면 잔여가 사라진다.
+    keep = [c for c in _flat_conjuncts(where_txt) if not _ESTB_DATE_CONJ.search(c)]
+    # 멱등하려면 재작성이 공백까지 같은 문자열을 내야 한다 — 앞뒤 공백을 정규화한다
+    new = sql[:m_w.start()].rstrip() + " WHERE " + " AND ".join([canon] + keep) + " " + sql[m_w.end():].lstrip()
+    return (new, True) if new != sql else (sql, False)
 
 
 def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> tuple[str, bool]:
@@ -2984,15 +2988,18 @@ def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     body = m.group(1)
     kept = []
-    for c in guard.split_conjuncts(body):
-        if f"{n}호" not in c:
+    # 🔴 8R 부류 B — **주입은 교체다**: 질문의 호수뿐 아니라 SQL 의 **모든 호수 술어**를 걷어낸다. 7R AA20 실측:
+    #    3호 확정식을 넣었는데 HCX 의 `itm_no LIKE '%2호%'` 가 (기본모수 주입이 만든 괄호 안에서) 살아남아
+    #    항상-거짓이 됐다 — 거짓 0(gold 8클래스). 괄호 그룹도 `_flat_conjuncts` 로 들어간다.
+    for c in _flat_conjuncts(body):
+        if not re.search(r"\d+\s*호", c):
             kept.append(c)
             continue
-        # 6R J′ — 'N호' 절을 걷어낼 때 절 안의 **이름 LIKE 리터럴**은 'N호' 만 떼어 보존한다(W6: HCX 의 이름+4호 결합 LIKE 를 통째로 제거해
+        # 6R J′ — 호수 절을 걷어낼 때 절 안의 **이름 LIKE 리터럴**은 호수만 떼어 보존한다(W6: HCX 의 이름+4호 결합 LIKE 를 통째로 제거해
         #    이름 필터가 사라지고 목록 경로로 빠졌다). 호 경계는 아래 GLOB 이 맡는다.
         m_like = re.search(r"((?:REPLACE\((?:\w+\.)?itm_nm,' ',''\)|(?:\b\w+\.)?itm_nm)\s+LIKE\s+')%([^%']*)%'", c, re.I)
         if m_like:
-            lit = m_like.group(2).replace(f"{n}호", "").replace(" ", "").strip()
+            lit = re.sub(r"\d+\s*호", "", m_like.group(2)).replace(" ", "").strip()
             if len(lit) >= 3:
                 kept.append(f"{m_like.group(1)}%{lit}%'")
     new_body = " " + " AND ".join(kept + [bound]) + " "
@@ -4866,6 +4873,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if qualified:
         step(f"[Guard] JOIN 모호 컬럼 한정 — {', '.join(qualified)} → FROM 테이블 한정 "
              "(2026-09-02 R2 재검: 재생성 SQL 이 펀드단위 규칙의 COALESCE(…, itm_no) 를 JOIN 에 그대로 옮겨 기각 → 거절)")
+    sql, estb_post = ensure_fund_estb_year(sql, q)
+    if estb_post:
+        step("[Guard] 설정연도 확정식 사후조건 — 체인 끝에서 설정일 축의 잔여 술어를 다시 걷어냈다 "
+             "(8R 부류 B · X19 실측: HCX 의 `fd_estb_dt <= 20250930` 이 초기 가드 때는 컬럼명이 달라 안 걸렸고 "
+             "그 뒤 외부 JOIN 가드가 `estb_dt` 로 이름을 바꿔 놓아 10~12월이 잘렸다 — 82/224, gold 107/305)")
     sql, pop_post = ensure_fund_base_population(sql, q, post=True)
     if pop_post:
         step("[Guard] 펀드 기본모수 사후조건 — 재작성된 SQL 에 모수 절이 없어 체인 끝에서 주입(개별 조회는 '공모'만) "

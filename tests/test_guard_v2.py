@@ -314,7 +314,8 @@ def test_fund_country_tag_canonicalized():
            "AND sale_yn = '판매중' LIMIT 30")
     s, ok = f(bad, q)
     assert ok and "fd_ivst_rgn_desc" not in s
-    assert s.count("',' || prfd_attr_cds || ',' LIKE '%,CHN,%'") == 2
+    assert s.count("',' || prfd_attr_cds || ',' LIKE '%,CHN,%'") == 1     # 2R Q3: 같은 정식형 OR 중복은 하나로 접는다
+    assert " OR " not in s
     assert not f(s, q)[1]                                  # 멱등
     # 불개입 — 국가어 없음(지역어 질의) · 펀드 테이블 아님
     assert not f(bad, "글로벌 펀드 알려줘")[1]
@@ -1240,3 +1241,29 @@ def test_s11_pipeline_assembled(ctx):
     assert "[Route] SQL 사후 보정 — FROM public_funds" in r.think_trace and "재생성 문서도" in r.think_trace
     assert "[Guard] 운용사 집계 확정식" in r.think_trace and "[Answer] 운용사 집계 답변 기계 조립" in r.think_trace
     assert "377,707억원" in r.answer and "삼성자산운용(00040010)" in r.answer and "KB자산운용(00040035)" in r.answer
+
+
+def test_country_tag_guard_catches_bare_and_name_forms():
+    """2R Q3 — S6: `prfd_attr_cds LIKE '%IND%'`(콤마 없음) · `zrin_attr_nms LIKE '%인도%'` 가 정규식 밖이라 가드 미발동 →
+    인도네시아 7행 혼입(142행/59펀드, gold 135/58). 두 표현형을 정식형으로 치환하고 중복 OR 은 접는다."""
+    from src.runtime.pipeline import ensure_fund_country_tag as f, _FUND_KEY_EXPR
+
+    con = _ro()
+    s6 = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds, zrin_attr_nms FROM public_funds WHERE prvo_pbff_desc = '공모' "
+          "AND (prfd_attr_cds LIKE '%IND%' OR zrin_attr_nms LIKE '%인도%') AND sale_yn = '판매중' LIMIT 30")
+    s, ok = f(s6, "인도에 투자하는 공모펀드 알려줘")
+    canon = "',' || prfd_attr_cds || ',' LIKE '%,IND,%'"
+    assert ok and "zrin_attr_nms LIKE" not in s and s.count(canon) == 1 and "'%IND%'" not in s
+    assert not f(s, "인도에 투자하는 공모펀드 알려줘")[1]                      # 멱등
+    cnt = s.replace("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds, zrin_attr_nms", f"SELECT COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})").replace(" LIMIT 30", "")
+    assert con.execute(cnt).fetchone() == (135, 58)
+    assert con.execute(cnt.replace("COUNT(*), COUNT(DISTINCT " + _FUND_KEY_EXPR + ")", "COUNT(*)") + " AND itm_nm LIKE '%인도네시아%'").fetchone() == (0,)
+    # 인도네시아 질문은 IDN 경로 그대로(부분어 역방향)
+    s2, ok2 = f("SELECT itm_nm FROM public_funds WHERE zrin_attr_nms LIKE '%인도네시아%' LIMIT 30", "인도네시아에 투자하는 공모펀드 알려줘")
+    assert ok2 and "'%,IDN,%'" in s2 and "IND" not in s2
+    # S7: 정식형 + 콤마 없는 둘째 절 → 하나로 접힘 · 119행
+    s7 = ("SELECT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND (',' || prfd_attr_cds || ',' LIKE '%,VNM,%' "
+          "OR prfd_attr_cds LIKE '%VNM%') AND sale_yn = '판매중' LIMIT 30")
+    s3, ok3 = f(s7, "베트남에 투자하는 공모펀드 알려줘")
+    assert ok3 and s3.count("'%,VNM,%'") == 1 and " OR " not in s3
+    assert con.execute(s3.replace("SELECT itm_no, itm_nm", "SELECT COUNT(*)").replace(" LIMIT 30", "")).fetchone() == (119,)

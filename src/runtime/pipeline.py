@@ -1345,7 +1345,7 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql):
         return sql, False
-    tag = next((t for w, t in _COUNTRY_TAGS.items() if w in question), None)
+    word, tag = next(((w, t) for w, t in _COUNTRY_TAGS.items() if w in question), (None, None))
     if not tag:
         return sql, False
     canon = f"',' || prfd_attr_cds || ',' LIKE '%,{tag},%'"
@@ -1354,10 +1354,19 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
     if m:
         sql = sql[:m.start()] + canon + sql[m.end():]
         fixed = True
-    bare = re.compile(rf"(?<!\|\| ')(?:\b\w+\.)?prfd_attr_cds\s+LIKE\s+'%,{tag},%'")
-    if bare.search(sql):
-        sql = bare.sub(canon, sql)
-        fixed = True
+    # 🔴 2026-09-02 S6 재검 — HCX 표현형 2종이 정규식 밖이라 가드가 안 돌았다: ① `prfd_attr_cds LIKE '%IND%'`(콤마 없음 —
+    #    S6·S7 둘째 절) ② `zrin_attr_nms LIKE '%인도%'`('인도' 가 '인도네시아' 를 삼켜 7행 혼입 → 142행/59펀드 vs gold 135/58).
+    bare = re.compile(rf"(?<!\|\| ')(?:\b\w+\.)?prfd_attr_cds\s+LIKE\s+'%,?{tag},?%'", re.I)
+    nms = re.compile(rf"(?:\b\w+\.)?zrin_attr_nms\s+LIKE\s+'%{re.escape(word)}%'", re.I)
+    for pat in (bare, nms):
+        if pat.search(sql):
+            sql = pat.sub(canon, sql)
+            fixed = True
+    if fixed:
+        # 같은 정식형이 OR 로 중복되면 하나로 접는다 — `(canon OR canon)` / `canon OR canon`
+        c = re.escape(canon)
+        sql = re.sub(rf"\(\s*{c}\s+OR\s+{c}\s*\)", canon, sql, flags=re.I)
+        sql = re.sub(rf"{c}\s+OR\s+{c}", canon, sql, flags=re.I)
     return sql, fixed
 
 

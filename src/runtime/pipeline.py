@@ -4094,6 +4094,34 @@ def _execute(sql: str) -> tuple[str, int]:
         con.close()
 
 
+DEFAULT_TOPN = 5
+_TOPN_RANK_Q = re.compile(r"추천|순으로|순위|랭킹|톱|top|골라|(?:높은|낮은|큰|작은|많은|적은|좋은|비싼|싼|긴|짧은)\s*순|순서대로|정렬", re.I)
+_TOPN_NUM_Q = re.compile(r"\d+\s*(?:개|종목|가지|곳|위|등|건|펀드)|top\s*\d|톱\s*\d|상위\s*\d|(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*(?:개|종목|가지|곳)|하나만|하나\s*(?:만|추천|골라)", re.I)
+_TOPN_ALL_Q = re.compile(r"전체|모두|전부|모든|다\s*(?:알려|보여)|목록|리스트|몇\s*(?:개|종목|건|가지)")
+
+
+def ensure_default_topn(sql: str, question: str) -> tuple[str, bool]:
+    """개수를 말하지 않은 랭킹 질의의 LIMIT 을 기본 5로 맞춘다. (보정된 SQL, 보정했는지)
+
+    리드 결정 2026-09-02: '한전 채권 수익률 낮은 순으로 알려줘' 에 HCX 가 상한 30행을 골라 30종목을 전사 —
+    22.2초(목표 15초 초과)·가독성 저하. 개수 없는 랭킹은 상위 5개 + 커버리지("전체 N종목 중 상위 5") 로 답한다.
+    발동(전부): ① ORDER BY 존재 ② 질문에 랭킹 신호(추천·순으로·순위·높은/낮은 순…) ③ 질문에 개수·서수 없음
+    ④ 질문에 전체·모두·목록·'몇 개' 없음 ⑤ SELECT 가 COUNT/SUM 집계 아님(분포·개수 질의 불개입) ⑥ LIMIT 이 없거나 5 초과.
+    '가장 ~한' 최상급은 동률(만기 최단 20종목)이 있어 여기서 자르지 않는다 — 랭킹 신호 목록에 넣지 않았다."""
+    if not re.search(r"\bORDER\s+BY\b", sql, re.I) or not _TOPN_RANK_Q.search(question):
+        return sql, False
+    if _TOPN_NUM_Q.search(question) or _TOPN_ALL_Q.search(question):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm or re.search(r"\b(?:COUNT|SUM)\s*\(", sql[:frm.start()], re.I):
+        return sql, False
+    m = re.search(r"\bLIMIT\s+(\d+)\s*;?\s*$", sql, re.I)
+    if m and int(m.group(1)) <= DEFAULT_TOPN:
+        return sql, False
+    body = sql[:m.start()].rstrip() if m else sql.rstrip().rstrip(";")
+    return f"{body} LIMIT {DEFAULT_TOPN}", True
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
 
@@ -4253,6 +4281,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if qualified:
         step(f"[Guard] JOIN 모호 컬럼 한정 — {', '.join(qualified)} → FROM 테이블 한정 "
              "(2026-09-02 R2 재검: 재생성 SQL 이 펀드단위 규칙의 COALESCE(…, itm_no) 를 JOIN 에 그대로 옮겨 기각 → 거절)")
+    sql, topn_fixed = ensure_default_topn(sql, q)
+    if topn_fixed:
+        step(f"[Guard] 기본 TOP-N — 개수 없는 랭킹 질의의 LIMIT 을 {DEFAULT_TOPN} 으로 (2026-09-02 서버 실측: '한전 채권 수익률 낮은 순' 30행 전사 22.2초 — 리드 결정: 상위 5 + 전체 종목수 병기)")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")

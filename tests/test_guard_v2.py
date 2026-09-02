@@ -2226,3 +2226,20 @@ def test_r6_F6_base_population_strict_and_join_count():
     out3, ok3 = dc(x19, "2010년 이전에 설정된 공모펀드는 몇 개야?")
     assert ok3 and "COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd" in out3 and "p.mtco_itm_no" in out3 and ", p.itm_no)" in out3
     assert dc("SELECT COUNT(*) FROM public_funds p JOIN domestic_etfs d ON d.pd_itm_no = p.itm_no LIMIT 1", "펀드 몇 개")[1] is False
+
+
+def test_default_topn_for_rank_questions_without_count():
+    """리드 결정 2026-09-02 — 개수를 말하지 않은 랭킹 질의는 LIMIT 5 (서버 실측: 한전 낮은순 30행 전사 22.2초)."""
+    from src.runtime.pipeline import ensure_default_topn as f
+    sql = "SELECT pd_nm, applied_yield FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사(주)' ORDER BY applied_yield ASC LIMIT 30"
+    fixed, ch = f(sql, "한전 채권 수익률 낮은 순으로 알려줘")
+    assert ch and fixed.endswith("LIMIT 5") and "LIMIT 30" not in fixed
+    assert f(sql.replace(" LIMIT 30", ""), "수익률 높은 채권 추천해줘") == (sql.replace(" LIMIT 30", "") + " LIMIT 5", True)   # LIMIT 없음 → 5
+    # 불개입 — 개수 명시 · 전체/목록 요청 · 랭킹 신호 없음 · 집계 · 최상급('가장') · 이미 5 이하
+    assert not f(sql, "한전 채권 수익률 낮은 순으로 10개 알려줘")[1]
+    assert not f(sql, "한전 채권 수익률 낮은 순으로 세 개만 알려줘")[1]
+    assert not f(sql, "한전 채권 수익률 낮은 순으로 전체 알려줘")[1]
+    assert not f(sql, "한전 채권 알려줘")[1]
+    assert not f("SELECT bd_knd, COUNT(*) FROM domestic_bonds GROUP BY 1 ORDER BY 2 DESC LIMIT 30", "채권 종류별로 많은 순으로 알려줘")[1]
+    assert not f("SELECT pd_nm, mat_dt FROM domestic_bonds ORDER BY mat_dt ASC LIMIT 30", "만기가 가장 짧은 채권 뭐야?")[1]
+    assert not f(sql.replace("LIMIT 30", "LIMIT 5"), "한전 채권 수익률 낮은 순으로 알려줘")[1]

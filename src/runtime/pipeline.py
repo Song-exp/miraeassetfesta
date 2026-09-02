@@ -3248,6 +3248,52 @@ def _minority_mgmt_names() -> tuple[str, ...]:
     return tuple(sorted(minority))
 
 
+_MGMT_SUFFIX = re.compile(r"(?:자산|투자신탁|투신|자산위탁|위탁|투자)?운용(?:주식회사|㈜|\(주\))?$")
+_KO_TOKEN = re.compile(r"[가-힣A-Za-z]{2,}")
+
+
+@lru_cache(maxsize=1)
+def _mgmt_stem_codes() -> tuple:
+    """운용사 **브랜드 어간** → (코드, 클래스수). DB 실측(`ext_fund_page.mgmt_co_nm` ⋈ `public_funds`), 하드코딩 0.
+
+    🔴 11R KG ③-13 (부류 M) — KG 에 `Org_*` 매핑이 없는 운용사명이면 HCX 가 코드를 **매번 새로 날조**한다
+       (`1001` → `80000000` → `60000000` → `10000000`, Z15·AA23·X12 가 재생성 예산을 3회 이상 태웠다).
+       자연어 피드백으로는 안 고쳐지는 유형이라 결정층에서 재료를 준다.
+    어간은 법인 접미(자산운용·투자신탁운용·투신운용…)를 뗀 앞부분이다: '슈로더자산운용' → '슈로더'.
+    질문의 '슈로더투자신탁운용' 도 같은 어간이라 표기가 달라도 맞는다.
+    """
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)), e.mgmt_co_nm, COUNT(*) "
+            "FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+            "WHERE e.mgmt_co_nm IS NOT NULL AND TRIM(e.mgmt_co_nm) <> '' GROUP BY 1, 2").fetchall()
+    except sqlite3.Error:
+        return ()
+    finally:
+        con.close()
+    best: dict[str, tuple] = {}
+    for code, nm, cnt in rows:
+        stem = _MGMT_SUFFIX.sub("", str(nm).strip()).strip()
+        if len(stem) < 2:
+            continue
+        if stem not in best or cnt > best[stem][1]:
+            best[stem] = (code, cnt, str(nm).strip())
+    return tuple(sorted(best.items()))
+
+
+def mgmt_code_from_question(question: str) -> tuple | None:
+    """질문의 운용사 표기 → (어간, 코드, 정본 이름). KG 매핑이 없을 때의 DB 역조회 1회. 못 찾으면 None.
+
+    가장 **긴 어간**부터 본다 — '키움슈로더' 가 '슈로더' 보다 먼저 걸려야 한다(부분 브랜드 오매칭 방지).
+    """
+    q = question.replace(" ", "")
+    for stem, (code, _cnt, nm) in sorted(_mgmt_stem_codes(), key=lambda kv: -len(kv[0])):
+        if stem in q:
+            return stem, code, nm
+    return None
+
+
 _FROM_FUND = re.compile(r"\bfrom\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", re.I)
 
 
@@ -5100,7 +5146,10 @@ def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
         label = m.group(1)
         for tail in re.findall(rf"{re.escape(label)}([0-9A-Za-z가-힣]+)", question):
             tok = _PARTICLE.sub("", tail).strip()
-            if tok in _GENERIC_NAME_TOKEN or len(tok) < 2:
+            # 🔴 11R KG ③-12 (부류 U) — Ground 가 토큰을 **운용사로 확정했으면** 같은 토큰의 잔여를
+            #    '상품 고유명' 으로 재해석하지 않는다. 법인 접미('…투자신탁운용')는 상품 이름이 아니다
+            #    (`_standalone_name_token` 이 이미 쓰는 같은 사전 — 가드 중복 0).
+            if tok in _GENERIC_NAME_TOKEN or len(tok) < 2 or tok.endswith("운용"):
                 continue
             # 🔴 10R 재검 ③-A(접두 앵커) — **KG 가 브랜드 라벨을 소비했더라도 리터럴은 「라벨+잔여」 결합형**이다.
             #    종전엔 잔여만 리터럴로 써서(피델리티차이나→`차이나` · 한국투자베트남그로스→`베트남그로스`)
@@ -5305,6 +5354,7 @@ def build_grounding(
     question: str = "",
     future: list[str] | None = None,
     name_token: str | None = None,
+    extra_mapping: list[str] | None = None,
 ) -> str:
     """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
 
@@ -5320,6 +5370,8 @@ def build_grounding(
 
     parts: list[str] = []
     mapping = _mapping_block(ctx, hits, set(target), _asks_subsidiaries(question))
+    if extra_mapping:                 # 11R KG ③-13 — KG 미매핑 운용사의 DB 역조회 결과도 같은 블록에 싣는다
+        mapping = chr(10).join([f"- {l}" for l in extra_mapping] + ([mapping] if mapping else []))
     if mapping:
         parts.append(
             "# KG 개체 매핑 — 질의의 표기를 DB 실제 값으로 옮긴 것\n"
@@ -5974,10 +6026,25 @@ def answer_question(
 
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
     hits, ground_lines = _ground(q, ctx, tables, cross)
+    mgmt_fallback: list[str] = []
     if ground_lines:
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
         step("[Ground] KG 개체 매핑 — 매칭 없음" + (" (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)" if tables else ""))
+        # 🔴 11R KG ③-13 (부류 M) — KG 매핑이 없는 운용사는 **코드를 지어내기 전에 역조회로 확정한다.**
+        #    Z15·AA23·X12 는 HCX 가 `1001` → `80000000` → `60000000` → `10000000` 로 매번 새 코드를 날조하며
+        #    재생성 예산을 3회 이상 태웠다(자연어 피드백이 이 계열에서 작동하지 않는다 → 기계 보정).
+        #    역조회는 DB 실측 1회(`ext_fund_page.mgmt_co_nm` 어간 ⋈ `public_funds`)이고 이름 하드코딩 0이다.
+        if tables == ["public_funds"]:
+            found = mgmt_code_from_question(q)
+            if found:
+                stem, code, nm = found
+                mgmt_fallback = [f"{nm} (Organization) → public_funds.or_co_xtn_itt_cd 의 값: '{code}' "
+                                 f"— KG 미매핑이라 ext_fund_page.mgmt_co_nm 역조회로 확정한 코드다. "
+                                 f"이 코드를 그대로 쓰고 다른 코드를 지어내지 않는다"]
+                ground_lines = [f"'{stem}' → 운용사 {nm} → public_funds.or_co_xtn_itt_cd = '{code}'"]
+                step(f"[Ground] 운용사 코드 역조회 — '{stem}' → {nm}({code}) "
+                     "(11R KG ③-13: KG 미매핑 운용사에 HCX 가 매번 새 코드를 날조해 재생성 예산을 태웠다)")
 
     # 🔴 미특정 라우팅 보정 (2026-09-01 FND-032 실측) — "…증권투자신탁 2호 위험등급" 은 '펀드' 명사가
     #    없어 미특정 → 4테이블로 빠졌고, KG 가 public_funds 매핑을 찾아 근거문서에 실었는데도 HCX 는
@@ -6043,7 +6110,7 @@ def answer_question(
     if name_token:
         step(f"[Ground] 잔여 상품 고유명 '{name_token}' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 "
              "(2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)")
-    grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token)
+    grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token, mgmt_fallback)
     result.grounding = grounding
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
@@ -6096,7 +6163,7 @@ def answer_question(
                 name_token = residual_name_token(q, ground_lines)
                 if name_token:
                     step(f"[Ground] 잔여 상품 고유명 '{name_token}' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (사후 보정 경로)")
-            grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token)
+            grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token, mgmt_fallback)
     sql, trim_fixed = ensure_trimmed_compare(sql)
     if trim_fixed:
         step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교를 TRIM 비교로 교체 (무TRIM IN 은 16행 vs TRIM 2,031행 실측)")

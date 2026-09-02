@@ -278,3 +278,26 @@ def test_entity_count_ranking_axis():
     assert p.ensure_fund_entity_count_ranking(s, "순자산이 가장 많은 수탁사 3개")[1] is False
     fund_axis = ("SELECT itm_no, COUNT(*) FROM public_funds GROUP BY itm_no ORDER BY 2 DESC LIMIT 3")
     assert p.ensure_fund_entity_count_ranking(fund_axis, "가장 많은 펀드 3개")[1] is False
+
+
+# ── KG ③-13 (부류 M) · ③-12 (부류 U) — KG 미매핑 운용사는 코드를 지어내기 전에 역조회로 확정 ──
+def test_mgmt_code_reverse_lookup():
+    """Z15·AA23·X12: HCX 가 `1001`→`80000000`→`60000000`→`10000000` 로 매번 새 코드를 날조했다."""
+    for q in ("슈로더투자신탁운용이 운용하는 공모펀드는 몇 개야?",
+              "슈로더투자신탁운용 공모펀드 알려줘",
+              "슈로더가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?"):
+        assert p.mgmt_code_from_question(q) == ("슈로더", "00040013", "슈로더자산운용"), q
+    # gold: 15펀드 / 46클래스 (심사관 실측)
+    assert connect_readonly().execute(
+        f"SELECT COUNT(DISTINCT {p._FUND_KEY_EXPR}), COUNT(*) FROM public_funds "
+        "WHERE or_co_xtn_itt_cd='00040013' AND sale_yn='판매중' AND prvo_pbff_desc='공모'").fetchone() == (15, 46)
+    # 긴 어간이 먼저 — 부분 브랜드 오매칭 방지
+    assert p.mgmt_code_from_question("아무 운용사도 없는 질문") is None
+
+
+def test_residual_token_skips_corporate_suffix():
+    """부류 U: 운용사로 확정한 토큰의 잔여('…투자신탁운용')를 상품 고유명으로 재해석하지 않는다."""
+    lines = ["'슈로더' → 운용사 슈로더자산운용 → public_funds.or_co_xtn_itt_cd = '00040013'"]
+    assert p.residual_name_token("슈로더투자신탁운용이 운용하는 공모펀드는 몇 개야?", lines) is None
+    # 진짜 상품 고유명은 그대로 잡는다
+    assert p.residual_name_token("미래에셋코어테크 펀드 기준가 알려줘", []) is not None

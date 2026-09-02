@@ -1869,3 +1869,21 @@ def test_attr_tag_all_axes_N4(ctx):
     # 비발동 — 라벨이 낱말 안에 붙은 경우('고배당' 의 '배당주' 아님) · 설정형태 통칭은 종전대로
     assert not at("SELECT 1 FROM public_funds LIMIT 1", "KB고배당주 펀드 알려줘")[1]
     assert "'%,C104,%'" in at("SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매중' LIMIT 30", "폐쇄형 공모펀드는 몇 개야?")[0]
+
+
+def test_amount_eok_common_B4(ctx):
+    """4R B-4 확장 (V7) — 원 단위 집계의 HCX 별칭(total_aum)·ETF 도메인도 억원 병기 + 원값 숨김. 펀드 순자산 경로는 종전 이름(순자산_억원) 유지."""
+    from src.runtime.pipeline import ensure_amount_eok_columns as f, _hide_answer_columns as hide, ensure_fund_evidence_columns as ev, _execute, _list_answer
+
+    v7 = "SELECT cu_fund_mgmt_co, SUM(du_last_aum) as total_aum FROM domestic_etfs GROUP BY cu_fund_mgmt_co ORDER BY total_aum DESC LIMIT 3"
+    s, ok = f(v7)
+    assert ok and '"total_aum_억원"' in s and not f(s)[1]
+    rows, n = _execute(s)
+    hidden_rows, hidden = hide(rows, s)
+    assert n == 3 and "total_aum" in hidden and "억원" in hidden_rows.splitlines()[1] and "967341" not in hidden_rows
+    # 펀드 — 종전 이름·값 그대로(순자산_억원 1453억원 · 순자산합계_억원 331098억원)
+    r3 = ev("SELECT itm_no, TRIM(itm_nm), fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' ORDER BY 3 DESC LIMIT 5")[0]
+    assert r3.count('"순자산_억원"') == 1
+    s2 = ev("SELECT SUM(fd_nast_suma) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040010' AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 1")[0]
+    assert _ro().execute(s2).fetchone()[1] == "331098억원"
+    assert not f("SELECT pd_nm FROM domestic_bonds LIMIT 5")[1]

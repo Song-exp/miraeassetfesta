@@ -574,12 +574,7 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     #    13자리 원 단위를 옮겨 적다 자릿수를 훼손했다(1,024,955,248,968 → "10,249,525,488원").
     #    억 환산으로 답한 문항(025·029)은 전부 정확 — 안전하게 옮길 수 있는 수를 결과에 실어 준다.
     #    단위는 값에 구워 넣는다('10249억원') — 숫자만 주면 답변기가 단위를 지어낸다(재검 실측: "십억 원").
-    #    3R B-4 일반 규칙: SELECT 에 원 단위 순자산이 실리면(정렬 대상 여부와 무관 — bare/SUM) 억원 문자열이 항상 함께 실린다.
-    if "억원" not in sql:
-        if re.search(r"\bSUM\(\s*fd_nast_suma\s*\)", head, re.I):
-            add.append("CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산합계_억원\"")
-        elif (target and target[0] == "fd_nast_suma") or re.search(r"(?<![\w(])fd_nast_suma\b", head):
-            add.append("CAST(fd_nast_suma/100000000 AS INTEGER) || '억원' AS \"순자산_억원\"")
+    #    억원 병기는 4도메인 공통 함수 ensure_amount_eok_columns 가 맡는다(4R B-4 확장 — 펀드 전용 분기 제거, 중복 0)
     # 🔴 **조건에 쓴 서술 컬럼이 결과에 없으면 답변기가 결과를 해석하지 못한다** — 2026-08-31 밤 실측(FND-R09):
     #    WHERE han_clas_policies LIKE '%전문투자자%' 로 27행을 정확히 조회하고도 SELECT 에 그 컬럼이 없어
     #    (itm_nm·mtco_itm_no·기준일만), 답변기가 "정보를 찾을 수 없습니다" 로 **조회 결과를 통째로 버렸다**.
@@ -594,6 +589,60 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
                 break
             if c in known and c not in _EVIDENCE_SKIP and c not in head.lower() and c not in " ".join(add).lower():
                 add.append(c)
+    if add:
+        sql = head.rstrip() + ", " + ", ".join(add) + " " + sql[frm.start():]
+    sql, eok = ensure_amount_eok_columns(sql)     # 순자산(bare/집계) 억원 병기 — 공통 함수에 위임
+    return sql, bool(add) or eok
+
+
+_AMOUNT_COL_RX = re.compile(r"\b(fd_nast_suma|du_last_aum)\b", re.I)   # 원 단위 금액 컬럼 — 펀드 순자산 · 국내ETF 순자산
+
+
+def _amount_select_items(sql: str) -> list[tuple[str, str, str]]:
+    """SELECT 항목 중 원 단위 금액을 품은 것 — (표현식, 결과 헤더명, 컬럼). 억원 항목 자체는 제외. SQL 텍스트 기준(HCX 별칭 포함)."""
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm:
+        return []
+    sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+    out = []
+    for it in _split_select_items(sel):
+        it = it.strip()
+        m_col = _AMOUNT_COL_RX.search(it)
+        if not m_col or "억원" in it:
+            continue
+        m = re.match(r"(.*?)\s+AS\s+\"?([^\"]+?)\"?\s*$", it, re.I | re.S)
+        expr, header = (m.group(1).strip(), m.group(2).strip()) if m else (it, it)
+        out.append((expr, header, m_col.group(1)))
+    return out
+
+
+def ensure_amount_eok_columns(sql: str) -> tuple[str, bool]:
+    """일반 규칙(3R/4R B-4): SELECT 에 원 단위 금액(순자산)이 실리면 — bare·집계·HCX 별칭 무관 — 억원 문자열 열이 항상 함께 실린다.
+    펀드(fd_nast_suma)·국내ETF(du_last_aum) 공통 한 함수. 원값 열은 _hide_answer_columns 가 답변 입력에서 숨긴다(V7 '164,377,105,967,341원').
+    이름: 컬럼 그대로면 '순자산_억원', SUM 무별칭이면 '순자산합계_억원', 별칭이면 '<별칭>_억원'. 이미 같은 컬럼의 억원 열이 있으면 불개입."""
+    if not re.search(r"\bfrom\s+(?:public_funds|domestic_etfs)\b", sql, re.I):
+        return sql, False
+    items = _amount_select_items(sql)
+    if not items:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    existing = [it for it in _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I)) if "억원" in it]
+    add = []
+    for expr, header, col in items:
+        if any(col in e or header in e for e in existing):
+            continue
+        if header == col or header == expr and expr.lower() == col.lower():
+            name = "순자산_억원"
+            e = f"CAST({col}/100000000 AS INTEGER) || '억원' AS \"{name}\""
+        elif header == expr:
+            name = "순자산합계_억원" if re.match(r"(?i)sum\s*\(", expr) else f"{col}_억원"
+            e = f"CAST(ROUND(({expr})/100000000.0) AS INTEGER) || '억원' AS \"{name}\""
+        else:
+            name = f"{header}_억원"
+            e = f"CAST(ROUND(({expr})/100000000.0) AS INTEGER) || '억원' AS \"{name}\""
+        if name not in sql:
+            add.append(e)
     if not add:
         return sql, False
     return head.rstrip() + ", " + ", ".join(add) + " " + sql[frm.start():], True
@@ -962,12 +1011,13 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
         recs.append(dict(zip(cols, parts)))
     cov = _coverage_counts(sql)
     pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
+    # 4R ④-3 — 목록의 순자산 축은 대표 클래스(MAX) 기준(개별 조회는 SUM). 리드 판정 전엔 축을 바꾸지 않고 머리줄에 고지만.
+    basis = f"기준일 {gate.DATA_CUTOFF}, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위·순자산 = 대표 클래스 기준(MAX)"
     if cov and cov[1] is not None and cov[1] > n:
-        head = (f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개)이며, 순자산 상위 {n}개 펀드는 다음과 같습니다"
-                f" (기준일 {gate.DATA_CUTOFF}, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위).")
+        head = f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개)이며, 순자산 상위 {n}개 펀드는 다음과 같습니다 ({basis})."
     else:
         total = f"(클래스 {cov[0]:,}개)" if cov else ""
-        head = f"조건에 해당하는 {pop}는 전체 {n}개{total}이며, 순자산 순으로 다음과 같습니다 (기준일 {gate.DATA_CUTOFF})."
+        head = f"조건에 해당하는 {pop}는 전체 {n}개{total}이며, 순자산 순으로 다음과 같습니다 ({basis})."
     out = [head, ""]
     for i, r in enumerate(recs, 1):
         eok = r.get("순자산_억원", "")
@@ -1037,16 +1087,18 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
     return int(row[0]), (int(row[1]) if fund_only else None), grouped
 
 
-def _hide_answer_columns(rows: str) -> tuple[str, list[str]]:
-    """답변 입력에서 내부 코드 컬럼을 뺀다 — retrieved_context 는 그대로. (정리된 표, 뺀 컬럼)"""
+def _hide_answer_columns(rows: str, sql: str = "") -> tuple[str, list[str]]:
+    """답변 입력에서 내부 코드 컬럼·원 단위 금액 컬럼을 뺀다 — retrieved_context 는 그대로. (정리된 표, 뺀 컬럼)"""
     lines = rows.splitlines()
     if not lines:
         return rows, []
     cols = lines[0].split(" | ")
-    # 3R B-4 — 원 단위 금액(fd_nast_suma·du_last_aum 및 그 집계 별칭)은 억원 문자열이 함께 실리므로 13자리 원값은 숨긴다
-    #    (021·022·031·T3·S11 258조 자릿수 훼손 계열). 억원 컬럼('…억원')은 남긴다.
+    # 3R/4R B-4 — 원 단위 금액(fd_nast_suma·du_last_aum 및 그 집계·HCX 별칭 total_aum)은 억원 문자열이 함께 실리므로 13자리 원값은 숨긴다
+    #    (021·022·031·T3·S11·V7 자릿수 훼손 계열). 별칭은 SQL 텍스트로 판정. 억원 컬럼('…억원')은 남긴다.
+    amount_headers = {h.strip().lower() for _, h, _ in _amount_select_items(sql)} if sql else set()
     drop = [i for i, c in enumerate(cols)
-            if c.strip().lower() in _HIDE_FROM_ANSWER or (_RAW_AMOUNT_COL.search(c) and "억원" not in c)]
+            if c.strip().lower() in _HIDE_FROM_ANSWER or (_RAW_AMOUNT_COL.search(c) and "억원" not in c)
+            or (c.strip().lower() in amount_headers and "억원" not in c)]
     if not drop or len(drop) == len(cols):
         return rows, []
     keep = [i for i in range(len(cols)) if i not in drop]
@@ -3591,6 +3643,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, ev_fixed = ensure_fund_evidence_columns(sql)
     if ev_fixed:
         step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
+    sql, eok_fixed = ensure_amount_eok_columns(sql)
+    if eok_fixed:
+        step("[Guard] 원 단위 금액 억원 병기 — SELECT 의 순자산(bare/집계/별칭)에 억원 문자열 열 주입, 원값은 답변 입력에서 숨김 "
+             "(4R V7: ETF 운용사 집계 164,377,105,967,341원 자릿수 훼손 계열 · 펀드·ETF 공통)")
     sql, safe_fixed = ensure_fund_safe_grade_direction(sql, q)
     if safe_fixed:
         step("[Guard] 위험등급 방향 교정 — '안전' 질의의 등급 필터가 1·2(고위험)로 뒤집혀 6(매우 낮은 위험)으로 교체 (2026-08-31 밤 FND-C03 실측: 안전=1등급 반전 조회)")
@@ -3933,7 +3989,7 @@ def answer_question(
     # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
     #    "총 10개" 라고 셌다. 순자산 자릿수 훼손과 같은 계열 — 모델에게 산술(개수 세기)을 시키지
     #    말고 복사만 하게 한다. retrieved_context(조회 원문)는 건드리지 않고 답변 입력에만 붙인다.
-    answer_rows, hidden = _hide_answer_columns(rows)
+    answer_rows, hidden = _hide_answer_columns(rows, sql)
     if hidden:
         step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
     header = f"(조회 결과: 총 {n}행)"

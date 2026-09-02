@@ -51,3 +51,24 @@ def test_answer_response_stays_five_fields(client):
     """🔴 채점 스키마는 5필드 고정 — 검토용 필드가 새어 나가면 안 된다."""
     r = client.get("/answer", params={"question_id": "Q-1", "question": "국내 ETF 몇 개야?"})
     assert set(r.json()) == {"question_id", "question", "retrieved_context", "think_trace", "answer"}
+
+
+def test_run_pipeline_retry_is_visible_in_trace(monkeypatch):
+    """P7-c (2026-09-02 재검) — 1차 런타임 오류 후 재실행이 성공하면 trace 머리에 `0. [Retry]` 를 남긴다
+    (R5 34.8s 같은 이상 지연의 원인 판별용). 1차 성공이면 붙지 않는다."""
+    import src.runtime.pipeline as pl
+
+    main = importlib.import_module("src.api.main")
+    calls = {"n": 0}
+
+    def flaky(question_id, question, planner=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("HCX 일시 오류")
+        return pl.PipelineResult(question_id=question_id, question=question, think_trace="1. [Normalize] x", answer="ok")
+
+    monkeypatch.setattr(pl, "answer_question", flaky)
+    r = main.run_pipeline("Q-R", "q")
+    assert calls["n"] == 2 and r.answer == "ok" and r.think_trace.startswith("0. [Retry] 1차 실행 런타임 오류 — 재실행\n1. ")
+    calls["n"] = 5                                                  # 두 번째 호출부터 성공 → 1차 성공 경로
+    assert not main.run_pipeline("Q-S", "q").think_trace.startswith("0. [Retry]")

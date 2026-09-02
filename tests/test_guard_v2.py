@@ -932,3 +932,30 @@ def test_strip_disclaimer_r2_tail_and_false_hedge():
     assert not h(_R2_ANSWER, _R2_SQL, 30)[1]
     assert not h("더 많은 펀드가 있을 수 있습니다.", "SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 30", 5)[1]
     assert h("1위 823개입니다.", _R2_SQL, 5) == ("1위 823개입니다.", False)
+
+
+def test_post_route_correction_from_sql(ctx):
+    """P7-b — 라우터가 미특정으로 둔 질의도 HCX 가 FROM 을 하나로 정했으면 그 상품군의 답변 규칙·이름 필터를 살린다.
+    R7 재검: 미특정 경로는 답변 규칙이 4도메인 12,443자로 희석됐다. 대표행 가드(P1)도 같은 경로에서 함께 발동해야 한다."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        def plan_sql(self, q, g):
+            return _R7_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            self.rules = answer_rules
+            self.rows = rows
+            return "x"
+
+    p = P()
+    q = "1년 수익률이 가장 높은 공모 상품 3개 알려줘"
+    r = answer_question("T-R7b", q, planner=p, ctx=ctx)
+    assert "[Route] 상품군 — 미특정" in r.think_trace
+    assert "[Route] SQL 사후 보정 — FROM public_funds" in r.think_trace
+    assert "GROUP BY 펀드키 주입" in r.think_trace and "(public_funds)" in r.think_trace.splitlines()[-1]
+    assert p.rules == ctx.answer_context(["public_funds"])           # 4도메인 희석이 아니라 펀드 규칙 단일
+    assert "NH-Amundi" in p.rows and "삼성KOSPI200" in p.rows          # gold 펀드단위 top3 가 답변 입력에 실린다
+    # 라우터가 정한 질의엔 사후 보정 마커가 없다
+    r2 = answer_question("T-R7c", "공모펌드 중 1년 수익률이 가장 높은 3개 알려줘", planner=P(), ctx=ctx)
+    assert "SQL 사후 보정" not in r2.think_trace and "머리명사 펌드" in r2.think_trace

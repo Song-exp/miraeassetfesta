@@ -293,3 +293,42 @@ def test_r10_fee_is_rank_axis():
          "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' ORDER BY or_co_rwrd_r ASC LIMIT 5")
     out, ok = P.ensure_fund_rank_representative(s, "집합투자업자보수가 가장 낮은 공모펀드 5개")
     assert ok and "MIN(or_co_rwrd_r)" in out and f"GROUP BY {P._FUND_KEY_EXPR}" in out and '"클래스수"' in out
+
+
+# ── N6 · 0 은 필터가 아니라 표시 규칙 · ③-11 ETF 모수 고지 · gold ③-B 1·4 ────────
+def test_r10_zero_is_display_rule():
+    """gold N6 — 주최 규칙 §2('0/빈 값은 의도된 것')를 HCX 가 `> 0` 모수 필터로 번역해 CROSS-002 가 0행."""
+    from src.runtime.loader import load_context
+    ctx = load_context()
+    s = ("SELECT d.pd_nm, d.cu_charge_rt FROM domestic_etfs d WHERE d.pd_grp_no='ETF' AND d.pd_sale_yn=1 "
+         "AND REPLACE(d.cu_base_index,' ','') LIKE '%S&P500%' AND d.cu_charge_rt > 0 LIMIT 30")
+    out = P._apply_sql_guards(s, "S&P500을 추종하는 국내 ETF와 해외 ETF의 총보수를 비교해줘",
+                              None, None, lambda m: None, ctx, ["domestic_etfs"])
+    assert "cu_charge_rt > 0" not in out and "ref_base_index" in out
+    assert P._execute(out)[1] == 24                       # gold AA22 S&P500 24
+    # 정렬 축이면 사용자 조건이다 — 남긴다('보수가 가장 낮은' 에서 0=미수록을 1위로 올리면 안 된다)
+    ranked = s.replace(" LIMIT 30", " ORDER BY d.cu_charge_rt ASC LIMIT 5")
+    out2 = P._apply_sql_guards(ranked, "총보수가 가장 낮은 국내 ETF 5개", None, None,
+                               lambda m: None, ctx, ["domestic_etfs"])
+    assert "cu_charge_rt > 0" in out2
+
+
+def test_r10_etf_scope_note():
+    """재검 ③-11 — V7·W10 은 6R 에 있던 '국내' 표기가 7R·9R 엔 없다. 라운드마다 뒤집히므로 기계 표기."""
+    sql = "SELECT cu_fund_mgmt_co, SUM(du_last_aum) FROM overseas_etfs GROUP BY 1 ORDER BY 2 DESC LIMIT 5"
+    out, ok = P.ensure_etf_scope_note("BlackRock 이 1위입니다.", sql)
+    assert ok and out.startswith("(해외 상장 ETF 기준")
+    assert P.ensure_etf_scope_note(out, sql)[1] is False                  # 멱등
+    # 답변이 이미 밝혔으면 불개입 · 펀드 질의는 대상 밖
+    assert P.ensure_etf_scope_note("해외 상장 ETF 중 BlackRock 이 1위입니다.", sql)[1] is False
+    assert P.ensure_etf_scope_note("x", "SELECT COUNT(*) FROM public_funds LIMIT 1")[1] is False
+
+
+def test_r10_manager_template_not_for_pinned_org():
+    """gold ③-B 4 — 운용사 하나로 핀된 질의는 운용사 랭킹이 아니다(FND-011: 템플릿이 질문을 바꿨다)."""
+    pinned = ("SELECT itm_nm, fd_nast_suma FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' "
+              "AND sale_yn='판매중' ORDER BY fd_nast_suma DESC LIMIT 5")
+    assert P.ensure_fund_manager_ranking(pinned, "미래에셋자산운용에서 가장 큰 펀드 5개")[1] is False
+    across = ("SELECT or_co_xtn_itt_cd, COUNT(*) FROM public_funds WHERE sale_yn='판매중' "
+              "GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    assert P.ensure_fund_manager_ranking(across, "펀드가 가장 많은 자산운용사 5곳")[1] is True

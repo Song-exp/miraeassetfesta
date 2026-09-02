@@ -180,8 +180,10 @@ def route(question: str, ctx: RuntimeContext) -> Route:
     o, score, hits = onto_route(question, ctx)
     if p:
         tables = p
-        # 상품 명사가 둘 이상 후보(ETF → 국내/해외)면 온톨로지 값으로 좁힌다
-        if len(tables) > 1 and o & tables:
+        # 상품 명사가 둘 이상 후보(ETF → 국내/해외)면 온톨로지 값으로 좁힌다.
+        # 🔴 10R gold ③-B 1 — 단, **머리명사가 둘 이상(groups > 1)이면 좁히지 않는다**: 질문이 두 상품군을
+        #    나란히 물은 것이라(국내 ETF **와** 해외 ETF) 값 하나로 한쪽을 지우면 비교 질의가 반쪽이 된다(CROSS-003).
+        if len(tables) > 1 and groups <= 1 and o & tables:
             tables = o & tables
         if o & tables:
             top = max(o & tables, key=lambda t: score[t])

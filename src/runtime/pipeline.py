@@ -730,21 +730,20 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _ETF_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
         return sql, False
-    if not re.search(r"\border\s+by\b", sql, re.I) and not re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I):
-        return sql, False
-    if any(t in question for t in _ETF_WIDEN):
-        return sql, False
     tbl = _ETF_TBL.search(sql).group(0).split()[-1].lower()
     orig = sql
-    # 🔴 10R 부류 Z — **있으면 확인하고 아니면 교체.** 종전엔 컬럼 언급만으로 불개입해서 HCX 가
-    #    `pd_sale_yn = 0`·`pd_grp_no <> 'ETF'` 를 쓰면 가드가 자기를 껐다(9R U2·Y7 과 같은 형태).
     strict = dict(_ETF_BASE_STRICT)
     if _ETN_Q.search(question):
         strict.pop("pd_grp_no")                     # ETN 질의는 상품군을 좁히지 않는다
-    sql, _ = _strictify_base_population(sql, strict, tbl)
-    missing = [v for c, v in strict.items() if not re.search(rf"\b{c}\b", sql, re.I)]
-    if missing:
-        sql, _ = _append_exclusions(sql, missing)
+    # 모수 **주입**은 종전 발동 조건(랭킹·집계 꼴 · 질문이 모수를 넓히지 않음)을 그대로 쓴다.
+    # 🔴 10R 부류 Z — **있으면 확인하고 아니면 교체.** 종전엔 컬럼 언급만으로 불개입해서 HCX 가
+    #    `pd_sale_yn IN (0,1)`·`pd_grp_no <> 'ETF'` 를 쓰면 가드가 자기를 껐다(9R U2·Y7 과 같은 형태).
+    if (re.search(r"\border\s+by\b", sql, re.I) or re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I)) \
+            and not any(t in question for t in _ETF_WIDEN):
+        sql, _ = _strictify_base_population(sql, strict, tbl)
+        missing = [v for c, v in strict.items() if not re.search(rf"\b{c}\b", sql, re.I)]
+        if missing:
+            sql, _ = _append_exclusions(sql, missing)
     # 🔴 10R 재검 ③-5 (부류 B-4″-c) — 집계·랭킹 질의의 **날조 술어**를 제거한다. 판별식: 최상위 AND 절의
     #    컬럼이 ⓐ 모수 확정식 컬럼도 아니고 ⓑ SELECT·ORDER BY 가 쓰는 값 컬럼도 아니고 ⓒ 질문 낱말과
     #    대응하지도 않으면 사용자 조건이 아니다. 7R U8 실측: `cu_charge_rt > 0` 하나가 보수 0인 419행을
@@ -754,14 +753,27 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
         if m_w:
             frm = re.search(r"\bfrom\b", sql, re.I)
             head_tail = sql[:frm.start()] + sql[m_w.end():]        # SELECT 목록 + GROUP/ORDER BY
+            order_by = re.search(r"\border\s+by\b.*$", sql, re.I | re.S)
+            axis = order_by.group(0) if order_by else ""
             kept = []
             for c in guard.split_conjuncts(m_w.group(1)):
                 cols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", _SQL_LITERAL.sub("''", c))}
                 cols &= {x.lower() for x, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get(tbl, ())}
-                if cols and not (cols & set(strict)) \
+                # 술어의 **리터럴이 질문에 있으면** 사용자 조건이다(`ref_base_index LIKE '%S&P500%'`) — 컬럼
+                # 한글명 대조만으로는 이걸 못 본다. 지우는 쪽이 위험하므로 두 축 중 하나만 걸려도 남긴다.
+                lit_asked = any(re.sub(r"[%\s]", "", lit.strip("'")).casefold() in question.replace(" ", "").casefold()
+                                for lit in _SQL_LITERAL.findall(c) if len(re.sub(r"[%\s']", "", lit)) >= 2)
+                if cols and not (cols & set(strict)) and not lit_asked \
                         and not any(re.search(rf"\b{x}\b", head_tail, re.I) for x in cols) \
                         and not any(_col_asked(tbl, x, question) for x in cols):
                     continue                                       # 질문 어디에도 근거가 없는 술어 — 제거
+                # 🔴 10R gold N6 — **결측·0 은 필터가 아니라 표시 규칙이다.** 주최 규칙 §2("0/빈 값은 의도된 것")를
+                #    HCX 가 `> 0` 모수 필터로 번역해 CROSS-002 가 0행이 됐다(국내 S&P500 한정 cu_charge_rt>0 = 0건).
+                #    SELECT 에 실린 표시 컬럼의 `> 0`·`<> 0` 은 그 컬럼이 **정렬 축일 때만** 남긴다.
+                if re.fullmatch(r"\(?\s*(?:\w+\.)?(\w+)\s*(?:>|<>|!=)\s*0(?:\.0)?\s*\)?", c.strip()) \
+                        and cols and not any(re.search(rf"\b{x}\b", axis, re.I) for x in cols) \
+                        and any(re.search(rf"\b{x}\b", sql[:frm.start()], re.I) for x in cols):
+                    continue
                 kept.append(c)
             if len(kept) != len(guard.split_conjuncts(m_w.group(1))):
                 sql = sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):]
@@ -770,7 +782,7 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
 
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
 #    docs/question_design_public_funds_2026-08-31.md §4. 프롬프트에 실려도 무시되는 규칙의 결정 층) ──
-_ETF_INDEX_PRED = re.compile(r"(?:REPLACE\(\s*)?(?:\w+\.)?(?:cu_base_index|ref_base_index)\b[^']*'%?([^'%]+)%?'", re.I)
+_ETF_INDEX_COL = re.compile(r"\b(?:\w+\.)?(?:cu_base_index|ref_base_index)\b", re.I)
 
 
 def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
@@ -791,9 +803,10 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
     conjs = _flat_conjuncts(m_w.group(1))
     kept, hit = [], None
     for c in conjs:
-        m = _ETF_INDEX_PRED.search(c)
-        if m and not re.search(r"\bNOT\b", c, re.I):
-            hit = re.sub(r"\s+", "", m.group(1))
+        # 지수 컬럼을 쓴 절의 **비교 리터럴**(REPLACE 의 ' '·'' 인자는 제외)을 지수명으로 삼는다
+        lits = [x.strip("'").strip("%") for x in _SQL_LITERAL.findall(c) if len(x.strip("'").strip("% ")) >= 2]
+        if _ETF_INDEX_COL.search(c) and lits and not re.search(r"\bNOT\b", c, re.I):
+            hit = re.sub(r"\s+", "", lits[-1])
             continue
         kept.append(c)
     if not hit or re.search(r"[*?\[\]]", hit):
@@ -2603,6 +2616,25 @@ def ensure_top_row_cited(answer: str, sql: str, rows: str) -> tuple[str, bool]:
             + "\n".join(lines)), True
 
 
+_ETF_SCOPE = {"domestic_etfs": "국내 상장 ETF", "overseas_etfs": "해외 상장 ETF"}
+
+
+def ensure_etf_scope_note(answer: str, sql: str) -> tuple[str, bool]:
+    """ETF 집계·랭킹 답변의 머리줄에 **어느 모수를 봤는지** 기계로 표기. (답변, 붙였는지)
+
+    🔴 10R 재검 ③-11(부류 B-4) — V7·W10 은 6R 에 있던 '국내' 표기가 7R·9R 엔 없다. 라운드마다 뒤집히는
+       서술은 LLM 에게 맡길 수 없다(분포·목록 전사와 같은 결론). 답변이 이미 그 범위를 밝혔으면 불개입.
+    """
+    m = re.search(r"\bfrom\s+(domestic_etfs|overseas_etfs)\b", sql, re.I)
+    if not m or not re.search(r"\b(?:count|sum|avg)\s*\(|\border\s+by\b", sql, re.I):
+        return answer, False
+    scope = _ETF_SCOPE[m.group(1).lower()]
+    head = answer.split("\n", 1)[0]
+    if scope in head or scope[:2] in head:
+        return answer, False
+    return f"({scope} 기준, 기준일 {gate.DATA_CUTOFF})\n" + answer, True
+
+
 _REFUSAL_ANSWER = re.compile(
     r"정보가?\s*(?:포함되어\s*있지\s*않|없)|답변(?:을|이)?\s*드릴\s*수\s*없|확인(?:할|이)\s*(?:수\s*)?(?:없|불가)|알\s*수\s*없")
 _EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
@@ -3207,6 +3239,11 @@ def ensure_fund_manager_ranking(sql: str, question: str, notes: list | None = No
     if not (_MGR_Q.search(question) and _MGR_RANK_Q.search(question)) or "클래스" in question:
         return sql, False
     if any(t in question for t in _POP_WIDEN) or '"순자산_억원"' in sql:
+        return sql, False
+    # 🔴 10R gold ③-B 4 — 질의가 **운용사 하나로 핀돼 있으면** 운용사 랭킹이 아니다(그 운용사 안의 랭킹이다).
+    #    FND-011 실측: Ground 가 코드 하나를 핀했는데 템플릿이 운용사 집계로 덮어 질문을 통째로 바꿨다.
+    if re.search(r"\bor_co_xtn_itt_cd\s*\)?\s*=\s*'[^']+'", sql, re.I) \
+            and not re.search(r"\bor_co_xtn_itt_cd\s*\)?\s*IN\s*\(", sql, re.I):
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
@@ -5416,16 +5453,18 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, pop_fixed = ensure_fund_base_population(sql, q)
     if pop_fixed:
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
-    sql, etf_pop = ensure_etf_base_population(sql, q)
-    if etf_pop:
-        step("[Guard] ETF 기본모수 주입 — 상품군 확정식(pd_grp_no='ETF' · pd_sale_yn=1)이 SQL 에 없어 주입 "
-             "(8R B-4″-b · 7R U8 실측: 모수 절이 없으니 HCX 가 cu_charge_rt>0 · NOT LIKE '%not provided%' 라는 "
-             "아무도 요구하지 않은 모수를 지어냈다 · AA22 49 vs gold 45)")
+    # 🔴 지수 확정식이 **모수 가드보다 먼저** 돌아야 한다 — 모수 가드의 날조 술어 제거가 오염 컬럼의
+    #    지수 절을 '근거 없는 술어' 로 보고 지워 버린다(순서가 뒤면 지수 조건이 통째로 사라진다).
     sql, idx_fixed = ensure_etf_index_canon(sql)
     if idx_fixed:
         step("[Guard] ETF 기초지수 확정식 — 오염 컬럼 cu_base_index(95.5% 공백 · 값 있는 9행은 무관 상품)를 "
              "정본 ref_base_index 순수추종식(지수명 + CR/TR/PR 접미)으로 교체 "
              "(10R KG 부류 T · 실측 KOSPI200 34 · NASDAQ100 16 · S&P500 24 = gold)")
+    sql, etf_pop = ensure_etf_base_population(sql, q)
+    if etf_pop:
+        step("[Guard] ETF 기본모수 주입 — 상품군 확정식(pd_grp_no='ETF' · pd_sale_yn=1)이 SQL 에 없어 주입 "
+             "(8R B-4″-b · 7R U8 실측: 모수 절이 없으니 HCX 가 cu_charge_rt>0 · NOT LIKE '%not provided%' 라는 "
+             "아무도 요구하지 않은 모수를 지어냈다 · AA22 49 vs gold 45)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
@@ -6021,6 +6060,10 @@ def answer_question(
     if hedged:
         step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
              "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
+    result.answer, etf_scope = ensure_etf_scope_note(result.answer, sql)
+    if etf_scope:
+        step("[Answer] ETF 모수 한정 고지 — 어느 테이블을 봤는지 머리줄에 기계 표기 "
+             "(10R 재검 ③-11 · V7·W10 은 6R 에 있던 '국내' 가 7R·9R 엔 없다 — 라운드마다 뒤집히므로 고정한다)")
     result.answer, estb_stripped = strip_unsourced_estb_claim(result.answer, rows)
     if estb_stripped:
         step("[Guard] 미조회 축 문장 제거 — 조회 결과에 날짜 컬럼이 없는데 설정일·운용 기간을 단정한 문장을 걷어냄 "

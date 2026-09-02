@@ -647,7 +647,7 @@ _FUND_EXT_HINTS = re.compile(
 _NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?((?:\b\w+\.)?)\b(itm_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
 
 
-def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
+def ensure_spaceless_name_match(sql: str, token: str | None = None) -> tuple[str, bool]:
     """종목명 LIKE 를 **공백 무시 매칭**으로 바꾼다. (보정된 SQL, 보정했는지)
 
     2026-08-31 밤 실측(FND-R05 후속): 사용자가 띄어 쓰면 있는 상품을 통째로 놓친다 —
@@ -667,6 +667,22 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
         return f"REPLACE({m.group(1)}{m.group(2)},' ','') LIKE '%{pat}%'"
     fixed = _NAME_LIKE.sub(_fix, sql)
     fixed = _NAME_EQ.sub(_fix_eq, fixed)
+    if token:
+        # 4R J-2 — HCX 가 이름 토큰을 조각내 AND 로 3개 이상 이어 붙인 것(미래에셋/차이나/솔로몬/증권투자신탁)은 리터럴들이
+        #    토큰의 연속 부분열이면 한 토큰 LIKE 로 접는다(조각 LIKE 는 형제 펀드를 끌어온다).
+        lits = re.findall(r"REPLACE\((?:\w+\.)?itm_nm,' ',''\) LIKE '%([^%']+)%'", fixed)
+        tok = token.replace(" ", "")
+        if len(lits) >= 3 and "".join(lits) in tok:
+            first = True
+
+            def _fold(m: re.Match) -> str:
+                nonlocal first
+                if first:
+                    first = False
+                    return f"REPLACE(itm_nm,' ','') LIKE '%{tok}%'"
+                return "1=1"
+            fixed = re.sub(r"REPLACE\((?:\w+\.)?itm_nm,' ',''\) LIKE '%[^%']+%'", _fold, fixed)
+            fixed = re.sub(r"\s+AND\s+1=1", "", fixed)
     return fixed, fixed != sql
 
 
@@ -692,6 +708,11 @@ def _has_name_filter(sql: str) -> bool:
         return False
     tail = sql[frm.end():]
     for m in _NAME_FILTER.finditer(tail):
+        # 호수 경계 GLOB('*[^0-9.]3호*' — ensure_fund_series_boundary 산출)은 이름 조회가 아니다(4R J: T6 가 GLOB 만으로 '이름 필터 있음' 판정돼
+        # 토큰 LIKE 가 주입되지 않았다)
+        m_lit = re.match(r"\s*'([^']*)'", tail[m.end():])
+        if m_lit and "[^" in m_lit.group(1):
+            continue
         depth, start = 0, None
         for i in range(m.start() - 1, -1, -1):
             ch = tail[i]
@@ -1464,7 +1485,7 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
 _ORG_CODES = re.compile(r"or_co_xtn_itt_cd='(\d+)'")
 
 
-def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str | None:
+def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str], question: str | None = None) -> str | None:
     """`펀드수 | 클래스수` 1행(ensure_fund_distinct_count 결과)의 답변을 기계 조립한다. 아니면 None.
 
     2026-09-02 R5 재검: 가드가 143 | 541 을 정확히 만들었는데 답변기가 클래스 열을 버렸다("클래스 수를 제외한
@@ -1508,7 +1529,12 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str |
             parts.append(f"{name}{particle} 수탁하")
     subject = ("고 ".join(parts) + "는") if parts else "조회 조건에 해당하는"
     # 3R 부류 D — 이름 모드('이름이 들어간'): 축은 이름이다. 주어를 이름 토큰으로, 운용사 코드별 분해를 SQLite 1회로 병기
-    name_tok = next((m.group(1) for ln in ground_lines for m in [re.search(r"이름 모드 .*이름 검색 토큰 '([^']+)'", ln)] if m), None)
+    # 4R K-2/L — 이름 모드 판정은 질문(_NAME_MODE_Q)으로, 토큰은 SQL 의 이름 LIKE 리터럴로(Ground 0 인 '삼성' 도 주어가 된다).
+    #    Ground 의 ⚙ 줄은 코드 핀 생략 지시일 뿐 답변 재료가 아니다.
+    name_tok = None
+    if (question and _NAME_MODE_Q.search(question)) or any("이름 모드" in ln for ln in ground_lines):
+        m_lit = re.search(r"(?:REPLACE\((?:\w+\.)?itm_nm,' ',''\)|itm_nm)\s+LIKE\s+'%([^%']+)%'", sql, re.I)
+        name_tok = m_lit.group(1) if m_lit else None
     breakdown = ""
     if name_tok:
         subject, used_codes = f"'{name_tok}' 이름이 들어간", []
@@ -1800,7 +1826,10 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql):
         return sql, False
-    hits = [(w, t, sp) for w, t, sp in _country_tag_map() if w in question]
+    # 유형 축('중국주식 유형')은 국가어가 소분류 값 안에 붙어 있어 독립 낱말 판정을 통과하지 못한다 — R10 분기는 값 포함으로 판정
+    ptn_q = _ptn_value_in_question(question) if "유형" in question else None
+    hits = [(w, t, sp) for w, t, sp in _country_tag_map()
+            if _country_in_question(w, question) or (ptn_q and w in ptn_q)]
     if not hits:
         return sql, False
     # 긴 낱말 우선 정렬이라 hits[0] 이 주 국가('인도네시아' > '인도'). 부분어 포함 관계의 짧은 낱말은 버린다.
@@ -1881,7 +1910,7 @@ def _country_tag_map() -> tuple:
         raws = [raw for t, c, raw in ctx.kg_aliases.get(node.node_id, ()) if t == "public_funds"]
         if not raws or not node.label_ko or node.label_ko in ("한국", "국내"):
             continue
-        for w in [node.label_ko] + list(syn.get(node.label_ko, ())):
+        for w in [node.label_ko] + _syn_terms(ctx, node, node.label_ko):
             out.append((w, raws[0], raws[0] in sparse))
     return tuple(sorted(out, key=lambda x: -len(x[0])))
 
@@ -1912,7 +1941,7 @@ def _attr_word_map() -> tuple:
         if node.node_type != "FundAttribute" or not node.label_ko:
             continue
         raws = [raw for t, c, raw in ctx.kg_aliases.get(node.node_id, ()) if t == "public_funds"]
-        for w in syn.get(node.label_ko, ()):
+        for w in _syn_terms(ctx, node, node.label_ko):
             if raws:
                 out.append((w, raws[0]))
     return tuple(sorted(out, key=lambda x: -len(x[0])))
@@ -2635,7 +2664,9 @@ def _boundary_hit(label: str, text: str) -> bool:
     """
     esc = re.escape(label)
     if re.search(r"[가-힣]", label):
-        return re.search(rf"(?<![가-힣]){esc}{_JOSA}(?![가-힣])", text) is not None
+        # 4R 부류 I — 한글 라벨의 경계도 **이름 문자 전체**([0-9A-Za-z가-힣])로 본다: 'KB차이나'·'NH-Amundi' 처럼 영문 브랜드
+        #    접두가 붙은 상품명 성분('차이나')이 경계로 새어 Country 개체(투자국가 필터)로 잡혔다(S4·T14·V15 회귀). 조사 허용은 유지.
+        return re.search(rf"(?<![0-9A-Za-z가-힣]){esc}{_JOSA}(?![0-9A-Za-z가-힣])", text) is not None
     return re.search(rf"(?<![A-Za-z0-9]){esc}(?![A-Za-z0-9])", text) is not None
 
 
@@ -2672,12 +2703,19 @@ def _synonym_keys(ctx) -> dict:
     out = _SYN_KEYS.get(id(ctx))
     if out is None:
         out = {}
-        for doc in (ctx.enums or {}).values():
+        for domain, doc in (ctx.enums or {}).items():
             for term, canon in ((doc or {}).get("synonyms") or {}).items():
                 if isinstance(canon, str) and canon and canon != term and len(term) >= 2:
-                    out.setdefault(canon, []).append(term)
+                    out.setdefault(canon, []).append((term, domain))   # 4R I-3: 통칭은 **그 테이블** 노드에만 붙인다
         _SYN_KEYS[id(ctx)] = out
     return out
+
+
+def _syn_terms(ctx, node, label: str) -> list[str]:
+    """노드 라벨의 yaml 통칭 — 노드가 alias 를 가진 테이블의 yaml 에 적힌 것만 (domestic_etfs.yaml 의 '차이나: 중국' 이
+    펀드 Country 노드에 풀링돼 상품명 안 '차이나' 를 잡던 4R S4 회귀의 원인)."""
+    tables = {t for t, _, _ in ctx.kg_aliases.get(node.node_id, ())}
+    return [term for term, domain in _synonym_keys(ctx).get(label, ()) if not tables or domain in tables]
 # '국내' 가 **상장 시장**을 뜻하는 자리 — 투자지역(wu_inv_rgn)이 아니다.
 # 리드 실검증: "Li Auto를 담은 국내 ETF" 에서 '국내' 가 Region_Korea 로 잡혀 wu_inv_rgn='국내' 필터가 붙었다.
 # 그러면 중국 기업을 담은 상품이 전부 빠진다. clarify.국내 에 기록돼 있으나 그건 플래너용이라 Ground 엔 안 걸린다.
@@ -2775,8 +2813,8 @@ def _ground(
         prov = getattr(node, "provenance", "curated")
         if prov == "derived":
             return                         # S1: 종목명 접두 최빈값 라벨(Org_fund_* 'Asset' 등) — 코드 alias 로만 산다 (KG-001 오매칭)
-        # FundAttribute(S3 태그 축 179노드 — '인덱스'·'배당주'…)는 항상 경계 검사 조건부 — 일반어와 겹치는 라벨이 많다
-        attr = node.node_type == "FundAttribute"
+        # FundAttribute(S3 태그 축 179노드 — '인덱스'·'배당주'…)·Country(4R I: 상품명 성분 '차이나'·'베트남')는 항상 경계 검사 조건부
+        attr = node.node_type in ("FundAttribute", "Country")
         for label in node.labels:
             if len(label) >= _min_len(node, label):
                 yield label, attr, "label"
@@ -2795,7 +2833,7 @@ def _ground(
                     if piece and piece != label and (
                             len(piece) >= _min_len(node, piece) or _short_ok(node, piece)):
                         yield piece, True, "label"
-            for alias in syn_keys.get(label, ()):
+            for alias in _syn_terms(ctx, node, label):
                 yield alias, True, "syn"
         for fn in getattr(node, "former_names", None) or ():
             if len(fn) >= 3:
@@ -2856,11 +2894,21 @@ def _ground(
         #    플래너가 4호 값을 2호의 답으로 낼 수 있다. 라벨은 소비하고 코드 대신 이름 검색을 지시한다.
         # 3R 부류 D — '이름이 들어간/포함된' 질의는 축이 이름(itm_nm)이다. 기관·펀드 노드는 라벨만 소비하고 코드를 싣지 않는다
         #    (T11 피델리티: Org 코드 핀이 이름 154/301 을 106 으로 줄였다). 이름 검색 토큰 = 라벨.
+        # 4R 일반 규칙 J — Ground 가 라벨을 소비하면서 **코드를 싣지 않기로 한 모든 분기**(이름 모드·호수 불일치·접두 절단·
+        #    국가어 이름성분)는 한 문형으로 `이름 검색 토큰` 을 싣는다(⚙ = 파이프라인 지시, 답변 노출 금지 — 부류 L). 토큰은
+        #    residual_name_token → ensure_fund_name_filter 가 itm_nm LIKE 로 강제한다(T6: 호수 분기가 토큰을 안 실어 GLOB 만 남아 오거절).
         if name_mode and node.node_type in ("Organization", "Fund"):
             consumed = consumed.replace(label, " ")
-            lines.append(f"'{label}' → {node.node_id} ({node.node_type}) — ℹ 이름 모드 · 코드 매핑을 싣지 않는다 · "
-                         f"이름 검색 토큰 '{label.replace(' ', '')}'")
+            lines.append(_skip_pin_line(label, node, "이름 모드 — 축은 이름(itm_nm)", label.replace(" ", "")))
             continue
+        # 4R 부류 I — Country 라벨이 **상품명의 성분**이면(라벨±인접 낱말이 종목명 부분열: 'NH-Amundi 인도네시아 포커스') 투자국가
+        #    필터가 아니다. 소비하되 코드를 싣지 않고, 성분을 이은 이름 토큰을 넘긴다.
+        if node.node_type == "Country":
+            comp = _country_name_component(label, question)
+            if comp:
+                consumed = consumed.replace(label, " ")
+                lines.append(_skip_pin_line(label, node, f"상품명 성분(인접 '{comp[0]}') — 투자국가 필터로 쓰지 않는다", comp[1]))
+                continue
         # 🔴 Fund 노드는 **라벨이 펀드 이름을 다 덮을 때만** 코드를 핀한다 (3R A-2 일반화 — 호수 불일치는 그 특수 사례).
         #    ⓐ 질문의 N호 ≠ 노드 라벨의 N호 (FND-032: 디스커버리 노드 rptt = 4호) ⓑ 라벨 바로 뒤에 잔여 고유명이 붙어 있다
         #    (T12: 자동 라벨 'NH-Amundi 1.5배' 는 클래스명 공통접두 절단 — 실체는 판매완료 3호. 잔여 '레버리지인덱스').
@@ -2871,12 +2919,10 @@ def _ground(
             ho_mismatch = bool(ho) and not any(ho.group(1) + "호" in lb.replace(" ", "") for lb in node.labels)
             if ho_mismatch or tail:
                 consumed = consumed.replace(label, " ")
-                why = (f"질문의 '{ho.group(1)}호' 와 이 노드의 코드가 가리키는 펀드가 다를 수 있음" if ho_mismatch
-                       else f"접두 절단 라벨(잔여 고유명 '{tail}')")
-                how = (f"이름 검색 토큰 '{(label + tail).replace(' ', '')}'" if tail and not ho_mismatch
-                       else "호 경계(종목명검색 규칙)")
-                lines.append(f"'{label}' → {node.node_id} (Fund) — ⚠️ {why} · 코드 매핑을 싣지 않는다. "
-                             f"public_funds.itm_nm 공백무시 LIKE + {how}로 푼다")
+                why = (f"질문의 '{ho.group(1)}호' 와 이 노드의 코드가 가리키는 펀드가 다를 수 있음 — 호 경계(종목명검색 규칙) 병용"
+                       if ho_mismatch else f"접두 절단 라벨(잔여 고유명 '{tail}')")
+                tok = (label + (tail or "")).replace(" ", "") if not ho_mismatch else label.replace(" ", "")
+                lines.append(_skip_pin_line(label, node, why, tok))
                 continue
         hits.append(node)
         consumed = consumed.replace(label, " ")
@@ -2997,6 +3043,54 @@ _GENERIC_NAME_TOKEN = {          # 상품 고유명이 아니라 도메인 일�
 _NAME_MODE_Q = re.compile(r"(?:이름|명칭|종목명|상품명)[이가은는을를]?\s*(?:들어|포함|붙|있|쓰)")
 
 
+def _skip_pin_line(label: str, node, why: str, token: str) -> str:
+    """코드 핀을 생략하는 Ground 줄의 단일 문형(4R J) — ⚙ 는 파이프라인 지시(답변 노출 금지, ℹ 만 사용자 주석)."""
+    return (f"'{label}' → {node.node_id} ({node.node_type}) — ⚙ {why} · 코드 매핑을 싣지 않는다 · "
+            f"public_funds.itm_nm 공백무시 LIKE 로 푼다 · 이름 검색 토큰 '{token}'")
+
+
+@lru_cache(maxsize=4096)
+def _name_chunk_exists(chunk: str) -> bool:
+    """공백 제거 덩어리가 어느 종목명의 부분열인가 — DB 실측(캐시). 상품명 성분 판정의 근거(이름 목록 하드코딩 아님)."""
+    con = connect_readonly()
+    try:
+        return con.execute("SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE ? LIMIT 1", (f"%{chunk}%",)).fetchone() is not None
+    finally:
+        con.close()
+
+
+_QUESTION_WORD = re.compile(r"(?:투자하|운용하|알려|보여|추천|얼마|몇|어떤|무엇|뭐|있어|있나|있는|중에서|중$|기준|대비)")
+
+
+def _country_name_component(label: str, question: str) -> tuple[str, str] | None:
+    """Country 라벨이 상품명 성분인지 — (인접 낱말, 이름 검색 토큰) 또는 None (4R 부류 I).
+    판정: ⓐ 라벨에 붙은 잔여(_label_tail_token) ⓑ 라벨 앞/뒤 한 낱말(상품 명사·의문어 제외)과 이은 덩어리가 종목명 부분열(DB)."""
+    from .router import PRODUCT
+    tail = _label_tail_token(label, question)
+    if tail:
+        return tail, (label + tail).replace(" ", "")
+    words = re.findall(r"[0-9A-Za-z가-힣.\-]+", question)
+    for i, w in enumerate(words):
+        if w != label and _PARTICLE.sub("", w) != label:
+            continue
+        for j in (i + 1, i - 1):
+            if not 0 <= j < len(words):
+                continue
+            adj = _PARTICLE.sub("", words[j])
+            if len(adj) < 2 or adj in PRODUCT or adj in _GENERIC_NAME_TOKEN or _QUESTION_WORD.search(adj):
+                continue
+            chunk = (label + adj) if j == i + 1 else (adj + label)
+            if _name_chunk_exists(chunk):
+                return adj, chunk
+        break
+    return None
+
+
+def _country_in_question(word: str, question: str) -> bool:
+    """국가 가드의 발동 판정 — Ground 와 같은 규칙: 독립 낱말(경계)이고 상품명 성분이 아닐 때만 (4R I-2)."""
+    return _boundary_hit(word, question) and _country_name_component(word, question) is None
+
+
 def _label_tail_token(label: str, question: str) -> str | None:
     """라벨 바로 뒤(공백 없이) 이어지는 잔여 고유명 — 조사 제거·3자 이상·도메인 일반어 제외. 없으면 None."""
     for tail in re.findall(rf"{re.escape(label)}([0-9A-Za-z가-힣.]+)", question):
@@ -3027,6 +3121,33 @@ def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
             tok = _PARTICLE.sub("", tail).strip()
             if len(tok) >= 3 and tok not in _GENERIC_NAME_TOKEN:
                 return tok
+    if not ground_lines:
+        return _standalone_name_token(question)
+    return None
+
+
+def _standalone_name_token(question: str) -> str | None:
+    """4R 부류 K — Ground 매칭이 0 이어도 상품 고유명 후보는 있다: 상품 명사('펀드'·'투자신탁'…) **바로 앞/안의 덩어리**
+    (브랜드+상품명 결합어 = FND-016 사고 문형). 띄어 쓴 2자 브랜드('삼성 펀드 보수')는 후보가 아니다(되묻기 유지)."""
+    from .router import PRODUCT
+    words = re.findall(r"[0-9A-Za-z가-힣.\-]+", question)
+    for i, w in enumerate(words):
+        base = _PARTICLE.sub("", w)
+        inner = next((p for p in PRODUCT if p in base and not base.startswith(p)), None)
+        if inner:                                   # '삼성코리아대표증권자투자신탁' — 명사가 낱말 안에
+            cand = base
+        elif base in PRODUCT and i > 0:             # '펀드' 가 낱말 — 바로 앞 낱말
+            cand = _PARTICLE.sub("", words[i - 1])
+        else:
+            continue
+        cand = cand.strip(".")
+        if len(cand) < 3 or cand.endswith("운용") or re.fullmatch(r"[0-9.]+", cand):
+            continue
+        rest = cand
+        for g in sorted(_GENERIC_NAME_TOKEN, key=len, reverse=True):
+            rest = rest.replace(g, "")
+        if len(rest) >= 2 and cand not in _GENERIC_NAME_TOKEN:
+            return cand
     return None
 
 
@@ -3407,7 +3528,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if enum_fixed:
         step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "
              "(2026-08-31 밤 FND-024 실측: '재간접형' → 실제 값 '재간접'. 기각·재생성으로는 못 고쳐 거절로 나갔다)")
-    sql, space_fixed = ensure_spaceless_name_match(sql)
+    sql, space_fixed = ensure_spaceless_name_match(sql, name_token)
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
              "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
@@ -3731,7 +3852,7 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = dist
         return result
-    cnt = _count_answer(sql, rows, n, ground_lines)
+    cnt = _count_answer(sql, rows, n, ground_lines, q)
     if cnt is not None:
         step("[Answer] 개수 답변 기계 조립 — 펀드수/클래스수 1행은 HCX 없이 옮긴다 "
              "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")

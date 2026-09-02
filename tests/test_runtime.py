@@ -1097,7 +1097,7 @@ def test_ground_uses_yaml_synonyms(ctx):
     HCX 가 컬럼명을 추측해 holding_nm 을 만들어 냈다(실제 컬럼은 constituent).
     """
     from src.runtime.pipeline import _ground, _synonym_keys
-    assert "하이닉스" in _synonym_keys(ctx).get("SK하이닉스", [])
+    assert "하이닉스" in [t for t, _ in _synonym_keys(ctx).get("SK하이닉스", [])]    # 4R I-3: (통칭, 테이블) 쌍
     _, lines = _ground("국내 etf중 하이닉스가 가장많이 편입된상품은 무어야", ctx, ["domestic_etfs"], cross=True)
     assert any("Sec_kr_000660" in l for l in lines), lines
     # 정식 표기로 물어도 같은 노드

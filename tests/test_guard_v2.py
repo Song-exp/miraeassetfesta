@@ -1155,22 +1155,24 @@ def test_join_ambiguous_itm_no_qualified(ctx):
     assert f(one_r, ctx) == (one_r, [])
 
 
-def test_fund_mgmt_join_injected(ctx):
-    """Q1-c — mtco_nm 환각(3라운드 연속)·JOIN 없는 mgmt_co_nm 을 기각하지 않고 ext_fund_page JOIN 을 주입한다."""
-    from src.runtime.pipeline import ensure_fund_mgmt_join as f
+def test_ext_join_injected(ctx):
+    """Q1-c(일반화) — 마스터 단독 SQL 이 1:1 외부 테이블 전용 컬럼을 쓰면 JOIN_KEYS 의 ON 절로 LEFT JOIN 을 주입하고,
+    없는 컬럼이 그 ext 전용 컬럼의 유일 근사면 치환한다(mtco_nm → mgmt_co_nm 이 그 한 사례 — 하드코딩 아님)."""
+    from src.runtime.pipeline import ensure_ext_join as f
 
-    s, ok = f(_R2_FIRST_SQL)                                                    # R2 1차: JOIN 있음 · mtco_nm 만 치환
-    assert ok and "mtco_nm" not in s and "MAX(mgmt_co_nm)" in s and s.count("ext_fund_page") == 2
+    s, notes = f(_R2_FIRST_SQL, ctx)                                             # R2 1차: JOIN 있음 · 환각 컬럼만 치환
+    assert notes == ["mtco_nm → mgmt_co_nm(유일 근사)"] and "MAX(mgmt_co_nm)" in s and s.count("ext_fund_page") == 2
     assert guard.unknown_columns(s, ctx) == []
-    s2, ok2 = f(_S11_REGEN_SQL)                                                 # S11 재생성: JOIN 주입
-    assert ok2 and "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE" in s2
+    s2, notes2 = f(_S11_REGEN_SQL, ctx)                                          # S11 재생성: JOIN 주입
+    assert notes2 and "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE" in s2
     assert guard.unknown_columns(s2, ctx) == [] and len(_ro().execute(s2).fetchall()) == 3
-    assert not f(s2)[1]                                                         # 멱등
-    s3, ok3 = f("SELECT p.itm_nm, mgmt_co_nm FROM public_funds p WHERE p.sale_yn='판매중' LIMIT 5")   # 별칭
-    assert ok3 and "FROM public_funds p LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = p.itm_no WHERE" in s3
-    # 비발동 — 이름 컬럼 없음 · 타 도메인
-    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5")[1]
-    assert not f("SELECT pd_nm FROM domestic_bonds LIMIT 5")[1]
+    assert f(s2, ctx) == (s2, [])                                                # 멱등
+    s3, _ = f("SELECT p.itm_nm, mgmt_co_nm FROM public_funds p WHERE p.sale_yn='판매중' LIMIT 5", ctx)   # 별칭
+    assert "FROM public_funds p LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = p.itm_no WHERE" in s3
+    # 비발동 — 마스터 컬럼만 · 타 도메인 · 팬아웃 테이블(ext_fund_holdings) 전용 컬럼은 자동 주입 대상 아님
+    assert f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5", ctx) == ("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5", [])
+    assert f("SELECT pd_nm FROM domestic_bonds LIMIT 5", ctx)[1] == []
+    assert "ext_fund_holdings" not in f("SELECT itm_nm, weight_pct FROM public_funds LIMIT 5", ctx)[0]
 
 
 def test_r2_pipeline_no_longer_rejected(ctx):
@@ -1188,7 +1190,7 @@ def test_r2_pipeline_no_longer_rejected(ctx):
             return "x"
 
     r = answer_question("T-R2", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
-    assert P.plans == 1 and "[Guard] SQL 기각" not in r.think_trace and "[Guard] 운용사 이름 JOIN 주입" in r.think_trace
+    assert P.plans == 1 and "[Guard] SQL 기각" not in r.think_trace and "[Guard] 외부 테이블 JOIN 주입" in r.think_trace
     assert "823" in r.retrieved_context and "우리자산운용" in r.retrieved_context and "142" in r.retrieved_context
 
 

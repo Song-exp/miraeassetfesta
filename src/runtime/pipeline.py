@@ -1367,35 +1367,51 @@ def _minority_mgmt_names() -> tuple[str, ...]:
 _FROM_FUND = re.compile(r"\bfrom\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", re.I)
 
 
-def ensure_fund_mgmt_join(sql: str) -> tuple[str, bool]:
-    """운용사 이름 컬럼(mtco_nm 환각·mgmt_co_nm)을 쓰는 펀드 SQL 에 ext_fund_page JOIN 을 기계 주입. (보정된 SQL, 보정했는지)
-
-    2026-09-02 R2·S11 재검 — 1차 SQL 의 `mtco_nm`(존재하지 않는 컬럼) 환각이 3라운드 연속(09-01 FND-035 부터)
-    재생성 예산을 잡아먹고, S11 은 재생성마저 `mgmt_co_nm` 을 JOIN 없이 public_funds 에 써 재기각 → 거절.
-    워크드 예시가 실려도 무시된다(법칙 1). 조치: `mtco_nm` → `mgmt_co_nm` 치환 + ext_fund_page JOIN 이 없으면
-    `FROM public_funds [별칭]` 직후에 `LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = <별칭|public_funds>.itm_no` 주입.
-    그러면 MAX(mgmt_co_nm) 은 기존 최빈 이름 가드가, 비한정 itm_no 는 qualify_join_columns 가 받는다.
-    """
-    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
-        return sql, False
-    has_name = re.search(r"\b(?:mtco_nm|mgmt_co_nm)\b", sql, re.I)
-    if not has_name:
-        return sql, False
-    fixed = False
-    if re.search(r"\bmtco_nm\b", sql, re.I):
-        sql = re.sub(r"\bmtco_nm\b", "mgmt_co_nm", sql, flags=re.I)
-        fixed = True
-    if not re.search(r"\bext_fund_page\b", sql, re.I):
-        m = _FROM_FUND.search(sql)
-        if not m:
-            return sql, fixed
-        alias = m.group(1) or "public_funds"
-        sql = sql[:m.end()] + f" LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = {alias}.itm_no" + sql[m.end():]
-        fixed = True
-    return sql, fixed
-
-
 _SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
+_FROM_MASTER = re.compile(r"\bfrom\s+(\w+)(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", re.I)
+# 행 1:1 로 붙는 외부 테이블만 자동 주입 대상 — 구성종목 3종(ext_*_holdings)은 JOIN_KEYS 주석대로 팬아웃이라 COUNT 의미가 바뀐다
+_EXT_ONE_TO_ONE = frozenset({"ext_fund_page"})
+
+
+def ensure_ext_join(sql: str, ctx) -> tuple[str, list[str]]:
+    """마스터 단독 SQL 이 1:1 외부 테이블 **전용 컬럼**을 쓰면 JOIN_KEYS 의 짝 ON 절로 LEFT JOIN 을 기계 주입. (보정된 SQL, 조치 목록)
+
+    일반 규칙(2R Q1-c): "스키마상 외부 테이블에만 있는 컬럼 사용 = 그 테이블과의 JOIN 의도" 로 읽어 기각 대신 주입한다.
+    존재하지 않는 컬럼(환각)이 그 외부 테이블 전용 컬럼의 **유일 근사**(difflib 0.8 이상, 후보 1개)면 그 컬럼으로 치환한다 —
+    2026-09-02 R2·S11 재검: `mtco_nm`(없는 컬럼) 환각이 3라운드 연속 1차 SQL 을 기각시켜 재생성 예산을 소진했고, S11 은
+    재생성마저 `mgmt_co_nm` 을 JOIN 없이 써 재기각 → 거절. 워크드 예시가 실려도 무시된다(법칙 1). 컬럼명·테이블명은
+    전부 스키마(ctx.schema)·JOIN_KEYS·_EXT_PAIR 에서 읽는다 — 특정 컬럼 하드코딩 없음. 이후 MAX(mgmt_co_nm) 은 최빈 이름
+    가드가, 비한정 itm_no 는 qualify_join_columns 가 받는다.
+    """
+    m = _FROM_MASTER.search(sql)
+    if not m or m.group(1).lower() not in TABLES or re.search(r"\bunion\b", sql, re.I):
+        return sql, []
+    master, alias = m.group(1).lower(), m.group(2)
+    schema = getattr(ctx, "schema", {}) or {}
+    mcols = {c.lower() for c, *_ in schema.get(master, ())}
+    notes: list[str] = []
+    for ext, on in JOIN_KEYS:
+        if _EXT_PAIR.get(ext) != master or ext not in _EXT_ONE_TO_ONE:
+            continue
+        excl = sorted({c.lower() for c, *_ in schema.get(ext, ())} - mcols)
+        if not excl:
+            continue
+        for u in guard.unknown_columns(sql, ctx):
+            close = difflib.get_close_matches(u.lower(), excl, n=2, cutoff=0.8)
+            if len(close) == 1:
+                sql = re.sub(rf"(?<![\w.]){re.escape(u)}\b", close[0], sql, flags=re.I)
+                notes.append(f"{u} → {close[0]}(유일 근사)")
+        if re.search(rf"\b{ext}\b", sql, re.I):
+            continue
+        masked = _SQL_LITERAL.sub("''", sql)
+        used = [c for c in excl if re.search(rf"(?<![\w.]){c}\b", masked, re.I)]
+        if not used:
+            continue
+        on_clause = on.replace(f"{master}.", f"{alias}.") if alias else on
+        mm = _FROM_MASTER.search(sql)
+        sql = sql[:mm.end()] + f" LEFT JOIN {ext} ON {on_clause}" + sql[mm.end():]
+        notes.append(f"{', '.join(used)} 은 {ext} 컬럼 → LEFT JOIN 주입")
+    return sql, notes
 
 
 def qualify_join_columns(sql: str, ctx) -> tuple[str, list[str]]:
@@ -2785,10 +2801,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
-    sql, mjoin_fixed = ensure_fund_mgmt_join(sql)
-    if mjoin_fixed:
-        step("[Guard] 운용사 이름 JOIN 주입 — mtco_nm/mgmt_co_nm 은 ext_fund_page 컬럼 "
-             "(2026-09-02 R2·S11 재검: 3라운드 연속 1차 SQL 환각으로 재생성 예산 소진 → 거절)")
+    sql, ext_notes = ensure_ext_join(sql, ctx)
+    if ext_notes:
+        step(f"[Guard] 외부 테이블 JOIN 주입 — {' · '.join(ext_notes)} "
+             "(2026-09-02 R2·S11 재검: mtco_nm 환각 3라운드 연속 1차 기각으로 재생성 예산 소진 → 거절)")
     sql, mgr_fixed = ensure_fund_manager_ranking(sql, q)
     if mgr_fixed:
         step("[Guard] 운용사 집계 확정식 — 코드 GROUP BY + 최빈 이름 + 펀드수·클래스수·순자산 억원 템플릿 "

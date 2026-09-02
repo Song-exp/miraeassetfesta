@@ -1084,9 +1084,12 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
     집계 1행을 '정보 없음' 으로 오독했다 — 집계 해석은 LLM 에 맡길 수 없다(_count_answer ·
     _distribution_answer 와 같은 교훈). 0행 '확인 불가' 는 compose 전 조기 반환 경로라 이
     가드에 오지 않는다 — 여기 오는 답변은 항상 결과가 있다.
-    발동(전부): ① 단일행 결과 ② SELECT 가 집계 1항목 ③ 값이 양수 ④ 답변이 거절 문구.
+    발동(전부): ① 단일행 결과 ② SELECT 가 집계 1항목 ③ 값이 양수 ④ 답변이 거절 문구이거나
+    — 2026-09-02 확장 — 값을 어디에도 인용하지 않은 '없습니다' 부정 단정('위험등급 0등급인 채권은
+    없습니다' — COUNT 19 반환에도 단정. 거절 변종: 정보 없음이 아니라 사실 부정). 숫자를 인용한
+    정상 답변('19종목 있습니다')은 조건 미충족으로 불개입.
     값 0 이면 불개입('없다' 답이 옳을 수 있다). 교체문은 결과 원문 수치만 쓴다 — 창작 없음."""
-    if n != 1 or not _REFUSAL_ANSWER.search(answer):
+    if n != 1:
         return answer, False
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm:
@@ -1102,6 +1105,11 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
     except ValueError:
         return answer, False
     if val <= 0:
+        return answer, False
+    misread = bool(_REFUSAL_ANSWER.search(answer)) or (
+        re.search(r"없습니다|없는\s*것으로", answer) is not None
+        and f"{val:,}" not in answer and str(val) not in answer)
+    if not misread:
         return answer, False
     unit = "종목" if re.search(r"DISTINCT\s+pd_no", sql, re.I) else "건(행 기준 — 종목 수와 다를 수 있음)"
     prefix = "네, 있습니다 — " if _EXIST_Q.search(question) else ""
@@ -1122,7 +1130,14 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
         return None
     sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
     items = _split_select_items(sel)
-    if len(items) not in (2, 3) or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+    if len(items) not in (2, 3):
+        return None
+    is_star = bool(re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I))
+    # 채권 2열 — COUNT(DISTINCT pd_no) 도 받는다 (2026-09-02 실측: '신용등급별 몇 종목' 이 조립기
+    # 미발동으로 HCX 전사 — AA+ 2,516종목 통째 누락 · BB0→'B0' 라벨 뒤틀림 · 14/16줄 나열.
+    # FND-038 과 동일 병인: 조립기의 2열째 인식이 COUNT(*) 로 좁았다)
+    is_pdno = bool(re.match(r"\s*count\s*\(\s*distinct\s+pd_no\s*\)", items[1], re.I)) and len(items) == 2 and "domestic_bonds" in sql
+    if not is_star and not is_pdno:
         return None
     if _is_topn_or_entity_axis(sql, items[0]):
         return None                       # 운용사·펀드 top-N 은 분포가 아니다 — HCX 답변기로 (리뷰 ②-2)
@@ -1146,8 +1161,27 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
         pairs.append((parts[0].strip(), cnt, funds))
     total = sum(c for _, c, _ in pairs)
     if not with_funds:
-        lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 {gate.DATA_CUTOFF}).", ""]
-        lines += [f"- {lab}: {c:,}건" for lab, c, _ in pairs]
+        unit = "종목" if is_pdno else "건"
+        head = f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF})."
+        if is_pdno:
+            # 범주별 DISTINCT 합은 전체 DISTINCT 와 다를 수 있다(복수 범주 걸친 종목 — 등급별집계 규칙:
+            # 위험등급 합 20,505 > 전체 20,497). 전체는 같은 WHERE 로 따로 세고 차이를 문자열로 굽는다.
+            m_fw = _SIMPLE_FROM_WHERE.search(sql)
+            if m_fw:
+                try:
+                    con = connect_readonly()
+                    try:
+                        overall = con.execute(
+                            f"SELECT COUNT(DISTINCT pd_no) FROM {m_fw.group(1).strip()}").fetchone()[0]
+                    finally:
+                        con.close()
+                    if overall != total:
+                        head = (f"조회 결과 {len(pairs)}개 범주, 전체 {overall:,}종목입니다 (기준일 {gate.DATA_CUTOFF}). "
+                                f"범주별 합은 {total:,}종목 — 복수 범주에 걸린 종목이 중복 집계되어 전체와 다릅니다.")
+                except sqlite3.Error:
+                    pass
+        lines = [head, ""]
+        lines += [f"- {lab if lab else '(미수록)'}: {c:,}{unit}" for lab, c, _ in pairs]
         return "\n".join(lines)
     # 🔴 유형별 펀드 수의 단순 합(3,222)은 전체 펀드 수(3,040)가 아니다 — 실측 182펀드가 클래스별로 유형이 갈린다
     #    (176건은 일부 클래스만 평가 미수록·6건은 실제 상이). 전체는 같은 WHERE 로 COUNT(DISTINCT 펀드키) 를

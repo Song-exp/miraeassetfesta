@@ -1572,8 +1572,10 @@ def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
     n = nos.pop()
     if not re.search(r"\bitm_nm\b", sql, re.I):
         return sql, False
-    bound = f"REPLACE(itm_nm,' ','') GLOB '*[^0-9]{n}호*'"
-    if bound in sql:
+    # 일반 규칙(2R Q6): 호수 표기는 'N호' 와 **'N(자산유형)' / 'N[자산유형]'** 두 형이 공존한다(실측 546행/207 대표번호 —
+    #    솔로몬 3호는 한 펀드에 두 표기가 4+4). 앞 글자가 숫자·소수점이 아니어야 12호·1.5배·2.2배가 배제된다.
+    bound = (f"(REPLACE(itm_nm,' ','') GLOB '*[^0-9.]{n}호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]{n}[([]*')")
+    if f"[^0-9.]{n}호*'" in sql:
         return sql, False
     m = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m:

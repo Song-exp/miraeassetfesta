@@ -380,7 +380,7 @@ def test_fund_series_boundary_injected():
            "AND '2호' IN (REPLACE(itm_nm,' ','') LIKE '%[^0-9]2호%' OR REPLACE(itm_nm,' ','') LIKE '%2호[^0-9]%') "
            "LIMIT 30")
     s, ok = f(bad, q)
-    assert ok and "GLOB '*[^0-9]2호*'" in s and "IN (" not in s
+    assert ok and "GLOB '*[^0-9.]2호*'" in s and "GLOB '*[^0-9.]2[([]*'" in s and "IN (" not in s   # 2R Q6: 'N(' 표기 병행
     assert "LIKE '%미래에셋디스커버리증권투자신탁%'" in s          # 이름 절은 보존
     assert not f(s, q)[1]                                          # 멱등
     # 불개입 — 호수 없음 · 이름 검색 없음 · 펀드 테이블 아님
@@ -1379,3 +1379,26 @@ def test_list_answer_assembled(ctx):
     assert "상위 5개" in r5.answer or "전체 5개" in r5.answer
     # 비발동 — 목록 형이 아닌 결과
     assert f("SELECT itm_nm FROM public_funds LIMIT 5", "itm_nm\nA", 1) is None
+
+
+def test_series_boundary_covers_paren_notation():
+    """2R Q6 — S5: `GLOB '*[^0-9]3호*'` 가 ' 3(주식)' 표기 4클래스를 놓쳐 4/8. 'N호'·'N(' 두 표기를 함께 잡고 12호·2.2배는 배제."""
+    from src.runtime.pipeline import ensure_fund_series_boundary as f
+
+    con = _ro()
+    base = "SELECT itm_no FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND itm_nm LIKE '%3호%' LIMIT 30"
+    s, ok = f(base, "미래에셋차이나솔로몬증권투자신탁 3호 위험등급 알려줘")
+    assert ok and len(con.execute(s).fetchall()) == 8                     # 3호 4 + ' 3(주식)' 4 = 같은 대표번호 8클래스
+    assert not f(s, "미래에셋차이나솔로몬증권투자신탁 3호 위험등급 알려줘")[1]   # 멱등
+    s2, _ = f(base.replace("3호", "2호"), "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘")
+    assert len(con.execute(s2).fetchall()) == 7                           # R6 2호 그대로
+    # 배제 — 12호 · 2.2배 (앞 글자가 숫자·소수점)
+    assert con.execute("SELECT COUNT(*) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%한화2.2배레버리지%' "
+                       "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')").fetchone() == (0,)
+    s12 = "SELECT COUNT(*) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%12호%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')"
+    assert con.execute(s12).fetchone() == (0,)
+    # 'GS지속가능성장 1[주식]' 형이 '1호' 질문에 잡힌다
+    s3, _ = f("SELECT itm_no, itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표분할매수%' AND itm_nm LIKE '%1호%' LIMIT 30",
+              "삼성코리아대표분할매수 1호 알려줘")
+    assert any("1[" in r[1] for r in con.execute(s3))
+

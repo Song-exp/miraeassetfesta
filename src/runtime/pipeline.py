@@ -1903,7 +1903,14 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
         and f"{val:,}" not in answer and str(val) not in answer)
     if not misread:
         return answer, False
-    unit = "종목" if re.search(r"DISTINCT\s+pd_no", sql, re.I) else "건(행 기준 — 종목 수와 다를 수 있음)"
+    # KG 4R G5 — 단위는 SQL 이 센 것을 그대로 말한다(펀드/클래스 구분 누락 계열). 채권 전용이던 것을 4도메인 공통으로 넓혔다:
+    #   X17 실측 — `SELECT COUNT(*) FROM public_funds …` 이 7 을 반환했는데 답변이 "클래스 개수는 확인할 수 없습니다".
+    if re.search(r"DISTINCT\s+pd_no", sql, re.I):
+        unit = "종목"
+    elif _FUND_TBL.search(sql):
+        unit = "펀드" if re.search(r"COUNT\s*\(\s*DISTINCT[^)]*or_co_xtn_itt_cd", sql, re.I) else "클래스(판매 단위)"
+    else:
+        unit = "건(행 기준 — 종목 수와 다를 수 있음)"
     prefix = "네, 있습니다 — " if _EXIST_Q.search(question) else ""
     return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
 
@@ -5083,10 +5090,13 @@ def answer_question(
     if topcited_fixed:
         step("[Guard] 목록 상위 행 복원 — 답변이 정렬 결과의 하위 행을 인용하며 상위 행을 건너뛰어 누락 행을 덧붙임 "
              "(2026-09-02 서버 실측: '1년만 굴릴 건데' 답변에서 6등급 정렬 1·3위 증발 — 값이 전부 실제 행이라 환각 검사 밖)")
-    result.answer, cntfix = ensure_positive_count_answered(result.answer, sql, rows, n, q) if "domestic_bonds" in sql else (result.answer, False)
+    # KG 4R G5 — 조회 결과가 비어 있지 않은데 '없음/확인 불가' 로 서술하면 기각한다. 종전엔 채권 SQL 에만 걸려 있었으나
+    #    X17 실측(`COUNT(*)` = 7 인데 "클래스 개수는 확인할 수 없습니다")로 4도메인 공통 규칙임이 드러났다.
+    result.answer, cntfix = ensure_positive_count_answered(result.answer, sql, rows, n, q)
     if cntfix:
         step("[Guard] 집계 오거절 교정 — 양수 COUNT 결과를 '정보 없음' 으로 오독한 답변을 기계 조립으로 교체 "
-             "(2026-09-02 서버 실측: '퇴직연금으로 살 수 있는 채권 있어?' 에 COUNT 1,929 반환에도 오거절)")
+             "(2026-09-02 서버 실측: '퇴직연금으로 살 수 있는 채권 있어?' 에 COUNT 1,929 반환에도 오거절 · "
+             "KG 4R X17: 펀드 COUNT 7 에 '확인할 수 없습니다')")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

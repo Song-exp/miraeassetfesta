@@ -267,3 +267,27 @@ def test_axis_clause_preserved(ctx):
     for frag in ("69,336억원", "펀드 142개", "46,152억원", "41,914억원"):
         assert frag in r.answer, (frag, r.answer)
     assert "377,707" not in r.answer                     # 6R 은 전체 랭킹(V5)을 그대로 냈다
+
+
+# ── 뿌리⑦-a — 조회값↔서술 기계 대조 (G5, 단일 집계 갈래) ──
+
+def test_positive_count_not_refused(ctx):
+    """G5 — 결과가 비어 있지 않은데 '없음/확인 불가' 로 서술하면 기각한다. 4도메인 공통(종전엔 채권 SQL 만).
+    KG 4R X17 실측: `SELECT COUNT(*) FROM public_funds …` 이 7 을 냈는데 "클래스 개수는 확인할 수 없습니다"."""
+    from src.runtime.pipeline import answer_question
+
+    x17 = ("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%' "
+           "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') LIMIT 30")
+
+    class P:
+        def plan_sql(self, q, g):
+            return x17
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "제공된 데이터에 따르면 미래에셋차이나솔로몬 2호의 클래스 개수는 확인할 수 없습니다."
+
+    r = answer_question("T-X17", "미래에셋차이나솔로몬 2호는 클래스가 몇 개야?", planner=P(), ctx=ctx)
+    assert "확인할 수 없" not in r.answer, r.answer
+    assert "7클래스(판매 단위)" in r.answer, r.answer
+    assert "집계 오거절 교정" in r.think_trace

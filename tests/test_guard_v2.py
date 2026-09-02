@@ -987,3 +987,36 @@ def test_name_filter_only_when_itm_nm_is_left_operand():
     s2, ok2 = nf("SELECT itm_nm, fd_yr1_ern_r FROM public_funds WHERE or_attr_desc LIKE '%주식%' LIMIT 30", "코어테크")
     assert ok2 and "itm_nm LIKE '%코어테크%'" in s2
     assert not nf("SELECT itm_nm FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 30", "코어테크")[1]
+
+
+def test_distribution_not_for_topn_or_entity_axis(ctx):
+    """리뷰 ②-2 — JOIN 없는 운용사 top5(GROUP BY or_co_xtn_itt_cd … ORDER BY 2 DESC LIMIT 5)에 3열이 붙고 조립기가
+    "5개 범주 · 펀드 3,040개 · 복수 범주 1,632건" 조작 통계를 만들었다. top-N 꼴·개체 축은 분포가 아니다."""
+    from src.runtime.pipeline import (ensure_fund_distribution_fund_count as f, _distribution_answer as d, answer_question)
+
+    top5 = ("SELECT or_co_xtn_itt_cd, COUNT(*) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+            "GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    assert not f(top5)[1]
+    assert d(top5, "or_co_xtn_itt_cd | COUNT(*)\n00080008 | 2000\n00040007 | 900", 2) is None
+    # 개체 축은 LIMIT 30 이어도 분포가 아니다 · ORDER BY 있어도 LIMIT 30(상한)이면 분포
+    assert not f("SELECT itm_no, COUNT(*) FROM public_funds GROUP BY 1 LIMIT 30")[1]
+    assert f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY 1 ORDER BY 2 DESC LIMIT 30")[1]
+    # 통합 — 운용사 top5 는 HCX 답변기로 간다(기계 조립 마커 없음)
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return top5
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-TOP5", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 1 and "분포 답변 기계 조립" not in r.think_trace and "분포 펀드수 병기" not in r.think_trace
+    # 절단된 분포(n == MAX_ROWS)는 전체/복수 범주 문장을 굽지 않는다
+    sql3 = ("SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*), COUNT(DISTINCT x) AS 펀드수 FROM public_funds "
+            "WHERE sale_yn = '판매중' GROUP BY zrin_btyp_nm LIMIT 30")
+    rows = "a | COUNT(*) | 펀드수\n" + "\n".join(f"c{i} | 10 | 5" for i in range(30))
+    a = d(sql3, rows, 30)
+    assert a and a.startswith("조회 결과 상위 30개 범주(전체 중 일부)") and "복수 범주" not in a and "전체 펀드 수" not in a

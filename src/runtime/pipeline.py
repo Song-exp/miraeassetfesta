@@ -855,7 +855,25 @@ def ensure_fund_distribution_fund_count(sql: str) -> tuple[str, bool]:
     items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I))
     if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
         return sql, False
+    if _is_topn_or_entity_axis(sql, items[0]):
+        return sql, False
     return head.rstrip() + f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수" ' + sql[frm.start():], True
+
+
+# 분포의 축이 아니라 **개체 식별자**인 컬럼 — 이것으로 GROUP BY 한 COUNT 는 운용사·펀드 top-N 이지 분포가 아니다
+_ENTITY_AXIS = re.compile(r"\b(?:or_co_xtn_itt_cd|tt_co_xtn_itt_cd|itm_no|mtco_itm_no|rptt_ksd_itm_no|itm_nm|itm_abrv_nm|\w+_itt_cd)\b", re.I)
+
+
+def _is_topn_or_entity_axis(sql: str, axis_item: str) -> bool:
+    """GROUP BY COUNT 가 분포가 아닌 경우 — ⓐ ORDER BY + 명시 LIMIT k < MAX_ROWS(top-N 꼴) ⓑ 축이 개체 식별 컬럼.
+
+    2026-09-02 리뷰 ②-2: 운용사 top5(`SELECT or_co_xtn_itt_cd, COUNT(*) … GROUP BY 1 ORDER BY 2 DESC LIMIT 5`,
+    JOIN 없는 R2 형)에 3열이 붙고 조립기가 "5개 범주 · 펀드 3,040개 · 복수 범주 1,632건" 조작 통계를 만들었다.
+    """
+    m_lim = re.search(r"\blimit\s+(\d+)", sql, re.I)
+    if re.search(r"\border\s+by\b", sql, re.I) and m_lim and int(m_lim.group(1)) < MAX_ROWS:
+        return True
+    return bool(_ENTITY_AXIS.search(axis_item))
 
 
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
@@ -983,6 +1001,8 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     items = _split_select_items(sel)
     if len(items) not in (2, 3) or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
         return None
+    if _is_topn_or_entity_axis(sql, items[0]):
+        return None                       # 운용사·펀드 top-N 은 분포가 아니다 — HCX 답변기로 (리뷰 ②-2)
     # 3열 — ensure_fund_distribution_fund_count 가 붙인 COUNT(DISTINCT 펀드키) AS 펀드수 (2026-09-02 R1 재검)
     with_funds = len(items) == 3
     if with_funds and not re.match(r"\s*count\s*\(\s*distinct\b", items[2], re.I):
@@ -1010,6 +1030,11 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     #    (176건은 일부 클래스만 평가 미수록·6건은 실제 상이). 전체는 같은 WHERE 로 COUNT(DISTINCT 펀드키) 를
     #    따로 세고(SQLite 1회), 차이를 문자열로 굽는다 — 모델이 산술하지 않게.
     fund_sum = sum(f for _, _, f in pairs)
+    if n >= MAX_ROWS:
+        # 절단된 분포 — 전체 DISTINCT·복수 범주 설명은 거짓이 된다(표시 밖 범주가 있다). 상위 n 개만 그대로 옮긴다.
+        lines = [f"조회 결과 상위 {len(pairs)}개 범주(전체 중 일부) · 표시분 클래스 {total:,}개 (기준일 {gate.DATA_CUTOFF}).", ""]
+        lines += [f"- {lab}: 펀드 {f:,}개 (클래스 {c:,}개)" for lab, c, f in pairs]
+        return "\n".join(lines)
     distinct = None
     m_fw = _SIMPLE_FROM_WHERE.search(sql)
     if m_fw:

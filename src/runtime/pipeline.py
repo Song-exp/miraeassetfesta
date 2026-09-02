@@ -1944,19 +1944,32 @@ def _ptn_value_in_question(question: str) -> str | None:
     return next((v for v in _ptn_values() if len(v) >= 3 and v.replace(" ", "") in q), None)
 
 
+_NAME_UNION_AXES = ("N", "O")     # 테마·섹터 축 — 태그가 이름보다 성기다(KG-024 반도체: 태그 50 + 이름만 14 + wrap 누락 14 = 78). 코드 첫 글자 = 축
+
+
 @lru_cache(maxsize=1)
 def _attr_word_map() -> tuple:
-    """(질문 낱말, 태그 코드) — FundAttribute 노드의 enums 통칭(설정형태 축 '개방형' 등). 라벨 자체는 2자('개방')라 쓰지 않는다."""
+    """(질문 낱말, 태그 코드들, 이름 병기 여부, 경계검사 여부) — FundAttribute 노드 전 축 (KG 2R N4).
+    · enums 통칭('개방형' 등)은 포함 판정, 라벨(3자+ '반도체'·'인덱스'…)은 독립 낱말(경계) 판정.
+    · 같은 라벨의 노드 여럿(럭셔리 N118/N147 · 인프라 · 친환경)은 코드 집합으로 병합 → OR canon.
+    · 테마(N)·섹터(O) 축은 `OR REPLACE(itm_nm,' ','') LIKE '%라벨%'` 이름 병기(국가 희소 폴백과 같은 기계)."""
     ctx = _ev_ctx()
-    syn = _synonym_keys(ctx)
-    out = []
+    by_word: dict[str, dict] = {}
     for node in ctx.kg_nodes:
         if node.node_type != "FundAttribute" or not node.label_ko:
             continue
         raws = [raw for t, c, raw in ctx.kg_aliases.get(node.node_id, ()) if t == "public_funds"]
-        for w in _syn_terms(ctx, node, node.label_ko):
-            if raws:
-                out.append((w, raws[0]))
+        if not raws:
+            continue
+        code = raws[0]
+        for w, bounded in [(node.label_ko, True)] + [(s, False) for s in _syn_terms(ctx, node, node.label_ko)]:
+            if len(w) < 3:
+                continue
+            e = by_word.setdefault(w, {"codes": [], "name_union": False, "bounded": bounded})
+            if code not in e["codes"]:
+                e["codes"].append(code)
+            e["name_union"] = e["name_union"] or code[:1] in _NAME_UNION_AXES
+    out = [(w, tuple(e["codes"]), e["name_union"], e["bounded"]) for w, e in by_word.items()]
     return tuple(sorted(out, key=lambda x: -len(x[0])))
 
 
@@ -1969,17 +1982,22 @@ def ensure_fund_attr_tag(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql):
         return sql, False
-    hits = [(w, code) for w, code in _attr_word_map() if w in question]
+    hits = [(w, codes, nu) for w, codes, nu, bounded in _attr_word_map()
+            if (_boundary_hit(w, question) if bounded else w in question)]
     if not hits:
         return sql, False
     orig = sql
-    for w, code in hits:
-        canon = f"',' || prfd_attr_cds || ',' LIKE '%,{code},%'"
+    for w, codes, name_union in hits:
+        parts = [f"',' || prfd_attr_cds || ',' LIKE '%,{c},%'" for c in codes]
+        if name_union:
+            parts.append(f"REPLACE(itm_nm,' ','') LIKE '%{w}%'")
+        canon = parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
         if canon in sql:
             continue
         m = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
         if m:
-            kept = [c for c in guard.split_conjuncts(m.group(1)) if w not in c]
+            # 같은 낱말·같은 코드를 쓴 타 컬럼/wrap 없는 절은 걷어낸다(KG-024: `prfd_attr_cds LIKE '%,N144,%'` 첫 토큰 14클래스 누락)
+            kept = [c for c in guard.split_conjuncts(m.group(1)) if w not in c and not any(code in c for code in codes)]
             sql = sql[:m.start(1)] + " " + " AND ".join(kept + [canon]) + " " + sql[m.end(1):] if kept else \
                 sql[:m.start(1)] + " " + canon + " " + sql[m.end(1):]
         else:

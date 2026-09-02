@@ -1848,3 +1848,24 @@ def test_kg2r_table_scope_and_name_pin_N1_N2_M(ctx):
 
     r = answer_question("T-V4", "KB중국본토A주증권자투자신탁 위험등급 알려줘", planner=P(), ctx=ctx)
     assert "KB중국본토A주증권자투자신탁(주식): 위험등급 2등급(높은 위험) · 클래스 14개(전부 판매중)" in r.answer
+
+
+def test_attr_tag_all_axes_N4(ctx):
+    """KG 2R N4 (KG-024 회귀) — FundAttribute 전 축 token canon · 테마/섹터 축은 이름 병기 · 동일 라벨 노드 병합 · wrap 없는 태그 절 교정."""
+    from src.runtime.pipeline import ensure_fund_attr_tag as at, _attr_word_map, _FUND_KEY_EXPR
+
+    m = {w: (codes, nu) for w, codes, nu, _ in _attr_word_map()}
+    assert m["반도체"] == (("N144",), True) and set(m["럭셔리"][0]) == {"N118", "N147"} and m["개방형"] == (("C103",), False)
+    k24 = ("SELECT COUNT(*) FROM public_funds WHERE prfd_attr_cds LIKE '%,N144,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    s, ok = at(k24, "반도체 테마 공모펀드는 몇 개야?")
+    assert ok and "(',' || prfd_attr_cds || ',' LIKE '%,N144,%' OR REPLACE(itm_nm,' ','') LIKE '%반도체%')" in s and s.count("N144") == 1
+    assert not at(s, "반도체 테마 공모펀드는 몇 개야?")[1]
+    cnt = _ro().execute(s.replace("COUNT(*)", f"COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})")).fetchone()
+    assert cnt == (78, 12)                                                       # gold 12/78 (태그 ∪ 이름)
+    # 기준선 HCX 형(이름 OR 속성명)도 같은 canon 으로 접힌다
+    k24b = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%반도체%' OR zrin_attr_nms LIKE '%반도체%')) LIMIT 30"
+    s2, ok2 = at(k24b, "반도체 테마 공모펀드는 몇 개야?")
+    assert ok2 and "'%,N144,%'" in s2 and "zrin_attr_nms" not in s2
+    # 비발동 — 라벨이 낱말 안에 붙은 경우('고배당' 의 '배당주' 아님) · 설정형태 통칭은 종전대로
+    assert not at("SELECT 1 FROM public_funds LIMIT 1", "KB고배당주 펀드 알려줘")[1]
+    assert "'%,C104,%'" in at("SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매중' LIMIT 30", "폐쇄형 공모펀드는 몇 개야?")[0]

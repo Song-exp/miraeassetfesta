@@ -30,10 +30,10 @@
   "nodes": [
    "Org_00080008"
   ],
-  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0",
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0",
   "assembler": "개별 조회 답변 기계 조립",
-  "rows": 6,
-  "answer_head": "'코어테크' 이름의 공모펀드 6개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·"
+  "rows": 2,
+  "answer_head": "'미래에셋코어테크' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호"
  },
  "R5": {
   "route": "public_funds",
@@ -226,10 +226,10 @@
   "nodes": [
    "Org_00080008"
   ],
-  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%인디아솔로몬증권투자신탁%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0",
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋인디아솔로몬증권투자신탁%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0",
   "assembler": "개별 조회 답변 기계 조립",
   "rows": 3,
-  "answer_head": "'인디아솔로몬증권투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예"
+  "answer_head": "'미래에셋인디아솔로몬증권투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-24, 펀드 ="
  },
  "V2": {
   "route": "public_funds",
@@ -338,10 +338,10 @@
   "nodes": [
    "Org_00040040"
   ],
-  "where": "TRIM(or_co_xtn_itt_cd) = '00040040' AND REPLACE(itm_nm,' ','') LIKE '%코리아2배레버리지%' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0",
+  "where": "TRIM(or_co_xtn_itt_cd) = '00040040' AND REPLACE(itm_nm,' ','') LIKE '%NH-Amundi코리아2배레버리지%' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0",
   "assembler": "개별 조회 답변 기계 조립",
   "rows": 1,
-  "answer_head": "'코리아2배레버리지' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번"
+  "answer_head": "'NH-Amundi코리아2배레버리지' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-24, 펀드"
  },
  "W8": {
   "route": "public_funds",
@@ -356,10 +356,10 @@
   "nodes": [
    "Org_00040024"
   ],
-  "where": "prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND REPLACE(itm_nm,' ','') LIKE '%베트남그로스증권자투자신탁%')",
+  "where": "prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND REPLACE(itm_nm,' ','') LIKE '%한국투자베트남그로스증권자투자신탁%')",
   "assembler": "개별 조회 답변 기계 조립",
-  "rows": 12,
-  "answer_head": "'베트남그로스증권자투자신탁' 이름의 공모펀드 3개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표"
+  "rows": 9,
+  "answer_head": "'한국투자베트남그로스증권자투자신탁' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-24, 펀드 "
  },
  "W10": {
   "route": "domestic_etfs, overseas_etfs",
@@ -541,9 +541,9 @@
   "nodes": [
    "Org_00080008"
   ],
-  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(public_funds.or_co_xtn_itt_cd) = '00080008' AND REPLACE(public_funds.itm_nm,' ','') LIKE '%코어테크증권자투자신탁%')",
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(public_funds.or_co_xtn_itt_cd) = '00080008' AND REPLACE(public_funds.itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%')",
   "assembler": "HCX",
-  "rows": 20,
+  "rows": 10,
   "answer_head": ""
  },
  "X20": {

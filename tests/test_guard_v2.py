@@ -219,9 +219,10 @@ def test_residual_name_token():
     from src.runtime.pipeline import residual_name_token as f
 
     L = ["'미래에셋' → Org_00080008 (Organization) → public_funds.or_co_xtn_itt_cd='00080008'"]
-    assert f("미래에셋코어테크 펀드 1년 수익률 알려줘", L) == "코어테크"
-    assert f("미래에셋퇴직연금솔로몬 펀드 총보수 알려줘", L) == "퇴직연금솔로몬"
-    assert f("미래에셋전략배분적격TDF2045 펀드는 어떤 클래스들이 있어?", L) == "전략배분적격TDF2045"
+    # 10R 재검 ③-A(접두 앵커) — 결합형이 DB 에 실재하면 「라벨+잔여」가 리터럴이다(or_co 절은 타사만 막는다)
+    assert f("미래에셋코어테크 펀드 1년 수익률 알려줘", L) == "미래에셋코어테크"
+    assert f("미래에셋퇴직연금솔로몬 펀드 총보수 알려줘", L) == "미래에셋퇴직연금솔로몬"
+    assert f("미래에셋전략배분적격TDF2045 펀드는 어떤 클래스들이 있어?", L) == "미래에셋전략배분적격TDF2045"
     # 불개입 — 띄어 쓴 브랜드 질의(FND-C02 되묻기 보호) · 조사만 남음 · 도메인 일반어 · 매핑 없음
     assert f("미래에셋 펀드 보수 알려줘", L) is None
     assert f("미래에셋이 운용하는 공모펀드는 몇 개야?", L) is None
@@ -1449,7 +1450,9 @@ def test_lookup_answer_assembled(ctx):
     r = answer_question("T-R4", "미래에셋코어테크 펀드 1년 수익률 알려줘", planner=P(), ctx=ctx)
     assert P.calls == 0 and "[Answer] 개별 조회 답변 기계 조립" in r.think_trace and "대표번호" in r.retrieved_context
     assert "미래에셋코어테크증권자투자신탁(주식): 1년 수익률 187.09%~189.77%" in r.answer and "종류A" not in r.answer
-    assert r.answer.count("\n- ") == 6
+    # 10R ③-A — 접두 앵커로 '미래에셋차이나코어테크'·'미래에셋글로벌코어테크EMP' 계열이 빠져 2펀드
+    # (답변은 종전에도 2펀드로 답하고 있었다 — SQL 이 답변을 따라온 것이다)
+    assert r.answer.count("\n- ") == 2 and "차이나코어테크" not in r.answer
     # R6 통합 — 6행이 1줄 '클래스 7개' 로 접힌다 (표시 단위만 rptt · 카운트 gold 불변)
     P.plan_sql = lambda self, q, g: _R6_SQL
     r6 = answer_question("T-R6", "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘", planner=P(), ctx=ctx)
@@ -1854,7 +1857,8 @@ def test_r4_country_name_component_I(ctx):
     ids, lines, tok = g("KB차이나 펀드 위험등급 알려줘")
     assert not [i for i in ids if i.startswith("Country_")] and tok == "KB차이나"
     ids, lines, tok = g("한국투자베트남그로스 펀드 순자산 알려줘")
-    assert ids == ["Org_00040024"] and tok == "베트남그로스"
+    # 10R ③-A — 브랜드를 떼면 같은 운용사의 '한국투자연금베트남그로스' 가 살아남는다(T14 4→2 · W9 3→2)
+    assert ids == ["Org_00040024"] and tok == "한국투자베트남그로스"
     ids, lines, tok = g("NH-Amundi 인도네시아 포커스 펀드 순자산 알려줘")
     assert "Country_IDN" not in ids and tok == "인도네시아포커스" and any("상품명 성분" in ln for ln in lines)
     assert g("인도네시아에 투자하는 공모펀드 알려줘")[0] == ["Country_IDN"] and g("미국에 투자하는 공모펀드는 몇 개야?")[0] == ["Country_USA"]

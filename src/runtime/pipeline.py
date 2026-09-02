@@ -4564,12 +4564,18 @@ def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
         label = m.group(1)
         for tail in re.findall(rf"{re.escape(label)}([0-9A-Za-z가-힣]+)", question):
             tok = _PARTICLE.sub("", tail).strip()
-            if len(tok) >= 3 and tok not in _GENERIC_NAME_TOKEN:
-                return tok
-            # 6R I′ — 잔여가 짧아도(재팬 2자) 라벨+잔여 낱말 전체가 종목명 부분열이면 낱말 전체가 토큰('피델리티재팬')
+            if tok in _GENERIC_NAME_TOKEN or len(tok) < 2:
+                continue
+            # 🔴 10R 재검 ③-A(접두 앵커) — **KG 가 브랜드 라벨을 소비했더라도 리터럴은 「라벨+잔여」 결합형**이다.
+            #    종전엔 잔여만 리터럴로 써서(피델리티차이나→`차이나` · 한국투자베트남그로스→`베트남그로스`)
+            #    `or_co` 절이 타사만 막고 **같은 운용사 안의 이름 변형이 전부 살아남았다**(X18·R4·T14·W9).
+            #    결합형이 DB 에 실재할 때만 쓴다 — 사용자가 브랜드를 안 썼으면(S12 '코어테크') 여기 오지 않는다.
+            #    6R I′(잔여 2자 '재팬')도 같은 규칙의 특수형이라 함께 닫힌다.
             whole = (label + tok).replace(" ", "")
-            if len(tok) >= 2 and tok not in _GENERIC_NAME_TOKEN and _name_chunk_exists(whole):
+            if _name_chunk_exists(whole):
                 return whole
+            if len(tok) >= 3:
+                return tok
     if not ground_lines:
         return _standalone_name_token(question)
     return None

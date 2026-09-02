@@ -160,3 +160,20 @@ def test_r10_lookup_answer_only_for_name_lookup():
     assert P._has_name_filter(tag) is False                 # 태그와 OR 로 묶인 이름 LIKE 는 이름 조회가 아니다
     rows, n = P._execute(tag)
     assert P._lookup_answer(tag, rows, n, None, []) is None
+
+
+# ── A1 · 접두 앵커 — 이름 리터럴은 「라벨 + 잔여 고유명」 결합형 ───────────────────
+def test_r10_name_anchor_prefix():
+    """재검 ③-A — or_co 절은 타사만 막는다: 브랜드를 떼면 같은 운용사의 이름 변형이 전부 살아남는다."""
+    L = ["'한국투자' → Org_00040024 (Organization) → public_funds.or_co_xtn_itt_cd='00040024'"]
+    assert P.residual_name_token("한국투자베트남그로스증권자투자신탁 위험등급 알려줘", L) == "한국투자베트남그로스증권자투자신탁"
+    # 결합형이 DB 에 없으면 종전대로 잔여만
+    assert P.residual_name_token("한국투자없는이름펀드 위험등급 알려줘", L) == "없는이름펀드"
+    # 사용자가 브랜드를 안 썼으면 결합하지 않는다 (S12)
+    assert P.residual_name_token("코어테크 펀드 수익률", []) == "코어테크"
+
+    def cnt(lit):
+        return int(P._execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), itm_no)) "
+                              "FROM public_funds WHERE prvo_pbff_desc='공모' AND TRIM(or_co_xtn_itt_cd)='00040024' "
+                              f"AND REPLACE(itm_nm,' ','') LIKE '%{lit}%'")[0].splitlines()[1])
+    assert cnt("베트남그로스증권자투자신탁") == 3 and cnt("한국투자베트남그로스증권자투자신탁") == 2

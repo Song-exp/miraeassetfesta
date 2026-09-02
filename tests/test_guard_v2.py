@@ -2011,3 +2011,29 @@ def test_r6_F1_label_conflict_excluded(ctx):
     assert ids == ["Region_Asia"]
     assert "FundAttr_N144" in [h.node_id for h in _ground("반도체 테마 공모펀드는 몇 개야?", ctx, ["public_funds"])[0]]
     assert "FundAttr_C104" in [h.node_id for h in _ground("폐쇄형 공모펀드는 몇 개야?", ctx, ["public_funds"])[0]]
+
+
+def test_r6_F2_class_dependent_range(ctx):
+    """6R F2 (X25) — 클래스별로 값이 다른 컬럼(기준가 bns_bpr)은 단일 MAX 로 대표명에 붙이지 않고 MIN~MAX 범위 + '클래스에 따라 다름'.
+    종속 여부는 DB 실측(다클래스 펀드에서 값이 갈리는 비율). 수익률 경로(R4)는 불변."""
+    from src.runtime.pipeline import _class_dependent_cols, ensure_fund_lookup_grouping as lg, answer_question
+
+    dep = _class_dependent_cols()
+    assert "bns_bpr" in dep and "fd_nast_suma" not in dep
+    x25 = ("SELECT bns_bpr, itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' "
+           "AND sale_yn = '판매중' LIMIT 30")
+    s, ok = lg(x25, "미래에셋코어테크 펀드 기준가 알려줘")
+    assert ok and '"bns_bpr_최고"' in s and '"bns_bpr_최저"' in s and "MAX(bns_bpr) AS bns_bpr" not in s
+    lo, hi = _ro().execute("SELECT MIN(bns_bpr), MAX(bns_bpr) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '미래에셋코어테크증권자투자신탁%' AND sale_yn='판매중'").fetchone()
+
+    class P:
+        def plan_sql(self, q, g):
+            return x25
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-X25", "미래에셋코어테크 펀드 기준가 알려줘", planner=P(), ctx=ctx)
+    first = [ln for ln in r.answer.splitlines() if ln.startswith("- 미래에셋코어테크증권자투자신탁(주식):")][0]
+    assert f"{lo:,.2f}".rstrip("0").rstrip(".") in first and f"{hi:,.2f}".rstrip("0").rstrip(".") in first and "클래스에 따라 다름" in first and "종류" not in first
+    assert "매매기준가" in first

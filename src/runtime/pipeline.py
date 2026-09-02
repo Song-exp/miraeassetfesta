@@ -823,6 +823,28 @@ def _fund_col_types() -> dict[str, str]:
     return {c.lower(): (t or "").lower() for c, _, t, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ())}
 
 
+@lru_cache(maxsize=1)
+def _class_dependent_cols() -> frozenset:
+    """클래스 종속 수치 컬럼 — 다클래스 펀드키 그룹 중 값이 2종 이상인 비율이 30% 를 넘는 컬럼(DB 실측, 캐시). 순자산·날짜는 별도 규칙."""
+    types = _fund_col_types()
+    con = connect_readonly()
+    out = set()
+    try:
+        for col, t in types.items():
+            if not t.startswith(("numeric", "int", "real", "double", "float", "decimal")) or col.endswith("_dt") or col == "fd_nast_suma":
+                continue
+            row = con.execute(
+                f"SELECT SUM(cnt > 1), COUNT(*) FROM (SELECT COUNT(DISTINCT {col}) AS cnt FROM public_funds "
+                f"WHERE {col} IS NOT NULL GROUP BY {_FUND_KEY_EXPR} HAVING COUNT(*) > 1)").fetchone()
+            if row and row[1] and (row[0] or 0) / row[1] > 0.3:
+                out.add(col)
+    except sqlite3.Error:
+        pass
+    finally:
+        con.close()
+    return frozenset(out)
+
+
 def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     """이름 검색(개별 조회) 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값을 병기. (보정된 SQL, 보정했는지)
 
@@ -872,8 +894,10 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
             #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
             new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
                     "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\""]
-        elif col in _FUND_RETURN_COLS:
-            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']     # 최고/최저는 수익률 8종에만
+        elif col in _FUND_RETURN_COLS or col in _class_dependent_cols():
+            # 6R F2 — 클래스별로 값이 다른 컬럼(수익률·기준가·보수…)은 단일 MAX 로 대표하지 않는다: MIN~MAX 범위. 종속 여부는 DB 실측
+            #   (다클래스 펀드에서 값이 갈리는 비율)로 판정 — X25: 종류A 라벨에 종류F 기준가가 붙었다
+            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']
         else:
             new.append(f"MAX({col}) AS {alias or col}")
     # 2R Q4-b — 대표예탁원번호(rptt_ksd_itm_no)를 **표시 단위**로만 싣는다: 조립기가 같은 대표번호 행을 한 줄로 접는다
@@ -907,6 +931,14 @@ def _fund_stem(name: str) -> str:
     return _STEM_CLASS_TAIL.sub("", n).strip() or n
 
 
+def _fund_col_ko(col: str) -> str:
+    """public_funds 컬럼의 한글명(스키마 원천) — 조립 문형의 라벨. 없으면 컬럼명."""
+    for c, ko, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ()):
+        if c.lower() == col.lower():
+            return ko or col
+    return col
+
+
 def _pct(v: str) -> str:
     s = f"{float(v):.2f}".rstrip("0").rstrip(".")
     return s
@@ -933,7 +965,7 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
         if len(parts) != len(cols):
             return None
         recs.append(dict(zip(cols, parts)))
-    ret_cols = [c for c in _RET_LABEL if f"{c}_최고" in cols]
+    ret_cols = [c[:-3] for c in cols if c.endswith("_최고")]       # 수익률 8종 + F2 클래스 종속 컬럼(기준가·보수…)
     has_grade = "zrin_fd_ivst_risk_grd_nm" in cols or "zrin_fd_ivst_risk_gcd" in cols
     has_nast = "fd_nast_suma" in cols
     if not (ret_cols or has_grade or has_nast):
@@ -975,13 +1007,18 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
             parts.append("판매완료(신규 가입 불가)")
         for c in ret_cols:
             lo, hi = g["ret"][c]
-            label = _RET_LABEL[c]
-            if lo is None:
-                parts.append(f"{label} 수익률 미수록")
-            elif lo == hi:
-                parts.append(f"{label} 수익률 {_pct(lo)}% (누적)")
+            if c in _RET_LABEL:
+                label, unit, tail_note = f"{_RET_LABEL[c]} 수익률", "%", ", 누적"
+                fmt = _pct
             else:
-                parts.append(f"{label} 수익률 {_pct(lo)}%~{_pct(hi)}% (클래스에 따라 다름, 누적)")
+                label, unit, tail_note = _fund_col_ko(c), "", ""
+                fmt = lambda v: f"{v:,.2f}".rstrip("0").rstrip(".")
+            if lo is None:
+                parts.append(f"{label} 미수록")
+            elif lo == hi:
+                parts.append(f"{label} {fmt(lo)}{unit}" + (" (누적)" if tail_note else ""))
+            else:
+                parts.append(f"{label} {fmt(lo)}{unit}~{fmt(hi)}{unit} (클래스에 따라 다름{tail_note})")
         if has_grade:
             nm, gcd = g["grade"]
             if gcd:

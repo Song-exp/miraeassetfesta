@@ -1105,3 +1105,76 @@ def test_fund_lookup_grouping_net_assets_sum_in_eok():
     rec = dict(zip(cols, row))
     assert rec["클래스수"] == 10 and rec["fd_nast_suma"] == 2914801034334 and rec["순자산_억원"] == "29148억원"
     assert isinstance(rec["fd_nast_suma"], int)                                # '.0' 없음
+
+
+# ── 2026-09-02 라운드 2 (docs/recheck_2026-09-02_round2.md §③ Q1~Q7) ──
+_R2_FIRST_SQL = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS 운용사코드, MAX(mtco_nm) AS 운용사명, "
+                 "COUNT(DISTINCT CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END) AS 펀드수 "
+                 "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+                 "WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5")
+_R2_REGEN_SQL = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS 운용사코드, MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || mgmt_co_nm "
+                 "NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', "
+                 "'00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN mgmt_co_nm END) AS 운용사명, "
+                 "COUNT(DISTINCT COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS 펀드수 "
+                 "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+                 "WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5")
+_S11_REGEN_SQL = ("SELECT mgmt_co_nm, COUNT(*) as cnt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+                  "GROUP BY mgmt_co_nm ORDER BY cnt DESC LIMIT 3")
+_R2_GOLD = [("00080008", "미래에셋자산운용", 823), ("00040007", "우리자산운용", 235), ("00040010", "삼성자산운용", 207),
+            ("00080035", "iM에셋자산운용", 205), ("00040024", "한국투자신탁운용", 142)]
+
+
+def test_join_ambiguous_itm_no_qualified(ctx):
+    """Q1-b — R2 2R 재생성 SQL(비한정 itm_no) 이 모호 컬럼 기각 → 거절. 기각 대신 FROM 테이블로 기계 한정한다."""
+    from src.runtime.pipeline import qualify_join_columns as f, _apply_sql_guards
+
+    assert guard.ambiguous_columns(_R2_REGEN_SQL, ctx) == ["itm_no"]          # 검사기 단독은 여전히 기각(안전망)
+    s, cols = f(_R2_REGEN_SQL, ctx)
+    assert cols == ["itm_no"] and guard.ambiguous_columns(s, ctx) == [] and "public_funds.itm_no)" in s
+    assert "ext_fund_page.itm_no = public_funds.itm_no" in s                    # 이미 한정된 ON 절은 불변
+    assert f(s, ctx) == (s, [])                                                 # 멱등
+    rows = _ro().execute(s).fetchall()
+    assert [tuple(r) for r in rows] == _R2_GOLD
+    # 체인 통과(재생성 경로와 동일) 후에도 모호 컬럼 0 · 값 gold
+    chained = _apply_sql_guards(_R2_REGEN_SQL, "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", None, None, lambda m: None, ctx)
+    assert guard.ambiguous_columns(chained, ctx) == []
+    # 1R 재생성 SQL(COALESCE 없음)은 무변경
+    one_r = _R2_REGEN_SQL.replace("COALESCE(", "(").replace(", itm_no))", "))")
+    assert f(one_r, ctx) == (one_r, [])
+
+
+def test_fund_mgmt_join_injected(ctx):
+    """Q1-c — mtco_nm 환각(3라운드 연속)·JOIN 없는 mgmt_co_nm 을 기각하지 않고 ext_fund_page JOIN 을 주입한다."""
+    from src.runtime.pipeline import ensure_fund_mgmt_join as f
+
+    s, ok = f(_R2_FIRST_SQL)                                                    # R2 1차: JOIN 있음 · mtco_nm 만 치환
+    assert ok and "mtco_nm" not in s and "MAX(mgmt_co_nm)" in s and s.count("ext_fund_page") == 2
+    assert guard.unknown_columns(s, ctx) == []
+    s2, ok2 = f(_S11_REGEN_SQL)                                                 # S11 재생성: JOIN 주입
+    assert ok2 and "FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE" in s2
+    assert guard.unknown_columns(s2, ctx) == [] and len(_ro().execute(s2).fetchall()) == 3
+    assert not f(s2)[1]                                                         # 멱등
+    s3, ok3 = f("SELECT p.itm_nm, mgmt_co_nm FROM public_funds p WHERE p.sale_yn='판매중' LIMIT 5")   # 별칭
+    assert ok3 and "FROM public_funds p LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = p.itm_no WHERE" in s3
+    # 비발동 — 이름 컬럼 없음 · 타 도메인
+    assert not f("SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 5")[1]
+    assert not f("SELECT pd_nm FROM domestic_bonds LIMIT 5")[1]
+
+
+def test_r2_pipeline_no_longer_rejected(ctx):
+    """R2 회귀 통합 — 1차 mtco_nm 환각이 기각 없이 JOIN·치환으로 살아나 재생성 예산이 보존되고, 값 gold 5행이 조회된다."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        plans = 0
+
+        def plan_sql(self, q, g):
+            P.plans += 1
+            return _R2_FIRST_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-R2", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
+    assert P.plans == 1 and "[Guard] SQL 기각" not in r.think_trace and "[Guard] 운용사 이름 JOIN 주입" in r.think_trace
+    assert "823" in r.retrieved_context and "우리자산운용" in r.retrieved_context and "142" in r.retrieved_context

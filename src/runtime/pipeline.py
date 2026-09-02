@@ -1171,6 +1171,68 @@ def _minority_mgmt_names() -> tuple[str, ...]:
     return tuple(sorted(minority))
 
 
+_FROM_FUND = re.compile(r"\bfrom\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", re.I)
+
+
+def ensure_fund_mgmt_join(sql: str) -> tuple[str, bool]:
+    """운용사 이름 컬럼(mtco_nm 환각·mgmt_co_nm)을 쓰는 펀드 SQL 에 ext_fund_page JOIN 을 기계 주입. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R2·S11 재검 — 1차 SQL 의 `mtco_nm`(존재하지 않는 컬럼) 환각이 3라운드 연속(09-01 FND-035 부터)
+    재생성 예산을 잡아먹고, S11 은 재생성마저 `mgmt_co_nm` 을 JOIN 없이 public_funds 에 써 재기각 → 거절.
+    워크드 예시가 실려도 무시된다(법칙 1). 조치: `mtco_nm` → `mgmt_co_nm` 치환 + ext_fund_page JOIN 이 없으면
+    `FROM public_funds [별칭]` 직후에 `LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = <별칭|public_funds>.itm_no` 주입.
+    그러면 MAX(mgmt_co_nm) 은 기존 최빈 이름 가드가, 비한정 itm_no 는 qualify_join_columns 가 받는다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    has_name = re.search(r"\b(?:mtco_nm|mgmt_co_nm)\b", sql, re.I)
+    if not has_name:
+        return sql, False
+    fixed = False
+    if re.search(r"\bmtco_nm\b", sql, re.I):
+        sql = re.sub(r"\bmtco_nm\b", "mgmt_co_nm", sql, flags=re.I)
+        fixed = True
+    if not re.search(r"\bext_fund_page\b", sql, re.I):
+        m = _FROM_FUND.search(sql)
+        if not m:
+            return sql, fixed
+        alias = m.group(1) or "public_funds"
+        sql = sql[:m.end()] + f" LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = {alias}.itm_no" + sql[m.end():]
+        fixed = True
+    return sql, fixed
+
+
+_SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
+
+
+def qualify_join_columns(sql: str, ctx) -> tuple[str, list[str]]:
+    """JOIN 의 비한정 모호 컬럼을 FROM 테이블(별칭)로 기계 한정한다. (보정된 SQL, 한정한 컬럼)
+
+    2026-09-02 R2 재검 회귀 — 재생성 SQL 이 `펀드단위` 규칙의 `COALESCE(…, itm_no)` 를 LEFT JOIN ext_fund_page 문에
+    그대로 옮겨 `guard.ambiguous_columns` 가 기각 → 재생성 예산은 1차(mtco_nm)에서 이미 소진 → 거절.
+    검사기의 전제("실행 전에 잡아 재생성 1회를 준다")가 예산 소진 뒤엔 기각 = 거절이다. ext_* 는 itm_no 로만 마스터와
+    겹치고 정답 한정은 항상 FROM 테이블이므로 기각이 아니라 한정이 맞다. 문자열 리터럴 밖의 등장만 바꾸고,
+    판정 정규식(`(?<![\w.])col\b`)은 검사기와 같다. 기존 기각 분기는 가드 뒤에도 남는 경우의 안전망으로 유지.
+    """
+    if not re.search(r"\bjoin\b", sql, re.I):
+        return sql, []
+    amb = guard.ambiguous_columns(sql, ctx)
+    if not amb:
+        return sql, []
+    m = re.search(r"\bfrom\s+(\w+)(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", sql, re.I)
+    if not m:
+        return sql, []
+    qual = m.group(2) or m.group(1)
+    parts = _SQL_LITERAL.split(sql)
+    lits = _SQL_LITERAL.findall(sql)
+    for col in amb:
+        parts = [re.sub(rf"(?<![\w.]){col}\b(?!\s*\()", f"{qual}.{col}", p, flags=re.I) for p in parts]
+    out = parts[0]
+    for lit, p in zip(lits, parts[1:]):
+        out += lit + p
+    return out, amb
+
+
 _MGMT_MAX = re.compile(r"MAX\(\s*((?:\w+\.)?mgmt_co_nm)\s*\)", re.I)
 _OR_CO_KEY = "printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER))"
 
@@ -2439,6 +2501,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
+    sql, mjoin_fixed = ensure_fund_mgmt_join(sql)
+    if mjoin_fixed:
+        step("[Guard] 운용사 이름 JOIN 주입 — mtco_nm/mgmt_co_nm 은 ext_fund_page 컬럼 "
+             "(2026-09-02 R2·S11 재검: 3라운드 연속 1차 SQL 환각으로 재생성 예산 소진 → 거절)")
     sql, modal_fixed = ensure_fund_mgmt_modal_name(sql)
     if modal_fixed:
         step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
@@ -2525,6 +2591,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, riskname_fixed = ensure_risk_name_column(sql)
     if riskname_fixed:
         step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
+    sql, qualified = qualify_join_columns(sql, ctx)
+    if qualified:
+        step(f"[Guard] JOIN 모호 컬럼 한정 — {', '.join(qualified)} → FROM 테이블 한정 "
+             "(2026-09-02 R2 재검: 재생성 SQL 이 펀드단위 규칙의 COALESCE(…, itm_no) 를 JOIN 에 그대로 옮겨 기각 → 거절)")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")

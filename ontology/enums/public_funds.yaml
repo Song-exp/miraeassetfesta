@@ -810,7 +810,8 @@ query_rules:
   펀드단위: >-
     GROUP BY or_co_xtn_itt_cd,
              COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no
-                           ELSE substr('0000000' || mtco_itm_no, -7) END, itm_no)
+                           ELSE substr('0000000' || mtco_itm_no, -7) END, public_funds.itm_no)
+  # 🔴 itm_no 는 반드시 한정한다(JOIN 시 별칭을 쓰면 p.itm_no) — 2026-09-02 R2 재검: 비한정 itm_no 를 LEFT JOIN ext_fund_page 에 옮겨 모호 컬럼 기각
   # 펀드단위 근거(사람용 — 프롬프트 비대상): zero-pad 7자 규약 정본은 리드 판정 08-31. 실측 — 기본모수 패딩 병합
   # 전수 대조 충돌 0건 · 짧은 mtco 7,962행 정상(가변 길이). 검증 수치(08-31 재실측): 더미 배제 후 합성키 distinct
   # 14,467(원값 · 판매중 4,340) · zero-pad 후 14,409(판매중 4,305). 구 08-25 의 14,522·4,342 는 반복문자 규칙 미적용

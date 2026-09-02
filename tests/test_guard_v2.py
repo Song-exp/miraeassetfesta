@@ -1422,3 +1422,31 @@ def test_count_answer_offshore_sibling_note():
     assert "129개(클래스 625개)" in kb and "역외" not in kb
     # 운용사 매핑이 없으면 병기 없음
     assert "역외" not in f(sql, "펀드수 | 클래스수\n1 | 2", 1, [])
+
+
+# ── KG 구조 검증 1R (docs/kg_structure_probe_round1_2026-09-02.md) — 런타임 큐 ──
+_KG002_FIRST = ("SELECT DISTINCT itm_no, itm_nm FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+                "WHERE public_funds.or_co_xtn_itt_cd = '00040022' AND public_funds.prvo_pbff_desc = '공모' AND public_funds.sale_yn = '판매중' "
+                "AND ext_fund_page.mgmt_co_nm LIKE '%템플턴%' AND itm_nm LIKE '%템플턴%' LIMIT 30")
+_KG002_REGEN = ("SELECT DISTINCT p.itm_no, p.itm_nm FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+                "WHERE p.or_co_xtn_itt_cd = '00040022' AND p.prvo_pbff_desc = '공모' AND p.sale_yn = '판매중' "
+                "AND e.mgmt_co_nm LIKE '%템플턴%' AND p.itm_nm LIKE '%템플턴%' LIMIT 30")
+
+
+def test_guard_keeps_qualifier_inside_function(ctx):
+    """R3-⑤ (KG-002 실측) — TRIM 가드가 `public_funds.TRIM(or_co…)`, 공백무시 가드가 `p.REPLACE(itm_nm,…)` 을 만들어
+    1차 기각·재생성 OperationalError → "오류" 무응답. 일반 규칙: 컬럼을 함수로 감쌀 때 한정자는 인자 안에 남는다."""
+    from src.runtime.pipeline import ensure_trimmed_compare as t, ensure_spaceless_name_match as sp, _apply_sql_guards, _has_name_filter
+
+    s, ok = t(_KG002_FIRST)
+    assert ok and "TRIM(public_funds.or_co_xtn_itt_cd) = '00040022'" in s and "public_funds.TRIM(" not in s
+    s2, ok2 = sp(_KG002_REGEN)
+    assert ok2 and "REPLACE(p.itm_nm,' ','') LIKE '%템플턴%'" in s2 and "p.REPLACE(" not in s2
+    assert _has_name_filter(s2)
+    for raw in (_KG002_FIRST, _KG002_REGEN):
+        chained = _apply_sql_guards(raw, "프랭클린템플턴이 운용하는 공모펀드 알려줘", "템플턴", None, lambda m: None, ctx)
+        assert ".TRIM(" not in chained and ".REPLACE(" not in chained
+        assert guard.unknown_columns(chained, ctx) == [] and guard.ambiguous_columns(chained, ctx) == []
+        _ro().execute(chained).fetchall()                                   # 실행 가능
+    # 무한정 형은 종전대로
+    assert t("SELECT 1 FROM public_funds WHERE or_co_xtn_itt_cd = '00040022' LIMIT 1")[0].count("TRIM(or_co_xtn_itt_cd)") == 1

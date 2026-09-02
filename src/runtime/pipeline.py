@@ -598,7 +598,8 @@ _FUND_EXT_HINTS = re.compile(
 )
 
 
-_NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?\b(itm_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
+# 한정자(p.itm_nm)는 REPLACE 안으로 — 2026-09-02 KG-002 실측: `p.REPLACE(itm_nm,…)` OperationalError → "오류" 무응답
+_NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?((?:\b\w+\.)?)\b(itm_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
 
 
 def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
@@ -611,8 +612,8 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
     존재하지 않는 상품(FND-R05)은 여전히 0행이다.
     """
     def _fix(m: re.Match) -> str:
-        pat = m.group(3).replace(" ", "")
-        return f"REPLACE({m.group(1)},' ','') {m.group(2).upper()} '{pat}'"
+        pat = m.group(4).replace(" ", "")
+        return f"REPLACE({m.group(1)}{m.group(2)},' ','') {m.group(3).upper()} '{pat}'"
     fixed = _NAME_LIKE.sub(_fix, sql)
     return fixed, fixed != sql
 
@@ -622,7 +623,7 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
 #    LIKE(or_attr_desc·zrin_attr_nms)를 이름 조회로 오인 — "주식형 공모펀드" 목록이 개별 조회 묶기(최단 이름순)로
 #    빠져 역외 1클래스 펀드 30개가 나갔다. `NOT LIKE` 는 제외 필터라 이름 조회가 아니다(NOT 이 끼면 불일치).
 _NAME_FILTER = re.compile(
-    r"(?:REPLACE\(\s*itm_nm\s*,\s*' '\s*,\s*''\s*\)|TRIM\(\s*itm_nm\s*\)|\bitm_nm\b)\s*(?:LIKE|GLOB)\b", re.I)
+    r"(?:REPLACE\(\s*(?:\w+\.)?itm_nm\s*,\s*' '\s*,\s*''\s*\)|TRIM\(\s*(?:\w+\.)?itm_nm\s*\)|\b(?:\w+\.)?itm_nm\b)\s*(?:LIKE|GLOB)\b", re.I)
 
 
 def _has_name_filter(sql: str) -> bool:
@@ -1528,7 +1529,7 @@ def ensure_ext_join(sql: str, ctx) -> tuple[str, list[str]]:
 
 
 def qualify_join_columns(sql: str, ctx) -> tuple[str, list[str]]:
-    """JOIN 의 비한정 모호 컬럼을 FROM 테이블(별칭)로 기계 한정한다. (보정된 SQL, 한정한 컬럼)
+    r"""JOIN 의 비한정 모호 컬럼을 FROM 테이블(별칭)로 기계 한정한다. (보정된 SQL, 한정한 컬럼)
 
     2026-09-02 R2 재검 회귀 — 재생성 SQL 이 `펀드단위` 규칙의 `COALESCE(…, itm_no)` 를 LEFT JOIN ext_fund_page 문에
     그대로 옮겨 `guard.ambiguous_columns` 가 기각 → 재생성 예산은 1차(mtco_nm)에서 이미 소진 → 거절.
@@ -2000,8 +2001,10 @@ def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:
     (TRIM 시 2,031행) — 문자열비교 규칙 무시. LIKE 는 % 와일드카드가 패딩을 흡수하므로 불개입."""
     changed = False
     for col in _PADDED_COLS:
-        pat = re.compile(rf"(?<!TRIM\()\b{col}\b(\s*(?:=|<>|IN)\s*)", re.I)
-        new = pat.sub(rf"TRIM({col})\1", sql)
+        # 🔴 한정자(public_funds.·p.)는 함수 **안**에 둔다 — 2026-09-02 KG-002 실측: `public_funds.TRIM(or_co…)` 문법 오류 → 기각.
+        #    일반 규칙: 가드가 컬럼을 함수로 감쌀 때 한정자는 컬럼과 함께 인자 자리에 남는다(ensure_spaceless_name_match 동일).
+        pat = re.compile(rf"(?<!TRIM\()((?:\b\w+\.)?)\b{col}\b(\s*(?:=|<>|IN)\s*)", re.I)
+        new = pat.sub(rf"TRIM(\1{col})\2", sql)
         if new != sql:
             sql, changed = new, True
     return sql, changed

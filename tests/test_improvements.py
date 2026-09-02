@@ -125,7 +125,9 @@ def test_pipeline_regenerates_once_on_value_violation(ctx):
     assert p.calls == 2
     assert "[Guard] 값 검사" in r.think_trace and "[Plan] 재생성" in r.think_trace
     assert "이전 SQL 의 문제" in p.groundings[1]
-    assert r.sql == good and r.answer == "테스트 답변"
+    # 재생성 SQL 도 가드 체인을 탄다 — 2026-09-02 채권 대표행 가드가 목록 SELECT 에 GROUP BY pd_no 를 붙이므로 완전일치가 아니라 조건식으로 본다
+    assert "crd_grd = 'AA-'" in r.sql and "AA-등급" not in r.sql and "GROUP BY pd_no" in r.sql
+    assert r.answer == "테스트 답변"
 
 
 def test_pipeline_refuses_when_regeneration_still_bad(ctx):

@@ -755,6 +755,37 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
     return int(row[0]), (int(row[1]) if fund_only else None), grouped
 
 
+def _explicit_limit_hit(sql: str, n: int) -> bool:
+    """명시 LIMIT k(< 상한)가 있는 정렬 목록이 k 행을 꽉 채웠는가 — 상위 k 만 보인 '잘린 목록' 판정.
+
+    2026-09-02 실측: '한전 채권 수익률 높은 순' LIMIT 5 는 n(5) < MAX_ROWS 라 커버리지 병기가 발동하지 않아
+    "전체 386종목 중 상위 5" 를 말할 재료가 없었고, 답 끝의 "이외에도 다양한…" 은 근거 없는 채움말이 됐다."""
+    m = re.search(r"\bLIMIT\s+(\d+)\s*;?\s*$", sql, re.I)
+    if not m or not re.search(r"\bORDER\s+BY\b", sql, re.I):
+        return False
+    k = int(m.group(1))
+    return 0 < k < MAX_ROWS and n >= k
+
+
+def _bond_coverage_counts(sql: str) -> tuple[int, int] | None:
+    """채권 단순 목록의 전체 규모 — (전체 행수, 종목수 DISTINCT pd_no). GROUP BY pd_no(대표행 가드)는 허용. 아니면 None."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:union|having|join)\b|\(\s*select\b", sql, re.I):
+        return None
+    if re.search(r"\bgroup\s+by\b(?!\s+pd_no\b)", sql, re.I):
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    con = connect_readonly()
+    try:
+        row = con.execute(f"SELECT COUNT(*), COUNT(DISTINCT pd_no) FROM {m.group(1).strip()}").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return int(row[0]), int(row[1])
+
+
 def _hide_answer_columns(rows: str) -> tuple[str, list[str]]:
     """답변 입력에서 내부 코드 컬럼을 뺀다 — retrieved_context 는 그대로. (정리된 표, 뺀 컬럼)"""
     lines = rows.splitlines()
@@ -1006,6 +1037,9 @@ def strip_false_hedge(text: str, sql: str, n: int) -> tuple[str, bool]:
     """
     if n >= MAX_ROWS or not re.search(r"\bgroup\s+by\b|\b(?:count|sum)\s*\(", sql, re.I):
         return text, False
+    if _explicit_limit_hit(sql, n) and not re.search(r"\b(?:count|sum)\s*\(", sql, re.I):
+        return text, False          # 상위 k 로 잘린 개체 목록(채권 대표행 GROUP BY pd_no + MAX/MIN) — '더 있다' 는 참이다.
+                                    # COUNT/SUM 정렬 top-k(운용사 top5)는 전수 집계라 유보가 거짓 — 종전대로 걷어낸다.
     out = _FALSE_HEDGE.sub("", text)
     if out == text:
         return text, False
@@ -1482,6 +1516,9 @@ def ensure_credit_backstop(sql: str, question: str) -> tuple[str, bool]:
     return sql, changed
 
 
+_PAST_MATURITY_Q = re.compile(r"만기\s*(?:가|이)?\s*(?:지난|경과|끝난|넘은|도래한)|과거\s*만기|상장\s*폐지|만기\s*된")
+
+
 def _rank_exclusions(sql: str, question: str) -> list[str]:
     """고위험제외·수익률정상 중 SQL 에 빠진 절 — 질문이 그 범주를 명시하면 그 절은 건너뛴다.
 
@@ -1490,6 +1527,11 @@ def _rank_exclusions(sql: str, question: str) -> list[str]:
     excl = []
     if re.search(r"applied_yield", sql, re.I) and not re.search(r"applied_yield\s*>\s*0", sql):
         excl.append("applied_yield > 0")
+    # 구매가능 규칙 — 만기 경과 채권은 추천·랭킹 모수가 아니다. 2026-09-02 실측: '한전 채권 수익률 낮은 순' 에
+    # 만기 2026-08-20 경과 1063호가 1·2위. 전체 만기 경과 49행(최대 5.699%). gold 채권 랭킹 19개 중 17개가 이미
+    # 이 절을 쓴다(나머지 2개도 하한 있음). 질문이 만기 경과를 콕 집으면(범주 언급 = 우회) 건너뛴다.
+    if not re.search(r"mat_dt\s*>=?\s*\d", sql) and not _PAST_MATURITY_Q.search(question):
+        excl.append(f"mat_dt >= {CUTOFF_INT}")
     if "'11'" not in sql and not re.search(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
         excl.append("pd_risk_gcd <> '11'")
     if "C0" not in sql and not re.search(r"C0|투기|부실", question, re.I):
@@ -2513,6 +2555,150 @@ def _suggest_similar_products(sql: str) -> list[str]:
     except sqlite3.Error:
         return []
 
+_ISSUER_LOOKUP = re.compile(r"TRIM\(\s*(?:\w+\.)?pd_pbcm\s*\)\s*=\s*'([^']+)'|\bpd_pbcm\s*=\s*'([^']+)'", re.I)
+_ISSUER_SUFFIX = re.compile(r"\(?(?:주|유|사|재)\)?$|주식회사|\s+")
+
+
+def _issuer_literal(sql: str) -> str | None:
+    """SQL 의 발행사 등호 리터럴(TRIM(pd_pbcm)='X' / pd_pbcm='X') — 없으면 None."""
+    m = _ISSUER_LOOKUP.search(sql)
+    if not m:
+        return None
+    return (m.group(1) or m.group(2) or "").strip() or None
+
+
+def _violated_issuer(violations) -> str | None:
+    """값 위반 목록에서 pd_pbcm 위반의 리터럴 — 없으면 None (되묻기 재료)."""
+    for v in violations or ():
+        if getattr(v, "column", "") == "pd_pbcm":
+            return v.literal
+    return None
+
+
+def _suggest_similar_issuers(literal: str | None) -> list[str]:
+    """발행사 리터럴이 DB 에 없을 때 같은 어두(앞 2글자)의 실제 발행사를 종목수 순으로 최대 4곳 — 되묻기 재료.
+
+    2026-09-02 실측: '삼성전자가 발행한 채권 있어?' 는 0종목이 정답인데, 삼성카드(323종목)·삼성증권(16)·
+    삼성바이오로직스(3)… 가 있다. clarify.존재하지_않는_개체 의 정답 형태("혹시 △△ 를 말씀하신 건가요?")
+    재료를 LLM 없이 SQLite 재조회 한 번으로 만든다. 🔴 이 후보는 **사용자 되묻기 전용**이다 — 재생성 힌트
+    (guard._value_hints)에는 넣지 않는다: 힌트로 주면 HCX 가 삼성전자 → 삼성카드 로 조건을 바꿔 답할 위험.
+    """
+    if not literal:
+        return []
+    stem = _ISSUER_SUFFIX.sub("", literal).strip()
+    if len(stem) < 2:
+        return []
+    # 어간 전체를 품은 발행사(한국전력공사 → 한국전력공사(주))를 먼저, 그다음 같은 어두(앞 2글자)를 종목수 순으로
+    q = ("SELECT TRIM(pd_pbcm), COUNT(DISTINCT pd_no) FROM domestic_bonds "
+         "WHERE TRIM(pd_pbcm) LIKE ? AND TRIM(pd_pbcm) <> ? GROUP BY 1 "
+         "ORDER BY (TRIM(pd_pbcm) LIKE ?) DESC, 2 DESC, 1 LIMIT 4")
+    try:
+        with connect_readonly() as con:
+            return [f"{name}({cnt:,}종목)" for name, cnt in con.execute(q, (f"{stem[:2]}%", literal, f"%{stem}%"))]
+    except sqlite3.Error:
+        return []
+
+
+def _issuer_clarify_text(literal: str | None) -> str:
+    """발행사 0건·값 위반 공용 되묻기 문장. 후보가 없으면 빈 문자열."""
+    cand = _suggest_similar_issuers(literal)
+    if not cand:
+        return ""
+    return (f" 발행사 '{literal}' 의 채권은 기준일 {gate.DATA_CUTOFF} 국내채권 데이터에 없습니다. "
+            f"혹시 다음 발행사의 채권을 말씀하신 건가요? — {' / '.join(cand)}")
+
+
+def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
+    """단일 집계(COUNT·SUM) 결과가 0 이면 HCX 없이 '없음' 을 기계 조립한다. 아니면 None.
+
+    2026-09-02 실측: '삼성전자가 발행한 채권 있어?' 를 HCX 가 COUNT(DISTINCT pd_no) 로 내어 결과가 (0,) 1행 —
+    0행 조기반환(n == 0)을 타지 않고 compose 로 넘어갔다. 이번엔 "없습니다" 로 맞게 썼지만 비결정.
+    값 0 → "없다" 는 어떤 질의에서도 참이므로 고정 문구가 안전하다. ensure_positive_count_answered(양수) 의 짝.
+    발행사 등호 리터럴이 있으면 되묻기 후보를 붙인다.
+    """
+    if n != 1:
+        return None
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return None
+    head = re.sub(r"^\s*SELECT\s+", "", sql[:frm.start()], flags=re.I)
+    if not re.match(r"\s*(?:COUNT|SUM)\s*\(", head, re.I) or "," in head.split("AS")[0]:
+        return None
+    body = rows.splitlines()[1:]
+    if len(body) != 1:
+        return None
+    try:
+        val = float(body[0].split(" | ")[0].strip())
+    except ValueError:
+        return None
+    if val != 0:
+        return None
+    unit = "종목" if re.search(r"DISTINCT\s+pd_no", sql, re.I) else "건"
+    return (f"조건에 해당하는 상품이 데이터에서 확인되지 않습니다 (조회 결과 0{unit}, 기준일 {gate.DATA_CUTOFF})."
+            + _issuer_clarify_text(_issuer_literal(sql)))
+
+
+_BOND_YIELD_SORT = re.compile(r"\border\s+by\s+(?:MAX|MIN)?\(?\s*(applied_yield|after_tax_yield|srfc_irt|buy_yield)\b", re.I)
+
+
+def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
+    """수익률·금리로 정렬한 채권 목록의 SELECT 에 mat_dt(만기일)·crd_grd(신용등급)를 병기. (보정된 SQL, 보정했는지)
+
+    2026-09-02 실측: '한전 채권 수익률 높은 순' SELECT 가 pd_nm·applied_yield·crd_grd 뿐 — 5.051%(만기 2052)
+    와 4.744%(만기 2038)가 만기 없이 나열돼 판단 재료가 없다. ensure_fund_evidence_columns(펀드)의 채권판.
+    불개입: 집계·GROUP BY·JOIN·`*`. crd_grd 는 ensure_grade_select_column 과 같은 표기(TRIM … AS crd_grd)."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    if not _BOND_YIELD_SORT.search(sql):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head, rest = sql[:frm.start()], sql[frm.start():]
+    if _AGG_HEAD.search(head) or "*" in head or re.search(r"\bGROUP\s+BY\b", sql, re.I):
+        return sql, False
+    add = []
+    if not re.search(r"\bmat_dt\b", head):
+        add.append("mat_dt")
+    if not re.search(r"\bcrd_grd\b", head):
+        add.append("TRIM(crd_grd) AS crd_grd")
+    if not add:
+        return sql, False
+    return head.rstrip() + ", " + ", ".join(add) + " " + rest, True
+
+
+def ensure_bond_representative(sql: str) -> tuple[str, bool]:
+    """채권 목록 SELECT 를 종목(pd_no) 단위로 묶는다 — GROUP BY pd_no + 정렬 컬럼 MAX/MIN. (보정된 SQL, 보정했는지)
+
+    대표행 규칙의 채권판. 채권은 1,078종목이 장내·장외 2~4행(중복행 1,385)이라 목록에 같은 종목이 두 번 나온다
+    — 2026-09-02 실측: 발행사 39곳의 수익률 top5 에 같은 종목 2회, 한전 낮은순 1063호 ×2. gold 채권 SQL 38개 중
+    37개가 GROUP BY pd_no / DISTINCT pd_no 를 쓴다 — 가드는 gold 관행을 서버 SQL 에 강제하는 것이다.
+    중복행 간 값 차이: pd_exg_mkt(전부)·applied_yield/eval_price/pd_risk_gcd(8종목)·after_tax_yield/trade_price
+    (307종목)·pd_nm 공백(2종목). 정렬 컬럼은 방향 극값(DESC→MAX, ASC→MIN)으로 대표행을 결정하고 나머지는 동일값.
+    불개입: 집계·GROUP BY·DISTINCT·JOIN·`*`·SELECT 에 pd_exg_mkt(장내/장외를 묻는 질의)·pd_no 미포함이면 주입해 묶는다."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    if re.search(r"\bGROUP\s+BY\b|\bDISTINCT\b|\bpd_exg_mkt\b", sql, re.I):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head, rest = sql[:frm.start()], sql[frm.start():]
+    if _AGG_HEAD.search(head) or "*" in head or not re.search(r"\b(?:pd_nm|pd_abrv_nm|pd_no)\b", head):
+        return sql, False
+    m = _ORDER_BY_HEAD.search(rest)
+    if m:
+        col, direction = m.group(1).strip(), (m.group(2) or "ASC").upper()
+        if re.fullmatch(r"[A-Za-z_]\w*", col) and not col.isdigit():
+            agg = "MAX" if direction == "DESC" else "MIN"
+            head, _, _ = _wrap_sort_col(head, col, agg)
+            rest = _wrap_order_by_col(rest, col, agg)
+    t = re.search(r"\b(?:ORDER\s+BY|LIMIT)\b", rest, re.I)
+    pos = t.start() if t else len(rest)
+    rest = rest[:pos].rstrip() + " GROUP BY pd_no " + rest[pos:]
+    return head.rstrip() + " " + rest, True
+
+
 def _grounding_blocks(grounding: str) -> list[str]:
     """근거문서에 실제로 실린 블록 이름 — trace 에 글자 수만 적으면 무엇이 실렸는지 알 수 없다.
 
@@ -2682,6 +2868,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, gradecol_fixed = ensure_grade_select_column(sql)
     if gradecol_fixed:
         step("[Guard] 신용등급 컬럼 보강 — WHERE 의 crd_grd 조건이 SELECT 에 없어 주입 (2026-09-02 서버 실측: '등급 높은 채권' 이 AA- 이상 15,845종목을 필터하고도 SELECT 미포함으로 '등급 정보가 없다' 오거절)")
+    sql, bev_fixed = ensure_bond_evidence_columns(sql)
+    if bev_fixed:
+        step("[Guard] 채권 근거컬럼 보강 — 수익률·금리 정렬 목록의 SELECT 에 만기일·신용등급 병기 (2026-09-02 실측: 한전 수익률순 답이 5.051%(2052년 만기)와 4.744%(2038년)를 만기 없이 나열)")
+    sql, brep_fixed = ensure_bond_representative(sql)
+    if brep_fixed:
+        step("[Guard] 채권 대표행 보정 — 목록 SELECT 를 GROUP BY pd_no 로 종목 단위 묶기 + 정렬 컬럼 MAX/MIN (2026-09-02 실측: 장내·장외 중복행으로 발행사 39곳 top5 에 같은 종목 2회 — gold 38개 중 37개가 GROUP BY pd_no)")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
@@ -2882,7 +3074,8 @@ def answer_question(
                 why = raw2.strip()[len(REFUSE_PREFIX):].strip()
                 step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {why}")
                 result.think_trace = "\n".join(trace)
-                result.answer = f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
+                result.answer = (f"요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다. {why}"
+                                 + _issuer_clarify_text(_violated_issuer(violations)))
                 return result
             # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
             #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
@@ -2902,8 +3095,8 @@ def answer_question(
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
             step("[Decision] 값이 DB 에 없거나 SQL 이 안전하지 않아 종료 (조건을 완화하지 않는다)")
             result.think_trace = "\n".join(trace)
-            result.answer = ("요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다." if violations
-                             else "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.")
+            result.answer = ("요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다." + _issuer_clarify_text(_violated_issuer(violations))
+                             if violations else "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.")
             return result
     step("[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 · LIMIT · WHERE 값 사전 대조)")
 
@@ -2931,6 +3124,13 @@ def answer_question(
             answer = (f"요청하신 상품은 제공된 데이터에 없습니다. "
                       f"혹시 다음 상품을 말씀하신 건가요? — {names}")
             step(f"[Suggest] 정확 일치 0건 — 유사 후보 {len(cand)}건 되묻기 (clarify.존재하지_않는_개체)")
+        else:
+            # 발행사 등호 0행 — 같은 어두의 실제 발행사를 되묻는다 (2026-09-02 실측: 삼성전자 → 삼성카드 323·삼성증권 16…)
+            issuer_text = _issuer_clarify_text(_issuer_literal(sql))
+            if issuer_text:
+                answer = "요청하신 발행사의 채권은 제공된 데이터에 없습니다." + issuer_text
+                cand = ["issuer"]           # 아래 0행 진단을 겹쳐 붙이지 않는다 — 되묻기가 사유를 대신한다
+                step("[Suggest] 발행사 등호 0건 — 같은 어두의 실제 발행사 되묻기 (clarify.존재하지_않는_개체)")
         try:
             # 후보 되묻기가 이미 사유를 대신한다 — 이름 조건 하나짜리 진단을 겹쳐 붙이지 않는다
             diag = None if cand else guard.diagnose_zero_rows(sql)
@@ -2966,6 +3166,13 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = cnt
         return result
+    zero = _zero_count_answer(sql, rows, n)
+    if zero is not None:
+        step("[Answer] 0 집계 답변 기계 조립 — 단일 COUNT/SUM 결과 0 은 HCX 없이 '확인되지 않음' 으로 옮긴다 "
+             "(2026-09-02 실측: '삼성전자가 발행한 채권 있어?' COUNT=0 1행이 0행 조기반환을 비켜 HCX 작문으로 나감)")
+        result.think_trace = "\n".join(trace)
+        result.answer = zero
+        return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))
     # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
@@ -2975,7 +3182,14 @@ def answer_question(
     if hidden:
         step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
     header = f"(조회 결과: 총 {n}행)"
-    if n >= MAX_ROWS:
+    bond_cov = _bond_coverage_counts(sql) if (n >= MAX_ROWS or _explicit_limit_hit(sql, n)) else None
+    if bond_cov and bond_cov[1] > n:
+        # 채권 상위 k 목록 — 종목 총량을 굽는다 (2026-09-02 실측: '한전 수익률 높은 순' LIMIT 5 에 "386종목 중 상위 5" 재료 부재)
+        total_rows, total_pdno = bond_cov
+        header = (f"(조회 결과: 전체 {total_pdno:,}종목 중 상위 {n}종목 표시 — 나머지는 표시되지 않았으므로 "
+                  f"전체를 나열한 것처럼 말하지 않는다. 답 첫 줄에 '전체 {total_pdno:,}종목 중 상위 {n}개' 를 밝힌다)")
+        step(f"[Answer] 커버리지 병기 — 채권 상위 {n} 목록, 전체 {total_pdno:,}종목({total_rows:,}행)을 답변 입력에 굽는다")
+    elif n >= MAX_ROWS:
         # 🔴 LIMIT 에 잘린 목록은 전체 규모를 굽는다 — 2026-09-02 R3 재검: 30행 중 5행만 옮기고 "다음과 같습니다" 전칭,
         #    총량(560행/248펀드) 미고지. SQLite 재실행 1회·HCX 0회 — 모델이 세지 않게 문자열로 준다.
         cov = _coverage_counts(sql)

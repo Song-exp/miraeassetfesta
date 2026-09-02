@@ -1,9 +1,9 @@
 # shared/region — 투자지역 개체 (횡단 층 + 계층 closure)
-# 국내ETF(한글 11종) ↔ 해외ETF(영문 59종) ↔ 공모펀드(한글 7종).
+# 국내ETF(한글 11종) ↔ 해외ETF(영문 59종) ↔ 공모펀드(한글 지리값 7종 + '해당없음' 3,678행·'기타' 38행은 비지리값이라 미등록 — 2026-09-02).
 # parent 필드가 계층이 되고, 생성기가 kg_closure 로 전개한다 (일본 ⊂ 아시아 ⊂ 글로벌).
 #
-# 값 근거: DB distinct 전수 확인 (2026-08-18)
-# 🔴 해외ETF 국가 단위 값 40여 종(UK·Switzerland 등 각 1~5건)은 미등록 — coverage report 로 추적, 전수 등록은 후속.
+# 값 근거: DB distinct 전수 확인 (1차 2026-08-18 → alias evidence 는 2차 2026-08-22 데이터로 2026-09-02 재확인·병기)
+# ✅ 해외ETF 국가 단위 값은 2026-08-25 전수 등록 — 2차 wu_inv_rgn distinct 59종 전부 alias 보유 (2026-09-02 재확인: 미등록 0).
 # 🔴 '이머징/브릭스'는 지리 축이 아니라 시장분류 축 — 워크샵에서 별도 축 분리 여부 확정 필요.
 
 entity: Region
@@ -16,8 +16,8 @@ nodes:
     label_en: Global
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "글로벌", source: manual, evidence: "76건"}
-      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Global", source: manual, evidence: "718건"}
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "글로벌", source: manual, evidence: "42,875건"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Global", source: manual, evidence: "2차 766행 (1차 718건)"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "글로벌", source: manual, evidence: "2차 5,925행 (1차 42,875건)"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Global", source: manual, evidence: "157건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
 
   Region_GlobalExUS:
@@ -26,7 +26,7 @@ nodes:
     parent: Region_Global
     note: "미국 제외 글로벌 — 계층상 Global 하위로 두되 '미국 포함' 질의와 구분 필요"
     aliases:
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Global Ex US", source: manual, evidence: "303건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "Global Ex US", source: manual, evidence: "2차 311행 (1차 303건)"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Global Ex US", source: manual, evidence: "1건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
 
   Region_Asia:
@@ -35,7 +35,7 @@ nodes:
     parent: Region_Global
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "아시아", source: manual, evidence: "33건"}
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "아시아", source: manual, evidence: "10,265건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "아시아", source: manual, evidence: "2차 1,290행 (1차 10,265건)"}
       # 'Asia Pacific' 은 Region_AsiaPacific 으로 이동 (리드 결정 2026-08-31) — 실물 9건이 VPL·IPAC 등
       # 일본+호주+NZ 포함 Pacific 계열이라 '아시아' 부착은 과대 해석이었다.
 
@@ -47,9 +47,9 @@ nodes:
     #   지리적 계층(skos:broader)은 유지하되 closure 후손 전개에서만 제외한다. 질문이 '국내 포함' 을 명시해야 포함.
     closure_as_descendant: false
     aliases:
-      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "국내",  source: manual, evidence: "1,036건"}
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "국내",  source: manual, evidence: "33,223건"}
-      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Korea", source: manual, evidence: "7건 — 해외상장 한국물"}
+      - {table: domestic_etfs, column: wu_inv_rgn,      raw: "국내",  source: manual, evidence: "2차 1,069행 (1차 1,036건)"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "국내",  source: manual, evidence: "2차 11,300행 (1차 33,223건)"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Korea", source: manual, evidence: "2차 8행 (1차 7건) — 해외상장 한국물"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Korea", source: manual, evidence: "665건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
 
   Region_China:
@@ -58,7 +58,7 @@ nodes:
     parent: Region_Asia
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn, raw: "중국",  source: manual, evidence: "63건"}
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "China", source: manual, evidence: "46건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "China", source: manual, evidence: "2차 48행 (1차 46건)"}
       - {table: overseas_etfs, column: wu_inv_rgn, raw: "Greater China", source: manual, evidence: "2건 — 리드 확정 08-31: 실물 ASHR(CSI300 순수 A주)·NBCE(중국 주식)라 본토 China 부착이 실질 정합. 대만 혼입 실측 0"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "China", source: manual, evidence: "56건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Greater China", source: manual, evidence: "1건 — 리드 확정 08-31 (위와 동일 근거)"}
@@ -97,14 +97,14 @@ nodes:
     note: "국내 데이터가 남미·북미를 하나로 묶어 표기 — 하위에 북미/남미/미국 계층"
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "남미/북미", source: manual, evidence: "12건"}
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "남미/북미", source: manual, evidence: "4,984건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "남미/북미", source: manual, evidence: "2차 815행 (1차 4,984건)"}
 
   Region_NorthAmerica:
     label_ko: 북미
     label_en: North America
     parent: Region_Americas
     aliases:
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "North America", source: manual, evidence: "1건"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "North America", source: manual, evidence: "2차 2행 (1차 1건)"}
 
   Region_LatinAmerica:
     label_ko: 남미
@@ -119,8 +119,8 @@ nodes:
     label_en: United States
     parent: Region_NorthAmerica
     aliases:
-      - {table: domestic_etfs, column: wu_inv_rgn, raw: "미국", source: manual, evidence: "453건"}
-      - {table: overseas_etfs, column: wu_inv_rgn, raw: "United States of America", source: manual, evidence: "4,196건"}
+      - {table: domestic_etfs, column: wu_inv_rgn, raw: "미국", source: manual, evidence: "2차 466행 (1차 453건)"}
+      - {table: overseas_etfs, column: wu_inv_rgn, raw: "United States of America", source: manual, evidence: "2차 4,520행 (1차 4,196건)"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "United States of America", source: manual, evidence: "273건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
 
   Region_Europe:
@@ -130,7 +130,7 @@ nodes:
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "유럽",   source: manual, evidence: "7건"}
       - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Europe", source: manual, evidence: "41건"}
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "유럽",   source: manual, evidence: "1,846건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "유럽",   source: manual, evidence: "2차 329행 (1차 1,846건)"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Europe", source: manual, evidence: "6건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
       # 'EuroZone' 은 신설 Region_EuroZone(하위 노드)으로 이동 (리드 결정 2026-08-31) —
       # Europe 직접 부착 시 "유로존" 질의가 영국·스위스 포함 유럽 전체로 과대 해석된다.
@@ -151,8 +151,8 @@ nodes:
     note: "🔴 지리 축 아닌 시장분류 축 — 별도 축 분리 여부 워크샵 안건"
     aliases:
       - {table: domestic_etfs, column: wu_inv_rgn,      raw: "이머징/브릭스", source: manual, evidence: "5건"}
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "이머징/브릭스", source: manual, evidence: "2,261건"}
-      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Global Emerging Markets", source: manual, evidence: "175건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "이머징/브릭스", source: manual, evidence: "2차 283행 (1차 2,261건)"}
+      - {table: overseas_etfs, column: wu_inv_rgn,      raw: "Global Emerging Markets", source: manual, evidence: "2차 177행 (1차 175건)"}
       - {table: overseas_etfs, column: wu_inv_rgn,      raw: "BRIC", source: manual, evidence: "1건"}
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Global Emerging Markets", source: manual, evidence: "4건 — 2차 신규 참조컬럼(Lipper), 표기 동일"}
 
@@ -161,10 +161,10 @@ nodes:
     label_en: Middle East & Africa
     parent: Region_Global
     aliases:
-      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "중동/아프리카", source: manual, evidence: "99건"}
+      - {table: public_funds,  column: fd_ivst_rgn_desc, raw: "중동/아프리카", source: manual, evidence: "2차 18행 (1차 99건)"}
       - {table: overseas_etfs, column: wu_inv_rgn,       raw: "Africa",       source: manual, evidence: "1건"}
 
-  # ── 2026-08-25 해외ETF wu_inv_rgn 45종 국가/권역 노드 (graph_sources_review §3) — parent 로 기존 권역 계층에 연결 ──
+  # ── 2026-08-25 해외ETF wu_inv_rgn 42종 국가/권역 노드(source: rule alias 42건 · 2026-09-02 재계수, 옛 표기 45) (graph_sources_review §3) — parent 로 기존 권역 계층에 연결 ──
   Region_Brazil:
     label_ko: 브라질
     label_en: Brazil
@@ -442,4 +442,4 @@ nodes:
     aliases:
       - {table: domestic_etfs, column: ref_geo_focus, raw: "Russia", source: manual, evidence: "1건 — 2차 신규 참조컬럼(Lipper)"}
 absent_in:
-  domestic_bonds: "투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)"
+  domestic_bonds: "투자지역 컬럼 없음 — pd_ctry_cd(발행국)는 2차 21,881/21,882 행이 KR(XS 1행)인 사실상 상수 (1차 42,393/42,394 · enums 판정: kg_entity null)"

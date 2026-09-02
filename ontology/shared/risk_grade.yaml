@@ -9,8 +9,8 @@
 #   domestic_bonds.pd_risk_gcd          : '00','11'~'16' (문자열, 2차 데이터 — 1차의 0~6 정수는 코드 이슈로 폐기. pd_risk_nm 병행 수록)
 #   domestic_etfs.pd_risk_cd            : PD_RISK_GCD_11 ~ _16 (뒤 2자리 - 10 = 등급)
 #   domestic_etfs.pd_risk_nm            : '매우높은위험(1등급)' 등 6종
-#   public_funds.zrin_fd_ivst_risk_gcd  : 1.0~6.0 (실수) + 오염값 20054.0 (65건 추정 — 미매핑 리포트로 추적)
-#   public_funds.zrin_fd_ivst_risk_grd_nm : '매우 높은 위험' 등 6종 (띄어쓰기 있음)
+#   public_funds.zrin_fd_ivst_risk_gcd  : 1.0~6.0 (실수) · NULL 14,987행 (2차 2026-09-02 재확인 — 1차의 오염값 20054.0 은 2차에 없음)
+#   public_funds.zrin_fd_ivst_risk_grd_nm : '매우 높은 위험' 등 6종 (띄어쓰기 있음) + 띄어쓰기 없는 변형 2종('높은위험' 20행·'보통위험' 8행) = 8종
 
 entity: RiskGrade
 description: 투자위험등급 (1=매우높은위험 ~ 6=매우낮은위험, 낮을수록 위험. 0=미분류)
@@ -44,7 +44,7 @@ nodes:
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "높은위험(2등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "2.0",            source: rule}
       - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "높은 위험",       source: manual}
-      - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "높은위험",        source: manual, evidence: "띄어쓰기 없는 변형 163행 — coverage report 260818 발견"}
+      - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "높은위험",        source: manual, evidence: "띄어쓰기 없는 변형 — 1차 163행 → 2차 20행 (2026-09-02 재확인)"}
   RiskGrade_3:
     label_ko: 다소 높은 위험
     aliases:
@@ -61,7 +61,7 @@ nodes:
       - {table: domestic_etfs,  column: pd_risk_nm,               raw: "보통위험(4등급)", source: manual}
       - {table: public_funds,   column: zrin_fd_ivst_risk_gcd,    raw: "4.0",            source: rule}
       - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "보통 위험",       source: manual}
-      - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "보통위험",        source: manual, evidence: "띄어쓰기 없는 변형 75행 — coverage report 260818 발견"}
+      - {table: public_funds,   column: zrin_fd_ivst_risk_grd_nm, raw: "보통위험",        source: manual, evidence: "띄어쓰기 없는 변형 — 1차 75행 → 2차 8행 (2026-09-02 재확인)"}
   RiskGrade_5:
     label_ko: 낮은 위험
     aliases:
@@ -81,7 +81,7 @@ nodes:
 
   RiskGrade_0:
     label_ko: 미분류
-    note: "🔴 채권 58건에만 존재 — 미분류 추정, 워크샵 확정 필요"
+    note: "채권에만 존재 — 1차 58건 → 2차 19행/19종목, pd_risk_nm='해당없음'. range_by_table.domestic_bonds.unclassified=0 으로 확정 (2026-09-02 재확인)"
     aliases:
       - {table: domestic_bonds, column: pd_risk_gcd, raw: "00", source: rule, evidence: "2차: 19건 · pd_risk_nm='해당없음'"}
 

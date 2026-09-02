@@ -35,7 +35,7 @@ fp:isHeldBy a owl:ObjectProperty ; owl:inverseOf fp:holds ; rdfs:comment "종목
 fp:formerName a owl:AnnotationProperty ; rdfs:comment "구상호 — 매칭 시 후계 법인 코드로 조회하고 '현재 X 가 운용' 을 답에 병기한다"@ko .
 fp:successor a owl:ObjectProperty ; rdfs:domain fp:Organization ; rdfs:range fp:Organization ; rdfs:comment "합병·이관으로 현재 그 상품을 운용하는 법인"@ko .
 
-# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 24.6%·0등급 존재) ──
+# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 40.8%(2차 8,929행·7,803종목)·0등급('00') 19행 존재) ──
 fp:riskGradeValue a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf ( fp:DomesticBond fp:DomesticETF fp:PublicFund ) ] ;  # 해외ETF 는 위험등급 컬럼 자체가 없음(ABSENT — etf_gl.ttl)
     rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;

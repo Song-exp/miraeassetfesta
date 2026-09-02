@@ -418,8 +418,8 @@ def _ttl_header(what):
 # (fp:expenseRatio 는 규격 p.9 etf_gl.ttl 예시 그대로. 값 자체는 SQLite 가 정본 — 여기엔 사상 관계만)
 DATATYPE_PROPS = {
     "bond_kr": [
-        ("couponRate", "fp:DomesticBond", "xsd:decimal", "표면금리(%) — 컬럼 srfc_irt. 할인채 172건은 이 란에 할인율이 기재됨(검토 B6)"),
-        ("duration", "fp:DomesticBond", "xsd:decimal", "듀레이션(년) — 컬럼 dur. 조기상환권부는 산출 불능이라 0 표기(검토 B5, 98.0%)"),
+        ("couponRate", "fp:DomesticBond", "xsd:decimal", "표면금리(%) — 컬럼 srfc_irt. 할인채(bd_intp_tcd='할인채', 2차 689행)는 이 란에 할인율이 기재됨(검토 B6 — 1차 172건)"),
+        ("duration", "fp:DomesticBond", "xsd:decimal", "듀레이션(년) — 컬럼 dur. 2차: 0 표기 52행·NULL 16행/21,882행 — 콜·조기상환 2,683행 중 0 은 4행뿐(1차 검토 B5 '조기상환권부 98.0% 가 0' 은 2차에 해당 없음)"),
     ],
     "etf_kr": [
         ("aum", "fp:DomesticETF", "xsd:decimal", "순자산총액 — 컬럼 du_last_aum, 단위 KRW(원). 해외ETF(USD)와 통합 정렬 금지"),
@@ -485,7 +485,7 @@ def emit_ttl(shared, con=None, enums=None):
     C.append("fp:formerName a owl:AnnotationProperty ; rdfs:comment \"구상호 — 매칭 시 후계 법인 코드로 조회하고 '현재 X 가 운용' 을 답에 병기한다\"@ko .")
     C.append("fp:successor a owl:ObjectProperty ; rdfs:domain fp:Organization ; rdfs:range fp:Organization ; rdfs:comment \"합병·이관으로 현재 그 상품을 운용하는 법인\"@ko .")
     C.append("")
-    C.append("# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 24.6%·0등급 존재) ──")
+    C.append("# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 40.8%(2차 8,929행·7,803종목)·0등급('00') 19행 존재) ──")
     C.append("fp:riskGradeValue a owl:DatatypeProperty ;")
     C.append("    rdfs:domain [ owl:unionOf ( fp:DomesticBond fp:DomesticETF fp:PublicFund ) ] ;  # 해외ETF 는 위험등급 컬럼 자체가 없음(ABSENT — etf_gl.ttl)")
     C.append("    rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;")

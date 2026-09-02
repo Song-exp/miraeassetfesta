@@ -12,18 +12,18 @@ fp:DomesticBond rdfs:subClassOf fp:Product ; rdfs:comment "SQLite 테이블 dome
 fp:couponRate a owl:DatatypeProperty ;
     rdfs:domain fp:DomesticBond ;
     rdfs:range  xsd:decimal ;
-    rdfs:comment "표면금리(%) — 컬럼 srfc_irt. 할인채 172건은 이 란에 할인율이 기재됨(검토 B6)"@ko .
+    rdfs:comment "표면금리(%) — 컬럼 srfc_irt. 할인채(bd_intp_tcd='할인채', 2차 689행)는 이 란에 할인율이 기재됨(검토 B6 — 1차 172건)"@ko .
 fp:duration a owl:DatatypeProperty ;
     rdfs:domain fp:DomesticBond ;
     rdfs:range  xsd:decimal ;
-    rdfs:comment "듀레이션(년) — 컬럼 dur. 조기상환권부는 산출 불능이라 0 표기(검토 B5, 98.0%)"@ko .
+    rdfs:comment "듀레이션(년) — 컬럼 dur. 2차: 0 표기 52행·NULL 16행/21,882행 — 콜·조기상환 2,683행 중 0 은 4행뿐(1차 검토 B5 '조기상환권부 98.0% 가 0' 은 2차에 해당 없음)"@ko .
 
 # ABSENT: fp:DomesticBond 에는 fp:hasAssetClass 없음 — 자산군 컬럼 없음 — 상품 자체가 채권. 클래스 계층(DomesticBond ⊂ Bond)으로 처리
 fp:DomesticBond rdfs:comment "hasAssetClass 속성 없음: 자산군 컬럼 없음 — 상품 자체가 채권. 클래스 계층(DomesticBond ⊂ Bond)으로 처리"@ko .
 # ABSENT: fp:DomesticBond 에는 fp:tracksIndex 없음 — 기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각
 fp:DomesticBond rdfs:comment "tracksIndex 속성 없음: 기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각"@ko .
-# ABSENT: fp:DomesticBond 에는 fp:hasRegion 없음 — 투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)
-fp:DomesticBond rdfs:comment "hasRegion 속성 없음: 투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)"@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasRegion 없음 — 투자지역 컬럼 없음 — pd_ctry_cd(발행국)는 2차 21,881/21,882 행이 KR(XS 1행)인 사실상 상수 (1차 42,393/42,394 · enums 판정: kg_entity null)
+fp:DomesticBond rdfs:comment "hasRegion 속성 없음: 투자지역 컬럼 없음 — pd_ctry_cd(발행국)는 2차 21,881/21,882 행이 KR(XS 1행)인 사실상 상수 (1차 42,393/42,394 · enums 판정: kg_entity null)"@ko .
 # 값 범위 — fp:DomesticBond 의 fp:riskGradeValue 는 0~6 (0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재 — 답변 가능)
 fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
     rdfs:domain fp:DomesticBond ;

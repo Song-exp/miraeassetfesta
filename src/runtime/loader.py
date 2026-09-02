@@ -80,6 +80,7 @@ class RuntimeContext:
     crd_grades: set = field(default_factory=set)       # 채권 신용등급 — 2차 데이터에 실제로 있는 값 (value_semantics)
     std_grades: set = field(default_factory=set)       # 신용등급 표준표 (credit_grade_scale.csv, DB 표기+표준 표기)
     route_vocab: dict = field(default_factory=dict)    # table -> {term: weight} — 라우팅 ② 겹 어휘. DB·yaml synonyms 에서 자동 생성
+    route_products: dict = field(default_factory=dict) # table -> {상품명 term} — 이 매치가 있는 테이블은 라우팅 점수컷 면제
     schema: dict = field(default_factory=dict)         # table -> [(column, korean_name, data_type)]
     # ── 2026-08-30 개선 (docs/research/온톨로지_개정안_2026-08-30.md) ──
     refusal_rules: dict = field(default_factory=dict)  # R-5 ② 층 — enums/_refusal.yaml (사유명 -> 규칙 문장). 플래너가 REFUSE: 를 내는 근거
@@ -126,8 +127,13 @@ class RuntimeContext:
                 if str(name).startswith("_"):
                     continue
                 if isinstance(rule, dict) and "triggers" in rule:
-                    if question is not None and not any(w in question for w in rule.get("triggers") or []):
-                        continue
+                    # 🔴 대소문자 무시 — 사람은 'kodex'·'ai' 라고도 쓴다. 트리거가 대문자(KODEX·AI)로만
+                    #    등록돼 있으면 소문자 질의에서 규칙이 통째로 빠진다 (2026-09-01, ETF triggers 도입 시 실측).
+                    #    트리거 누락은 규칙 미주입 = 오답이고, 과잉 주입은 무해하므로 casefold 로 넓게 맞춘다.
+                    if question is not None:
+                        q_cf = question.casefold()
+                        if not any(str(w).casefold() in q_cf for w in rule.get("triggers") or []):
+                            continue
                     rule = rule.get("text", "")
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")
@@ -302,7 +308,7 @@ def load_context() -> RuntimeContext:
             cols = [(r[1], "", r[2]) for r in con.execute(f"pragma table_info({t})")]
             if cols:
                 ctx.schema[t] = cols
-        ctx.route_vocab = _build_route_vocab(con, ctx)
+        ctx.route_vocab, ctx.route_products = _build_route_vocab(con, ctx)
         ctx.value_index = _build_value_index(con, ctx)
     # validate_sql 이 `테이블.컬럼` 수식자의 소속을 검사할 수 있게 색인을 넘긴다
     # (ctx 를 못 받는 순수 함수라 모듈 캐시로 준다 — 2026-08-31 'domestic_etfs.weight_pct' 실측)
@@ -386,9 +392,16 @@ def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
             if 1 < n <= ROUTE_CATEGORICAL_MAX:
                 for (v,) in con.execute(f"select distinct trim({col}) from {t} where {col} is not null"):
                     add(t, v, 2)
+    # 상품명(약어명·티커)은 별도 집합에도 담는다 — "TIGER 미국S&P500 이랑 VOO 중 뭐가 나아" 에서
+    # 긴 국내 상품명이 점수를 부풀려 해외(VOO 직격 매치)가 70% 컷에 잘렸다(2026-09-01 로컬 점검).
+    # 상품명이 직접 나온 테이블은 상대 점수와 무관하게 라우팅에서 탈락하면 안 된다.
+    products: dict[str, set] = {t: set() for t in TABLES}
     for t in ("domestic_etfs", "overseas_etfs"):
         for (v,) in con.execute(f"select distinct trim(pd_abrv_nm) from {t} where pd_abrv_nm is not null"):
             add(t, v, 3)
+            term = _VOCAB_STRIP.sub("", str(v or "")).strip()
+            if term in vocab[t]:
+                products[t].add(term)
     for t in TABLES:
         cols = {r[1].lower() for r in con.execute(f"pragma table_info({t})")}
         for term, canon in (((ctx.enums.get(t) or {}).get("synonyms") or {}).items()):
@@ -397,4 +410,9 @@ def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
             if isinstance(canon, str) and canon.strip().lower() in cols:
                 continue
             add(t, term, 2, min_len=2)          # '국채'·'만기' 같은 2자 통칭 — yaml 이 고른 것만
-    return vocab
+    # 다의어 상품명은 면제 자격 박탈 — 'AAA' 는 해외 ETF 티커이자 채권 신용등급이라
+    # "은행채 중 AAA" 를 해외로 끌고 갔다(2026-09-01). 그 테이블에만 있는 상품명만 남긴다.
+    for t in products:
+        products[t] = {p for p in products[t]
+                       if not any(p in vocab[u] for u in TABLES if u != t)}
+    return vocab, products

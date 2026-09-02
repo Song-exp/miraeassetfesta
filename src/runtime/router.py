@@ -150,18 +150,24 @@ def onto_route(question: str, ctx: RuntimeContext) -> tuple[set[str], dict[str, 
     squeezed = re.sub(r"\s+", "", question)
     score: dict[str, float] = {}
     hits: dict[str, list[str]] = {}
+    prod_tables: set[str] = set()
     for t in TABLES:
         s, h = 0.0, []
+        prods = ctx.route_products.get(t) or ()
         for term, w in (ctx.route_vocab.get(t) or {}).items():
             if _bound_in(term, question, squeezed):
                 s += w * (1 + 0.1 * len(term))    # 긴 값이 더 확실한 신호다
                 h.append(term)
+                if term in prods:
+                    prod_tables.add(t)
         score[t] = round(s, 1)
         hits[t] = sorted(h, key=len, reverse=True)[:3]
     best = max(score, key=score.get)
     if score[best] == 0:
         return set(), score, hits
-    return {t for t in TABLES if score[t] >= _SCORE_KEEP * score[best]}, score, hits
+    # 🔴 상품명(약어명·티커) 직격 매치 테이블은 상대 점수컷 면제 — "TIGER 미국S&P500 이랑
+    #    VOO 중 뭐가 나아" 에서 긴 국내 상품명이 점수를 부풀려 해외가 잘렸다(2026-09-01).
+    return {t for t in TABLES if score[t] >= _SCORE_KEEP * score[best]} | prod_tables, score, hits
 
 
 def route(question: str, ctx: RuntimeContext) -> Route:

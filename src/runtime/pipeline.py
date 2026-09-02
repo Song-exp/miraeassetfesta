@@ -71,6 +71,10 @@ _FORBIDDEN = re.compile(
 
 
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+# 서버 실측 2026-09-02 "바이오 ETF 추천" — OR 사슬 뒤에 괄호 없이 AND 필터를 붙여
+# 필터가 마지막 OR 가지에만 걸렸다(괄호를 치면 0행, 안 치면 모수 오염 — 어느 쪽도 오답).
+# 말로 하는 규칙은 무시되므로 기계적으로 차단한다.
+_WHERE_SEG = re.compile(r"(?<![A-Za-z_])WHERE(?![A-Za-z_])(.*?)(?=(?<![A-Za-z_])(?:GROUP|ORDER)\s+BY|(?<![A-Za-z_])LIMIT|(?<![A-Za-z_])UNION|$)", re.I | re.S)
 # ext_* ↔ 마스터 조인 짝 (external_join 정본). validate_sql 이 남남 조인을 기각하는 근거.
 _EXT_PAIR = {"ext_etf_holdings": "domestic_etfs", "ext_ovs_etf_holdings": "overseas_etfs",
              "ext_fund_holdings": "public_funds", "ext_fund_page": "public_funds"}
@@ -122,6 +126,14 @@ def validate_sql(sql: str) -> str | None:
         return "SELECT 만 허용"
     if _FORBIDDEN.search(s):
         return "금지 키워드 포함"
+    for seg_m in _WHERE_SEG.finditer(s):
+        seg = re.sub(r"'[^']*'", "''", seg_m.group(1))   # 문자열 리터럴 안의 OR/AND 무시
+        prev = None
+        while prev != seg:                                # 괄호 안쪽부터 반복 제거 → 최상위만 남긴다
+            prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
+        if re.search(r"\sOR\s", seg, re.I) and re.search(r"\sAND\s", seg, re.I):
+            return ("WHERE 최상위에 괄호 없는 OR 와 AND 가 섞여 있다 — AND 가 먼저 묶여 "
+                    "필터가 마지막 OR 가지에만 걸린다. OR 가지 전체를 괄호로 감싸라: (A OR B) AND 필터")
     used = {t for t in TABLES if re.search(rf"\b{t}\b", s, re.I)}
     if not used:
         m = re.search(r"\bfrom\s+([\w.]+)", s, re.I)
@@ -2766,8 +2778,7 @@ _SHORT_MIN_EN = 5
 # Security 라벨 1,262개가 이 꼴이라 한쪽 표기로 물으면 통째로 못 잡았다.
 _LABEL_SPLIT = re.compile(r"\s*/\s*")
 
-_MATCH_KEYS: dict[int, list] = {}   # id(ctx) -> [(키, 노드, 경계검사)] · 질문과 무관해 1회만 만든다
-_SYN_KEYS: dict[int, dict] = {}     # id(ctx) -> {정식 표기: [사용자 통칭 …]}
+# (매칭 키·동의어 캐시는 ctx 객체 속성으로 옮겼다 — _synonym_keys()·_ground() 참조)
 
 
 def _synonym_keys(ctx) -> dict:
@@ -2783,14 +2794,16 @@ def _synonym_keys(ctx) -> dict:
        HLB글로벌→'B글로벌'(깨짐) · 현대차증권→'차증권'(무의미)이 나온다.
        사람이 고른 통칭만 쓴다 — 그게 yaml synonyms 가 있는 이유다.
     """
-    out = _SYN_KEYS.get(id(ctx))
+    # 🔴 캐시는 ctx **객체 속성**에 둔다 — 종전 모듈 dict + id(ctx) 키는 /reload 로 ctx 가
+    #    교체될 때 옛 객체의 id 가 재활용되면 낡은 표를 돌려줄 수 있다(2026-09-01 자체 점검 §7).
+    out = getattr(ctx, "_syn_keys_cache", None)
     if out is None:
         out = {}
         for domain, doc in (ctx.enums or {}).items():
             for term, canon in ((doc or {}).get("synonyms") or {}).items():
                 if isinstance(canon, str) and canon and canon != term and len(term) >= 2:
                     out.setdefault(canon, []).append((term, domain))   # 4R I-3: 통칭은 **그 테이블** 노드에만 붙인다
-        _SYN_KEYS[id(ctx)] = out
+        ctx._syn_keys_cache = out   # 병철 09-02: ctx 속성 캐시 (id 재활용 stale 방지)
     return out
 
 
@@ -2934,7 +2947,7 @@ def _ground(
     name_mode = bool(_NAME_MODE_Q.search(question))
     # (키, 노드, 경계검사) 목록은 질문과 무관하다 — 프로세스당 1회만 만든다.
     # 정렬만 질문마다 다시 한다(_in_target 이 대상 테이블에 걸려 있어서).
-    pairs = _MATCH_KEYS.get(id(ctx))
+    pairs = getattr(ctx, "_match_keys_cache", None)   # ctx 속성 캐시 — id 재활용 stale 방지(위와 동일)
     if pairs is None:
         seen_keys: set = set()
         pairs = []
@@ -2944,7 +2957,7 @@ def _ground(
                     continue
                 seen_keys.add((node.node_id, key))
                 pairs.append((key, node, bounded, kind))
-        _MATCH_KEYS[id(ctx)] = pairs
+        ctx._match_keys_cache = pairs   # 병철 09-02: ctx 속성 캐시 (id 재활용 stale 방지)
     candidates = sorted(pairs, key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))))
     consumed = question
     for label, node, bounded, kind in candidates:

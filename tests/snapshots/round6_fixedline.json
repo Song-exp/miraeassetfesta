@@ -1,0 +1,575 @@
+{
+ "R1": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND (prvo_pbff_desc = '공모')",
+  "assembler": "분포 답변 기계 조립",
+  "rows": 19,
+  "answer_head": "조회 결과 19개 범주 · 클래스 8,969개 · 펀드 3,040개 (기준일 2026-08-22).\n\n- ("
+ },
+ "R2": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모'",
+  "assembler": "운용사 집계 답변 기계 조립",
+  "rows": 5,
+  "answer_head": "조회 결과 펀드 수 상위 5개 운용사입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준, 클래스 = "
+ },
+ "R3": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_CHN"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,CHN,%'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 30,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드는 다음과 같습니다 "
+ },
+ "R4": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00080008"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 6,
+  "answer_head": "'코어테크' 이름의 공모펀드 6개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예탁원번호 기준·"
+ },
+ "R5": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040024"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "한국투자신탁운용이 운용하는 공모펀드는 143개(클래스 541개)입니다 (판매중·공모 기준, 기준일 2026-"
+ },
+ "R6": {
+  "route": "public_funds",
+  "nodes": [
+   "Fund_284530e1ea"
+  ],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 6,
+  "answer_head": "'미래에셋차이나솔로몬증권투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 ="
+ },
+ "S3": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%'",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 2,
+  "answer_head": "'삼성코리아대표' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예탁원번호 "
+ },
+ "S5": {
+  "route": "public_funds",
+  "nodes": [
+   "Fund_284530e1ea"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3[([]*'))",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'미래에셋차이나솔로몬증권투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 ="
+ },
+ "S6": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_IND"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,IND,%'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 30,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 58개(클래스 135개)이며, 순자산 상위 30개 펀드는 다음과 같습니다 ("
+ },
+ "S7": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_VNM"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,VNM,%'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 30,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 38개(클래스 119개)이며, 순자산 상위 30개 펀드는 다음과 같습니다 ("
+ },
+ "S8": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040035"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "KB자산운용이 운용하는 공모펀드는 129개(클래스 625개)입니다 (판매중·공모 기준, 기준일 2026-08"
+ },
+ "S9": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00080029"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080029' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "피델리티자산운용이 운용하는 공모펀드는 106개(클래스 246개)입니다 (판매중·공모 기준, 기준일 2026-"
+ },
+ "S10": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND (prvo_pbff_desc = '공모')",
+  "assembler": "분포 답변 기계 조립",
+  "rows": 9,
+  "answer_head": "조회 결과 9개 범주 · 클래스 8,969개 · 펀드 3,040개 (기준일 2026-08-22).\n\n- MM"
+ },
+ "S11": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모'",
+  "assembler": "운용사 집계 답변 기계 조립",
+  "rows": 3,
+  "answer_head": "조회 결과 순자산 상위 3개 운용사입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준, 클래스 = 판"
+ },
+ "S12": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 6,
+  "answer_head": "'코어테크' 이름의 공모펀드 6개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예탁원번호 기준·"
+ },
+ "T1": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모'",
+  "assembler": "운용사 집계 답변 기계 조립",
+  "rows": 5,
+  "answer_head": "조회 결과 펀드 수 상위 5개 운용사입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준, 클래스 = "
+ },
+ "T2": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모'",
+  "assembler": "운용사 집계 답변 기계 조립",
+  "rows": 3,
+  "answer_head": "조회 결과 순자산 상위 3개 운용사입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준, 클래스 = 판"
+ },
+ "T3": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040010"
+  ],
+  "where": "sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00040010') AND prvo_pbff_desc = '공모')",
+  "assembler": "HCX",
+  "rows": 1,
+  "answer_head": ""
+ },
+ "T4": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_IDN"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,IDN,%'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 1개(클래스 7개)이며, 순자산 순으로 다음과 같습니다 (기준일 2026-0"
+ },
+ "T5": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_JPN"
+  ],
+  "where": "',' || prfd_attr_cds || ',' LIKE '%,JPN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 30,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 31개(클래스 79개)이며, 순자산 상위 30개 펀드는 다음과 같습니다 (기"
+ },
+ "T7": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표증권자투자신탁%'",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'삼성코리아대표증권자투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대"
+ },
+ "T10": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_BRA"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,BRA,%'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 19,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 19개(클래스 42개)이며, 순자산 순으로 다음과 같습니다 (기준일 2026"
+ },
+ "T12": {
+  "route": "public_funds",
+  "nodes": [
+   "Fund_f404f4dd8a"
+  ],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%NH-Amundi1.5배레버리지인덱스%'",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 2,
+  "answer_head": "'NH-Amundi1.5배레버리지인덱스' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, "
+ },
+ "T13": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_USA"
+  ],
+  "where": "',' || prfd_attr_cds || ',' LIKE '%,USA,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 30,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 98개(클래스 333개)이며, 순자산 상위 30개 펀드는 다음과 같습니다 ("
+ },
+ "V1": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00080008"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%인디아솔로몬증권투자신탁%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 3,
+  "answer_head": "'인디아솔로몬증권투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예"
+ },
+ "V2": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%한화2.2배레버리지인덱스%'",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'한화2.2배레버리지인덱스' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표"
+ },
+ "V3": {
+  "route": "public_funds",
+  "nodes": [
+   "Idx_a_fa21f0fb15"
+  ],
+  "where": "REPLACE(itm_nm,' ','') LIKE '%삼성KOSPI2002배레버리지%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'삼성KOSPI2002배레버리지' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 ="
+ },
+ "V6": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040035"
+  ],
+  "where": "sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00040035') AND prvo_pbff_desc = '공모')",
+  "assembler": "HCX",
+  "rows": 1,
+  "answer_head": ""
+ },
+ "V8": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_HKG"
+  ],
+  "where": "',' || prfd_attr_cds || ',' LIKE '%,HKG,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 15,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 15개(클래스 30개)이며, 순자산 순으로 다음과 같습니다 (기준일 2026"
+ },
+ "V9": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_RUS"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,RUS,%'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 22,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 22개(클래스 51개)이며, 순자산 순으로 다음과 같습니다 (기준일 2026"
+ },
+ "V10": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_IND"
+  ],
+  "where": "',' || prfd_attr_cds || ',' LIKE '%,IND,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 58개(클래스 135개)입니다 (판매중·공모 기준, 기준일 2026-08-2"
+ },
+ "V13": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%KB차이나그로스%' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'KB차이나그로스' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예탁원번호"
+ },
+ "V14": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_USA"
+  ],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,USA,%'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 98개(클래스 333개)입니다 (판매중·공모 기준, 기준일 2026-08-2"
+ },
+ "V16": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r > -100 AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012')",
+  "assembler": "HCX",
+  "rows": 5,
+  "answer_head": ""
+ },
+ "W4": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND REPLACE(itm_nm,' ','') LIKE '%KB브라질증권자투자신탁%'",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'KB브라질증권자투자신탁' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예"
+ },
+ "W5": {
+  "route": "public_funds",
+  "nodes": [
+   "Fund_284530e1ea"
+  ],
+  "where": "REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')",
+  "assembler": "HCX",
+  "rows": 7,
+  "answer_head": ""
+ },
+ "W7": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040040"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00040040' AND REPLACE(itm_nm,' ','') LIKE '%코리아2배레버리지%' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'코리아2배레버리지' 이름의 공모펀드 1개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표예탁원번"
+ },
+ "W8": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "REPLACE(itm_nm,' ','') LIKE '%한화%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "'한화' 이름이 들어간 공모펀드는 77개(클래스 309개)입니다 (판매중·공모 기준, 기준일 2026-08-"
+ },
+ "W9": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040024"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND REPLACE(itm_nm,' ','') LIKE '%베트남그로스증권자투자신탁%')",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 12,
+  "answer_head": "'베트남그로스증권자투자신탁' 이름의 공모펀드 3개가 조회됐습니다 (기준일 2026-08-22, 펀드 = 대표"
+ },
+ "W10": {
+  "route": "domestic_etfs, overseas_etfs",
+  "nodes": [],
+  "where": "",
+  "assembler": "HCX",
+  "rows": 5,
+  "answer_head": ""
+ },
+ "W11": {
+  "route": "public_funds",
+  "nodes": [
+   "Fund_789df27b8c"
+  ],
+  "where": "itm_no IN (SELECT itm_no FROM public_funds WHERE TRIM(rptt_ksd_itm_no) IN ('030230002D36')) AND sale_yn = '판매중' AND prvo_pbff_desc = '공모'",
+  "assembler": "개별 조회 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회된 공모펀드 1개입니다 (기준일 2026-08-22, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위)"
+ },
+ "W12": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_VNM"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,VNM,%'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 38개(클래스 119개)입니다 (판매중·공모 기준, 기준일 2026-08-2"
+ },
+ "KG-001": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00080008"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "미래에셋자산운용이 운용하는 공모펀드는 823개(클래스 2,066개)입니다 (판매중·공모 기준, 기준일 202"
+ },
+ "KG-003": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040087"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00040087' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "케이씨지아이자산운용이 운용하는 공모펀드는 27개(클래스 133개)입니다 (판매중·공모 기준, 기준일 2026"
+ },
+ "KG-004": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040024"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "한국투자신탁운용이 운용하는 공모펀드는 143개(클래스 541개)입니다 (판매중·공모 기준, 기준일 2026-"
+ },
+ "KG-007": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00080008"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "미래에셋자산운용이 운용하는 공모펀드는 823개(클래스 2,066개)입니다 (판매중·공모 기준, 기준일 202"
+ },
+ "KG-009": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_trustee_0016022"
+  ],
+  "where": "TRIM(trusc_xtn_itt_cd) = '0016022' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 2,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 2개(클래스 14개)이며, 순자산 순으로 다음과 같습니다 (기준일 2026-"
+ },
+ "KG-011": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040035",
+   "Org_trustee_00020004"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00040035' AND TRIM(trusc_xtn_itt_cd) = '00020004' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "KB자산운용이 운용하고 국민은행이 수탁하는 공모펀드는 0개(클래스 0개)입니다 (판매중·공모 기준, 기준일 "
+ },
+ "KG-013": {
+  "gate": true,
+  "answer": "공모펀드 위험등급은 1(매우 높은 위험)~6(매우 낮은 위험) 범위로 정의되어 있어 7등급은 없습니다. (0등급 없음 — 등급 미수록 클래스는 "
+ },
+ "KG-014": {
+  "gate": true,
+  "answer": "공모펀드 위험등급은 1(매우 높은 위험)~6(매우 낮은 위험) 범위로 정의되어 있어 0등급은 없습니다. (0등급 없음 — 등급 미수록 클래스는 "
+ },
+ "KG-015": {
+  "route": "public_funds",
+  "nodes": [
+   "RiskGrade_2"
+  ],
+  "where": "sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_grd_nm IN ('높은위험', '높은 위험'))",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 995개(클래스 2,994개)입니다 (판매중·공모 기준, 기준일 2026-0"
+ },
+ "KG-017": {
+  "route": "public_funds",
+  "nodes": [
+   "FundAttr_C104"
+  ],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,C104,%'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 3개(클래스 6개)입니다 (판매중·공모 기준, 기준일 2026-08-22)."
+ },
+ "KG-019": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_JPN"
+  ],
+  "where": "',' || prfd_attr_cds || ',' LIKE '%,JPN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모'",
+  "assembler": "목록 답변 기계 조립",
+  "rows": 30,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 31개(클래스 79개)이며, 순자산 상위 30개 펀드는 다음과 같습니다 (기"
+ },
+ "KG-020": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_USA"
+  ],
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,USA,%'",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 98개(클래스 333개)입니다 (판매중·공모 기준, 기준일 2026-08-2"
+ },
+ "KG-021": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_TWN"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,TWN,%' OR REPLACE(itm_nm,' ','') LIKE '%대만%')",
+  "assembler": "HCX",
+  "rows": 1,
+  "answer_head": ""
+ },
+ "KG-027": {
+  "gate": true,
+  "answer": "공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다. 규모는 순자산(fd_nas"
+ },
+ "KG-029": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00040007"
+  ],
+  "where": "TRIM(or_co_xtn_itt_cd) = '00040007' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모'",
+  "assembler": "HCX",
+  "rows": 1,
+  "answer_head": ""
+ },
+ "KG-032": {
+  "gate": true,
+  "answer": "제공된 데이터의 기준일은 2026-08-22입니다. 이후 시점의 정보는 확인할 수 없습니다."
+ },
+ "X4": {
+  "route": "public_funds",
+  "nodes": [
+   "FundAttr_N119"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,N119,%' OR ',' || prfd_attr_cds || ',' LIKE '%,N168,%' OR REPLACE(itm_nm,' ','') LIKE '%친환경%')",
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "조회 조건에 해당하는 공모펀드는 6개(클래스 23개)입니다 (판매중·공모 기준, 기준일 2026-08-22)"
+ },
+ "X18": {
+  "route": "public_funds",
+  "nodes": [
+   "Org_00080008"
+  ],
+  "where": "TRIM(public_funds.or_co_xtn_itt_cd) = '00080008' AND REPLACE(public_funds.itm_nm,' ','') LIKE '%코어테크증권자투자신탁%'",
+  "assembler": "HCX",
+  "rows": 20,
+  "answer_head": ""
+ },
+ "X20": {
+  "route": "public_funds",
+  "nodes": [],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+  "assembler": "HCX",
+  "rows": 2,
+  "answer_head": ""
+ },
+ "X21": {
+  "route": "public_funds",
+  "nodes": [
+   "Country_ESP"
+  ],
+  "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,ESP,%' OR REPLACE(itm_nm,' ','') LIKE '%스페인%')",
+  "assembler": "HCX",
+  "rows": 0,
+  "answer_head": ""
+ },
+ "X23": {
+  "gate": true,
+  "answer": "펀드 운용역(펀드매니저) 정보는 마스터·설명서 수집분에 없어 답할 수 없습니다. 운용사(운용회사 코드 → 법인명)는 안내할 수 있습니다."
+ },
+ "X24": {
+  "gate": true,
+  "answer": "기준가는 기준일 단일 스냅샷(bns_bpr)만 있고 시계열(추이·변동·과거 기준가)은 수록되어 있지 않습니다. 기준일 현재 기준가와 기간 수익률"
+ }
+}

@@ -65,7 +65,9 @@ def test_result_exposes_executed_sql(ctx):
 def test_executed_sql_is_the_corrected_one(ctx):
     """LIMIT 보정이 일어나면 **보정된 실제 실행문**이 남는다 — 생성 원문이 아니다."""
     r = answer_question("T-SQL3", "국내 ETF 몇 개야?", planner=FakePlanner(NO_LIMIT_SQL), ctx=ctx)
-    assert r.sql.startswith(NO_LIMIT_SQL) and "LIMIT" in r.sql
+    # 10R ③-5 — 질문에 근거가 없는 술어(`cu_fund_mgmt_co IS NOT NULL`)는 ETF 모수 가드가 걷어낸다.
+    # 이 테스트가 고정하는 것은 "실행된 SQL 이 결과에 남는다" 이지 원문 보존이 아니다.
+    assert r.sql.startswith(NO_LIMIT_SQL.split(" WHERE ", 1)[0]) and "LIMIT" in r.sql
     assert r.sql in r.think_trace
 
 

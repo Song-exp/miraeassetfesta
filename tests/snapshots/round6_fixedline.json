@@ -310,10 +310,10 @@
  "V16": {
   "route": "public_funds",
   "nodes": [],
-  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r > -100 AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012')",
-  "assembler": "HCX",
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012')",
+  "assembler": "랭킹 답변 기계 조립",
   "rows": 5,
-  "answer_head": ""
+  "answer_head": "3년 수익률 상위 5개 공모펀드입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단"
  },
  "W4": {
   "route": "public_funds",

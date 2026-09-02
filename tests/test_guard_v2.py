@@ -690,7 +690,11 @@ def test_fund_rank_group_by_injected():
     assert not f(_R7_SQL, "1년 수익률 높은 클래스 3개")[1]
     assert not f("SELECT COUNT(*) FROM public_funds ORDER BY fd_yr1_ern_r DESC LIMIT 1", q)[1]
     s4, ok4 = f(_FND15_SQL, q)
-    assert ok4 and "GROUP BY or_co_xtn_itt_cd" in s4 and s4.count("GROUP BY") == 1
+    # 10R gold ③-B 6 — HCX 자작 펀드키(COALESCE 없는 형)는 정본식으로 **교체**한다: 역외 110행(mtco NULL)이
+    # 한 그룹으로 뭉치던 것을 풀고, 조립기의 `GROUP BY <정본식>` 발동 조건도 결정적으로 만든다.
+    from src.runtime.pipeline import _FUND_KEY_EXPR
+    assert ok4 and s4.count("GROUP BY") == 1 and f"GROUP BY {_FUND_KEY_EXPR}" in s4
+    assert '"클래스수"' in s4 and "HAVING MAX(fd_mm6_ern_r)" in s4
 
 
 

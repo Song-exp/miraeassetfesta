@@ -496,9 +496,14 @@ _BASE_STRICT = {"sale_yn": "sale_yn = '판매중'", "prvo_pbff_desc": "prvo_pbff
 _SQL_WORDS = {"or", "and", "is", "not", "null", "in", "trim", "coalesce", "like", "upper", "lower"}
 
 
-def _strictify_base_population(sql: str) -> tuple[str, bool]:
-    """sale_yn / prvo_pbff_desc **만** 든 최상위 AND 절이 확정식(= '판매중' / = '공모')이 아니면 확정식으로 교체. (SQL, 교체했는지)
-    한정자(p.·public_funds.)는 유지한다. 서브쿼리·UNION 은 첫 WHERE 만 본다(보수적)."""
+def _strictify_base_population(sql: str, strict_map: dict | None = None, tbl: str = "public_funds") -> tuple[str, bool]:
+    """모수 컬럼 **만** 든 최상위 AND 절이 확정식이 아니면 확정식으로 교체. (SQL, 교체했는지)
+    한정자(p.·public_funds.)는 유지한다. 서브쿼리·UNION 은 첫 WHERE 만 본다(보수적).
+
+    🔴 10R 부류 Z — 이 "있으면 확인하고 아니면 교체" 형태가 확정식 가드의 **정본 형태**다. `not <절이 있는가>`
+       술어는 HCX 가 그 절을 틀리게 쓰면 가드가 자기를 끈다(9R U2·Y7 회귀). ETF 모수도 같은 기계를 쓴다.
+    """
+    strict_map = strict_map or _BASE_STRICT
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m_w:
         return sql, False
@@ -506,20 +511,21 @@ def _strictify_base_population(sql: str) -> tuple[str, bool]:
     out, changed = [], False
     for c in conjs:
         new_c = c
-        for col, strict in _BASE_STRICT.items():
+        for col, strict in strict_map.items():
             if not re.search(rf"\b{col}\b", c, re.I):
                 continue
             masked = _SQL_LITERAL.sub("''", c)
             idents = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", masked)} - _SQL_WORDS - {col}
-            idents = {w for w in idents if not re.fullmatch(r"[a-z]\w{0,3}|public_funds", w)}   # 별칭·테이블 한정자
+            idents = {w for w in idents if not re.fullmatch(rf"[a-z]\w{{0,3}}|{tbl}", w)}   # 별칭·테이블 한정자
             if idents:
                 break                                            # 다른 컬럼과 섞인 절 — 의도 불명, 불개입
-            strict_val = strict.split(chr(39))[1]
+            m_val = re.search(r"=\s*'?([^']+?)'?\s*$", strict)
+            strict_val = m_val.group(1) if m_val else ""
             if strict_val not in c and not re.search(r"IS\s+NULL|<>|!=|\bNOT\b", c, re.I):
                 break                                            # 다른 단일 값(= '판매완료' · = '사모')은 의도적 별개 모수 — 존중
             m_q = re.search(rf"\b(\w+\.)?{col}\b", c, re.I)
             qual = m_q.group(1) or ""
-            if re.fullmatch(rf"\(?\s*(?:{re.escape(qual)})?{col}\s*=\s*'{strict.split(chr(39))[1]}'\s*\)?", c.strip(), re.I):
+            if re.fullmatch(rf"\(?\s*(?:{re.escape(qual)})?{col}\s*=\s*'?{re.escape(strict_val)}'?\s*\)?", c.strip(), re.I):
                 break                                            # 이미 확정식
             new_c = qual + strict
             changed = True
@@ -637,6 +643,31 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
 _ETF_TBL = re.compile(r"\bfrom\s+(?:domestic_etfs|overseas_etfs)\b", re.I)
 _ETN_Q = re.compile(r"ETN|상장지수증권", re.I)
 _ETF_WIDEN = ("판매완료", "판매 완료", "판매중단", "판매 중단", "판매종료", "상장폐지", "전체 ETF", "모든 ETF")
+_ETF_BASE_STRICT = {"pd_grp_no": "pd_grp_no = 'ETF'", "pd_sale_yn": "pd_sale_yn = 1"}
+_ETF_NAME_FILTER = re.compile(r"\b(?:\w+\.)?(?:pd_nm|pd_abrv_nm|etf_name)\b\s*\)?\s*(?:LIKE|GLOB|=)", re.I)
+_KO_CHUNK = re.compile(r"[가-힣]{2,}")
+
+
+def _col_ko_of(table: str, col: str) -> str:
+    for c, ko, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get(table, ()):
+        if c.lower() == col.lower():
+            return ko or ""
+    return ""
+
+
+def _col_asked(table: str, col: str, question: str) -> bool:
+    """질문의 어떤 낱말이 이 컬럼을 지목하는가 — 스키마 한글명과 질문이 2자 이상 조각을 공유하는가(DB 원천, 하드코딩 0).
+
+    판별을 **넓게** 잡는다: 지우는 쪽이 위험하므로 조금이라도 대응하면 사용자 조건으로 존중한다.
+    '총보수요율' → '보수' 가 질문에 있으면 유지 · '기초지수' → '지수' 가 있으면 유지."""
+    ko = _col_ko_of(table, col)
+    q = question.replace(" ", "")
+    for word in _KO_CHUNK.findall(ko):
+        for size in range(len(word), 1, -1):
+            for i in range(len(word) - size + 1):
+                if word[i:i + size] in q:
+                    return True
+    return False
 
 
 def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
@@ -654,12 +685,38 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     if any(t in question for t in _ETF_WIDEN):
         return sql, False
-    missing = []
-    if not re.search(r"\bpd_grp_no\b", sql, re.I) and not _ETN_Q.search(question):
-        missing.append("pd_grp_no = 'ETF'")
-    if not re.search(r"\bpd_sale_yn\b", sql, re.I):
-        missing.append("pd_sale_yn = 1")
-    return _append_exclusions(sql, missing) if missing else (sql, False)
+    tbl = _ETF_TBL.search(sql).group(0).split()[-1].lower()
+    orig = sql
+    # 🔴 10R 부류 Z — **있으면 확인하고 아니면 교체.** 종전엔 컬럼 언급만으로 불개입해서 HCX 가
+    #    `pd_sale_yn = 0`·`pd_grp_no <> 'ETF'` 를 쓰면 가드가 자기를 껐다(9R U2·Y7 과 같은 형태).
+    strict = dict(_ETF_BASE_STRICT)
+    if _ETN_Q.search(question):
+        strict.pop("pd_grp_no")                     # ETN 질의는 상품군을 좁히지 않는다
+    sql, _ = _strictify_base_population(sql, strict, tbl)
+    missing = [v for c, v in strict.items() if not re.search(rf"\b{c}\b", sql, re.I)]
+    if missing:
+        sql, _ = _append_exclusions(sql, missing)
+    # 🔴 10R 재검 ③-5 (부류 B-4″-c) — 집계·랭킹 질의의 **날조 술어**를 제거한다. 판별식: 최상위 AND 절의
+    #    컬럼이 ⓐ 모수 확정식 컬럼도 아니고 ⓑ SELECT·ORDER BY 가 쓰는 값 컬럼도 아니고 ⓒ 질문 낱말과
+    #    대응하지도 않으면 사용자 조건이 아니다. 7R U8 실측: `cu_charge_rt > 0` 하나가 보수 0인 419행을
+    #    떨어뜨려 순자산 합계를 4,252,800(gold 4,380,605)으로 만들었다. 개별 조회(이름 필터)에는 적용하지 않는다.
+    if not _ETF_NAME_FILTER.search(sql):
+        m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+        if m_w:
+            frm = re.search(r"\bfrom\b", sql, re.I)
+            head_tail = sql[:frm.start()] + sql[m_w.end():]        # SELECT 목록 + GROUP/ORDER BY
+            kept = []
+            for c in guard.split_conjuncts(m_w.group(1)):
+                cols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", _SQL_LITERAL.sub("''", c))}
+                cols &= {x.lower() for x, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get(tbl, ())}
+                if cols and not (cols & set(strict)) \
+                        and not any(re.search(rf"\b{x}\b", head_tail, re.I) for x in cols) \
+                        and not any(_col_asked(tbl, x, question) for x in cols):
+                    continue                                       # 질문 어디에도 근거가 없는 술어 — 제거
+                kept.append(c)
+            if len(kept) != len(guard.split_conjuncts(m_w.group(1))):
+                sql = sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):]
+    return sql, sql != orig
 
 
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
@@ -739,39 +796,103 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
     target = _fund_sort_target(sql)
     if not target:
         return sql, False
+    orig = sql
     col, direction = target
     agg = "MAX" if direction == "DESC" else "MIN"
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
-    has_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    m_grp = re.search(r"\bgroup\s+by\b(.*?)(?=\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     tail = sql[frm.start():]
-    if has_group:
-        if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
+    if m_grp:
+        # 🔴 10R 부류 Z + gold ③-B 6 — GROUP BY 를 **확인하고 아니면 교체**한다. 종전엔 축에
+        #    `or_co_xtn_itt_cd` 가 있을 때만 개입하고 정본식인지는 안 봤다: HCX 자작 펀드키
+        #    (`COALESCE(…, itm_no)` 없는 형)는 역외 110행의 mtco NULL 을 한 그룹으로 뭉쳐 랭킹을 흔들었고,
+        #    조립기 `_fund_rank_answer` 의 `GROUP BY <정본식>` 리터럴 발동 조건도 비켜 갔다(②-4 미발동).
+        #    **펀드 식별 컬럼만으로 된 GROUP BY** 일 때만 교체한다 — 분포(유형별·운용사별)의 축은 답의 축이라 존중한다.
+        gexpr = m_grp.group(1).strip()
+        if gexpr != _FUND_KEY_EXPR:
+            gcols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", gexpr)} & set(_fund_col_types())
+            if not gcols or not gcols <= _FUND_ID_COLS:
+                # 축을 못 읽었거나(위치 표기) 펀드 식별 축이 아니다 — 종전 동작(정렬 컬럼만 감싼다)
+                if not re.search(r"\bor_co_xtn_itt_cd\b", gexpr, re.I):
+                    return sql, False
+                head, wrapped, in_func = _wrap_sort_col(head, col, agg)
+                if not wrapped:
+                    return sql, False
+                if in_func:
+                    tail = _wrap_order_by_col(tail, col, agg)
+                return head + tail, True
+            sql = sql[:m_grp.start(1)] + " " + _FUND_KEY_EXPR + " " + sql[m_grp.end(1):]
+            head, tail = sql[:frm.start()], sql[frm.start():]
+    else:
+        # ── GROUP BY 부재: 펀드키 주입 ──
+        if "클래스" in question or re.search(r"\b(?:count|sum|avg|total)\s*\(", head, re.I):
             return sql, False
-        head, wrapped, in_func = _wrap_sort_col(head, col, agg)
-        if not wrapped:
+        m_ob = re.search(r"\border\s+by\b", tail, re.I)
+        if not m_ob:
             return sql, False
-        if in_func:
-            tail = _wrap_order_by_col(tail, col, agg)
-        return head + tail, True
-    # ── GROUP BY 부재: 펀드키 주입 ──
-    if "클래스" in question or re.search(r"\b(?:count|sum|avg|total)\s*\(", head, re.I):
-        return sql, False
-    m_ob = re.search(r"\border\s+by\b", tail, re.I)
-    if not m_ob:
-        return sql, False
+        tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_KEY_EXPR} " + tail[m_ob.start():]
+    # ── 여기부터는 GROUP BY 가 정본 펀드키다: 식별 컬럼·클래스수 병기 + 정렬 컬럼 감싸기 (③-3) ──
     add = []
     if "itm_nm" not in head and "itm_no" not in head:
         add += ["itm_no", "TRIM(itm_nm) AS itm_nm"]
     head, wrapped, in_func = _wrap_sort_col(head, col, agg)
     if not wrapped and not re.search(rf"\b{col}\b", head, re.I):
         add.append(f"{agg}({col}) AS {col}")     # 정렬 컬럼이 SELECT 에 없으면 별칭으로 실어 ORDER BY 이름을 살린다
-    add.append('COUNT(*) AS "클래스수"')
-    head = head.rstrip() + ", " + ", ".join(add) + " "
-    tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_KEY_EXPR} " + tail[m_ob.start():]
+    if "클래스수" not in head:
+        add.append('COUNT(*) AS "클래스수"')
+    if add:
+        head = head.rstrip() + ", " + ", ".join(add) + " "
     if in_func:
         tail = _wrap_order_by_col(tail, col, agg)
-    return head + tail, True
+    new = _class_count_off_value_predicate(head + tail, col, agg)
+    return (new, True) if new != orig else (sql, False)          # 멱등
+
+
+_VALUE_PRED = re.compile(r"^\(?\s*(?:\w+\.)?(\w+)\s*(?:(IS\s+NOT\s+NULL)|(<=|>=|<>|!=|<|>)\s*(-?[\d.]+))\s*\)?$", re.I)
+
+
+def _class_count_off_value_predicate(sql: str, col: str, agg: str) -> str:
+    """재검 ③-2 / KG 부류 S — `COUNT(*) AS 클래스수` 의 모수를 **값 컬럼 술어에서 뗀다.**
+
+    9R 실측: 기계 조립이 `COUNT(*)` 를 그대로 "클래스 N개" 로 옮기는데, 그 COUNT 는 HCX 가 붙인 값 술어
+    (`IS NOT NULL`·`<0`·`<>0`) 아래에서 세어진 **부분 카운트**였다 — `삼성배당주장기 1[주식]` 을 "클래스 1개"(실제 12).
+    조치: 정렬 컬럼에 걸린 단독 술어를 WHERE 에서 HAVING 으로 옮긴다(집계 인자로 감싼다). 그러면 COUNT 는
+    기본모수 전체를 세고, 값 술어는 대표값에만 걸린다.
+    🔴 **값이 안 바뀌는 형태만 옮긴다** — 정렬 방향과 부등호 방향이 같을 때(DESC/MAX 에 `>`·`>=`, ASC/MIN 에 `<`·`<=`)
+       `agg(전체) = agg(술어 통과분)` 이 성립하고, `IS NOT NULL` 은 집계가 NULL 을 건너뛰므로 항상 성립한다.
+       `<> 0` 은 방향 술어와 함께일 때만 따라 옮긴다(그때는 이미 함의된다). 그 밖은 손대지 않는다.
+    """
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w or re.search(r"\bhaving\b", sql, re.I):
+        return sql
+    ok_ops = (">", ">=") if agg == "MAX" else ("<", "<=")
+    conjs = guard.split_conjuncts(m_w.group(1))
+    cand = []            # (원 절, HAVING 형, 방향 술어인가)
+    for c in conjs:
+        m = _VALUE_PRED.match(c.strip())
+        if not m or m.group(1).lower() != col.lower():
+            continue
+        if m.group(2):
+            cand.append((c, f"{agg}({col}) IS NOT NULL", False))
+        elif m.group(3) in ok_ops:
+            cand.append((c, f"{agg}({col}) {m.group(3)} {m.group(4)}", True))
+        elif m.group(3) in ("<>", "!="):
+            cand.append((c, f"{agg}({col}) {m.group(3)} {m.group(4)}", None))   # 방향 술어와 함께일 때만
+    directional = any(d is True for _, _, d in cand)
+    move = [(c, h) for c, h, d in cand if d is not None or directional]
+    if not move:
+        return sql
+    keep = [c for c in conjs if c not in {c0 for c0, _ in move}]
+    where = (" WHERE " + " AND ".join(keep) + " ") if keep else " "
+    return sql[:m_w.start()] + where + _insert_having(sql[m_w.end():], [h for _, h in move])
+
+
+def _insert_having(rest: str, conds: list[str]) -> str:
+    """GROUP BY 뒤(ORDER BY/LIMIT 앞)에 HAVING 을 끼운다."""
+    m = re.search(r"\border\s+by\b|\blimit\b", rest, re.I)
+    at = m.start() if m else len(rest)
+    return rest[:at].rstrip() + " HAVING " + " AND ".join(conds) + " " + rest[at:]
 
 
 def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
@@ -3070,13 +3191,40 @@ def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
         return sql, False
-    if _BTYP_AXIS_COLS.search(sql) or _has_name_filter(sql) or _has_fund_key_pin(sql):
+    if _has_name_filter(sql) or _has_fund_key_pin(sql):
         return sql, False
     q = question.replace(" ", "")
-    val = next((v for v in _btyp_values() if v in q), None)
+    # 질문에 든 유형 값 — 긴 것부터. 긴 값에 포함되는 짧은 값('주식형' ⊂ '해외주식형')은 같은 낱말이다
+    picked: list[str] = []
+    for v in _btyp_values():
+        if v in q and not any(v in p for p in picked):
+            picked.append(v)
+    val = picked[0] if picked else None
     if not val:
         return sql, False
     cond = f"zrin_btyp_nm = '{val}'"
+    # 🔴 10R 부류 Z + ③-4(축소) — 종전엔 유형 축 절이 **있기만 하면** 불개입이라, HCX 가 축을 넓게 쓰면
+    #    (9R Y7 `zrin_btyp_nm IN ('주식형','해외주식형')`) 가드가 자기를 껐다. 질문에 열거값과 **정확히 일치하는
+    #    낱말이 하나뿐**이면 그 값 하나가 확정식이고, 다른 btyp 절은 교체한다. 총칭어('주식 펀드')일 때는
+    #    질문에 열거값이 없으므로 여기 오지 않는다 — 확장은 KG 자산군 노드가 계속 담당한다.
+    #    약관분류(zrin_ptn_nm)는 더 잘게 나눈 별개 축이라 건드리지 않는다(KG 부류 H).
+    if _BTYP_AXIS_COLS.search(sql):
+        m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+        if not m_w or len(picked) != 1 or _ptn_value_in_question(question) \
+                or re.search(r"\bzrin_ptn_nm\b", sql, re.I):
+            return sql, False
+        conjs = _flat_conjuncts(m_w.group(1))
+        axis = [c for c in conjs if re.search(r"\b(?:zrin_btyp_nm|zrin_pcd)\b", c, re.I)]
+        if not axis:
+            return sql, False                                   # 축 절이 최상위에 없다(서브식 안) — 불개입
+        m_q = re.search(r"\b(\w+\.)?zrin_btyp_nm\b", axis[0], re.I)
+        qual = (m_q.group(1) or "") if m_q else ""
+        if len(axis) == 1 and re.fullmatch(rf"\(?\s*(?:{re.escape(qual)})?zrin_btyp_nm\s*=\s*'{re.escape(val)}'\s*\)?",
+                                           axis[0].strip(), re.I):
+            return sql, False                                   # 이미 확정식(한정자 포함) — 손대지 않는다
+        kept = [c for c in conjs if c not in axis]
+        new = sql[:m_w.start(1)] + " " + " AND ".join([qual + cond] + kept) + " " + sql[m_w.end(1):]
+        return (new, True) if new != sql else (sql, False)
     m = re.search(r"\bwhere\b", sql, re.I)
     if not m:
         anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
@@ -4848,7 +4996,7 @@ def _cell(v, col: str) -> str:
     return str(v)
 
 
-_NUM_CMP = re.compile(r"^\(?\s*(?:\w+\.)?(\w+)\s*(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)\s*\)?$", re.S)
+_NUM_CMP = re.compile(r"^\(?\s*(?:MAX|MIN|AVG|SUM)?\(?\s*(?:\w+\.)?(\w+)\s*\)?\s*(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)\s*\)?$", re.I | re.S)
 
 
 def drop_unquestioned_numeric_clause(sql: str, question: str) -> tuple[str, str | None]:
@@ -4857,30 +5005,35 @@ def drop_unquestioned_numeric_clause(sql: str, question: str) -> tuple[str, str 
     질문의 숫자를 쓴 절(예: '수익률 10% 이상')은 사용자의 조건이므로 손대지 않는다 — 조건 완화 금지(§9)와 충돌하지 않는 유일한 경우다:
     플래너가 지어낸 임계값은 사용자 조건이 아니다 (5R S2: '3년 수익률 최하위 5개' → `< -100` 환각으로 0행 → 거절).
     (보정 SQL, 뗀 절) — 못 떼면 (원문, None)."""
-    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    # 🔴 10R ③-2 부수 — 값 술어가 HAVING 으로 옮겨 갔어도(클래스수 모수 분리) 이 안전망은 살아 있어야 한다.
+    #    `MIN(col) < -100` 은 `col < -100` 인 행이 하나도 없으면 절대 참이 될 수 없다 — 판정식이 같다.
+    segs = [(m, "WHERE") for m in [re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)] if m]
+    segs += [(m, "HAVING") for m in [re.search(r"\bhaving\b(.*?)(?=\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)] if m]
     frm = re.findall(r"\b(?:from|join)\s+([A-Za-z_]\w*)", sql, re.I)
-    if not m_w or len(frm) != 1 or re.search(r"\(\s*select\b|\bunion\b", sql, re.I):
+    if not segs or len(frm) != 1 or re.search(r"\(\s*select\b|\bunion\b", sql, re.I):
         return sql, None
     q_digits = set(re.findall(r"\d+", question.replace(",", "")))
-    conjs = guard.split_conjuncts(m_w.group(1))
     con = connect_readonly()
     try:
-        for c in conjs:
-            m = _NUM_CMP.match(c.strip())
-            if not m:
-                continue
-            digits = re.sub(r"\.0+$", "", m.group(3).lstrip("-"))
-            if digits in q_digits or any(digits in d for d in q_digits):
-                continue
-            try:
-                alone = con.execute(f"SELECT COUNT(*) FROM {frm[0]} WHERE {c}").fetchone()[0]
-            except sqlite3.Error:
-                continue
-            if alone:
-                continue
-            rest = [x for x in conjs if x is not c]
-            new_where = (" WHERE " + " AND ".join(x.strip() for x in rest) + " ") if rest else " "
-            return sql[:m_w.start()] + new_where + sql[m_w.end():], c.strip()
+        for m_w, kw in segs:
+            conjs = guard.split_conjuncts(m_w.group(1))
+            for c in conjs:
+                m = _NUM_CMP.match(c.strip())
+                if not m:
+                    continue
+                digits = re.sub(r"\.0+$", "", m.group(3).lstrip("-"))
+                if digits in q_digits or any(digits in d for d in q_digits):
+                    continue
+                probe = f"{m.group(1)} {m.group(2)} {m.group(3)}"     # 집계 껍질을 벗긴 행 단위 술어
+                try:
+                    alone = con.execute(f"SELECT COUNT(*) FROM {frm[0]} WHERE {probe}").fetchone()[0]
+                except sqlite3.Error:
+                    continue
+                if alone:
+                    continue
+                rest = [x for x in conjs if x is not c]
+                body = (f" {kw} " + " AND ".join(x.strip() for x in rest) + " ") if rest else " "
+                return sql[:m_w.start()] + body + sql[m_w.end():], c.strip()
     finally:
         con.close()
     return sql, None

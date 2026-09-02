@@ -851,7 +851,7 @@ def test_count_answer_assembled(ctx):
            "AND (TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모') LIMIT 30")
     g = ["'한국투자신탁운용' → Org_00040024 (Organization) → public_funds.or_co_xtn_itt_cd='00040024' · public_funds.or_co_xtn_itt_cd='00040105'"]
     a = f(sql, "펀드수 | 클래스수\n143 | 541", 1, g)
-    assert a and "143개(클래스 541개)" in a and "판매중·공모 기준" in a and "2026-08-22" in a
+    assert a and "143개(클래스 541개)" in a and "판매중·공모 기준" in a and "2026-08-24" in a
     assert "운용사 코드 2건(00040024·00040105)을 합산" in a
     # 코드 1건이면 합산 문장 없음 · 2열이 아닌 COUNT(채권 종목수)·행수 2 는 None
     assert "합산" not in f(sql, "펀드수 | 클래스수\n207 | 850", 1, ["'삼성자산운용' → Org_00040010 (Organization) → public_funds.or_co_xtn_itt_cd='00040010'"])

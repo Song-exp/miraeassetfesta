@@ -30,7 +30,7 @@ REFUSE_PREFIX = "REFUSE:"
 # 🔴 0행은 재생성 대상이 아니다 — 거절이 정답인 문항에서 조건 완화 = 환각 (PROJECT.md §9)
 REGEN_BUDGET_S = 12.0
 SQL_TIMEOUT_S = 10.0
-CUTOFF_INT = int(gate.DATA_CUTOFF.replace("-", ""))   # 20260822 — 데이터 as-of. 날짜 컬럼은 정수 YYYYMMDD (REAL 적재)
+CUTOFF_INT = int(gate.DATA_CUTOFF.replace("-", ""))   # 20260824 — 표기 기준일(리드 결정 09-02). 날짜 컬럼은 정수 YYYYMMDD (REAL 적재)
 # 🔴 만기 하한(구매가능)은 BUYABLE_INT(20260824) 를 쓴다 — as-of 와 판정일을 분리 (리드 결정 2026-09-02: 8/22·8/23 만기 14종목은 만기 경과).
 BUYABLE_INT = int(gate.BUYABLE_CUTOFF.replace("-", ""))
 
@@ -1499,7 +1499,7 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
         return answer, False
     unit = "종목" if re.search(r"DISTINCT\s+pd_no", sql, re.I) else "건(행 기준 — 종목 수와 다를 수 있음)"
     prefix = "네, 있습니다 — " if _EXIST_Q.search(question) else ""
-    return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 2026-08-22).", True
+    return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
 
 
 def _distribution_answer(sql: str, rows: str, n: int) -> str | None:

@@ -31,7 +31,7 @@ PAGE = """<!doctype html>
   .meta { color:var(--mut); font-size:12.5px }
   .err { color:#c00 }
 </style>
-<header><b>금융상품 Agent</b><span>실험용 · 데이터 기준일 2026-08-22 · 답변 → <b>실행 SQL</b> → think_trace → 근거문서 순으로 확인하세요</span></header>
+<header><b>금융상품 Agent</b><span>실험용 · 데이터 기준일 2026-08-24 · 답변 → <b>실행 SQL</b> → think_trace → 근거문서 순으로 확인하세요</span></header>
 <main>
   <form id="f"><input type="text" id="q" placeholder="예) 미래에셋자산운용이 운용하는 국내 ETF 5개만 알려줘" autofocus><button id="b">질문</button></form>
   <div id="log"></div>

@@ -57,7 +57,7 @@ def test_risk_grade_6_valid(ctx):
 def test_cutoff_future(ctx):
     # 🔴 08-30: 연도만 보고 게이트에서 기각하지 않는다 — 플래너가 없으면 해석을 검사할 수 없어 기준일 안내로 끝낸다
     r = answer_question("T-07", "2027년 만기 예정 수익률 전망 알려줘", ctx=ctx)
-    assert "[Gate] 기각" not in r.think_trace and "2026-08-22" in r.answer
+    assert "[Gate] 기각" not in r.think_trace and "2026-08-24" in r.answer
     assert "사후 판정" in r.think_trace
 
 
@@ -140,7 +140,7 @@ def test_cutoff_august_allowed(ctx):
 
 def test_cutoff_october_rejected(ctx):
     r = answer_question("T-12", "2026년 10월에 상장 예정인 국내 ETF 알려줘", ctx=ctx)
-    assert "2026-08-22" in r.answer and "['202610']" in r.think_trace
+    assert "2026-08-24" in r.answer and "['202610']" in r.think_trace
 
 
 def test_planner_context_has_rules(ctx):

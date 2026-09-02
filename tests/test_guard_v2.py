@@ -829,3 +829,34 @@ def test_r3_pipeline_markers(ctx):
     P.plan_sql = lambda self, q, g: _R3_SQL.replace("LIMIT 30", "LIMIT 5")
     r2 = answer_question("T-R3b", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
     assert "커버리지 병기" not in r2.think_trace
+
+
+def test_count_answer_assembled(ctx):
+    """R5 재검 — 가드가 `143 | 541` 을 만들었는데 답변기가 클래스 열을 버림. 펀드수/클래스수 1행은 기계 조립한다."""
+    from src.runtime.pipeline import _count_answer as f, answer_question
+
+    sql = ("SELECT COUNT(DISTINCT x) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모') LIMIT 30")
+    g = ["'한국투자신탁운용' → Org_00040024 (Organization) → public_funds.or_co_xtn_itt_cd='00040024' · public_funds.or_co_xtn_itt_cd='00040105'"]
+    a = f(sql, "펀드수 | 클래스수\n143 | 541", 1, g)
+    assert a and "143개(클래스 541개)" in a and "판매중·공모 기준" in a and "2026-08-22" in a
+    assert "운용사 코드 2건(00040024·00040105)을 합산" in a
+    # 코드 1건이면 합산 문장 없음 · 2열이 아닌 COUNT(채권 종목수)·행수 2 는 None
+    assert "합산" not in f(sql, "펀드수 | 클래스수\n207 | 850", 1, ["'삼성자산운용' → Org_00040010 (Organization) → public_funds.or_co_xtn_itt_cd='00040010'"])
+    assert f("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds LIMIT 1", "COUNT(DISTINCT pd_no)\n1406", 1, []) is None
+    assert f(sql, "펀드수 | 클래스수\n1 | 2\n3 | 4", 2, g) is None
+    # 통합 — R5 질문·SQL 로 HCX 답변기를 부르지 않는다 (KG 가 00040105 를 병합한 143/541)
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return ("SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') "
+                    "AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30")
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-R5", "한국투자신탁운용이 운용하는 공모펀드는 몇 개야?", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Answer] 개수 답변 기계 조립" in r.think_trace
+    assert "143개(클래스 541개)" in r.answer and "00040105" in r.answer

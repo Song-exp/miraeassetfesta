@@ -948,6 +948,37 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     return "\n".join(lines)
 
 
+_ORG_CODES = re.compile(r"or_co_xtn_itt_cd='(\d+)'")
+
+
+def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str | None:
+    """`펀드수 | 클래스수` 1행(ensure_fund_distinct_count 결과)의 답변을 기계 조립한다. 아니면 None.
+
+    2026-09-02 R5 재검: 가드가 143 | 541 을 정확히 만들었는데 답변기가 클래스 열을 버렸다("클래스 수를 제외한
+    순수하게 펀드만") — 034 재검은 병기·R5 는 삭제, 비결정. HCX 0회. 모수 표기는 SQL 의 조건에서 읽고,
+    KG 가 한 운용사에 코드를 2건 이상 병합했으면(Org_00040024 = 00040024·00040105) 합산 사실을 한 줄 붙인다.
+    """
+    if n != 1:
+        return None
+    lines = rows.splitlines()
+    if len(lines) != 2 or [c.strip() for c in lines[0].split(" | ")] != ["펀드수", "클래스수"]:
+        return None
+    try:
+        funds, classes = (int(float(v)) for v in lines[1].split(" | "))
+    except ValueError:
+        return None
+    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"))
+             if re.search(pat, sql, re.I)]
+    scope = f" ({'·'.join(basis)} 기준, 기준일 {gate.DATA_CUTOFF})" if basis else f" (기준일 {gate.DATA_CUTOFF})"
+    out = f"조회 조건에 해당하는 공모펀드는 {funds:,}개(클래스 {classes:,}개)입니다{scope}."
+    for line in ground_lines:
+        codes = _ORG_CODES.findall(line)
+        if "Organization" in line and len(codes) >= 2:
+            out += f"\n운용사 코드 {len(codes)}건({'·'.join(codes)})을 합산했습니다."
+            break
+    return out
+
+
 @lru_cache(maxsize=1)
 def _minority_mgmt_names() -> tuple[str, ...]:
     """합병 이력 코드(이름 2종 이상)의 소수 이름 목록 — DB 실측으로 계산, 하드코딩 아님.
@@ -2589,6 +2620,13 @@ def answer_question(
              "(2026-09-01 FND-038 재검: 19행 중 17행 나열 + '일부' 서술 재발)")
         result.think_trace = "\n".join(trace)
         result.answer = dist
+        return result
+    cnt = _count_answer(sql, rows, n, ground_lines)
+    if cnt is not None:
+        step("[Answer] 개수 답변 기계 조립 — 펀드수/클래스수 1행은 HCX 없이 옮긴다 "
+             "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")
+        result.think_trace = "\n".join(trace)
+        result.answer = cnt
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

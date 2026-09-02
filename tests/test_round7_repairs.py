@@ -184,9 +184,12 @@ def test_lookup_grouping_shape_invariant(ctx):
     _, d = _lookup(_W5, "미래에셋차이나솔로몬증권투자신탁 2호는 클래스가 몇 개야?")
     assert d and "클래스 7개" in d, d
 
-    # ⑤ 불개입 유지 — GROUP BY 없는 클래스 열거(T6, 동결선 ✅) · 값 컬럼 랭킹 · 보수 질의 · 전체 개수 집계
+    # ⑤ 10R(8R 보류 ③-1) — '클래스' 질의는 **HCX 의 GROUP BY 유무와 무관하게** 항상 펀드키 묶기다.
+    #    T6 는 GROUP BY 없는 DISTINCT 열거였고 종전엔 모양 조건(`and not m_grp`)으로 비켜 갔다.
     from src.runtime.pipeline import ensure_fund_lookup_grouping as f
-    assert not f(_T6, "미래에셋차이나솔로몬증권투자신탁 3호는 클래스가 몇 개야?")[1]
+    _, t6 = _lookup(_T6, "미래에셋차이나솔로몬증권투자신탁 3호는 클래스가 몇 개야?")
+    assert t6 and "클래스 8개" in t6, t6
+    # 불개입 유지 — 값 컬럼 랭킹 · 보수 질의 · 전체 개수 집계
     rank = _S4.replace("ORDER BY itm_no ASC", "ORDER BY fd_yr1_ern_r DESC")
     assert not f(rank, "KB차이나 펀드 수익률 높은 순")[1]
     assert not f(_S4, "KB차이나 펀드 클래스별 총보수 알려줘")[1]

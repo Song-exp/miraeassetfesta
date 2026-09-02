@@ -711,8 +711,10 @@ def test_fund_lookup_grouping():
     from src.runtime.pipeline import ensure_fund_lookup_grouping as f, ensure_fund_evidence_columns as ev
 
     con = _ro()
+    from src.runtime.pipeline import _FUND_GROUP_EXPR
     s, ok = f(_R4_SQL, "미래에셋코어테크 펀드 1년 수익률 알려줘")
-    assert ok and "GROUP BY printf" in s and '"클래스수"' in s and '"fd_yr1_ern_r_최고"' in s and "LIMIT 30" in s
+    # 10R 재검 ③-B — 개별 조회 묶기 축은 rptt_ksd_itm_no(대표번호), 폴백이 현행 펀드키
+    assert ok and f"GROUP BY {_FUND_GROUP_EXPR}" in s and '"클래스수"' in s and '"fd_yr1_ern_r_최고"' in s and "LIMIT 30" in s
     assert not f(s, "미래에셋코어테크 펀드 1년 수익률 알려줘")[1]     # 멱등 — GROUP BY 가 생겼으면 불개입
     rows = con.execute(s).fetchall()
     assert len(rows) == 6                                          # 6펀드 (2026-09-02 DB 실측)

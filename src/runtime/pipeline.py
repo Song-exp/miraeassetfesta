@@ -1200,11 +1200,14 @@ def _has_name_filter(sql: str) -> bool:
     frm = re.search(r"\bfrom\b", sql, re.I)
     if not frm:
         return False
-    tail = sql[frm.end():]
+    # 🔴 10R — 괄호 짝 계산에서 **문자열 리터럴 안의 괄호**를 빼야 한다: 호수 경계 GLOB `'*[^0-9.]3[([]*'` 의
+    #    `(` 가 깊이를 올려 감싸는 그룹이 문장 끝까지 번졌다(S5 — 이름 필터가 있는데 '없다' 로 판정돼 중복 주입).
+    raw = sql[frm.end():]
+    tail = _SQL_LITERAL.sub(lambda mm: mm.group(0).replace("(", "\x02").replace(")", "\x03"), raw)
     for m in _NAME_FILTER.finditer(tail):
         # 호수 경계 GLOB('*[^0-9.]3호*' — ensure_fund_series_boundary 산출)은 이름 조회가 아니다(4R J: T6 가 GLOB 만으로 '이름 필터 있음' 판정돼
         # 토큰 LIKE 가 주입되지 않았다)
-        m_lit = re.match(r"\s*'([^']*)'", tail[m.end():])
+        m_lit = re.match(r"\s*'([^']*)'", raw[m.end():])
         if m_lit and "[^" in m_lit.group(1):
             continue
         depth, start = 0, None
@@ -1231,11 +1234,23 @@ def _has_name_filter(sql: str) -> bool:
                 depth -= 1
         group = tail[start:end] if end else tail[start:]
         inner = re.sub(r"REPLACE\(\s*(?:\w+\.)?itm_nm\s*,\s*' '\s*,\s*''\s*\)", "itm_nm", group)
-        other = re.search(r"\b(?!itm_nm\b)[a-z][a-z0-9_]{2,}\b\s*(?:LIKE|GLOB|=|IN\b|<|>)", inner, re.I)
+        # 🔴 10R — 다른 컬럼이 **비교 연산자 바로 앞**에 있어야 한다는 조건은 좁았다: KG-021 의
+        #    `(',' || prfd_attr_cds || ',' LIKE '%,TWN,%' OR REPLACE(itm_nm,…) LIKE '%대만%')` 은 연결식이라
+        #    컬럼이 LIKE 에 붙어 있지 않아 '이름 조회' 로 오판됐다(태그 ∪ 이름 목록 = 목록 경로여야 한다).
+        #    판정은 SQL 낱말 목록이 아니라 **스키마 컬럼 대조**로 한다(하드코딩 0).
+        other = ({w.lower() for w in re.findall(r"[A-Za-z_]\w*", inner)}
+                 & set(_fund_col_types())) - {"itm_nm"}
         if not (re.search(r"\bOR\b", inner, re.I) and other):
             return True
     return False
-_LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
+# 행(클래스) 단위가 정답인 질의 — **값이 클래스마다 갈리는 축**만. 🔴 10R(8R 보류 ③-1): '클래스' 를 뺐다.
+# '클래스' 는 개수·열거를 묻는 말이라 펀드키 묶기가 정답이고, 종전엔 여기 있으면서 `and not m_grp` 라는
+# 모양 조건으로 반쯤 예외를 뒀다 — 7R U3 실측: HCX 가 `SELECT DISTINCT … LIMIT 30` 을 내자 13행이
+# 산문으로 가서 HCX 가 11개라고 셌다. 불개입은 질문 낱말만 본다.
+_LOOKUP_ROW_UNIT = ("보수", "수수료")
+# 클래스를 **열거**해 달라는 질의(어떤 클래스가 있어?)는 행 단위가 정답이다 — 개수 질의('몇 개')와 다르다.
+_CLASS_LIST_Q = re.compile(r"클래스[가는들이]{0,2}\s*(?:어떤|어느|무슨|무엇|뭐)|(?:어떤|어느|무슨)\s*클래스"
+                           r"|클래스\s*(?:목록|종류)|클래스[를을]?\s*(?:나열|열거)")
 # 식별자·키 컬럼 — 이걸로 정렬한 것은 '랭킹' 이 아니라 모양 잡음이다 (7R M′)
 _FUND_ID_COLS = frozenset({"itm_no", "itm_nm", "rptt_ksd_itm_no", "mtco_itm_no", "or_co_xtn_itt_cd", "itm_abrv_nm"})
 # 🔴 우변은 **리터럴**이어야 한다 — JOIN 의 `ON e.itm_no = p.itm_no` 는 조인 조건이지 개별 조회의 핀이 아니다
@@ -1358,19 +1373,25 @@ def _fund_col_types() -> dict[str, str]:
     return {c.lower(): (t or "").lower() for c, _, t, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ())}
 
 
-@lru_cache(maxsize=1)
-def _class_dependent_cols() -> frozenset:
-    """클래스 종속 수치 컬럼 — 다클래스 펀드키 그룹 중 값이 2종 이상인 비율이 30% 를 넘는 컬럼(DB 실측, 캐시). 순자산·날짜는 별도 규칙."""
+@lru_cache(maxsize=2)
+def _class_dependent(numeric: bool = True) -> frozenset:
+    """클래스 종속 컬럼 — 다클래스 펀드 그룹 중 값이 2종 이상인 비율이 30% 를 넘는 컬럼(DB 실측, 캐시).
+
+    `numeric=True` 는 수치 컬럼(MIN~MAX 범위로 굽는다 — 6R F2), `False` 는 **문자 컬럼**이다.
+    문자 클래스 종속 컬럼(`han_clas_nm` 0.985 · `han_clas_sales_channel` 0.856 …)은 펀드 단위 대표값이
+    존재하지 않는다 — MAX 로 뽑으면 임의 클래스의 라벨이라 답변 재료가 아니다. 순자산·날짜는 별도 규칙.
+    """
     types = _fund_col_types()
+    num = ("numeric", "int", "real", "double", "float", "decimal")
     con = connect_readonly()
     out = set()
     try:
         for col, t in types.items():
-            if not t.startswith(("numeric", "int", "real", "double", "float", "decimal")) or col.endswith("_dt") or col == "fd_nast_suma":
+            if t.startswith(num) != numeric or col.endswith("_dt") or col == "fd_nast_suma":
                 continue
             row = con.execute(
                 f"SELECT SUM(cnt > 1), COUNT(*) FROM (SELECT COUNT(DISTINCT {col}) AS cnt FROM public_funds "
-                f"WHERE {col} IS NOT NULL GROUP BY {_FUND_KEY_EXPR} HAVING COUNT(*) > 1)").fetchone()
+                f"WHERE {col} IS NOT NULL GROUP BY {_FUND_GROUP_EXPR} HAVING COUNT(*) > 1)").fetchone()
             if row and row[1] and (row[0] or 0) / row[1] > 0.3:
                 out.add(col)
     except sqlite3.Error:
@@ -1378,6 +1399,10 @@ def _class_dependent_cols() -> frozenset:
     finally:
         con.close()
     return frozenset(out)
+
+
+def _class_dependent_cols() -> frozenset:
+    return _class_dependent(True)
 
 
 def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
@@ -1402,9 +1427,17 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     #    개별 조회로 이미 판정된 뒤에 정렬·집계 선택을 존중할 근거가 없다: 정렬은 확정식 정렬로 덮고, 집계는 인자 컬럼만 꺼내 F2 로 재작성한다.
     #    GROUP BY 는 축을 본다 — `GROUP BY itm_no` 는 **클래스 단위 키**라 모든 그룹이 1이 되는 무의미한 축이므로 항상 교체 대상이고
     #    (6R V12 "모두 1개씩 … 총 30개" · W5 "1개"), 그 밖의 축(펀드키 묶기를 이미 마친 SQL 포함)은 종전대로 불개입이다.
-    m_grp = re.search(r"\bgroup\s+by\b(.*?)(?=\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-    if m_grp and not re.fullmatch(r"\s*(?:\w+\.)?itm_no\s*", m_grp.group(1), re.I):
-        return sql, False
+    # 🔴 10R 부류 Z — GROUP BY 도 **확인하고 아니면 교체**한다. 종전엔 `GROUP BY itm_no` 한 형태만 교체 대상이라
+    #    9R U2 처럼 HCX 가 위치 표기(`GROUP BY 1`)나 `or_co+mtco` 자작 키를 쓰면 가드가 자기를 껐다.
+    #    교체 대상은 **펀드 식별 컬럼(또는 위치 표기)만으로 된 축**이다 — 분포·유형별 축은 답의 축이라 존중한다.
+    m_grp = re.search(r"\bgroup\s+by\b(.*?)(?=\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if m_grp:
+        gexpr = m_grp.group(1).strip()
+        if gexpr in (_FUND_GROUP_EXPR, _FUND_KEY_EXPR):
+            return sql, False                                   # 이미 펀드 단위로 묶었다
+        gcols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", gexpr)} & set(_fund_col_types())
+        if gcols - _FUND_ID_COLS or (not gcols and not re.fullmatch(r"[\d,\s]+", gexpr)):
+            return sql, False
     # ORDER BY 는 **정렬 축**을 본다: 값 컬럼 정렬은 랭킹 의도라 종전대로 불개입(ensure_fund_rank_representative 담당),
     #   식별자·키·집계 별칭 정렬(S4 `ORDER BY itm_no ASC` · W5 `ORDER BY clas_count DESC`)은 모양 잡음이라 확정식 정렬로 덮는다.
     m_ord = _ORDER_BY_HEAD.search(sql)
@@ -1418,7 +1451,7 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     # `_LOOKUP_ROW_UNIT` 은 **값이 클래스마다 갈리는 질의**(보수·수수료)에만 불개입한다. '클래스' 는 개수·열거를 묻는 말이라
     #    펀드키 묶기가 정답이다 — 단, HCX 가 이미 펀드 단위로 물어보는 모양(GROUP BY itm_no)을 냈을 때만 개입해
     #    T6·R6 처럼 5R·6R 내내 통과한 열거 경로는 건드리지 않는다(동결선).
-    if any(t in question for t in _LOOKUP_ROW_UNIT) and not m_grp:
+    if any(t in question for t in _LOOKUP_ROW_UNIT) or _CLASS_LIST_Q.search(question):
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
@@ -1474,7 +1507,7 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     tail = re.sub(r"\blimit\s+\d+\s*$", "", tail, flags=re.I).rstrip()
     tail = re.sub(r"\border\s+by\b.*$", "", tail, flags=re.I | re.S).rstrip()
     tail = re.sub(r"\bgroup\s+by\b.*$", "", tail, flags=re.I | re.S).rstrip()
-    return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_KEY_EXPR} "
+    return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_GROUP_EXPR} "
             f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
 
 
@@ -1528,6 +1561,11 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
     cols = [c.strip() for c in lines[0].split(" | ")]
     if cols[:4] != _LOOKUP_HEAD:
         return None
+    # 🔴 10R — 조립 문형이 "'X' 이름의 공모펀드 N개" 라 **개별 조회일 때만** 쓴다. 태그 ∪ 이름 목록(KG-021
+    #    `prfd_attr_cds LIKE '%,TWN,%' OR itm_nm LIKE '%대만%'`)은 이름 조회가 아니다 — 종전엔 머리줄이
+    #    "',TWN,' 이름의" 로 나갔다. 가드의 발동 판정(`_has_name_filter`)과 같은 술어를 쓴다(중복 0).
+    if not (_has_name_filter(sql) or _has_fund_key_pin(sql)):
+        return None
     recs = []
     for ln in lines[1:]:
         parts = [p.strip() for p in ln.split(" | ")]
@@ -1539,7 +1577,11 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
     has_nast = "fd_nast_suma" in cols
     # 7R R′ — 클래스 **개수**만 묻는 질의(V12·W5)는 묶기 결과에 값 컬럼이 하나도 없다. 머리 4열 + 대표번호뿐이면
     #    그 자체가 답이므로 기계 조립한다("클래스 10개"). 값 컬럼이 따로 있는데 조립 문형이 없는 경우는 종전대로 HCX 에 넘긴다.
-    class_only = set(cols) <= set(_LOOKUP_HEAD) | {"대표번호"}
+    # 🔴 10R(8R 보류 ③-1 의 짝) — **클래스 종속 문자 컬럼은 값 컬럼이 아니다.** `han_clas_nm`(수수료체계 이름)은
+    #    펀드 단위 대표값이 없어 MAX 로 뽑아 봐야 임의 클래스의 라벨이다. 이것 하나 때문에 클래스 개수 질의가
+    #    조립기를 못 받고 HCX 산문으로 갔다(W5 — HCX 가 7클래스를 세지 못했다). 판정은 DB 실측(`_class_dependent`).
+    noise = {c for c in cols if c.lower() in _class_dependent(False)}
+    class_only = set(cols) - noise <= set(_LOOKUP_HEAD) | {"대표번호"}
     if not (ret_cols or has_grade or has_nast or class_only):
         return None
     groups: dict[str, dict] = {}
@@ -1567,7 +1609,10 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
     pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
     token = name_token
     if not token:
-        m_like = re.search(r"(?:LIKE|GLOB)\s+'[%*]?([^'%*]+)[%*]?'", sql, re.I)
+        # 🔴 10R — **itm_nm 의 리터럴만** 이름으로 쓴다. 종전엔 아무 LIKE 리터럴이나 집어 태그 코드가
+        #    머리줄에 이름처럼 실렸다(KG-021 "',TWN,' 이름의 공모펀드").
+        m_like = re.search(r"(?:REPLACE\(\s*(?:\w+\.)?itm_nm\s*,[^)]*\)|TRIM\(\s*(?:\w+\.)?itm_nm\s*\)"
+                           r"|\b(?:\w+\.)?itm_nm\b)\s*(?:LIKE|GLOB)\s+'[%*]?([^'%*]+)[%*]?'", sql, re.I)
         token = m_like.group(1) if m_like else None
     head = (f"'{token}' 이름의 {pop} {len(order)}개가 조회됐습니다" if token else f"조회된 {pop} {len(order)}개입니다") \
         + f" (기준일 {gate.DATA_CUTOFF}, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위)."
@@ -3303,6 +3348,14 @@ _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*�
 _FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
                   "COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
                   "ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)")
+# 🔴 10R 재검 ③-B — **개수·열거 축의 정본은 `rptt_ksd_itm_no`** 다. 도메인 정본(public_funds.md §4.1):
+#    rptt = "같은 펀드 여러 클래스의 대표 번호" · mtco = "운용 단위(모펀드) 키". DB 실측으로 확증된다 —
+#    mtco 는 398 rptt 그룹 / 2,686 클래스행(모수의 29%)에서 **클래스 단위로 발급**돼 있어(W5 솔로몬2호
+#    rptt 031910531100 하나에 mtco 531101~531107) `_FUND_KEY_EXPR` 이 한 펀드를 클래스 수만큼 쪼갠다.
+#    🔴 **랭킹·분포의 `COUNT(DISTINCT 펀드키)` 는 이 축으로 바꾸지 않는다** — 정본 펀드 수가 3,040 → 1,919 로
+#    움직여 R1·T1·V5 의 gold 가 흔들린다. 축을 나눈다: **개수/열거 = rptt · 모수 집계 = 현행 펀드키.**
+#    NULLIF 는 판매완료 구간의 플레이스홀더(KR0000000000)를, COALESCE 폴백은 rptt NULL(모수의 1.2%)을 받는다.
+_FUND_GROUP_EXPR = f"COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), {_FUND_KEY_EXPR})"
 
 
 def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:

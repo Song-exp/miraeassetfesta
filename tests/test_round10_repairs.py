@@ -120,3 +120,43 @@ def test_r10_class_count_off_value_predicate():
     # 방향이 안 맞는 술어(DESC 에 `< 0`)는 옮기지 않는다 — 대표값이 달라진다
     desc = s.replace("ORDER BY fd_yr3_ern_r ASC", "ORDER BY fd_yr3_ern_r DESC")
     assert "HAVING MAX(fd_yr3_ern_r) <" not in P.ensure_fund_rank_representative(desc, "3년 수익률 상위")[0]
+
+
+# ── R1·R2 · 클래스 개수·열거 축은 rptt_ksd_itm_no ────────────────────────────────
+def test_r10_lookup_group_rptt():
+    """재검 ③-B — mtco 는 398 rptt 그룹에서 클래스 단위로 발급돼 한 펀드를 클래스 수만큼 쪼갠다."""
+    s = ("SELECT DISTINCT han_clas_nm, itm_no, TRIM(itm_nm) AS itm_nm FROM public_funds "
+         "WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' "
+         "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') LIMIT 30")
+    out, ok = P.ensure_fund_lookup_grouping(s, "미래에셋차이나솔로몬증권투자신탁 2호는 클래스가 몇 개야?")
+    assert ok and f"GROUP BY {P._FUND_GROUP_EXPR}" in out
+    rows, n = P._execute(out)
+    assert n == 1, rows                                     # 7클래스가 한 펀드로 (mtco 축이면 6그룹)
+    ans = P._lookup_answer(out, rows, n, None, [])
+    assert ans and "클래스 7개" in ans, ans
+    # 🔴 랭킹·분포의 모수 집계 축은 그대로 — 정본 펀드 수 3,040 이 흔들리면 R1·T1·V5 가 깨진다
+    cnt = P._execute(f"SELECT COUNT(DISTINCT {P._FUND_KEY_EXPR}) FROM public_funds "
+                     "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모'")[0]
+    assert cnt.splitlines()[1].strip() == "3040", cnt
+
+
+def test_r10_lookup_class_no_shape():
+    """8R 보류 ③-1 — '클래스 몇 개' 불개입은 HCX 의 GROUP BY 유무(모양)를 보지 않는다. 열거 질의는 행 단위."""
+    base = ("SELECT itm_no, TRIM(itm_nm) FROM public_funds "
+            "WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' AND sale_yn='판매중' LIMIT 30")
+    assert P.ensure_fund_lookup_grouping(base, "미래에셋코어테크 펀드는 클래스가 몇 개야?")[1] is True
+    assert P.ensure_fund_lookup_grouping(base, "미래에셋코어테크 펀드는 어떤 클래스들이 있어?")[1] is False
+    assert P.ensure_fund_lookup_grouping(base, "미래에셋코어테크 펀드 클래스별 보수 알려줘")[1] is False
+
+
+def test_r10_lookup_answer_only_for_name_lookup():
+    """조립 문형이 "'X' 이름의 …" 이므로 태그 ∪ 이름 목록(KG-021)에는 쓰지 않는다."""
+    tag = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", "
+           "MIN(rptt_ksd_itm_no) AS 대표번호, prfd_attr_cds FROM public_funds "
+           "WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' "
+           "AND (',' || prfd_attr_cds || ',' LIKE '%,TWN,%' OR REPLACE(itm_nm,' ','') LIKE '%대만%') "
+           f"GROUP BY {P._FUND_GROUP_EXPR} LIMIT 30")
+    assert P._has_name_filter(tag) is False                 # 태그와 OR 로 묶인 이름 LIKE 는 이름 조회가 아니다
+    rows, n = P._execute(tag)
+    assert P._lookup_answer(tag, rows, n, None, []) is None

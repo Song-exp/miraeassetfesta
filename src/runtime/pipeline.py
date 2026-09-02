@@ -3063,6 +3063,36 @@ def price_ambiguity_clarify(question: str, tables: list[str]) -> str | None:
     return CHEAP_CLARIFY
 
 
+_RISKY_Q = re.compile(r"(?:가장|제일|최고로|최고|가장\s*많이)\s*위험|위험\s*(?:한|도가|이|성이)?\s*(?:높은|큰|많은)\s*(?:순|채권|것|거|걸)|위험\s*(?:순위|랭킹|순으로)|위험한\s*(?:채권|것|거|걸)\s*(?:추천|골라|알려|뭐|어떤)")
+_RISK_CUE = re.compile(r"위험\s*등급|신용\s*등급|등급\s*(?:기준|으로|별)|수익률|금리|이자|듀레이션|만기|변동|부도|디폴트|원금|가격|단가|사모|공모|국공채|회사채|[1-6]\s*등급|C0|BBB|BB|CCC")
+
+
+def risk_ambiguity_clarify(question: str, tables: list[str]) -> str | None:
+    """'가장 위험한 채권' 류의 결정층 되묻기 — 축 단서가 없으면 되묻는 문장(+ 축별 실측 규모), 아니면 None.
+
+    2026-09-02 서버 실측: '가장 위험한 채권 뭐야?' 에 HCX 가 위험등급 1등급 필터 + 수익률 내림차순으로 단정해 신보 유동화
+    (728.524%·C0) 5종목을 답했다. 위험은 clarify.다의어.위험 대로 한 축이 아니다 — ① 투자위험등급(pd_risk_gcd, 1등급이 가장 위험)
+    ② 신용등급(crd_grd, C0 가 최하위 — 부도위험) ③ 금리위험(듀레이션·잔존만기가 길수록) — ①과 ②는 겹치지만(C0 103종목은 전부 1등급)
+    1등급은 1,394종목이라 그 안의 순서(수익률?)까지 정하면 임의가 된다. 리드 결정 2026-09-02: 축 단서가 없으면 되묻는다(주최 8/25:
+    되묻기는 유효 답변). 위험등급·신용등급·수익률·듀레이션 등 단서 낱말이 있으면 되묻지 않는다. 규모는 DB 실측(HCX 0회)으로 채운다."""
+    if "domestic_bonds" not in tables or not _RISKY_Q.search(question) or _RISK_CUE.search(question):
+        return None
+    try:
+        with connect_readonly() as con:
+            n_r1 = con.execute("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_risk_gcd='11' AND mat_dt >= ?", (BUYABLE_INT,)).fetchone()[0]
+            n_c0 = con.execute("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(crd_grd)='C0' AND mat_dt >= ?", (BUYABLE_INT,)).fetchone()[0]
+    except sqlite3.Error:
+        n_r1 = n_c0 = None
+    r1 = f"{n_r1:,}종목" if n_r1 is not None else "다수"
+    c0 = f"{n_c0:,}종목" if n_c0 is not None else "소수"
+    return ("'위험한 채권'은 데이터에서 세 가지 기준으로 해석될 수 있어 확인이 필요합니다 "
+            f"(기준일 {gate.DATA_CUTOFF}). ① 투자위험등급 기준 — 1등급(매우높은위험) 채권 {r1}. "
+            f"② 신용등급 기준 — 최하위 C0 등급 채권 {c0}(부도 위험). "
+            "③ 금리위험 기준 — 듀레이션·잔존만기가 긴 채권(금리가 오르면 가격이 크게 떨어짐). "
+            "①·②는 겹치지만 목록이 다르고 ③은 국공채 장기물이 상위에 옵니다. 어느 기준으로 찾아드릴까요? "
+            "(예: '위험등급 1등급 채권', '신용등급 C0 채권', '듀레이션 긴 채권')")
+
+
 _COUNT_Q = re.compile(r"몇\s*(?:개|종목|건|가지)[가-힣]*\s*(?:야|이야|인가|인지|입니|일까|있|없|되|돼)|종목\s*수|개수")
 _COUNT_SKIP_Q = re.compile(r"골라|추천|보여|알려\s*줘")   # '몇 개만 골라줘' 는 추천(개수 지정)이지 개수 질문이 아니다
 
@@ -4454,6 +4484,15 @@ def answer_question(
     step(f"[Gate] 통과 — 대상 테이블 {tables or '미특정'}"
          + (" · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)" if cross else "")
          + (f" · 기준일 이후 시점 {future} 포함 → SQL 의 mat_dt 사용 여부로 사후 판정" if future else ""))
+
+    ask_risk = risk_ambiguity_clarify(q, tables)
+    if ask_risk:
+        # 결정층 되묻기 — '가장 위험한' 은 축이 셋(투자위험등급/신용등급/금리위험)이라 기본값 단정 금지 (리드 결정 2026-09-02). HCX 호출 없이 즉시.
+        step("[Clarify] 되묻기(결정층) — '가장 위험한 채권' 은 clarify.다의어.위험 대상: 투자위험등급 1등급 / 신용등급 C0 / 금리위험(듀레이션) 세 축 "
+             "(2026-09-02 서버 실측: 1등급+수익률 내림차순으로 단정해 신보 유동화 728% 5종목 답변) · 축 단서 낱말이 있으면 되묻지 않음")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask_risk
+        return result
 
     ask = price_ambiguity_clarify(q, tables)
     if ask:

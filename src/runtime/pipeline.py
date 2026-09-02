@@ -383,8 +383,8 @@ def _fund_sort_target(sql: str) -> tuple[str, str] | None:
     return None
 
 
-def ensure_fund_rank_representative(sql: str) -> tuple[str, bool]:
-    """펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감싼다. (보정된 SQL, 보정했는지)
+def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
+    """펀드단위 랭킹의 대표행을 기계 보정한다. (보정된 SQL, 보정했는지)
 
     2026-08-31 밤 실측(FND-015 채점): 펀드단위 GROUP BY 는 했는데 SELECT 가 bare fd_mm6_ern_r 라
     펀드당 대표값이 **임의 클래스 행** — TOP5 값 5건 전부 MAX 클래스가 아니었고 5위는 6위와 동점까지 갔다.
@@ -394,26 +394,57 @@ def ensure_fund_rank_representative(sql: str) -> tuple[str, bool]:
     ② GROUP BY 에 or_co_xtn_itt_cd(펀드단위 키 신호) ③ ORDER BY 첫 키가 랭킹 컬럼(수익률 8종·순자산)
     ④ 그 컬럼이 SELECT 에 bare 로 있다(집계 미포장). DESC 는 MAX, ASC(하위 랭킹)는 MIN.
     별칭 AS <컬럼> 을 붙여 이름·위치 ORDER BY 둘 다 살린다.
+
+    🔴 **GROUP BY 부재 분기** (2026-09-02 R7 재검): 조건 ②가 HCX 준수에 의존해서, 미특정 경로(4테이블
+    49,634자 근거문서)에서 HCX 가 GROUP BY 를 버리자 가드가 빈손 — 클래스 단위 top3 가 한화2.2배 한 펀드의
+    Ce·C4·A 도배(387.66·387.48·386.38, gold 는 NH-Amundi 362.53·삼성KOSPI200 361.3). 정상 경로에서도
+    비결정적으로 재발할 수 있는 구멍(§6-2s 018 잠재)이라 SQL 모양만으로 대표행을 보장한다:
+    GROUP BY 가 없고 · 집계(COUNT/SUM/AVG)도 없고 · 질문이 '클래스' 단위를 명시하지 않으면
+    `GROUP BY <펀드키>` 를 ORDER BY 앞에 주입하고 정렬 컬럼을 MAX/MIN 으로 감싼 뒤 SELECT 끝에
+    `COUNT(*) AS 클래스수` 를 병기한다(끝에 붙이므로 위치 ORDER BY 번호는 안 흔들린다).
+    식별 컬럼(itm_no·itm_nm)이 없으면 함께 붙인다 — 뒤의 근거컬럼 가드가 COUNT 를 보고 건너뛰기 때문.
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
-        return sql, False
-    if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
         return sql, False
     target = _fund_sort_target(sql)
     if not target:
         return sql, False
     col, direction = target
+    agg = "MAX" if direction == "DESC" else "MIN"
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
-    if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+    has_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    if has_group:
+        if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
+            return sql, False
+        if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+            return sql, False
+        m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
+        if not m:
+            return sql, False
+        alias = m.group(1) or f" AS {col}"
+        fixed_head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
+        return fixed_head + sql[frm.start():], True
+    # ── GROUP BY 부재: 펀드키 주입 ──
+    if "클래스" in question or re.search(r"\b(?:count|sum|avg|total)\s*\(", head, re.I):
         return sql, False
+    tail = sql[frm.start():]
+    m_ob = re.search(r"\border\s+by\b", tail, re.I)
+    if not m_ob:
+        return sql, False
+    add = []
+    if "itm_nm" not in head and "itm_no" not in head:
+        add += ["itm_no", "TRIM(itm_nm) AS itm_nm"]
     m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
-    if not m:
-        return sql, False
-    agg = "MAX" if direction == "DESC" else "MIN"
-    alias = m.group(1) or f" AS {col}"
-    fixed_head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
-    return fixed_head + sql[frm.start():], True
+    if m and not re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+        alias = m.group(1) or f" AS {col}"
+        head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
+    elif not m:
+        add.append(f"{agg}({col}) AS {col}")     # 정렬 컬럼이 SELECT 에 없으면 별칭으로 실어 ORDER BY 이름을 살린다
+    add.append('COUNT(*) AS "클래스수"')
+    head = head.rstrip() + ", " + ", ".join(add) + " "
+    tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_KEY_EXPR} " + tail[m_ob.start():]
+    return head + tail, True
 
 
 def ensure_fund_return_error_exclusion(sql: str) -> tuple[str, bool]:
@@ -813,9 +844,12 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
 
 
 _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
+# 펀드키 = 운용사코드 / zero-pad 모펀드번호. 🔴 `COALESCE(…, itm_no)` 가 필수다 — 2026-09-02 재검 부수 발견:
+#    역외펀드 110행은 mtco_itm_no 가 NULL 이라 키가 NULL 하나로 뭉쳐 COUNT(DISTINCT) 에서 통째로 빠졌다
+#    (기본모수 distinct 2,930 vs gold 키 3,040). 정본은 eval gold_sql 의 키 형태 그대로.
 _FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
-                  "CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
-                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END")
+                  "COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
+                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)")
 
 
 def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
@@ -2015,9 +2049,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
              "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
-    sql, rank_fixed = ensure_fund_rank_representative(sql)
-    if rank_fixed:
+    had_group = bool(re.search(r"group\s+by", sql, re.I))
+    sql, rank_fixed = ensure_fund_rank_representative(sql, q)
+    if rank_fixed and had_group:
         step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
+    elif rank_fixed:
+        step("[Guard] 펀드 대표행 보정 — GROUP BY 펀드키 주입 + MAX/MIN 감싸기 + 클래스수 병기 "
+             "(2026-09-02 R7 실측: 미특정 경로에서 HCX 가 GROUP BY 를 버려 한화2.2배 3클래스 도배 — gold 는 NH-Amundi·삼성KOSPI200)")
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")

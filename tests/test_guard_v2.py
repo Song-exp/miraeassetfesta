@@ -113,8 +113,10 @@ def test_fund_rank_representative():
            "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY fd_yr1_ern_r ASC LIMIT 5")
     s2, ok2 = f(low)
     assert ok2 and "MIN(fd_yr1_ern_r) AS fd_yr1_ern_r" in s2
-    # 불개입 3갈래 — GROUP BY 없는 개별 조회 · 펀드단위 키 아닌 GROUP BY · JOIN(교차)
-    assert not f("SELECT fd_yr1_ern_r FROM public_funds WHERE itm_nm LIKE '%코어테크%' ORDER BY fd_yr1_ern_r DESC LIMIT 10")[1]
+    # 불개입 3갈래 — '클래스' 명시 질문의 GROUP BY 없는 조회(2026-09-02 부터 GROUP BY 부재는 주입 분기 —
+    # test_fund_rank_group_by_injected) · 펀드단위 키 아닌 GROUP BY · JOIN(교차)
+    assert not f("SELECT fd_yr1_ern_r FROM public_funds WHERE itm_nm LIKE '%코어테크%' ORDER BY fd_yr1_ern_r DESC LIMIT 10",
+                 "코어테크 클래스별 1년 수익률")[1]
     assert not f("SELECT zrin_btyp_nm, fd_yr1_ern_r FROM public_funds GROUP BY zrin_btyp_nm ORDER BY 2 DESC LIMIT 5")[1]
     assert not f("SELECT p.fd_yr1_ern_r FROM public_funds p JOIN ext_fund_holdings h ON 1=1 "
                  "GROUP BY p.or_co_xtn_itt_cd, p.mtco_itm_no ORDER BY 1 DESC LIMIT 5")[1]
@@ -353,6 +355,10 @@ def test_fund_distinct_count_replaced():
     con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
     funds, classes = con.execute(s).fetchone()
     assert (funds, classes) == (207, 850)                  # 2026-09-01 DB 실측 gold
+    # 🔴 역외 키 (2026-09-02 재검 부수 발견) — mtco_itm_no NULL 110행이 키 NULL 로 뭉치면 2,930 으로 과소.
+    #    COALESCE(…, itm_no) 형이라야 gold 키와 같은 3,040.
+    base = f("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30", q)[0]
+    assert con.execute(base).fetchone() == (3040, 8969)
     # 불개입 — 클래스 수 질문 · 개수 질의 아님 · GROUP BY 분포
     assert not f(bad, "삼성자산운용 펀드는 클래스가 몇 개야?")[1]
     assert not f(bad, "삼성자산운용 펀드 알려줘")[1]
@@ -641,3 +647,45 @@ def test_group_null_label():
     # 불개입 — GROUP BY 없음 · 축이 서술 컬럼이 아님 · 이미 COALESCE
     assert not f("SELECT COUNT(*) FROM public_funds LIMIT 1")[1]
     assert not f("SELECT itm_no, COUNT(*) FROM public_funds GROUP BY itm_no LIMIT 5")[1]
+
+
+# ── 2026-09-02 재검 1라운드 (docs/recheck_2026-09-02_round1.md) — 결정층 수리 P1~P7 ──
+_R7_SQL = ("SELECT itm_no, TRIM(itm_nm), fd_yr1_ern_r, zrin_attr_nms FROM public_funds WHERE sale_yn = '판매중' "
+           "AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 "
+           "AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') ORDER BY 3 DESC LIMIT 3")
+
+
+def _ro():
+    import sqlite3
+    return sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+
+
+def test_fund_rank_group_by_injected():
+    """R7 실측 — 미특정 경로에서 HCX 가 GROUP BY 를 버리자 클래스 단위 top3 가 한화2.2배 3클래스 도배.
+    GROUP BY 부재면 펀드키를 주입하고 MAX/MIN 으로 감싸 gold(펀드단위)와 같은 3펀드가 나와야 한다."""
+    from src.runtime.pipeline import ensure_fund_rank_representative as f
+
+    q = "공모펌드 중 1년 수익률이 가장 높은 3개 알려줘"
+    s, ok = f(_R7_SQL, q)
+    assert ok and "GROUP BY printf" in s and "MAX(fd_yr1_ern_r) AS fd_yr1_ern_r" in s and '"클래스수"' in s
+    assert s.upper().index("GROUP BY") < s.upper().index("ORDER BY")
+    assert not f(s, q)[1]                                  # 멱등 — 이미 GROUP BY 가 있고 MAX 로 감쌌으면 불개입
+    con = _ro()
+    rows = con.execute(s).fetchall()
+    assert [r[2] for r in rows] == [387.66, 362.53, 361.3]    # gold: 한화2.2배 · NH-Amundi코리아2배 · 삼성KOSPI200 2배
+    assert len({r[1][:6] for r in rows}) == 3                 # 서로 다른 펀드
+    assert "한화2.2배" in rows[0][1] and "NH-Amundi" in rows[1][1] and "삼성KOSPI200" in rows[2][1]
+    # MIN 경로 (018 잠재 리스크 — 하위 랭킹은 펀드당 MIN 클래스)
+    s2, ok2 = f(_R7_SQL.replace("ORDER BY 3 DESC", "ORDER BY 3 ASC"), "1년 수익률이 가장 낮은 공모펀드 3개")
+    assert ok2 and "MIN(fd_yr1_ern_r) AS fd_yr1_ern_r" in s2
+    assert [r[2] for r in con.execute(s2)] == [-83.96, -79.07, -73.98]
+    # 정렬 컬럼이 SELECT 에 없으면 별칭으로 실어 ORDER BY 이름을 살린다 + 식별 컬럼 보강
+    s3, ok3 = f("SELECT zrin_attr_nms FROM public_funds WHERE sale_yn = '판매중' ORDER BY fd_nast_suma DESC LIMIT 3", "순자산 큰 펀드")
+    assert ok3 and "MAX(fd_nast_suma) AS fd_nast_suma" in s3 and "TRIM(itm_nm) AS itm_nm" in s3
+    assert len(con.execute(s3).fetchall()) == 3
+    # 비발동 — 질문에 '클래스' · SELECT 가 COUNT 집계 · 기존 GROUP BY(종전 wrap 경로 그대로)
+    assert not f(_R7_SQL, "1년 수익률 높은 클래스 3개")[1]
+    assert not f("SELECT COUNT(*) FROM public_funds ORDER BY fd_yr1_ern_r DESC LIMIT 1", q)[1]
+    s4, ok4 = f(_FND15_SQL, q)
+    assert ok4 and "GROUP BY or_co_xtn_itt_cd" in s4 and s4.count("GROUP BY") == 1
+

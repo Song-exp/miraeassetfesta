@@ -11,6 +11,13 @@
 #   ⚠️ shared/*.yaml(개체·alias)을 고쳤다면 kg_* 를 다시 만들어야 하므로 --db-only 가 필요합니다
 #      (로컬에서 build_ontology.py 를 먼저 돌린 뒤).
 #
+# 🔴 동시 작업 기간(재검 루프) 규칙 — 2026-09-02 리드 결정 (docs/DEPLOY.md §0-C-1):
+#    배포는 기본이 `python scripts/build_ontology.py` → `bash deploy/deploy.sh` (전체) 다.
+#    --code-only / --yaml-only 는 아래가 비어 있을 때만:
+#      git diff --name-only <직전 배포 커밋>..HEAD -- ontology/shared ontology/codebooks ontology/*.ttl \
+#          scripts/build_ontology.py scripts/build_db.py scripts/gen_*.py
+#    빌더·shared·ttl 이 바뀌었는데 코드만 보내면 새 코드가 옛 kg_* 스키마 위에서 돌아 조용히 실패한다.
+#
 # 🔴 이 스크립트는 **로컬에서** 실행합니다. 22번 포트는 ACG 로 특정 IP 에만 열려 있으므로
 #    허용된 자리에서 돌려야 합니다.
 #

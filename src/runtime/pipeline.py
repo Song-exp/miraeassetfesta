@@ -1114,7 +1114,14 @@ def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
     `ROUND(MAX(fd_yr1_ern_r) AS fd_yr1_ern_r,2)` 문법 오류 → "데이터 조회 중 오류" 무응답. 함수 인자 위치면
     `agg(col)` 만 넣고 별칭은 생략한다 — 위치 ORDER BY 는 그대로 유효, 이름 ORDER BY 는 _wrap_order_by_col 이 맞춘다.
     """
-    if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+    # 🔴 11R gold ③-12 (부류 W) — **클래스 축 집계는 SUM 이 아니라 MAX/MIN 이다.** 종전엔 이미 집계 안에 있으면
+    #    통과시켜, `SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)` 가 클래스 11개짜리
+    #    다올전단채 보수를 11배로 부풀려 top5 밖으로 밀었다(FND-005 — 심사관 실측: MIN 으로 바꾸면 gold 5건 완전 일치).
+    #    클래스 수익률·보수의 합은 도메인상 아무 뜻이 없다. 순자산(fd_nast_suma)만 SUM 축을 허용한다.
+    m_agg = re.search(rf"\b(max|min|avg|sum|total)\s*\((?:[^()]|\([^()]*\))*\b{col}\b", head, re.I)
+    if m_agg:
+        if m_agg.group(1).upper() in ("SUM", "AVG", "TOTAL") and col != "fd_nast_suma":
+            return head[:m_agg.start(1)] + agg + head[m_agg.end(1):], True, False
         return head, False, False
     m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
     if not m:

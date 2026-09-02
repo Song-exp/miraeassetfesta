@@ -145,3 +145,22 @@ def test_ground_drops_contaminated_slot():
                ("domestic_etfs", "cu_strtegy", "패시브")]
     kept = p._drop_contaminated_slots(aliases)
     assert [a[1] for a in kept] == ["ref_fund_mgmt_co", "cu_strtegy"], kept     # 짝 없는 cu_* 는 남는다
+
+
+# ── P7 · gold ③-12 (부류 W) — 클래스 축 집계는 SUM 이 아니라 MAX/MIN ──
+def test_class_axis_sum_replaced():
+    """FND-005: SUM(보수4합)이 클래스 11개짜리 펀드 보수를 11배로 부풀려 top5 밖으로 밀었다."""
+    s = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm, "
+         "SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) AS 총보수 "
+         "FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+         "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 3 ASC LIMIT 5")
+    out, ok = p.ensure_fund_rank_representative(s, "총보수가 가장 낮은 공모펀드 5개")
+    assert ok and "MIN(or_co_rwrd_r +" in out and "SUM(" not in out, out
+    assert p.ensure_fund_rank_representative(out, "총보수가 가장 낮은 공모펀드 5개")[1] is False
+
+    # 🔴 순자산만 SUM 축을 허용한다 — 이 DB 의 fd_nast_suma 는 클래스별 값이라 펀드 순자산은 합계다
+    nast = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm, SUM(fd_nast_suma) AS fd_nast_suma "
+            "FROM public_funds WHERE sale_yn='판매중' "
+            "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 3 DESC LIMIT 5")
+    out2, _ = p.ensure_fund_rank_representative(nast, "순자산이 가장 큰 펀드 5개")
+    assert "SUM(fd_nast_suma)" in out2, out2

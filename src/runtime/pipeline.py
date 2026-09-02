@@ -497,6 +497,10 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
         add.append("TRIM(itm_nm) AS itm_nm")
     if "zrin_fd_ivst_risk_gcd" in sql and "zrin_fd_ivst_risk_grd_nm" not in sql:
         add.append("zrin_fd_ivst_risk_grd_nm")
+    # 역방향 — 등급명만 조회하면 답이 '높은 위험' 으로 끝나고 등급 숫자를 못 붙인다 (2026-09-02 R6 재검:
+    #    '2등급' 미병기). 이름→코드 한 방향만 있던 것을 대칭으로.
+    if "zrin_fd_ivst_risk_grd_nm" in head and "zrin_fd_ivst_risk_gcd" not in sql:
+        add.append("zrin_fd_ivst_risk_gcd")
     target = _fund_sort_target(sql)
     if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
         add.append("zrin_attr_nms")
@@ -590,6 +594,66 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
         return f"REPLACE({m.group(1)},' ','') {m.group(2).upper()} '{pat}'"
     fixed = _NAME_LIKE.sub(_fix, sql)
     return fixed, fixed != sql
+
+
+# 이름 조회 필터 — 원형 LIKE · 공백무시 REPLACE LIKE/GLOB(ensure_spaceless_name_match·호수 경계 가드가 만든 형태)
+_NAME_FILTER = re.compile(r"\bitm_nm\b[^)]{0,40}?\b(?:like|glob)\b|REPLACE\(\s*itm_nm\s*,\s*' '\s*,\s*''\s*\)\s*(?:LIKE|GLOB)\b", re.I)
+_LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
+_SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
+
+
+@lru_cache(maxsize=1)
+def _fund_col_types() -> dict[str, str]:
+    """public_funds 컬럼 → SQL 타입(소문자). 스키마 원천(loader)에서 읽는다 — 하드코딩 아님."""
+    return {c.lower(): (t or "").lower() for c, _, t, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ())}
+
+
+def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
+    """이름 검색(개별 조회) 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값을 병기. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R4 재검 — 이름 검색 30행(6펀드 37클래스)을 답변기가 펀드별로 묶지 않고 1클래스만 제시한 것이
+    3회째(020·032 계열). 프롬프트 규칙("펀드별로 묶어라")은 재현이 안 되므로 SELECT 단계에서 묶어 주면
+    답변기는 6행을 복사만 한다. R6 은 LIMIT 1 이라 "클래스 7개" 병기 자체가 불가능했다.
+    발동 조건(전부): ① public_funds 단독(JOIN·UNION·GROUP BY 없음) ② itm_nm LIKE/GLOB 이름 필터 존재
+    ③ ORDER BY 없음(랭킹은 ensure_fund_rank_representative 담당 · 그 밖의 정렬은 모델 의도 존중)
+    ④ SELECT 에 집계·`*` 없음 ⑤ 질문에 '클래스'·'보수'·'수수료' 없음(행 단위가 정답인 질의는 불개입)
+    ⑥ SELECT 항목이 전부 단순 컬럼(TRIM(col)·AS 별칭 허용) — 식이 섞였으면 안전하게 불개입.
+    조치: SELECT 를 `MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS 클래스수` +
+    수치 컬럼은 `MAX(col) AS col_최고, MIN(col) AS col_최저`, 문자·날짜 컬럼은 `MAX(col) AS col` 로 재작성하고
+    `GROUP BY 펀드키`, `ORDER BY MIN(length(공백제거 이름)) ASC`(**가장 짧은 이름 = 본체** — "질문 이름과
+    가장 정확히 일치하는 펀드를 먼저" 를 결정적으로), LIMIT 은 상한으로 푼다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
+        return sql, False
+    if not _NAME_FILTER.search(sql) or any(t in question for t in _LOOKUP_ROW_UNIT):
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    if re.search(r"\b(?:count|sum|avg|min|max|total)\s*\(", head, re.I) or "*" in head:
+        return sql, False
+    sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I)
+    types = _fund_col_types()
+    if not types:
+        return sql, False
+    new = ["MIN(itm_no) AS 대표_itm_no", "MIN(TRIM(itm_nm)) AS itm_nm", 'COUNT(*) AS "클래스수"']
+    for it in _split_select_items(sel):
+        m = _SELECT_PLAIN_ITEM.fullmatch(it.strip())
+        if not m:
+            return sql, False
+        col, alias = m.group(1).lower(), m.group(2)
+        if col in ("itm_no", "itm_nm"):
+            continue
+        t = types.get(col)
+        if t is None:
+            return sql, False
+        if t.startswith(("numeric", "int", "real", "double", "float", "decimal")) and not col.endswith("_dt"):
+            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']
+        else:
+            new.append(f"MAX({col}) AS {alias or col}")
+    tail = sql[frm.start():].rstrip()
+    tail = re.sub(r"\blimit\s+\d+\s*$", "", tail, flags=re.I).rstrip()
+    return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_KEY_EXPR} "
+            f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
 
 
 def ensure_enum_value_fix(sql: str, ctx) -> tuple[str, bool]:
@@ -2049,7 +2113,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
              "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
-    had_group = bool(re.search(r"group\s+by", sql, re.I))
+    had_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
     sql, rank_fixed = ensure_fund_rank_representative(sql, q)
     if rank_fixed and had_group:
         step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
@@ -2091,6 +2155,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
              "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
+    sql, lookup_fixed = ensure_fund_lookup_grouping(sql, q)
+    if lookup_fixed:
+        step("[Guard] 개별 조회 펀드 묶기 — 이름 검색 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값 병기 "
+             "(2026-09-02 R4 재검: 6펀드 37클래스를 1클래스로 답함 3회째 · R6 LIMIT 1 이라 클래스수 병기 불가)")
     sql, ev_fixed = ensure_fund_evidence_columns(sql)
     if ev_fixed:
         step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")

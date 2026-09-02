@@ -689,3 +689,55 @@ def test_fund_rank_group_by_injected():
     s4, ok4 = f(_FND15_SQL, q)
     assert ok4 and "GROUP BY or_co_xtn_itt_cd" in s4 and s4.count("GROUP BY") == 1
 
+
+
+_R4_SQL = ("SELECT fd_yr1_ern_r, itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' "
+           "AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' "
+           "AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 LIMIT 30")
+_R6_SQL = ("SELECT zrin_fd_ivst_risk_grd_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' "
+           "AND REPLACE(itm_nm,' ','') GLOB '*[^0-9]2호*' LIMIT 1")
+
+
+def test_fund_lookup_grouping():
+    """R4 재검 — 이름 검색 30행(6펀드 37클래스)을 답변기가 1클래스로 답함 3회째. SELECT 단계에서 펀드키로 묶어
+    클래스수·최고/최저를 병기하면 답변기는 6행을 복사만 한다. R6 — LIMIT 1 이라 클래스수 병기가 불가능하던 것."""
+    from src.runtime.pipeline import ensure_fund_lookup_grouping as f, ensure_fund_evidence_columns as ev
+
+    con = _ro()
+    s, ok = f(_R4_SQL, "미래에셋코어테크 펀드 1년 수익률 알려줘")
+    assert ok and "GROUP BY printf" in s and '"클래스수"' in s and '"fd_yr1_ern_r_최고"' in s and "LIMIT 30" in s
+    assert not f(s, "미래에셋코어테크 펀드 1년 수익률 알려줘")[1]     # 멱등 — GROUP BY 가 생겼으면 불개입
+    rows = con.execute(s).fetchall()
+    assert len(rows) == 6                                          # 6펀드 (2026-09-02 DB 실측)
+    assert rows[0][1].startswith("미래에셋코어테크증권자투자신탁") and rows[0][2] == 9   # 본체가 첫 행(최단 이름) · <>0 필터 후 9클래스
+    assert (rows[0][3], rows[0][4]) == (189.77, 187.09)            # 최고·최저 — 1클래스(188.83)만 답하던 것의 재료
+    # R6 — 등급명만 SELECT → 묶기 + 근거컬럼 가드의 역방향 gcd 병기. 🔴 이 펀드는 클래스마다 mtco_itm_no 가
+    #    달라(531101~531107) 정본 펀드키로는 6행이다 — 값은 전 행 '높은 위험'·2 로 같고 클래스수 합이 7.
+    s6, ok6 = f(_R6_SQL, "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘")
+    assert ok6 and "MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm" in s6 and "LIMIT 1" not in s6
+    s6, ok6b = ev(s6)
+    assert ok6b and "zrin_fd_ivst_risk_gcd" in s6
+    rows6 = con.execute(s6).fetchall()
+    assert rows6 and all(r[3] == "높은 위험" and r[4] == 2 for r in rows6) and sum(r[2] for r in rows6) == 7
+    # 비발동 — '클래스' 열거(033) · 보수(020) · ORDER BY 랭킹(P1 담당) · COUNT 집계 · 이름 필터 없음
+    q33 = "미래에셋코어테크 펀드는 어떤 클래스들이 있어?"
+    s33 = ("SELECT itm_no, TRIM(itm_nm) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' "
+           "AND sale_yn='판매중' LIMIT 30")
+    assert not f(s33, q33)[1] and len(con.execute(s33).fetchall()) == 10
+    assert not f(_R4_SQL, "미래에셋코어테크 펀드 클래스별 총보수 알려줘")[1]
+    assert not f(_R4_SQL.replace("LIMIT 30", "ORDER BY fd_yr1_ern_r DESC LIMIT 30"), "q")[1]
+    assert not f("SELECT COUNT(*) FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 30", "q")[1]
+    assert not f("SELECT fd_yr1_ern_r, itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' LIMIT 30", "q")[1]
+    # 식이 섞인 SELECT 는 안전하게 불개입
+    assert not f("SELECT fd_yr1_ern_r * 2, itm_nm FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 30", "q")[1]
+
+
+def test_fund_evidence_grade_code_symmetric():
+    """R6 재검 — 등급명만 조회하면 '2등급' 숫자를 못 붙인다. 이름→코드 역방향 병기 (코드→이름은 종전대로)."""
+    from src.runtime.pipeline import ensure_fund_evidence_columns as f
+
+    s, ok = f("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, itm_nm FROM public_funds WHERE itm_nm LIKE '%솔로몬%' LIMIT 30")
+    assert ok and s.startswith("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, itm_nm, zrin_fd_ivst_risk_gcd FROM")
+    assert not f(s)[1]                                             # 멱등
+    s2, ok2 = f("SELECT itm_no, itm_nm FROM public_funds WHERE zrin_fd_ivst_risk_gcd = 2 LIMIT 30")
+    assert ok2 and "zrin_fd_ivst_risk_grd_nm" in s2 and s2.count("zrin_fd_ivst_risk_gcd") == 1

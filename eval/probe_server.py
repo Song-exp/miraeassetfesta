@@ -59,7 +59,12 @@ def main() -> None:
         line = line.rstrip("\n")
         if not line.strip() or line.startswith("#"):
             continue
-        qid, _, q = line.partition("\t") if "\t" in line else (f"P{i:03d}", "", line)
+        if "\t" in line:
+            # ID<TAB>질문<TAB>주석… — 세 번째 칸부터는 설계 메모라 서버에 보내지 않는다
+            #   (2026-09-02 5R 사고: B 보고서 §⑤ 줄을 그대로 붙여 X1~X25 가 주석까지 질의됨)
+            qid, q = line.split("\t")[:2]
+        else:
+            qid, q = f"P{i:03d}", line
         items.append((qid.strip(), q.strip()))
 
     if done:

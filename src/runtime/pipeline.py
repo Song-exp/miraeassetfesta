@@ -3281,10 +3281,12 @@ def _standalone_name_token(question: str) -> str | None:
         cand = cand.strip(".")
         if len(cand) < 3 or cand.endswith("운용") or re.fullmatch(r"[0-9.]+", cand):
             continue
+        # 6R 부류 N — 일반어 제거 사전에 **PRODUCT 키(오타 '펌드'·정식 용어 '투자신탁' 포함)** 를 넣는다: 라우터가 머리명사로 소비한
+        #    낱말은 후보가 아니다('공모펌드' → '' → 후보 없음 — R7·S1 오거절). 라우터와 결정층이 같은 사전을 본다.
         rest = cand
-        for g in sorted(_GENERIC_NAME_TOKEN, key=len, reverse=True):
+        for g in sorted(set(_GENERIC_NAME_TOKEN) | set(PRODUCT), key=len, reverse=True):
             rest = rest.replace(g, "")
-        if len(rest) >= 2 and cand not in _GENERIC_NAME_TOKEN:
+        if len(rest) >= 2 and cand not in _GENERIC_NAME_TOKEN and cand not in PRODUCT:
             return cand
     return None
 

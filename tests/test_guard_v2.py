@@ -1981,3 +1981,15 @@ def test_amount_eok_common_B4(ctx):
     s2 = ev("SELECT SUM(fd_nast_suma) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040010' AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 1")[0]
     assert _ro().execute(s2).fetchone()[1] == "331098억원"
     assert not f("SELECT pd_nm FROM domestic_bonds LIMIT 5")[1]
+
+
+# ── 6R (docs/recheck_2026-09-02_round6_plan.md) ──
+def test_r6_N_standalone_token_product_keys():
+    """6R 부류 N — 라우터 머리명사(오타 '펌드' 포함)는 고유명 후보가 아니다: 일반어 제거 사전 = _GENERIC_NAME_TOKEN ∪ PRODUCT 키."""
+    from src.runtime.pipeline import _standalone_name_token as st
+
+    assert st("공모펌드 중 1년 수익률이 가장 높은 3개 알려줘") is None
+    assert st("1년 수익률이 가장 높은 공모펌드 5개 알려줘") is None
+    assert st("삼성코리아대표증권자투자신탁 1년 수익률 알려줘") == "삼성코리아대표증권자투자신탁"
+    assert st("KB차이나그로스 펀드 위험등급 알려줘") == "KB차이나그로스"
+    assert st("코어테크 펌드 1년 수익률 알려줘") == "코어테크"

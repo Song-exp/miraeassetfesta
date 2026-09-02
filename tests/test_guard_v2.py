@@ -965,9 +965,13 @@ def test_post_route_correction_from_sql(ctx):
     r = answer_question("T-R7b", q, planner=p, ctx=ctx)
     assert "[Route] 상품군 — 미특정" in r.think_trace
     assert "[Route] SQL 사후 보정 — FROM public_funds" in r.think_trace
-    assert "GROUP BY 펀드키 주입" in r.think_trace and "(public_funds)" in r.think_trace.splitlines()[-1]
-    assert p.rules == ctx.answer_context(["public_funds"])           # 4도메인 희석이 아니라 펀드 규칙 단일
-    assert "NH-Amundi" in p.rows and "삼성KOSPI200" in p.rows          # gold 펀드단위 top3 가 답변 입력에 실린다
+    # 8R ③-10 — 이 SQL 은 랭킹 확정형이라 답변이 기계 조립으로 나간다(HCX 0회). 그래서 마지막 줄은
+    #   '답변 규칙 …자 적용 (public_funds)' 이 아니라 조립 마커다 — 답변 규칙 희석 자체가 발생하지 않는 상태.
+    assert "GROUP BY 펀드키 주입" in r.think_trace
+    assert "랭킹 답변 기계 조립" in r.think_trace.splitlines()[-1]
+    assert "클래스 6개" in r.answer and "기준일" in r.answer
+    assert not hasattr(p, "rules")                                   # HCX 0회 — 희석될 답변 규칙 자체가 없다
+    assert "NH-Amundi" in r.answer and "삼성KOSPI200" in r.answer      # gold 펀드단위 top3 가 답에 그대로 실린다
     # 라우터가 정한 질의엔 사후 보정 마커가 없다
     r2 = answer_question("T-R7c", "공모펌드 중 1년 수익률이 가장 높은 3개 알려줘", planner=P(), ctx=ctx)
     assert "SQL 사후 보정" not in r2.think_trace and "머리명사 펌드" in r2.think_trace

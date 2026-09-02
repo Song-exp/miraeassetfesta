@@ -1434,6 +1434,77 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
     return "\n".join(out)
 
 
+def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
+    """펀드 랭킹(대표행 가드 산출형)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
+
+    8R ③-10(F6″-b) — 값은 gold 전수인데 서술에서 감점이 나던 자리다. 7R 실측: SELECT 에 `클래스수` 가 실려 있는데
+    HCX 가 옮기지 않았고(R7·S1·V16·Y1·Y3·Y4·Y5 = G-1), 순자산 랭킹은 MAX/SUM 축을 고지하지 않았으며(Y2·U13),
+    머리 이름이 **클래스명**('… 종류Ce')이라 펀드가 아니라 클래스를 답한 것처럼 읽혔다. 게다가 HCX 산문 경로에만
+    남은 꼬리 결함(S1 면책 · Y3 기준일 8/21 날조 + '모든 클래스를 합하여' 방법론 날조 · Y1 추측)이 매 라운드 재발했다.
+    기계 조립은 HCX 를 안 부르므로 그 꼬리가 **구조적으로** 사라진다(S4·T14 가 64s→2.9s 로 준 것과 같은 효과).
+
+    발동: ① `GROUP BY <펀드키>` ② 헤더에 이름 열(itm_nm 또는 TRIM(itm_nm))과 `클래스수` ③ ORDER BY 첫 키가
+    랭킹 컬럼(수익률 8종·순자산). `_lookup_answer`(대표_itm_no 머리 4열)·`_list_answer`(리터럴 itm_nm)와 헤더로 배타다.
+    """
+    if n < 1 or f"GROUP BY {_FUND_KEY_EXPR}" not in sql:
+        return None
+    lines = rows.splitlines()
+    if len(lines) != n + 1:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if "클래스수" not in cols:
+        return None
+    name_i = next((i for i, c in enumerate(cols) if c in ("itm_nm", "TRIM(itm_nm)", "TRIM(itm_nm) AS itm_nm")), None)
+    target = _fund_sort_target(sql)
+    if name_i is None or not target:
+        return None
+    col, direction = target
+    cls_i = cols.index("클래스수")
+    if col == "fd_nast_suma":
+        val_i = next((i for i, c in enumerate(cols) if _DISPLAY_UNIT.search(c)), None)
+        label = "순자산"
+        # 실제 SQL 이 쓴 축을 그대로 고지한다 — 축이 바뀌면 순위가 바뀐다(U13 🟡 의 지적)
+        axis = "클래스 합계(SUM)" if re.search(r"\bsum\s*\(\s*(?:\w+\.)?fd_nast_suma", sql, re.I) else "대표 클래스 기준(MAX)"
+    else:
+        val_i = cols.index(col) if col in cols else None
+        label = f"{_RET_LABEL[col]} 수익률" if col in _RET_LABEL else _fund_col_ko(col)
+        axis = "클래스 최고값(MAX)" if direction == "DESC" else "클래스 최저값(MIN)"
+    if val_i is None:
+        return None
+    pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
+    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"))
+             if re.search(pat, sql, re.I)]
+    scope = ("·".join(basis) + " 기준, " if basis else "") + \
+        f"펀드 = 운용사 종목번호 기준·클래스 = 판매 단위, {label} = {axis}, 기준일 {gate.DATA_CUTOFF}"
+    out = [f"{label} {'상위' if direction == 'DESC' else '하위'} {n}개 {pop}입니다 ({scope}).", ""]
+    extreme = False
+    for i, ln in enumerate(lines[1:], 1):
+        parts = [p.strip() for p in ln.split(" | ")]
+        if len(parts) != len(cols):
+            return None
+        raw = parts[val_i]
+        if col == "fd_nast_suma":
+            num = raw[:-2] if raw.endswith("억원") else raw
+            val = f"{int(num):,}억원" if num.lstrip("-").isdigit() else (raw or "미수록")
+        else:
+            try:
+                f = float(raw)
+            except ValueError:
+                return None
+            extreme = extreme or abs(f) >= 100
+            val = f"{_pct(f)}%"
+        try:
+            k = int(float(parts[cls_i] or 0))
+        except ValueError:
+            return None
+        out.append(f"{i}. {_fund_stem(parts[name_i])}: {label} {val} · 클래스 {k}개")
+    if extreme:
+        # ontology/enums/public_funds.yaml `수익률극단값` — 8기간 수익률은 전부 누적이고 100% 초과 행에는 주의 문구를 붙인다
+        out += ["", "※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다. 100%를 넘는 값은 "
+                    "파생·레버리지 전략에서 나오므로 손실도 같은 배율로 커질 수 있습니다."]
+    return "\n".join(out)
+
+
 _BOND_AXIS_KO = {"applied_yield": ("수익률", "높은 순", "낮은 순"), "after_tax_yield": ("세후수익률", "높은 순", "낮은 순"),
                  "corp_pretax_yield": ("법인 세전수익률", "높은 순", "낮은 순"), "srfc_irt": ("표면금리", "높은 순", "낮은 순"),
                  "buy_yield": ("매수수익률", "높은 순", "낮은 순"), "mat_dt": ("만기", "긴 순", "짧은 순"),
@@ -5309,6 +5380,14 @@ def answer_question(
              "(2026-09-02 R3·S7: 30행 중 5·10행만 옮김 · S6: 총량 대신 '더 있을 수 있음')")
         result.think_trace = "\n".join(trace)
         result.answer = lst
+        return result
+    rk = _fund_rank_answer(sql, rows, n)
+    if rk is not None:
+        step("[Answer] 랭킹 답변 기계 조립 — SELECT 에 실린 클래스수를 반드시 옮기고 값 축(MAX/SUM)을 머리줄에 굽는다, HCX 0회 "
+             "(8R ③-10 · 7R 실측: R7·S1·Y3·Y4 는 클래스수 미표기 + 머리 이름이 클래스명 · Y2·U13 은 MAX 축 미고지 · "
+             "Y3 꼬리에 기준일 8/21 날조 + '모든 클래스를 합하여' 방법론 날조 — 기계 조립은 HCX 를 안 부르므로 꼬리가 구조적으로 사라진다)")
+        result.think_trace = "\n".join(trace)
+        result.answer = rk
         return result
     bl = _bond_list_answer(sql, rows, n, q)
     if bl is not None:

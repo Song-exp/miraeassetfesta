@@ -203,3 +203,37 @@ def test_etf_base_population_injected():
     # 랭킹·집계 꼴이 아니면 불개입
     plain = "SELECT pd_nm FROM domestic_etfs LIMIT 5"
     assert P.ensure_etf_base_population(plain, "국내 ETF 알려줘") == (plain, False)
+
+
+# ── 항목 8 · 재검 ③-10 부류 F6″-b — 랭킹 답변 기계 조립 ──────────────────────────
+RANK_SQL = ('SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클래스수" '
+            "FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+            "GROUP BY " + P._FUND_KEY_EXPR + " ORDER BY fd_yr1_ern_r DESC LIMIT 2")
+
+
+def test_rank_answer_assembles():
+    """클래스수를 반드시 옮기고, 값 축(MAX/MIN)을 머리줄에 굽고, 이름은 클래스 접미를 뗀 펀드명이다."""
+    rows = ("itm_no | TRIM(itm_nm) | fd_yr1_ern_r | 클래스수\n"
+            "KR1 | 한화2.2배레버리지인덱스증권투자신탁(주식-파생재간접형) 종류Ce | 387.66 | 6\n"
+            "KR2 | NH-Amundi코리아2배레버리지증권투자신탁[주식-파생형] Class Ae | 362.53 | 4")
+    out = P._fund_rank_answer(RANK_SQL, rows, 2)
+    assert out and "클래스 6개" in out and "클래스 4개" in out, out
+    assert "1년 수익률 상위 2개 공모펀드" in out and "클래스 최고값(MAX)" in out, out
+    assert "판매중·공모 기준" in out and "기준일 2026-08-24" in out, out
+    assert "종류Ce" not in out and "Class Ae" not in out, out          # 클래스명이 아니라 펀드명
+    assert "누적 수익률" in out, out                                    # 100% 초과 — 수익률극단값 규칙의 주의 문구
+
+    # 하위 랭킹은 MIN 축으로 고지한다
+    low = P._fund_rank_answer(RANK_SQL.replace("DESC", "ASC").replace("MAX(", "MIN("),
+                              rows.replace("387.66", "-83.96").replace("362.53", "-79.07"), 2)
+    assert low and "하위 2개" in low and "클래스 최저값(MIN)" in low and "누적 수익률" not in low, low
+
+
+def test_rank_answer_skips_without_class_count():
+    """클래스수가 SELECT 에 없으면 조립하지 않는다 — 재료 없이 지어내지 않는다(V16·Y1·Y5 는 HCX 경로 유지)."""
+    sql = RANK_SQL.replace(', COUNT(*) AS "클래스수"', "")
+    rows = "itm_no | TRIM(itm_nm) | fd_yr1_ern_r\nKR1 | 어떤펀드 | 387.66"
+    assert P._fund_rank_answer(sql, rows, 1) is None
+    # GROUP BY 펀드키가 없어도 조립하지 않는다(클래스 단위 행이라 '펀드 상위 N' 이 거짓이 된다)
+    assert P._fund_rank_answer(RANK_SQL.replace("GROUP BY " + P._FUND_KEY_EXPR, "GROUP BY itm_no"),
+                               "itm_no | TRIM(itm_nm) | fd_yr1_ern_r | 클래스수\nKR1 | 펀드 | 1.0 | 1", 1) is None

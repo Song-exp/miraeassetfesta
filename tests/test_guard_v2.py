@@ -1402,3 +1402,21 @@ def test_series_boundary_covers_paren_notation():
               "삼성코리아대표분할매수 1호 알려줘")
     assert any("1[" in r[1] for r in con.execute(s3))
 
+
+
+def test_count_answer_offshore_sibling_note():
+    """2R Q7 — S9 피델리티: 국내 코드 00080029 106펀드로 답이 끝나면 브랜드 펀드 전부로 읽힌다. 같은 이름 접두의 역외 코드(종별 0013)
+    행수를 별도 병기. S8 KB(역외 없음)는 무병기. 특정 운용사 하드코딩 없이 코드 종별 + 이름 접두로 판정."""
+    from src.runtime.pipeline import _count_answer as f
+
+    sql = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (TRIM(or_co_xtn_itt_cd) IN ('00080029') AND prvo_pbff_desc = '공모') LIMIT 30")
+    g = ["'피델리티' → Org_00080029 (Organization) → public_funds.or_co_xtn_itt_cd='00080029'"]
+    a = f(sql, "펀드수 | 클래스수\n106 | 246", 1, g)
+    assert "피델리티가 운용하는 공모펀드는 106개(클래스 246개)" in a
+    assert "종목명이 '피델리티' 로 시작하는 역외펀드 47개(클래스 47개, 해외 운용법인 코드 00130001)는 별도 법인이라" in a
+    kb = f(sql.replace("00080029", "00040035"), "펀드수 | 클래스수\n129 | 625", 1,
+           ["'KB자산운용' → Org_00040035 (Organization) → public_funds.or_co_xtn_itt_cd='00040035'"])
+    assert "129개(클래스 625개)" in kb and "역외" not in kb
+    # 운용사 매핑이 없으면 병기 없음
+    assert "역외" not in f(sql, "펀드수 | 클래스수\n1 | 2", 1, [])

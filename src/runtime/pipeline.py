@@ -1290,7 +1290,48 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str |
     out = f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}."
     if len(used_codes) >= 2:
         out += f"\n운용사 코드 {len(used_codes)}건({'·'.join(used_codes)})을 합산했습니다."
+    offshore = _offshore_sibling_note(subject, used_codes, sql)
+    if offshore:
+        out += "\n" + offshore
     return out
+
+
+_OFFSHORE_CLASS = "0013"     # 대외기관코드 종별(앞 4자) — 해외 운용법인(역외펀드 FIL·슈로더·프랭클린 계열). 코드북: 국내 법인 코드 아님
+
+
+def _offshore_sibling_note(subject: str, used_codes: list[str], sql: str) -> str | None:
+    """국내 운용사 개수 답변에 같은 브랜드 이름의 **역외 코드(종별 0013)** 행수를 별도 병기. 없으면 None.
+
+    일반 규칙(2R Q7): KG 는 역외 운용법인을 국내 운용사에 병합하지 않는다(코드북 종별이 다르다 — 옳다). 다만 답이 "106개" 로
+    끝나면 브랜드 이름 펀드 전부로 읽히므로(S9 피델리티: 00080029 106펀드 + 역외 00130001 47행), 종목명이 그 브랜드로 시작하는
+    0013 계열 행수를 세어 "별도이며 포함하지 않았다" 를 굽는다. 특정 운용사 하드코딩 없이 코드 종별 + 이름 접두로 판정(SQLite 1회).
+    """
+    if not used_codes or any(c.startswith(_OFFSHORE_CLASS) for c in used_codes):
+        return None
+    m = re.match(r"(.+?)(?:이|가) 운용하는$", subject)
+    if not m:
+        return None
+    brand = re.sub(r"(?:자산운용|투자신탁운용|운용)$", "", m.group(1)).replace(" ", "")
+    if len(brand) < 2:
+        return None
+    conds = [f"TRIM(or_co_xtn_itt_cd) LIKE '{_OFFSHORE_CLASS}%'", f"REPLACE(itm_nm,' ','') LIKE '{brand}%'"]
+    for pat in (r"sale_yn\s*=\s*'판매중'", r"prvo_pbff_desc\s*=\s*'(?:공모|사모)'"):
+        mm = re.search(pat, sql, re.I)
+        if mm:
+            conds.append(mm.group(0))
+    con = connect_readonly()
+    try:
+        n, f, codes = con.execute(
+            f"SELECT COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR}), GROUP_CONCAT(DISTINCT TRIM(or_co_xtn_itt_cd)) "
+            f"FROM public_funds WHERE {' AND '.join(conds)}").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    if not n:
+        return None
+    return (f"종목명이 '{brand}' 로 시작하는 역외펀드 {f:,}개(클래스 {n:,}개, 해외 운용법인 코드 {codes.replace(',', '·')})는 "
+            "별도 법인이라 이 수에 포함하지 않았습니다.")
 
 
 @lru_cache(maxsize=1)

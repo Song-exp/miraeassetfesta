@@ -1015,7 +1015,9 @@ def test_distribution_not_for_topn_or_entity_axis(ctx):
             return "x"
 
     r = answer_question("T-TOP5", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
-    assert P.calls == 1 and "분포 답변 기계 조립" not in r.think_trace and "분포 펀드수 병기" not in r.think_trace
+    assert "분포 답변 기계 조립" not in r.think_trace and "분포 펀드수 병기" not in r.think_trace
+    # 2R Q2 이후 운용사 집계는 템플릿 + 전용 조립기(HCX 0회)가 받는다 — 분포 조립기가 아니라는 점은 그대로
+    assert P.calls == 0 and "[Answer] 운용사 집계 답변 기계 조립" in r.think_trace and "823개" in r.answer
     # 절단된 분포(n == MAX_ROWS)는 전체/복수 범주 문장을 굽지 않는다
     sql3 = ("SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*), COUNT(DISTINCT x) AS 펀드수 FROM public_funds "
             "WHERE sale_yn = '판매중' GROUP BY zrin_btyp_nm LIMIT 30")
@@ -1178,3 +1180,63 @@ def test_r2_pipeline_no_longer_rejected(ctx):
     r = answer_question("T-R2", "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", planner=P(), ctx=ctx)
     assert P.plans == 1 and "[Guard] SQL 기각" not in r.think_trace and "[Guard] 운용사 이름 JOIN 주입" in r.think_trace
     assert "823" in r.retrieved_context and "우리자산운용" in r.retrieved_context and "142" in r.retrieved_context
+
+
+_S11_FIRST_SQL = ("SELECT mtco_nm, COUNT(*) as cnt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+                  "GROUP BY mtco_nm ORDER BY cnt DESC LIMIT 3")
+
+
+def test_fund_manager_ranking_template(ctx):
+    """Q2-a/b — S11: 이름 GROUP BY + COUNT(*) 로 순자산 질의를 오해. 코드 GROUP BY·최빈 이름·펀드수·클래스수·순자산 억원
+    템플릿으로 교체하고 5열 결과는 기계 조립한다."""
+    from src.runtime.pipeline import ensure_fund_manager_ranking as f, _manager_rank_answer as a, _apply_sql_guards, _execute
+
+    q11 = "순자산이 가장 큰 운용사 상위 3개 알려줘"
+    s, ok = f(_S11_FIRST_SQL, q11)
+    assert ok and "GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 3" in s and "MAX(e.mgmt_co_nm)" in s
+    assert not f(s, q11)[1]                                                    # 멱등
+    chained = _apply_sql_guards(_S11_FIRST_SQL, q11, None, None, lambda m: None, ctx)
+    assert guard.unknown_columns(chained, ctx) == [] and guard.ambiguous_columns(chained, ctx) == []
+    rows, n = _execute(chained)
+    body = [ln.split(" | ") for ln in rows.splitlines()[1:]]
+    assert n == 3 and [(b[0], b[1], b[4]) for b in body] == [("00080008", "미래에셋자산운용", "377707억원"),
+                                                             ("00040010", "삼성자산운용", "331097억원"),
+                                                             ("00040035", "KB자산운용", "278196억원")]
+    ans = a(chained, rows, n)
+    assert ans and ans.startswith("조회 결과 순자산 상위 3개 운용사입니다") and "1. 미래에셋자산운용(00080008): 순자산 377,707억원 · 펀드 823개(클래스 2,066개)" in ans
+    # R2 질문 → 펀드수 축 5행 = gold (최빈 이름 가드가 우리자산운용으로)
+    q2 = "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘"
+    chained2 = _apply_sql_guards(_R2_FIRST_SQL, q2, None, None, lambda m: None, ctx)
+    rows2, n2 = _execute(chained2)
+    body2 = [ln.split(" | ") for ln in rows2.splitlines()[1:]]
+    assert [(b[0], b[1], int(b[2])) for b in body2] == _R2_GOLD
+    assert "1. 미래에셋자산운용(00080008): 펀드 823개(클래스 2,066개) · 순자산 377,707억원" in a(chained2, rows2, n2)
+    # 부가 조건 보존 · 비발동('클래스' 명시 · 운용사 컬럼 없음 · 랭킹어 없음)
+    s3, ok3 = f("SELECT or_co_xtn_itt_cd, COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '주식형' GROUP BY 1 ORDER BY 2 DESC LIMIT 5",
+                "주식형 펀드를 가장 많이 운용하는 운용사 상위 5개")
+    assert ok3 and "AND zrin_btyp_nm = '주식형'" in s3
+    assert not f(_S11_FIRST_SQL, "운용사별 클래스 수 상위 3개")[1]
+    assert not f("SELECT itm_nm FROM public_funds ORDER BY fd_nast_suma DESC LIMIT 3", q11)[1]
+    assert not f(_S11_FIRST_SQL, "운용사 목록 알려줘")[1]
+    assert a("SELECT COUNT(*) FROM public_funds LIMIT 1", "COUNT(*)\n5", 1) is None
+
+
+def test_s11_pipeline_assembled(ctx):
+    """S11 통합 — 라우터 3테이블 → 사후 보정(FROM public_funds · 재생성 문서 교체) → 템플릿 → 기계 조립(HCX 답변기 0회)."""
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return _S11_FIRST_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-S11", "순자산이 가장 큰 운용사 상위 3개 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Guard] SQL 기각" not in r.think_trace
+    assert "[Route] SQL 사후 보정 — FROM public_funds" in r.think_trace and "재생성 문서도" in r.think_trace
+    assert "[Guard] 운용사 집계 확정식" in r.think_trace and "[Answer] 운용사 집계 답변 기계 조립" in r.think_trace
+    assert "377,707억원" in r.answer and "삼성자산운용(00040010)" in r.answer and "KB자산운용(00040035)" in r.answer

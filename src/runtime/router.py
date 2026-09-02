@@ -51,6 +51,8 @@ QUALIFIER: dict[str, frozenset[str]] = {
 #    근거문서가 39,403자로 불어나 HCX 가 펀드 컬럼(zrin_*)을 domestic_etfs 에 써서 재생성까지 실패했다.
 # 긴 이름을 먼저 — '상장지수펀드' 가 '펀드' 로 잘리면 안 된다
 _PRODUCT_TOKEN = re.compile("|".join(re.escape(w) for w in sorted(PRODUCT, key=len, reverse=True)), re.I)
+_MANAGER_WORD = re.compile(r"운용사|자산운용")
+_MANAGER_TABLES = frozenset({"public_funds", "domestic_etfs", "overseas_etfs"})
 # 병렬 표지 — 한국어 접속 조사·접속사.
 # 🔴 받침 없는 체언 뒤의 `나` 를 빼먹고 있었다 (`이나` 만 있었다).
 #    2026-08-31 서버 실측: "삼성전자가 들어 있는 ETF나 펀드 중에…" 가 'ETF나' 를 병렬로 못 읽어
@@ -88,6 +90,11 @@ def product_route(question: str) -> tuple[set[str], str, int]:
     #    포장(ETF·ETN)을 가리키는 말만 예외로 둔다. (2026-08-31 로컬 일제점검)
     if not toks:
         toks = [(w, p) for w, p, _ in hits if PRODUCT[w] == _ETF_TABLES]
+    if not toks and _MANAGER_WORD.search(question):
+        # 🔴 '운용사'·'자산운용' 만 있는 질의(2026-09-02 S11 "순자산이 가장 큰 운용사 상위 3개") — 상품 명사가 없어
+        #    미특정 4테이블 51,788자로 빠졌다. 운용사 컬럼은 펀드(or_co_xtn_itt_cd)·ETF(cu_fund_mgmt_co)에만 있고
+        #    채권엔 없으므로 3테이블로 좁힌다(문서 1/3 감량). 상품 명사가 있으면 그것이 머리다("펀드를 … 운용사" → 펀드).
+        return set(_MANAGER_TABLES), "운용사 표현 → 펀드·ETF 3테이블 (채권엔 운용사 컬럼 없음)", 1
     if not toks:
         return set(), "", 0
     heads: list[tuple[str, int]] = []

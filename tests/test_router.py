@@ -246,3 +246,12 @@ def test_router_typo_펌드(ctx):
     assert r.tables == [PF] and r.decided
     assert route("코어테크 펌드 1년 수익률 알려줘", ctx).tables == [PF]
     assert not route("공모 펀 드 알려줘", ctx).decided
+
+
+def test_router_manager_word_narrows_to_three_tables(ctx):
+    """2R Q2-c — '운용사' 만 있는 질의(S11)는 미특정 4테이블 대신 펀드·ETF 3테이블(채권엔 운용사 컬럼 없음).
+    상품 명사가 있으면 그것이 머리다("펀드를 … 운용사" → 펀드)."""
+    r = route("순자산이 가장 큰 운용사 상위 3개 알려줘", ctx)
+    assert set(r.tables) == {PF, DE, OE} and r.decided and r.groups == 1
+    assert route("운용 펀드 수가 가장 많은 자산운용사 5곳 알려줘", ctx).tables == [PF]
+    assert route("펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘", ctx).tables == [PF]

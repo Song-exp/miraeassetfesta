@@ -1233,6 +1233,83 @@ def qualify_join_columns(sql: str, ctx) -> tuple[str, list[str]]:
     return out, amb
 
 
+_MGR_Q = re.compile(r"운용사|자산운용")
+_MGR_RANK_Q = re.compile(r"상위|가장|많이|많은|큰|top", re.I)
+_MGR_SQL_COL = re.compile(r"\b(?:mgmt_co_nm|mtco_nm|or_co_xtn_itt_cd)\b", re.I)
+_MGR_COLS = ["운용사코드", "운용사명", "펀드수", "클래스수", "순자산_억원"]
+_MGR_SKIP_CONJ = re.compile(r"\b(?:sale_yn|prvo_pbff_desc|mgmt_co_nm|mtco_nm|ext_fund_page)\b", re.I)
+
+
+def ensure_fund_manager_ranking(sql: str, question: str) -> tuple[str, bool]:
+    """운용사 집계 질의의 SQL 을 확정 템플릿으로 교체. (보정된 SQL, 보정했는지)
+
+    2026-09-02 S11 재검 — HCX 가 두 번 다 **이름 컬럼 GROUP BY**(합병 코드가 갈린다) + **COUNT(*)**(순자산 질의를 오해)
+    를 냈고 mtco_nm 환각은 3라운드째. 워크드 예시로는 못 막는다(법칙 1). 발동: ① FROM public_funds ② 질문에
+    운용사/자산운용 + 랭킹어(상위·가장·많이·큰·top) ③ SQL 의 SELECT 또는 GROUP BY 에 운용사 컬럼
+    ④ 질문에 '클래스' 없음 · _POP_WIDEN 없음. 조치: 코드 GROUP BY · MAX(e.mgmt_co_nm)(→ 최빈 이름 가드가 받음) ·
+    펀드수(펀드키 DISTINCT) · 클래스수 · 순자산 억원 템플릿. 축: 질문에 순자산·규모·자산 → SUM(순자산), 그 외 펀드수.
+    원 WHERE 의 부가 조건(유형 등)은 p. 한정으로 옮겨 보존한다. LIMIT 은 원 값(없으면 상한).
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    if not (_MGR_Q.search(question) and _MGR_RANK_Q.search(question)) or "클래스" in question:
+        return sql, False
+    if any(t in question for t in _POP_WIDEN) or '"순자산_억원"' in sql:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    grp = re.search(r"\bgroup\s+by\b(.*?)(?=\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not (_MGR_SQL_COL.search(head) or (grp and _MGR_SQL_COL.search(grp.group(1)))):
+        return sql, False
+    m_alias = _FROM_FUND.search(sql)
+    old_alias = m_alias.group(1) if m_alias else None
+    extra = []
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if m_w:
+        for c in guard.split_conjuncts(m_w.group(1)):
+            if _MGR_SKIP_CONJ.search(c):
+                continue
+            c = re.sub(r"\bpublic_funds\.", "p.", c)
+            if old_alias:
+                c = re.sub(rf"\b{re.escape(old_alias)}\.", "p.", c)
+            c = re.sub(r"(?<![\w.])itm_no\b", "p.itm_no", c)
+            extra.append(c.strip())
+    key = (_FUND_KEY_EXPR.replace("or_co_xtn_itt_cd", "p.or_co_xtn_itt_cd")
+           .replace("mtco_itm_no", "p.mtco_itm_no").replace(", itm_no)", ", p.itm_no)"))
+    by_assets = bool(re.search(r"순자산|규모|자산\s*총|자산이", question))
+    order = "SUM(p.fd_nast_suma) DESC" if by_assets else "3 DESC"
+    m_lim = re.search(r"\blimit\s+(\d+)", sql, re.I)
+    k = m_lim.group(1) if m_lim else MAX_ROWS
+    where = " AND ".join(["p.sale_yn = '판매중'", "p.prvo_pbff_desc = '공모'"] + extra)
+    return (f"SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(e.mgmt_co_nm) AS \"운용사명\", "
+            f"COUNT(DISTINCT {key}) AS \"펀드수\", COUNT(*) AS \"클래스수\", "
+            f"CAST(SUM(p.fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\" "
+            f"FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+            f"WHERE {where} GROUP BY 1 ORDER BY {order} LIMIT {k}"), True
+
+
+def _manager_rank_answer(sql: str, rows: str, n: int) -> str | None:
+    """운용사 집계 템플릿 결과(운용사코드·운용사명·펀드수·클래스수·순자산_억원)의 답변을 기계 조립한다. 아니면 None."""
+    lines = rows.splitlines()
+    if n < 1 or len(lines) != n + 1 or [c.strip() for c in lines[0].split(" | ")] != _MGR_COLS:
+        return None
+    by_assets = "SUM(p.fd_nast_suma)" in (re.search(r"\border\s+by\b.*$", sql, re.I | re.S) or re.match("", "")).group(0)
+    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"))
+             if re.search(pat, sql, re.I)]
+    scope = ("·".join(basis) + " 기준, " if basis else "") + f"펀드 = 운용사 종목번호 기준, 클래스 = 판매 단위, 기준일 {gate.DATA_CUTOFF}"
+    out = [f"조회 결과 {'순자산' if by_assets else '펀드 수'} 상위 {n}개 운용사입니다 ({scope}).", ""]
+    for i, ln in enumerate(lines[1:], 1):
+        code, name, funds, classes, eok = [p.strip() for p in ln.split(" | ")]
+        try:
+            f_, c_ = int(float(funds)), int(float(classes))
+        except ValueError:
+            return None
+        fund_part, asset_part = f"펀드 {f_:,}개(클래스 {c_:,}개)", f"순자산 {int(eok.replace('억원', '')):,}억원" if eok.endswith("억원") else f"순자산 {eok}"
+        first, second = (asset_part, fund_part) if by_assets else (fund_part, asset_part)
+        out.append(f"{i}. {name or '(이름 미수록)'}({code}): {first} · {second}")
+    return "\n".join(out)
+
+
 _MGMT_MAX = re.compile(r"MAX\(\s*((?:\w+\.)?mgmt_co_nm)\s*\)", re.I)
 _OR_CO_KEY = "printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER))"
 
@@ -2505,6 +2582,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if mjoin_fixed:
         step("[Guard] 운용사 이름 JOIN 주입 — mtco_nm/mgmt_co_nm 은 ext_fund_page 컬럼 "
              "(2026-09-02 R2·S11 재검: 3라운드 연속 1차 SQL 환각으로 재생성 예산 소진 → 거절)")
+    sql, mgr_fixed = ensure_fund_manager_ranking(sql, q)
+    if mgr_fixed:
+        step("[Guard] 운용사 집계 확정식 — 코드 GROUP BY + 최빈 이름 + 펀드수·클래스수·순자산 억원 템플릿 "
+             "(2026-09-02 S11: 이름 GROUP BY + COUNT(*) 로 순자산 질의를 오해 · mtco_nm 3라운드)")
     sql, modal_fixed = ensure_fund_mgmt_modal_name(sql)
     if modal_fixed:
         step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
@@ -2728,20 +2809,23 @@ def answer_question(
     sql, table_fixed = normalize_table_names(sql)
     if table_fixed:
         step("[Guard] 테이블명 교정 — 화이트리스트 밖 테이블이 채권 전용 컬럼과 함께 쓰여 domestic_bonds 로 교체 (2026-08-31 저녁 'bonds_master' 환각으로 기각→무응답 실측)")
-    if not tables:
+    if len(tables) != 1:
         # 🔴 SQL 사후 라우팅 보정 (2026-09-02 R7 재검) — 라우터가 못 잡는 표현형(오타·외래어·띄어쓰기)으로 미특정이
         #    됐어도 HCX 가 FROM 을 하나로 정했으면 그 상품군이다. 미특정 경로에서 남는 우회 지점은 답변 규칙
         #    (4도메인 12,443자로 희석)과 residual_name_token(tables == ["public_funds"] 조건이라 이름 필터가 꺼짐) —
         #    둘 다 여기서 되살린다. SQL 가드 자체는 FROM 기준이라 이미 적용되고 있었다.
+        #    2R Q2-d: 복수 테이블(운용사 3테이블 등)도 같은 처방이고, **재생성 문서**도 그 상품군으로 다시 만든다 —
+        #    S11 은 보정이 답변 규칙만 살리고 재생성 피드백엔 4테이블 51,788자를 그대로 붙였다.
         used = {t for t in TABLES if re.search(rf"\b(?:from|join)\s+{t}\b", sql, re.I)}
         if len(used) == 1:
             tables = [used.pop()]
-            step(f"[Route] SQL 사후 보정 — FROM {tables[0]} → 그 상품군의 답변 규칙·이름 필터 적용 "
+            step(f"[Route] SQL 사후 보정 — FROM {tables[0]} → 그 상품군의 답변 규칙·이름 필터 적용 · 재생성 문서도 그 상품군으로 "
                  "(2026-09-02 R7 재검: 미특정 경로는 답변 규칙이 4도메인으로 희석되고 상품명 필터 가드가 꺼진다)")
             if tables == ["public_funds"] and not name_token:
                 name_token = residual_name_token(q, ground_lines)
                 if name_token:
                     step(f"[Ground] 잔여 상품 고유명 '{name_token}' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (사후 보정 경로)")
+            grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token)
     sql, trim_fixed = ensure_trimmed_compare(sql)
     if trim_fixed:
         step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교를 TRIM 비교로 교체 (무TRIM IN 은 16행 vs TRIM 2,031행 실측)")
@@ -2878,6 +2962,13 @@ def answer_question(
              "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")
         result.think_trace = "\n".join(trace)
         result.answer = cnt
+        return result
+    mgr = _manager_rank_answer(sql, rows, n)
+    if mgr is not None:
+        step("[Answer] 운용사 집계 답변 기계 조립 — 템플릿 5열은 HCX 없이 옮긴다 "
+             "(2026-09-02 R2·S11 재검: 면책·유보 문장 계열도 함께 소멸)")
+        result.think_trace = "\n".join(trace)
+        result.answer = mgr
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

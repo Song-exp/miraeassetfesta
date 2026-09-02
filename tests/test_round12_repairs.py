@@ -90,3 +90,33 @@ def test_etf_canon_scope_guard():
              "AND itm_no IN (SELECT itm_no FROM domestic_etfs WHERE cu_base_index LIKE '%S&P500%')")
     assert p.ensure_etf_index_canon(mixed)[1] is False, "테이블이 섞인 문장에 확정식이 개입했다"
     assert p.ensure_etf_base_population(mixed, "S&P500 공모펀드 몇 개")[1] is False
+
+
+# ── P5 · 재검 ③-4 (부류 AB) — 랭킹의 묶기 축은 대표예탁원번호다 ──
+def test_rank_axis_is_rptt():
+    """mtco 는 398 rptt 그룹에서 클래스 단위로 발급돼 한 펀드를 쪼갠다(Y4 1위 '클래스 1개'인데 실제 9)."""
+    s = ("SELECT itm_no, TRIM(itm_nm), fd_yr3_ern_r FROM public_funds "
+         "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' ORDER BY fd_yr3_ern_r DESC LIMIT 5")
+    s, _ = p.ensure_fund_return_error_exclusion(s)            # 실 체인 순서(기점오류 3클래스 제외)
+    out, ok = p.ensure_fund_rank_representative(s, "3년 수익률이 가장 높은 공모펀드 5개")
+    assert ok and f"GROUP BY {p._FUND_GROUP_EXPR}" in out, out
+    assert p.ensure_fund_rank_representative(out, "3년 수익률이 가장 높은 공모펀드 5개")[1] is False
+
+    # 심사관 §③-4 실측: 4위 NH-Amundi 1.5배 417.77(5클래스) · 5위 미래에셋차세대Fun 294.63(1)
+    rows, n = p._execute(out)
+    body = [ln.split(" | ") for ln in rows.splitlines()[1:]]
+    assert [r[2] for r in body][3:] == ["417.77", "294.63"], rows
+
+    # 🔴 모수 집계 축(3,040)은 안 움직인다 — R1·T1·V5 는 펀드 단위 GROUP BY 를 쓰지 않는다
+    con = connect_readonly()
+    assert con.execute(f"SELECT COUNT(DISTINCT {p._FUND_KEY_EXPR}) FROM public_funds "
+                       "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모'").fetchone()[0] == 3040
+
+
+def test_rank_axis_respects_list_grouping():
+    """목록 묶기가 만든 정본 축은 다시 갈지 않는다 — 갈면 목록 조립기가 꺼져 커버리지 고지가 사라진다."""
+    listed = ("SELECT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma "
+              "FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+              f"GROUP BY {p._FUND_KEY_EXPR} ORDER BY fd_nast_suma DESC LIMIT 30")
+    out, _ = p.ensure_fund_rank_representative(listed, "순자산이 큰 공모펀드 알려줘")
+    assert f"GROUP BY {p._FUND_KEY_EXPR}" in out, out

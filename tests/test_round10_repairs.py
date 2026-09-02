@@ -97,7 +97,7 @@ def test_r10_rank_group_axis_canonical():
          "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
          "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY fd_yr1_ern_r DESC LIMIT 3")
     out, ok = P.ensure_fund_rank_representative(s, "1년 수익률이 가장 높은 공모펀드 3개")
-    assert ok and f"GROUP BY {P._FUND_KEY_EXPR}" in out and '"클래스수"' in out
+    assert ok and f"GROUP BY {P._FUND_GROUP_EXPR}" in out and '"클래스수"' in out    # 11R ③-4: 랭킹 축 = rptt
     assert P.ensure_fund_rank_representative(out, "1년 수익률이 가장 높은 공모펀드 3개")[1] is False
     # 분포 축(유형별)은 답의 축이라 교체하지 않는다
     dist = "SELECT zrin_btyp_nm, fd_yr1_ern_r FROM public_funds GROUP BY zrin_btyp_nm ORDER BY 2 DESC LIMIT 5"
@@ -249,7 +249,7 @@ def test_r10_rank_head_conditions():
     sql = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm, MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\" "
            "FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
            "AND zrin_fd_ivst_risk_grd_nm='매우 낮은 위험' "
-           f"GROUP BY {P._FUND_KEY_EXPR} ORDER BY fd_yr1_ern_r DESC LIMIT 3")
+           f"GROUP BY {P._FUND_GROUP_EXPR} ORDER BY fd_yr1_ern_r DESC LIMIT 3")
     rows, n = P._execute(sql)
     ans = P._fund_rank_answer(sql, rows, n)
     assert ans and "매우 낮은 위험 기준" in ans.splitlines()[0], ans
@@ -292,7 +292,7 @@ def test_r10_fee_is_rank_axis():
     s = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm, or_co_rwrd_r FROM public_funds "
          "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' ORDER BY or_co_rwrd_r ASC LIMIT 5")
     out, ok = P.ensure_fund_rank_representative(s, "집합투자업자보수가 가장 낮은 공모펀드 5개")
-    assert ok and "MIN(or_co_rwrd_r)" in out and f"GROUP BY {P._FUND_KEY_EXPR}" in out and '"클래스수"' in out
+    assert ok and "MIN(or_co_rwrd_r)" in out and f"GROUP BY {P._FUND_GROUP_EXPR}" in out and '"클래스수"' in out
 
 
 # ── N6 · 0 은 필터가 아니라 표시 규칙 · ③-11 ETF 모수 고지 · gold ③-B 1·4 ────────

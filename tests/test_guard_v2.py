@@ -671,7 +671,7 @@ def test_fund_rank_group_by_injected():
 
     q = "공모펌드 중 1년 수익률이 가장 높은 3개 알려줘"
     s, ok = f(_R7_SQL, q)
-    assert ok and "GROUP BY printf" in s and "MAX(fd_yr1_ern_r) AS fd_yr1_ern_r" in s and '"클래스수"' in s
+    assert ok and "GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no)" in s and "MAX(fd_yr1_ern_r) AS fd_yr1_ern_r" in s and '"클래스수"' in s
     assert s.upper().index("GROUP BY") < s.upper().index("ORDER BY")
     assert not f(s, q)[1]                                  # 멱등 — 이미 GROUP BY 가 있고 MAX 로 감쌌으면 불개입
     con = _ro()
@@ -693,8 +693,9 @@ def test_fund_rank_group_by_injected():
     s4, ok4 = f(_FND15_SQL, q)
     # 10R gold ③-B 6 — HCX 자작 펀드키(COALESCE 없는 형)는 정본식으로 **교체**한다: 역외 110행(mtco NULL)이
     # 한 그룹으로 뭉치던 것을 풀고, 조립기의 `GROUP BY <정본식>` 발동 조건도 결정적으로 만든다.
-    from src.runtime.pipeline import _FUND_KEY_EXPR
-    assert ok4 and s4.count("GROUP BY") == 1 and f"GROUP BY {_FUND_KEY_EXPR}" in s4
+    # 🔴 11R 재검 ③-4 — 랭킹 축은 대표예탁원번호(_FUND_GROUP_EXPR)로 옮겼다(mtco 가 한 펀드를 클래스 단위로 쪼갠다)
+    from src.runtime.pipeline import _FUND_GROUP_EXPR
+    assert ok4 and s4.count("GROUP BY") == 1 and f"GROUP BY {_FUND_GROUP_EXPR}" in s4
     assert '"클래스수"' in s4 and "HAVING MAX(fd_mm6_ern_r)" in s4
 
 

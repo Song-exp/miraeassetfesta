@@ -208,7 +208,7 @@ def test_etf_base_population_injected():
 # ── 항목 8 · 재검 ③-10 부류 F6″-b — 랭킹 답변 기계 조립 ──────────────────────────
 RANK_SQL = ('SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클래스수" '
             "FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
-            "GROUP BY " + P._FUND_KEY_EXPR + " ORDER BY fd_yr1_ern_r DESC LIMIT 2")
+            "GROUP BY " + P._FUND_GROUP_EXPR + " ORDER BY fd_yr1_ern_r DESC LIMIT 2")
 
 
 def test_rank_answer_assembles():
@@ -235,7 +235,7 @@ def test_rank_answer_skips_without_class_count():
     rows = "itm_no | TRIM(itm_nm) | fd_yr1_ern_r\nKR1 | 어떤펀드 | 387.66"
     assert P._fund_rank_answer(sql, rows, 1) is None
     # GROUP BY 펀드키가 없어도 조립하지 않는다(클래스 단위 행이라 '펀드 상위 N' 이 거짓이 된다)
-    assert P._fund_rank_answer(RANK_SQL.replace("GROUP BY " + P._FUND_KEY_EXPR, "GROUP BY itm_no"),
+    assert P._fund_rank_answer(RANK_SQL.replace("GROUP BY " + P._FUND_GROUP_EXPR, "GROUP BY itm_no"),
                                "itm_no | TRIM(itm_nm) | fd_yr1_ern_r | 클래스수\nKR1 | 펀드 | 1.0 | 1", 1) is None
 
 

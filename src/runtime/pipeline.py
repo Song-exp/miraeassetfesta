@@ -957,8 +957,15 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
         #    (`COALESCE(…, itm_no)` 없는 형)는 역외 110행의 mtco NULL 을 한 그룹으로 뭉쳐 랭킹을 흔들었고,
         #    조립기 `_fund_rank_answer` 의 `GROUP BY <정본식>` 리터럴 발동 조건도 비켜 갔다(②-4 미발동).
         #    **펀드 식별 컬럼만으로 된 GROUP BY** 일 때만 교체한다 — 분포(유형별·운용사별)의 축은 답의 축이라 존중한다.
+        # 🔴 11R 재검 ③-4 (부류 AB) — 랭킹의 묶기 축은 **대표예탁원번호(_FUND_GROUP_EXPR)** 다. `_FUND_KEY_EXPR` 은
+        #    398 rptt 그룹 / 2,686 클래스행에서 한 펀드를 클래스 단위로 쪼갠다(Y4 1위 "클래스 1개"인데 실제 9).
+        #    심사관 둘이 A 의 10R 보류를 실측으로 반증: R1·T1·V5·R2·Y6 은 펀드 단위 GROUP BY 를 아예 쓰지 않으므로
+        #    `COUNT(DISTINCT _FUND_KEY_EXPR)` = 3,040 은 안 움직인다. **모수 집계 축은 그대로 두고 랭킹 축만 바꾼다.**
+        #    🔴 이미 **정본 축**(둘 중 하나)이면 존중한다 — 목록 묶기(`ensure_fund_list_grouping`)가 만든
+        #    `_FUND_KEY_EXPR` 축을 여기서 다시 갈면 목록 조립기가 꺼지고 커버리지 고지(«전체 248개»)가 사라진다.
+        #    목록 경로의 축은 재검 ③-7·③-11(리드 판단 대기)이라 이 라운드에서 건드리지 않는다.
         gexpr = m_grp.group(1).strip()
-        if gexpr != _FUND_KEY_EXPR:
+        if gexpr not in (_FUND_GROUP_EXPR, _FUND_KEY_EXPR):
             gcols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", gexpr)} & set(_fund_col_types())
             if not gcols or not gcols <= _FUND_ID_COLS:
                 # 축을 못 읽었거나(위치 표기) 펀드 식별 축이 아니다 — 종전 동작(정렬 컬럼만 감싼다)
@@ -970,7 +977,7 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
                 if in_func:
                     tail = _wrap_order_by_col(tail, col, agg)
                 return head + tail, True
-            sql = sql[:m_grp.start(1)] + " " + _FUND_KEY_EXPR + " " + sql[m_grp.end(1):]
+            sql = sql[:m_grp.start(1)] + " " + _FUND_GROUP_EXPR + " " + sql[m_grp.end(1):]
             head, tail = sql[:frm.start()], sql[frm.start():]
     else:
         # ── GROUP BY 부재: 펀드키 주입 ──
@@ -979,7 +986,7 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
         m_ob = re.search(r"\border\s+by\b", tail, re.I)
         if not m_ob:
             return sql, False
-        tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_KEY_EXPR} " + tail[m_ob.start():]
+        tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_GROUP_EXPR} " + tail[m_ob.start():]
     # ── 여기부터는 GROUP BY 가 정본 펀드키다: 식별 컬럼·클래스수 병기 + 정렬 컬럼 감싸기 (③-3) ──
     add = []
     if "itm_nm" not in head and "itm_no" not in head:
@@ -1940,7 +1947,7 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
     발동: ① `GROUP BY <펀드키>` ② 헤더에 이름 열(itm_nm 또는 TRIM(itm_nm))과 `클래스수` ③ ORDER BY 첫 키가
     랭킹 컬럼(수익률 8종·순자산). `_lookup_answer`(대표_itm_no 머리 4열)·`_list_answer`(리터럴 itm_nm)와 헤더로 배타다.
     """
-    if n < 1 or f"GROUP BY {_FUND_KEY_EXPR}" not in sql:
+    if n < 1 or f"GROUP BY {_FUND_GROUP_EXPR}" not in sql:
         return None
     lines = rows.splitlines()
     if len(lines) != n + 1:
@@ -1972,7 +1979,7 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
     #    구웠고 값 필터는 안 구워서, HCX 작문 경로에 있던 '매우 낮은 위험'·'매우 높은 위험' 조건이 답변에서
     #    새로 사라졌다(FND-001·002·UNANS-006). 라벨은 스키마 한글명(원천)에서 가져온다.
     scope = ("·".join(basis + _rank_filter_labels(sql)) + " 기준, " if (basis or _rank_filter_labels(sql)) else "") + \
-        f"펀드 = 운용사 종목번호 기준·클래스 = 판매 단위, {label} = {axis}, 기준일 {gate.DATA_CUTOFF}"
+        f"펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, {label} = {axis}, 기준일 {gate.DATA_CUTOFF}"
     out = [f"{label} {'상위' if direction == 'DESC' else '하위'} {n}개 {pop}입니다 ({scope}).", ""]
     extreme = False
     for i, ln in enumerate(lines[1:], 1):
@@ -2144,7 +2151,7 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
     if re.search(r"\b(?:union|having)\b|\(\s*select\b", sql, re.I):
         return None
     grouped = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
-    if grouped and f"GROUP BY {_FUND_KEY_EXPR}" not in sql:
+    if grouped and not any(f"GROUP BY {e}" in sql for e in (_FUND_KEY_EXPR, _FUND_GROUP_EXPR)):
         return None
     m = _SIMPLE_FROM_WHERE.search(sql)
     if not m:

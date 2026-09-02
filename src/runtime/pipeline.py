@@ -596,8 +596,18 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
     return fixed, fixed != sql
 
 
-# 이름 조회 필터 — 원형 LIKE · 공백무시 REPLACE LIKE/GLOB(ensure_spaceless_name_match·호수 경계 가드가 만든 형태)
-_NAME_FILTER = re.compile(r"\bitm_nm\b[^)]{0,40}?\b(?:like|glob)\b|REPLACE\(\s*itm_nm\s*,\s*' '\s*,\s*''\s*\)\s*(?:LIKE|GLOB)\b", re.I)
+# 이름 조회 필터 — **좌변이 itm_nm** 인 LIKE/GLOB 만 (원형 · TRIM(itm_nm) · 공백무시 REPLACE 형).
+# 🔴 2026-09-02 리뷰 ②-1: 종전 `itm_nm … {0,40}자 … LIKE` 40자 창이 SELECT 의 itm_nm 과 WHERE 의 다른 컬럼
+#    LIKE(or_attr_desc·zrin_attr_nms)를 이름 조회로 오인 — "주식형 공모펀드" 목록이 개별 조회 묶기(최단 이름순)로
+#    빠져 역외 1클래스 펀드 30개가 나갔다. `NOT LIKE` 는 제외 필터라 이름 조회가 아니다(NOT 이 끼면 불일치).
+_NAME_FILTER = re.compile(
+    r"(?:REPLACE\(\s*itm_nm\s*,\s*' '\s*,\s*''\s*\)|TRIM\(\s*itm_nm\s*\)|\bitm_nm\b)\s*(?:LIKE|GLOB)\b", re.I)
+
+
+def _has_name_filter(sql: str) -> bool:
+    """WHERE 절(FROM 뒤)에 좌변 itm_nm 의 LIKE/GLOB 이름 조회가 있는가."""
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    return bool(frm) and bool(_NAME_FILTER.search(sql[frm.end():]))
 _LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
 
@@ -625,7 +635,7 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
         return sql, False
-    if not _NAME_FILTER.search(sql) or any(t in question for t in _LOOKUP_ROW_UNIT):
+    if not _has_name_filter(sql) or any(t in question for t in _LOOKUP_ROW_UNIT):
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
@@ -669,7 +679,7 @@ def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
         return sql, False
-    if _NAME_FILTER.search(sql) or "클래스" in question:
+    if _has_name_filter(sql) or "클래스" in question:
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
@@ -2028,7 +2038,8 @@ def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
     return None
 
 
-_ITM_NM_LIKE = re.compile(r"\bitm_nm\b[^)]{0,40}?\blike\b", re.I)
+# 2026-09-02 리뷰 ②-1 부수 — 40자 창 대신 좌변 itm_nm 판정(_NAME_FILTER)으로 통일. WHERE 절(FROM 뒤)만 본다.
+_ITM_NM_LIKE = _NAME_FILTER
 
 
 def ensure_fund_name_filter(sql: str, token: str | None) -> tuple[str, bool]:
@@ -2039,7 +2050,7 @@ def ensure_fund_name_filter(sql: str, token: str | None) -> tuple[str, bool]:
     0행이 나오면 그것이 정답이다 — 없는 상품을 물었으면 '없음' 이 맞고(FND-R05 계열),
     조건을 완화해 아무 행이나 집어오는 것이 바로 이 사고였다.
     """
-    if not token or not _FUND_TBL.search(sql) or _ITM_NM_LIKE.search(sql):
+    if not token or not _FUND_TBL.search(sql) or _has_name_filter(sql):
         return sql, False
     sql, _ = _append_exclusions(sql, [f"itm_nm LIKE '%{token}%'"])
     # 🔴 LIMIT 1 도 함께 푼다 — 이름으로 좁힌 개별 조회는 클래스가 여럿이다(코어테크 10클래스).

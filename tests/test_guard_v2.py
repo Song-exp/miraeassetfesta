@@ -959,3 +959,31 @@ def test_post_route_correction_from_sql(ctx):
     # 라우터가 정한 질의엔 사후 보정 마커가 없다
     r2 = answer_question("T-R7c", "공모펌드 중 1년 수익률이 가장 높은 3개 알려줘", planner=P(), ctx=ctx)
     assert "SQL 사후 보정" not in r2.think_trace and "머리명사 펌드" in r2.think_trace
+
+
+# ── 2026-09-02 리뷰(docs/recheck_2026-09-02_round1_review.md §②) — 배포 전 수리 7건의 회귀 ──
+def test_name_filter_only_when_itm_nm_is_left_operand():
+    """리뷰 ②-1 — SELECT 의 itm_nm 과 WHERE 의 다른 컬럼 LIKE 가 40자 안에 들면 이름 조회로 오인해
+    "주식형 공모펀드" 목록이 개별 조회 묶기(최단 이름순 → 역외 1클래스 30개)로 빠졌다. 좌변 itm_nm 만 인정."""
+    from src.runtime.pipeline import (_has_name_filter as h, ensure_fund_lookup_grouping as l,
+                                      ensure_fund_list_grouping as g, ensure_fund_name_filter as nf)
+
+    q = "주식형 공모펀드 알려줘"
+    bad = ("SELECT itm_no, itm_nm FROM public_funds WHERE or_attr_desc LIKE '%주식%' AND sale_yn='판매중' "
+           "AND prvo_pbff_desc='공모' LIMIT 30")
+    assert not h(bad) and not l(bad, q)[1]
+    s, ok = g(bad, q)
+    assert ok and "ORDER BY fd_nast_suma DESC" in s
+    first = _ro().execute(s).fetchone()
+    assert first[2] > 1 or "역외" not in (first[1] or "")                 # 첫 행이 역외 1클래스 펀드가 아니다
+    bad2 = "SELECT itm_nm FROM public_funds WHERE zrin_attr_nms LIKE '%중국%' LIMIT 30"
+    assert not h(bad2) and not l(bad2, q)[1] and g(bad2, q)[1]
+    assert not h("SELECT itm_nm FROM public_funds WHERE itm_nm NOT LIKE '%MMF%' LIMIT 30")    # 제외 필터는 이름 조회가 아니다
+    # 이름 조회 3형은 종전대로 — 원형 · TRIM · 공백무시 REPLACE · GLOB
+    assert h("SELECT itm_no FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 30")
+    assert h("SELECT itm_no FROM public_funds WHERE TRIM(itm_nm) LIKE '%코어테크%' LIMIT 30")
+    assert h(_R4_SQL) and h(_R6_SQL) and l(_R4_SQL, "미래에셋코어테크 펀드 1년 수익률 알려줘")[1]
+    # ensure_fund_name_filter 도 같은 판정 — SELECT 만 itm_nm 이면 '이미 이름 필터 있음' 이 아니다
+    s2, ok2 = nf("SELECT itm_nm, fd_yr1_ern_r FROM public_funds WHERE or_attr_desc LIKE '%주식%' LIMIT 30", "코어테크")
+    assert ok2 and "itm_nm LIKE '%코어테크%'" in s2
+    assert not nf("SELECT itm_nm FROM public_funds WHERE itm_nm LIKE '%코어테크%' LIMIT 30", "코어테크")[1]

@@ -107,8 +107,39 @@ Z10 은 `zrin_btyp_nm = '인도주식형'`(사전 밖 값), Z5 는 `fd_ivst_rgn_
 
 ---
 
-## §3 결과 (구현 뒤 채움)
+## §3 결과
 
-| 뿌리 | 구현/보류 | 커밋 | 회귀 테스트 | 동결선 | (b) 예측 충돌 실제 발생? |
-| :-- | :-- | :-- | :-- | :-- | :-- |
+전 커밋에서 매번 `pytest -q`(전체) · `tests/test_snapshot_round6.py`(동결선) · `eval/run_gold_check.py` 를 돌렸다.
+최종: **345 통과 · 동결선 통과 · gold 147/147**. `git push` · 배포는 하지 않았다.
+
+| 뿌리 | 항목 | 구현/보류 | 커밋 | 회귀 테스트 | 동결선 | (b) 예측 충돌이 실제로 났나 |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| ③+④ | S′뒤·G4·B-4′·B-5 | ✅ 구현 | `fbf0084` | `test_answer_surface_rules` · `test_zero_row_reason_never_leaks_sql` | 통과 | 아니오. R3 의 `prfd_attr_cds` 숨김은 별개 분기로 남겨 예측대로 무사 |
+| ② | S′ 앞 (W11 값) | ✅ 구현 | `171956d` | `test_fund_key_column_correction` | 통과 | 아니오 (V4 불변 확인) |
+| ⑤ | G6 (Z13) | ✅ 구현 | `71666e8` | `test_precheck_parses_sql` | 통과 | **예.** 1차 구현이 EXPLAIN 실패를 전부 기각해 정상 JOIN 별칭 SQL 2건을 오탐 기각 → 문법 계열(`near "…"`·`unrecognized token`·`incomplete input`)로 좁혀 해소. (b) 의 "validate_sql 과 목적 중복" 예측이 맞았다 |
+| ①-A | M′·R′ (S4·T14·V12·W5) | ✅ 구현 | `770b5f9` | `test_lookup_grouping_shape_invariant` | 통과 | **예.** 예측 #1 그대로 — 랭킹 경로(`ORDER BY 값컬럼`)와 이름 모드 COUNT 질의(3R D T11)를 가로채 기존 테스트 2건이 깨졌다. ‘정렬 축’·‘전체 집계’ 두 조건으로 좁혀 해소 |
+| ①-B | G1 (KG-018) | ✅ 구현 | `368f396` | `test_base_population_post_chain` | 통과 | **예.** 예측 #2 그대로 — F6′(개별 조회 공모 주입)까지 넣자 동결선 W5·X18 이탈. **아래 보류 참조** |
+| ⑥ | P′+G3 (Y7) | ✅ 구현 | `75e607b` | `test_axis_clause_preserved` | 통과 | 아니오. 다만 **처방이 뒤집혔다** — 아래 참조 |
+| ⑦-a | G5 단일 집계 (X17) | ✅ 구현 | `b3e5fb1` | `test_positive_count_not_refused` | 통과 | 아니오 |
+| ⑦-b | G2 설정연도 (KG-035·X19) | ✅ 구현 | `7cc7d10` | `test_estb_year_canonical` | 통과 | 아니오 |
+| ⑦-c | G7 클래스 표기 (Z1) | ✅ 구현 | `b7d1273` | `test_class_notation_is_name_suffix` | 통과 | 아니오 |
+| ⑦-d | F3 구성종목 (KG-028·Z8) | ✅ 구현 | `0568686` | `test_holdings_template_overrides_hcx_join` | 통과 | 아니오 |
+
+### 🟡 보류 (구현하지 않음 · 이유 명시)
+
+| 항목 | 왜 보류했나 | 되살리는 법 |
+| :-- | :-- | :-- |
+| **F6′** — 개별 조회 재작성 SQL 에 `prvo_pbff_desc='공모'` 주입 (W2 사모 3펀드 혼입 · Y11 판매완료 혼입) | 구현했다가 되돌렸다. 동결선 **W5·X18** 의 WHERE 텍스트가 바뀐다 — 행수(7·20)·조립기·답변 머리는 전부 불변이라 값 회귀가 아니지만, 지시서의 🔴 동결선 우선 원칙을 따랐다 | `ensure_fund_base_population` 의 `if post and (_has_name_filter…)` 조기 반환 한 줄을 지우고 동결선을 `SNAPSHOT_WRITE=1` 로 갱신 |
+| **G1 의 ETF 절반** — `domestic_etfs`: `pd_sale_yn=1` 기본모수 | 이 코드베이스에 ETF 기본모수 가드가 **아예 없다**(`grep pd_sale_yn src/runtime` → 0건). 새 축을 세우는 일이라 ETF ✅ 문항 전부가 (c) 후보가 되고, 6R 의 실측 결함(KG-018·Z18·W2·Y11)은 전부 펀드 쪽이다 | 별도 라운드에서 ETF 문항 전수 실측 후 |
+| **G3 의 치환 절반** — 주입 후 HCX 가 쓴 사전 밖 축 절 제거(Z10 `zrin_btyp_nm='인도주식형'`) | 주입(Y7)만으로 필수 항목이 닫힌다. 제거는 `check_values` 가 왜 사전 밖 값을 통과시켰는지부터 봐야 하고, 잘못 만지면 정당한 값을 지운다 | `guard.check_values` 의 `zrin_btyp_nm` vocab 커버리지 확인이 선행 |
+| **G5 의 다열·다행 절반** + `SELECT` 절 리터럴 기각(X22 `COALESCE(…, '국민은행')`) | 단일 집계 갈래(X17)만 구현했다. 다열 사후 대조는 조립기 전면 개편이고, SELECT 리터럴 기각은 `'억원'`·`'(미수록)'` 같은 정당한 리터럴과 구분 규칙이 필요하다 | 다음 라운드 |
+| **Z18 (F1 후속)** | 뿌리 어디에도 안 걸린다 — HCX 가 `zrin_btyp_nm IN ('주식형','해외주식형')` 을 지어낸 것이고, 라벨 충돌 노드('ETF')의 이름 폴백을 목록 경로에 주는 KG 층 작업(이월표 `F1 후속`)이다 | KG 층 라운드 |
+
+### 🔴 처방을 뒤집은 곳 — 뿌리⑥ (P′)
+
+6R 보고서의 P′ 는 *"운용사 확정식이 부가 절을 전부 버렸다 → 보존하라"* 였다. 6R 트레이스를 원본 대조한 결과
+`ensure_fund_manager_ranking` 의 **폐기 notes 가 비어 있었다**(트레이스 9줄의 `[Guard] 운용사 집계 확정식` 뒤에
+`· 부가 절 폐기` 접미가 없다). 즉 확정식이 버린 게 아니라 **HCX 가 애초에 `주식형` 절을 안 썼다.**
+따라서 처방은 '보존' 이 아니라 '주입' 이고, 이는 KG §③ **G3 과 같은 규칙**이다 — 두 심사관의 서로 다른 항목이
+한 뿌리로 접힌 자리다. 실측으로 gold 3열 전부 일치(69,336/142 · 46,152/28 · 41,914/18).
 </content>

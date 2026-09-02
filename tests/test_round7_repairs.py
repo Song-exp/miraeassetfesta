@@ -131,3 +131,68 @@ def test_precheck_parses_sql(ctx):
         "SELECT COUNT(*) FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no LIMIT 30",
     ):
         assert validate_sql(ok) is None, (ok, validate_sql(ok))
+
+
+# ── 뿌리①-A — 묶기 가드 게이트 (M′ · R′) ──
+
+_S4 = ("SELECT DISTINCT itm_no, itm_nm, zrin_fd_ivst_risk_grd_nm, zrin_fd_ivst_risk_gcd FROM public_funds "
+       "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%KB차이나%' ORDER BY itm_no ASC LIMIT 30")
+_T14 = ("SELECT AVG(fd_nast_suma) as avg_nast_suma, CAST(ROUND((AVG(fd_nast_suma))/100000000.0) AS INTEGER) || '억원' "
+        "AS \"avg_nast_suma_억원\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') "
+        "AND REPLACE(itm_nm,' ','') LIKE '%베트남그로스%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+_V12 = ("SELECT DISTINCT itm_no, COUNT(*) as class_count FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' "
+        "AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY itm_no LIMIT 30")
+_W5 = ("SELECT DISTINCT itm_no, COUNT(*) as clas_count FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE "
+       "'%미래에셋차이나솔로몬증권투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+       "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') "
+       "GROUP BY itm_no ORDER BY clas_count DESC LIMIT 30")
+_T6 = ("SELECT DISTINCT itm_no, itm_nm, han_clas_nm FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+       "AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' "
+       "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3[([]*') LIMIT 30")
+
+
+def _lookup(sql, q):
+    from src.runtime.pipeline import ensure_fund_lookup_grouping, _execute, _lookup_answer
+    out, ok = ensure_fund_lookup_grouping(sql, q)
+    if not ok:
+        return None, None
+    rows, n = _execute(out)
+    return out, _lookup_answer(out, rows, n, None, None)
+
+
+def test_lookup_grouping_shape_invariant(ctx):
+    """M′+R′ — HCX 가 ORDER BY·집계·GROUP BY itm_no 를 붙여도 개별 조회 묶기는 같은 결과를 낸다 (6R S4·T14·V12·W5)."""
+    # ① S4 — `ORDER BY itm_no ASC` 를 붙여도 4펀드 9/11/14/3클래스 · 2·2·2·4등급
+    _, a = _lookup(_S4, "KB차이나 펀드 위험등급 알려줘")
+    assert a and "4개가 조회" in a, a
+    for frag in ("클래스 9개", "클래스 11개", "클래스 14개", "클래스 3개", "2등급", "4등급"):
+        assert frag in a, (frag, a)
+    assert "KB차이나그로스" in a                                   # 6R 은 이 펀드를 통째로 누락했다
+
+    # ② T14 — `AVG(fd_nast_suma)` 를 써도 SUM 으로 되굽는다: 4펀드 2,528/766/769/183억 ("212억원" 아님)
+    _, b = _lookup(_T14, "한국투자베트남그로스 펀드 순자산 알려줘")
+    assert b and "212억원" not in b, b
+    for frag in ("2,528억원", "766억원", "769억원", "183억원"):
+        assert frag in b, (frag, b)
+
+    # ③ V12 — `GROUP BY itm_no` 는 클래스 단위 키라 항상 교체 대상. 본체 10클래스
+    _, c = _lookup(_V12, "미래에셋코어테크 펀드는 클래스가 몇 개야?")
+    assert c and "미래에셋코어테크증권자투자신탁(주식): 클래스 10개" in c, c
+    assert "총 30개" not in c and ":  ·" not in c
+
+    # ④ W5 — 총 7개 (6R 은 "1개")
+    _, d = _lookup(_W5, "미래에셋차이나솔로몬증권투자신탁 2호는 클래스가 몇 개야?")
+    assert d and "클래스 7개" in d, d
+
+    # ⑤ 불개입 유지 — GROUP BY 없는 클래스 열거(T6, 동결선 ✅) · 값 컬럼 랭킹 · 보수 질의 · 전체 개수 집계
+    from src.runtime.pipeline import ensure_fund_lookup_grouping as f
+    assert not f(_T6, "미래에셋차이나솔로몬증권투자신탁 3호는 클래스가 몇 개야?")[1]
+    rank = _S4.replace("ORDER BY itm_no ASC", "ORDER BY fd_yr1_ern_r DESC")
+    assert not f(rank, "KB차이나 펀드 수익률 높은 순")[1]
+    assert not f(_S4, "KB차이나 펀드 클래스별 총보수 알려줘")[1]
+    cnt = ("SELECT COUNT(*) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%피델리티%' "
+           "AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    assert not f(cnt, "피델리티 이름이 들어간 공모펀드는 몇 개야?")[1]
+    # 멱등 — 이미 펀드키로 묶인 SQL 은 다시 묶지 않는다
+    out, _ = f(_S4, "KB차이나 펀드 위험등급 알려줘")
+    assert not f(out, "KB차이나 펀드 위험등급 알려줘")[1]

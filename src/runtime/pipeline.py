@@ -914,6 +914,8 @@ def _has_name_filter(sql: str) -> bool:
             return True
     return False
 _LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
+# 식별자·키 컬럼 — 이걸로 정렬한 것은 '랭킹' 이 아니라 모양 잡음이다 (7R M′)
+_FUND_ID_COLS = frozenset({"itm_no", "itm_nm", "rptt_ksd_itm_no", "mtco_itm_no", "or_co_xtn_itt_cd", "itm_abrv_nm"})
 _FUND_KEY_PIN = re.compile(r"\b(?:rptt_ksd_itm_no|itm_no|mtco_itm_no)\s*\)?\s*(?:=|IN\s*\()", re.I)
 
 
@@ -1017,15 +1019,38 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     `GROUP BY 펀드키`, `ORDER BY MIN(length(공백제거 이름)) ASC`(**가장 짧은 이름 = 본체** — "질문 이름과
     가장 정확히 일치하는 펀드를 먼저" 를 결정적으로), LIMIT 은 상한으로 푼다.
     """
-    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|having)\b", sql, re.I):
+        return sql, False
+    # 🔴 7R M′/R′ — 불개입 사유에서 **HCX 의 모양 선택**(ORDER BY · SELECT 집계)을 뺀다. 6R 실측: S4 가 `ORDER BY itm_no ASC` 를,
+    #    T14 가 `AVG(fd_nast_suma)` 를 쓰자 묶기가 통째로 비켜갔다(5R 은 HCX 가 그 모양을 안 써서 통과 — 비결정).
+    #    개별 조회로 이미 판정된 뒤에 정렬·집계 선택을 존중할 근거가 없다: 정렬은 확정식 정렬로 덮고, 집계는 인자 컬럼만 꺼내 F2 로 재작성한다.
+    #    GROUP BY 는 축을 본다 — `GROUP BY itm_no` 는 **클래스 단위 키**라 모든 그룹이 1이 되는 무의미한 축이므로 항상 교체 대상이고
+    #    (6R V12 "모두 1개씩 … 총 30개" · W5 "1개"), 그 밖의 축(펀드키 묶기를 이미 마친 SQL 포함)은 종전대로 불개입이다.
+    m_grp = re.search(r"\bgroup\s+by\b(.*?)(?=\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if m_grp and not re.fullmatch(r"\s*(?:\w+\.)?itm_no\s*", m_grp.group(1), re.I):
+        return sql, False
+    # ORDER BY 는 **정렬 축**을 본다: 값 컬럼 정렬은 랭킹 의도라 종전대로 불개입(ensure_fund_rank_representative 담당),
+    #   식별자·키·집계 별칭 정렬(S4 `ORDER BY itm_no ASC` · W5 `ORDER BY clas_count DESC`)은 모양 잡음이라 확정식 정렬로 덮는다.
+    m_ord = _ORDER_BY_HEAD.search(sql)
+    if m_ord and _fund_col_types().get(re.sub(r"^\w+\.", "", m_ord.group(1).strip()).lower()) is not None \
+            and re.sub(r"^\w+\.", "", m_ord.group(1).strip()).lower() not in _FUND_ID_COLS:
         return sql, False
     # 4R 부류 M — 개별 조회의 판정은 "펀드를 하나로 특정하는 조건": 이름 LIKE **또는** 펀드 키 핀(rptt/itm_no/mtco 등호·IN — KG Fund 노드가
     #    코드를 핀한 정식명 질의 V4 'KB중국본토A주증권자투자신탁' → LIMIT 1 1클래스 답).
-    if not (_has_name_filter(sql) or _has_fund_key_pin(sql)) or any(t in question for t in _LOOKUP_ROW_UNIT):
+    if not (_has_name_filter(sql) or _has_fund_key_pin(sql)):
+        return sql, False
+    # `_LOOKUP_ROW_UNIT` 은 **값이 클래스마다 갈리는 질의**(보수·수수료)에만 불개입한다. '클래스' 는 개수·열거를 묻는 말이라
+    #    펀드키 묶기가 정답이다 — 단, HCX 가 이미 펀드 단위로 물어보는 모양(GROUP BY itm_no)을 냈을 때만 개입해
+    #    T6·R6 처럼 5R·6R 내내 통과한 열거 경로는 건드리지 않는다(동결선).
+    if any(t in question for t in _LOOKUP_ROW_UNIT) and not m_grp:
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
-    if re.search(r"\b(?:count|sum|avg|min|max|total)\s*\(", head, re.I) or "*" in head:
+    if "*" in re.sub(r"(?i)count\s*\(\s*\*\s*\)", "", head):
+        return sql, False
+    # 전체 집계 질의(GROUP BY 없는 COUNT — `펀드수/클래스수` 개수 답)는 개별 조회가 아니다.
+    #   3R D(T11) '피델리티 이름이 들어간 공모펀드는 몇 개야?' 가 이름 필터를 갖고도 개수 답이어야 하는 자리다.
+    if not m_grp and re.search(r"\bcount\s*\(", head, re.I):
         return sql, False
     sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I)
     types = _fund_col_types()
@@ -1035,33 +1060,44 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     # 0행 오거절이라 주입하지 않는 대신, "클래스 7개 중 판매중 7개" 재료를 0행 위험 없이 싣는다.
     new = ["MIN(itm_no) AS 대표_itm_no", "MIN(TRIM(itm_nm)) AS itm_nm", 'COUNT(*) AS "클래스수"',
            "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\""]
+    seen: set = set()
     for it in _split_select_items(sel):
         m = _SELECT_PLAIN_ITEM.fullmatch(it.strip())
-        if not m:
-            return sql, False
-        col, alias = m.group(1).lower(), m.group(2)
-        if col in ("itm_no", "itm_nm"):
-            continue
-        t = types.get(col)
-        if t is None:
-            return sql, False
-        if col == "fd_nast_suma":
-            # 🔴 순자산은 SUM — 이 DB 의 fd_nast_suma 는 **클래스별 값**이라 펀드 순자산은 합계다 (2026-09-02 리뷰 ②-6 실측:
-            #    코어테크 본체 10클래스 합 2조9,148억 vs 최대 클래스 7,348억 · 삼성MMF법인제1호 4클래스 12.4조/1,051억/…).
-            #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
-            new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
-                    "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\""]
-        elif col in _FUND_RETURN_COLS or col in _class_dependent_cols():
-            # 6R F2 — 클래스별로 값이 다른 컬럼(수익률·기준가·보수…)은 단일 MAX 로 대표하지 않는다: MIN~MAX 범위. 종속 여부는 DB 실측
-            #   (다클래스 펀드에서 값이 갈리는 비율)로 판정 — X25: 종류A 라벨에 종류F 기준가가 붙었다
-            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']
+        if m and types.get(m.group(1).lower()) is not None:
+            pairs = [(m.group(1).lower(), m.group(2))]
         else:
-            new.append(f"MAX({col}) AS {alias or col}")
+            # 7R M′ — 집계·식 항목은 **인자 컬럼만** 꺼내 F2 규칙으로 다시 굽는다(T14 `AVG(fd_nast_suma)` → SUM).
+            #    펀드 컬럼을 하나도 참조하지 않는 항목(`COUNT(*)`·리터럴)은 버린다 — 묶기가 클래스수를 이미 싣는다.
+            pairs = [(c, None) for c in dict.fromkeys(w.lower() for w in re.findall(r"[A-Za-z_]\w*", it))
+                     if types.get(c) is not None]
+            if not pairs and m is None and not re.search(r"\b(?:count|sum|avg|min|max|total|cast|round)\s*\(|'", it, re.I):
+                return sql, False          # 정체 모를 항목 — 종전대로 안전하게 불개입
+    # (아래 루프 본문이 pairs 를 소비한다)
+        for col, alias in pairs:
+            if col in ("itm_no", "itm_nm") or col in seen:
+                continue
+            seen.add(col)
+            t = types.get(col)
+            if col == "fd_nast_suma":
+                # 🔴 순자산은 SUM — 이 DB 의 fd_nast_suma 는 **클래스별 값**이라 펀드 순자산은 합계다 (2026-09-02 리뷰 ②-6 실측:
+                #    코어테크 본체 10클래스 합 2조9,148억 vs 최대 클래스 7,348억 · 삼성MMF법인제1호 4클래스 12.4조/1,051억/…).
+                #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
+                new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
+                        "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\""]
+            elif col in _FUND_RETURN_COLS or col in _class_dependent_cols():
+                # 6R F2 — 클래스별로 값이 다른 컬럼(수익률·기준가·보수…)은 단일 MAX 로 대표하지 않는다: MIN~MAX 범위. 종속 여부는 DB 실측
+                #   (다클래스 펀드에서 값이 갈리는 비율)로 판정 — X25: 종류A 라벨에 종류F 기준가가 붙었다
+                new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']
+            else:
+                new.append(f"MAX({col}) AS {alias or col}")
     # 2R Q4-b — 대표예탁원번호(rptt_ksd_itm_no)를 **표시 단위**로만 싣는다: 조립기가 같은 대표번호 행을 한 줄로 접는다
     #    (R6 6행 → "클래스 7개" 1줄). 카운트·랭킹 gold 의 펀드키는 그대로다(리뷰 ④ 완화 ⓐ).
     new.append("MIN(rptt_ksd_itm_no) AS 대표번호")
     tail = sql[frm.start():].rstrip()
+    # 7R M′ — HCX 의 GROUP BY(itm_no 축)·ORDER BY·LIMIT 은 확정식으로 덮어쓴다. 남겨 두면 두 번 붙어 문법이 깨진다.
     tail = re.sub(r"\blimit\s+\d+\s*$", "", tail, flags=re.I).rstrip()
+    tail = re.sub(r"\border\s+by\b.*$", "", tail, flags=re.I | re.S).rstrip()
+    tail = re.sub(r"\bgroup\s+by\b.*$", "", tail, flags=re.I | re.S).rstrip()
     return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_KEY_EXPR} "
             f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
 
@@ -1125,7 +1161,10 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
     ret_cols = [c[:-3] for c in cols if c.endswith("_최고")]       # 수익률 8종 + F2 클래스 종속 컬럼(기준가·보수…)
     has_grade = "zrin_fd_ivst_risk_grd_nm" in cols or "zrin_fd_ivst_risk_gcd" in cols
     has_nast = "fd_nast_suma" in cols
-    if not (ret_cols or has_grade or has_nast):
+    # 7R R′ — 클래스 **개수**만 묻는 질의(V12·W5)는 묶기 결과에 값 컬럼이 하나도 없다. 머리 4열 + 대표번호뿐이면
+    #    그 자체가 답이므로 기계 조립한다("클래스 10개"). 값 컬럼이 따로 있는데 조립 문형이 없는 경우는 종전대로 HCX 에 넘긴다.
+    class_only = set(cols) <= set(_LOOKUP_HEAD) | {"대표번호"}
+    if not (ret_cols or has_grade or has_nast or class_only):
         return None
     groups: dict[str, dict] = {}
     order: list[str] = []
@@ -1187,7 +1226,7 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
         if has_nast:
             parts.append(f"순자산 {g['nast'] // 100000000:,}억원 (클래스 합계)")
         tail = f"클래스 {g['n']}개" + ("(전부 판매중)" if g["m"] == g["n"] else f", 판매중 {g['m']}개")
-        out.append(f"- {g['stem']}: " + " · ".join(parts) + f" · {tail}")
+        out.append(f"- {g['stem']}: " + " · ".join(parts + [tail]))     # 값 컬럼이 없는 개수 질의(V12·W5)는 앞이 비어 빈칸이 생겼다
     notes = ground_notes(ground_lines or [])
     if notes:
         out += [""] + notes                       # S1: 구상호·후계 법인 주석

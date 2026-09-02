@@ -21,6 +21,7 @@
 
 import argparse
 import csv
+import json
 import os
 import re
 import sqlite3
@@ -257,11 +258,16 @@ def emit_kg(con, shared):
     cur = con.cursor()
     for t in ("kg_node", "kg_alias", "kg_edge", "kg_closure"):
         cur.execute(f"drop table if exists {t}")
+    # KG 1R S1 — 라벨 슬롯 체계: label_ko(브랜드/약칭) · label_official(코드북 정식 법인명) · label_en(정식 영문) ·
+    #   former_names(구상호 JSON) · successor(후계 노드) · provenance(curated | auto | derived). derived(종목명 접두 최빈값 라벨,
+    #   Org_fund_* — KG-001 'Asset' 오매칭)는 런타임 매칭 키에서 제외되고 코드 alias 로만 산다.
     cur.execute("""create table kg_node (
         node_id TEXT PRIMARY KEY, node_type TEXT, canonical_name TEXT,
-        label_ko TEXT, label_en TEXT)""")
+        label_ko TEXT, label_en TEXT,
+        label_official TEXT, former_names TEXT, successor TEXT, provenance TEXT)""")
+    # match_kind: 'eq'(등호) | 'token'(다중값 콤마 컬럼의 토큰 — ','||col||',' LIKE '%,raw,%' 확정식) — KG 1R S3
     cur.execute("""create table kg_alias (
-        node_id TEXT, table_name TEXT, column_name TEXT, raw_value TEXT, source TEXT)""")
+        node_id TEXT, table_name TEXT, column_name TEXT, raw_value TEXT, source TEXT, match_kind TEXT)""")
     cur.execute("""create table kg_edge (
         src_id TEXT, predicate TEXT, dst_id TEXT, source TEXT, as_of TEXT)""")
     cur.execute("create table kg_closure (ancestor_id TEXT, descendant_id TEXT)")
@@ -278,35 +284,51 @@ def emit_kg(con, shared):
             nm = (r.get("name") or "").replace("(주)", "").strip()
             if nm:
                 mgr_names[r["code"].strip()] = nm
+    # 정식 영문명 — asset_manager_en.csv (node_id 컬럼으로 직접 잇는다). 종전엔 정식 한글명이 label_en 슬롯을 점유해
+    # 영문 자리가 없었다(KG-001 'Mirae Asset' 매칭 0). 슬롯을 분리하면 두 매칭이 다 산다.
+    mgr_en = {}
+    _amen = os.path.join(PROJECT_ROOT, "ontology", "codebooks", "asset_manager_en.csv")
+    if os.path.exists(_amen):
+        with open(_amen, encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                if (r.get("node_id") or "").strip() and (r.get("name_en") or "").strip():
+                    mgr_en[r["node_id"].strip()] = r["name_en"].strip()
 
     n_node = n_alias = n_edge = n_closure = 0
     for fname, doc in shared.items():
         entity = doc.get("entity")
+        generated = bool(doc.get("generated"))
         parents = {}
         for node_id, node in (doc.get("nodes") or {}).items():
             # 🔴 label_ko 에 '/' 병합하면 안 된다 — 런타임 _keys 가 '/' 조각에 단어경계 검사를 붙여
             #    '미래에셋코어테크' 같은 브랜드+상품명 합성어 매칭이 통째로 죽는다(2026-09-01 저녁
-            #    FND-016 재검 실측: Ground 매칭 없음 회귀). 정식명은 **빈 label_en 슬롯**에 넣는다 —
-            #    전체 라벨은 무경계 부분일치라 '삼성자산운용이…' 도 매칭되고 합성어도 다치지 않는다.
-            label_en = node.get("label_en")
+            #    FND-016 재검 실측: Ground 매칭 없음 회귀). 정식명은 **label_official 슬롯**에 넣는다(S1 — 종전 label_en 점유를
+            #    분리). 전체 라벨은 무경계 부분일치라 '삼성자산운용이…' 도 매칭되고 합성어도 다치지 않는다.
+            label_official = node.get("label_official")
+            label_en = node.get("label_en") or mgr_en.get(node_id)
             for al in node.get("aliases") or []:
                 if al.get("table") == "public_funds" and al.get("column") == "or_co_xtn_itt_cd":
                     nm = mgr_names.get(str(al.get("raw", "")).strip())
-                    if nm and not label_en and nm != node.get("label_ko"):
-                        label_en = nm
+                    if nm and not label_official and nm != node.get("label_ko"):
+                        label_official = nm
                     break
-            cur.execute("insert into kg_node values (?,?,?,?,?)",
+            provenance = node.get("provenance") or (
+                "derived" if generated and "derived" in str(node.get("note", "")) else ("auto" if generated else "curated"))
+            former = [str(x) for x in (node.get("former_names") or [])]
+            cur.execute("insert into kg_node values (?,?,?,?,?,?,?,?,?)",
                         (node_id, entity, node.get("label_ko"),
-                         node.get("label_ko"), label_en))
+                         node.get("label_ko"), label_en, label_official,
+                         json.dumps(former, ensure_ascii=False) if former else None,
+                         node.get("successor"), provenance))
             n_node += 1
             if node.get("parent"):
                 parents[node_id] = node["parent"]
             for al in node.get("aliases") or []:
                 if al.get("status", "confirmed") != "confirmed":
                     continue  # pending 은 KG 에 넣지 않는다 — 리포트에만 표시
-                cur.execute("insert into kg_alias values (?,?,?,?,?)",
+                cur.execute("insert into kg_alias values (?,?,?,?,?,?)",
                             (node_id, al["table"], al["column"], norm(al["raw"]),
-                             al.get("source", "manual")))
+                             al.get("source", "manual"), al.get("match", "eq")))
                 n_alias += 1
         # 계층 closure 전개 (지역 등) — 런타임 비용 0 을 위해 빌드 타임에 조상 전부 풀어둠
         for child, parent in parents.items():
@@ -447,6 +469,10 @@ def emit_ttl(shared, con=None, enums=None):
     C.append("fp:issues a owl:ObjectProperty ; owl:inverseOf fp:hasIssuer ; rdfs:comment \"발행사 → 상품 (fp:hasIssuer 의 역)\"@ko .")
     C.append("fp:isHeldBy a owl:ObjectProperty ; owl:inverseOf fp:holds ; rdfs:comment \"종목 → 그 종목을 편입한 상품 (fp:holds 의 역) — '삼성전자 편입 ETF' 질의의 탐색 방향\"@ko .")
     C.append("")
+    C.append("# ── 기관 라벨 슬롯 (KG 1R S1): skos:prefLabel(정식/브랜드) · fp:formerName(구상호 — 질의 표기용, DB 값 아님) · fp:successor(합병·이관 후계 법인) ──")
+    C.append("fp:formerName a owl:AnnotationProperty ; rdfs:comment \"구상호 — 매칭 시 후계 법인 코드로 조회하고 '현재 X 가 운용' 을 답에 병기한다\"@ko .")
+    C.append("fp:successor a owl:ObjectProperty ; rdfs:domain fp:Organization ; rdfs:range fp:Organization ; rdfs:comment \"합병·이관으로 현재 그 상품을 운용하는 법인\"@ko .")
+    C.append("")
     C.append("# ── 위험등급 값 제약 (규격 작성 팁: riskGrade 0~6 — 1~5 로 제약하면 실데이터가 차단된다: 6등급 채권 24.6%·0등급 존재) ──")
     C.append("fp:riskGradeValue a owl:DatatypeProperty ;")
     C.append("    rdfs:domain [ owl:unionOf ( fp:DomesticBond fp:DomesticETF fp:PublicFund ) ] ;  # 해외ETF 는 위험등급 컬럼 자체가 없음(ABSENT — etf_gl.ttl)")
@@ -527,6 +553,11 @@ def emit_ttl(shared, con=None, enums=None):
             C.append(f"fp:{nid} a fp:{entity}{lab} .")
             if node.get("parent"):
                 C.append(f"fp:{nid} skos:broader fp:{ttl_local(node['parent'])} .")
+            # S1 라벨 슬롯 사영 — 구상호는 fp:formerName(주석 속성), 후계는 fp:successor
+            for fn in node.get("former_names") or []:
+                C.append(f"fp:{nid} fp:formerName \"{ttl_str(str(fn))}\"@ko .")
+            if node.get("successor"):
+                C.append(f"fp:{nid} fp:successor fp:{ttl_local(node['successor'])} .")
         for e in doc.get("edges") or []:
             C.append(f"fp:{ttl_local(e['src'])} fp:{e['predicate']} fp:{ttl_local(e['dst'])} .")
         C.append("")

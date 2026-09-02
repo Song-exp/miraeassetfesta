@@ -1501,3 +1501,51 @@ def test_risk_grade_range_by_table(ctx):
     ttl = open("ontology/fund_pub.ttl", encoding="utf-8").read()
     assert "fp:riskGradeValue_PublicFund rdfs:subPropertyOf fp:riskGradeValue" in ttl and "xsd:minInclusive 1 ] [ xsd:maxInclusive 6" in ttl
     assert "xsd:minInclusive 0 ] [ xsd:maxInclusive 6" in open("ontology/bond_kr.ttl", encoding="utf-8").read()
+
+
+def test_org_label_slots_ground(ctx):
+    """KG 1R S1 — Organization 라벨 슬롯 체계(정식명·영문·구상호·후계·provenance) 와 Ground 정규화 키.
+    KG-004 공백 표기 · KG-001 영문(파생 'Asset' 오매칭 제거) · KG-002 구상호→후계 · KG-003 구상호(코드북 밖) · KG-015 alias raw 승격."""
+    from src.runtime.pipeline import _ground, ground_notes
+
+    def g(q, tables=("public_funds",)):
+        hits, lines = _ground(q, ctx, list(tables))
+        return [h.node_id for h in hits], lines
+
+    ids, lines = g("한국 투자 신탁 운용 이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040024"] and "'00040024'" in lines[0] and "'00040105'" in lines[0] and "정식명 한국투자신탁운용" in lines[0]
+    ids, lines = g("Mirae Asset이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00080008"] and "Org_fund_" not in " ".join(lines)
+    ids, _ = g("Samsung Asset Management가 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040010"]
+    ids, lines = g("프랭클린템플턴이 운용하는 공모펀드 알려줘")
+    assert ids[:2] == ["Org_00040022", "Org_00040007"] and "'00040007'" in lines[0] and "우리자산운용" in lines[0]
+    assert ground_notes(lines) and "현재 우리자산운용" in ground_notes(lines)[0]
+    ids, lines = g("메리츠자산운용이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040087"] and "구상호" in lines[0] and "케이씨지아이자산운용" in lines[0]
+    ids, lines = g("위험등급이 '높은위험'인 공모펀드는 몇 개야?")
+    assert ids == ["RiskGrade_2"] and "'높은위험'" in lines[0] and "'2.0'" in lines[0]
+    # 파생(derived) 노드는 매칭 키에서 제외 — 'Asset' 단독 질문도 Org_fund_00080164 로 가지 않는다
+    assert ctx.kg_node_by_id["Org_fund_00080164"].provenance == "derived"
+    ids, _ = g("Asset 펀드 알려줘")
+    assert "Org_fund_00080164" not in ids
+    # 회귀 — 합성어(FND-016)·정식명(034)·2코드(R5)·ETF 오염 raw 강등(KG-025)
+    ids, lines = g("미래에셋코어테크 펀드 1년 수익률 알려줘")
+    assert ids == ["Org_00080008"]
+    ids, _ = g("삼성자산운용이 운용하는 공모펀드는 몇 개야?")
+    assert ids == ["Org_00040010"]
+    ids, lines = g("삼성자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?", ("public_funds", "domestic_etfs"))
+    assert "Org_00040010" in ids and "투자신탁" not in lines[0] and "외 " not in lines[0]
+    # 개수 조립기 주어는 정식명, 구상호 주석 병기
+    from src.runtime.pipeline import _count_answer
+    _, lines = g("한국 투자 신탁 운용 이 운용하는 공모펀드는 몇 개야?")
+    a = _count_answer("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn='판매중' AND TRIM(or_co_xtn_itt_cd) IN ('00040024','00040105') AND prvo_pbff_desc='공모' LIMIT 30",
+                      "펀드수 | 클래스수\n143 | 541", 1, lines)
+    assert a.startswith("한국투자신탁운용이 운용하는 공모펀드는 143개(클래스 541개)")
+    _, lines2 = g("메리츠자산운용이 운용하는 공모펀드는 몇 개야?")
+    a2 = _count_answer("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn='판매중' AND TRIM(or_co_xtn_itt_cd) = '00040087' AND prvo_pbff_desc='공모' LIMIT 30",
+                       "펀드수 | 클래스수\n27 | 133", 1, lines2)
+    assert "케이씨지아이자산운용이 운용하는 공모펀드는 27개" in a2 and "구상호" in a2
+    # ttl 사영
+    ttl = open("ontology/common.ttl", encoding="utf-8").read()
+    assert 'fp:Org_00040007 fp:formerName "프랭클린템플턴투자신탁운용"@ko' in ttl and "fp:Org_00040022 fp:successor fp:Org_00040007" in ttl

@@ -727,7 +727,8 @@ def _pct(v: str) -> str:
     return s
 
 
-def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None) -> str | None:
+def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
+                   ground_lines: list[str] | None = None) -> str | None:
     """개별 조회 묶기(lookup grouping) 결과의 답변을 기계 조립한다. 아니면 None. HCX 0회.
 
     2026-09-02 2R — 묶기 가드가 6행을 정확히 만들었는데 HCX 가 (R4·S3) 대표명의 클래스 접미에 범위값을 붙여 특정 클래스의
@@ -808,6 +809,9 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None) -
             parts.append(f"순자산 {g['nast'] // 100000000:,}억원 (클래스 합계)")
         tail = f"클래스 {g['n']}개" + ("(전부 판매중)" if g["m"] == g["n"] else f", 판매중 {g['m']}개")
         out.append(f"- {g['stem']}: " + " · ".join(parts) + f" · {tail}")
+    notes = ground_notes(ground_lines or [])
+    if notes:
+        out += [""] + notes                       # S1: 구상호·후계 법인 주석
     return "\n".join(out)
 
 
@@ -1394,9 +1398,9 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str |
     subject, used_codes = "조회 조건에 해당하는", []
     for line in ground_lines:
         codes = [c for c in _ORG_CODES.findall(line) if c in sql]
-        m_lab = re.match(r"'([^']+)'\s*→\s*Org_", line)
+        m_lab = re.match(r"'([^']+)'\s*→\s*Org_\w+\s*\((?:Organization,\s*정식명\s+([^)]+)|Organization)", line)
         if "Organization" in line and codes and m_lab:
-            name = m_lab.group(1)
+            name = (m_lab.group(2) or m_lab.group(1)).strip()     # S1: 정식명 슬롯이 있으면 주어는 정식명('한국 투자 신탁 운용' → 한국투자신탁운용)
             last = name[-1]
             particle = "이" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "가"
             subject, used_codes = f"{name}{particle} 운용하는", codes
@@ -1407,6 +1411,8 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str |
     offshore = _offshore_sibling_note(subject, used_codes, sql)
     if offshore:
         out += "\n" + offshore
+    for note in ground_notes(ground_lines):
+        out += "\n" + note                       # S1: 구상호·후계 법인 주석은 답에 그대로 병기
     return out
 
 
@@ -2518,23 +2524,41 @@ def _ground(
         return len(key) >= lo
 
     def _keys(node):
-        """노드의 매칭 키 — 정식 라벨 + 접미어 제거 + 결합 라벨 조각 + yaml 동의어. (키, 경계검사여부)"""
+        """노드의 매칭 키 — 정식 라벨 + 접미어 제거 + 결합 라벨 조각 + yaml 동의어 + (S1) 구상호 · 이름형 alias raw.
+        (키, 경계검사여부, 종류)  종류: label | short | former | alias | syn"""
+        prov = getattr(node, "provenance", "curated")
+        if prov == "derived":
+            return                         # S1: 종목명 접두 최빈값 라벨(Org_fund_* 'Asset' 등) — 코드 alias 로만 산다 (KG-001 오매칭)
         for label in node.labels:
             if len(label) >= _min_len(node, label):
-                yield label, False
+                yield label, False, "label"
             elif _short_ok(node, label):
-                yield label, True          # 짧은 라벨은 경계 검사를 조건으로 허용
+                yield label, True, "label"   # 짧은 라벨은 경계 검사를 조건으로 허용
             short = _short_label(label)
             if short and (len(short) >= _min_len(node, short) or _short_ok(node, short)):
-                yield short, True
+                yield short, True, "short"
+            if node.node_type == "Organization":
+                brand = _mgr_brand_en(short or label)     # 'Mirae Asset Global Investments' → 'Mirae Asset' (KG-001)
+                if brand:
+                    yield brand, True, "short"
             if "/" in label:               # '네이버/NAVER' → 네이버 · NAVER
                 for piece in _LABEL_SPLIT.split(label):
                     piece = piece.strip()
                     if piece and piece != label and (
                             len(piece) >= _min_len(node, piece) or _short_ok(node, piece)):
-                        yield piece, True
+                        yield piece, True, "label"
             for alias in syn_keys.get(label, ()):
-                yield alias, True
+                yield alias, True, "syn"
+        for fn in getattr(node, "former_names", None) or ():
+            if len(fn) >= 3:
+                yield fn, True, "former"   # 구상호 — 매칭되면 후계 법인 코드로 조회하고 '현재 X 가 운용' 을 굽는다 (KG-002·003)
+        if prov == "curated" and node.node_type in _ALIAS_KEY_ENTITIES:
+            # 사람이 관리하는 닫힌 축의 **이름형** alias raw 는 매칭 키다 — '높은위험'(RiskGrade_2 변형 alias)이 yaml·kg_alias 에
+            # 있는데 키가 아니어서 Ground 0 → 정확일치 4/20 (KG-015). 코드형 컬럼(*_cd·*_no·*_gcd)은 제외.
+            for t, c, raw in ctx.kg_aliases.get(node.node_id, ()):
+                if _CODE_COLUMN.search(c) or raw in node.labels or len(raw) < _min_len(node, raw):
+                    continue
+                yield raw, True, "alias"
 
     drop_kr = _region_korea_is_listing(question)
     drop_trustee = _drop_trustee_node(question)
@@ -2545,17 +2569,22 @@ def _ground(
         seen_keys: set = set()
         pairs = []
         for node in ctx.kg_nodes:
-            for key, bounded in _keys(node):
+            for key, bounded, kind in _keys(node):
                 if (node.node_id, key) in seen_keys:
                     continue
                 seen_keys.add((node.node_id, key))
-                pairs.append((key, node, bounded))
+                pairs.append((key, node, bounded, kind))
         _MATCH_KEYS[id(ctx)] = pairs
     candidates = sorted(pairs, key=lambda x: (not _in_target(x[1]), -len(x[0]), -len(_members(x[1]))))
     consumed = question
-    for label, node, bounded in candidates:
+    for label, node, bounded, kind in candidates:
         if label not in consumed:
-            continue
+            # S1 정규화 키 — curated 노드의 한글 4자+ 키는 질문의 **공백 삽입 표기**('한국 투자 신탁 운용')에도 맞춘다 (KG-004:
+            #    무정규화 부분일치라 143펀드 실재 → "0개"). 매칭된 실제 구간을 라벨로 삼아 경계·소비를 그대로 태운다.
+            span = _flex_match(label, node, consumed)
+            if not span:
+                continue
+            label = span
         if bounded and not _boundary_hit(label, consumed):
             # 보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙는 것을 막는다
             continue
@@ -2588,6 +2617,22 @@ def _ground(
         hits.append(node)
         consumed = consumed.replace(label, " ")
         members = expand_node(ctx, node.node_id, relations)
+        aliases = _demote_product_name_raws(node, aliases)
+        official = getattr(node, "label_official", None)
+        note = ""
+        if kind == "former":
+            codes = [raw for _, c, raw in aliases if c.endswith("_itt_cd")]
+            note = (f" ℹ '{label}' 은(는) 구상호 — 현재 {official or node.label_ko}"
+                    + (f"(코드 {'·'.join(codes[:2])})" if codes else "") + " 기준으로 조회한다")
+        succ = ctx.kg_node_by_id.get(getattr(node, "successor", None) or "")
+        if succ is not None:
+            # 후계 법인(합병·이관) — 구상호 노드의 코드는 판매중 0행일 수 있다. 후계 코드를 함께 싣고 답에 병기한다 (KG-002)
+            succ_aliases = _demote_product_name_raws(succ, target_aliases(ctx, succ, target, relations))
+            if succ_aliases:
+                aliases = aliases + [a for a in succ_aliases if a not in aliases]
+                hits.append(succ)
+                s_off = getattr(succ, "label_official", None) or succ.label_ko
+                note = f" ℹ '{label}' 은(는) 구상호 — 현재 {s_off}({succ.node_id.replace('Org_', '')})이 운용하며 후계 코드를 함께 조회한다"
         where = " · ".join(f"{t}.{c}={raw!r}" for t, c, raw in aliases[:4])
         if len(aliases) > 4:
             where += f" … 외 {len(aliases) - 4}종"
@@ -2595,8 +2640,58 @@ def _ground(
         if len(members) > 1:
             shown = ", ".join(members[1:4]) + (" …" if len(members) > 4 else "")
             via = f" [+후손 {len(members) - 1}: {shown}]"
-        lines.append(f"'{label}' → {node.node_id} ({node.node_type}){via} → {where}")
+        typ = node.node_type + (f", 정식명 {official}" if official and official != label else "")
+        lines.append(f"'{label}' → {node.node_id} ({typ}){via} → {where}{note}")
     return hits, lines
+
+
+# ── S1 라벨 슬롯 체계 보조 (KG 1R) ──
+_ALIAS_KEY_ENTITIES = {"RiskGrade", "Region", "Currency", "CreditGrade"}   # 사람이 관리하는 닫힌 축 — 이름형 alias raw 를 매칭 키로 승격
+_CODE_COLUMN = re.compile(r"(?:_cd|_no|_gcd|_pcd|_yn|_dt)$", re.I)
+_PRODUCT_NAME_RAW = re.compile(r"투자신탁|상장지수|증권투자")               # 상품명 구조(§3.3) — 기관 alias 가 아니라 오염 raw
+_MGR_DESCRIPTOR_EN = re.compile(
+    r"\s+(?:Asset\s+Management|Global\s+Investments?|Investment\s+Management|Fund\s+Management|Investments?|Asset|Management|Securities)$", re.I)
+_FLEX_RX: dict[str, re.Pattern] = {}
+
+
+def _mgr_brand_en(label: str) -> str | None:
+    """영문 운용사 라벨의 브랜드 부분 — 'Mirae Asset Global Investments' → 'Mirae Asset'. 서술어를 **뒤에서 한 토막씩** 떼되
+    남는 말이 2단어 미만이 되면 멈춘다(1단어 'Samsung'·'Mirae' 는 종목명과 겹쳐 위험)."""
+    if re.search(r"[가-힣]", label):
+        return None
+    brand = label.strip(" .,")
+    while True:
+        m = _MGR_DESCRIPTOR_EN.search(brand)
+        if not m or len(brand[:m.start()].split()) < 2:
+            break
+        brand = brand[:m.start()].strip(" .,")
+    return brand if brand != label.strip(" .,") else None
+
+
+def _flex_match(label: str, node, text: str) -> str | None:
+    """curated 노드의 한글 4자+ 키를 공백 삽입 표기에도 맞춘다 — 맞으면 질문 속 실제 구간, 아니면 None."""
+    if getattr(node, "provenance", "curated") != "curated" or len(label) < 4 or " " in label \
+            or not re.search(r"[가-힣]", label):
+        return None
+    rx = _FLEX_RX.get(label)
+    if rx is None:
+        rx = _FLEX_RX[label] = re.compile(r"\s*".join(re.escape(ch) for ch in label))
+    m = rx.search(text)
+    return m.group(0) if m and " " in m.group(0) else None
+
+
+def _demote_product_name_raws(node, aliases: list) -> list:
+    """Organization alias 중 상품명 구조 raw(cu_fund_mgmt_co='삼성KODEX…투자신탁[주식]')는 매핑 재료에서 뺀다 —
+    KG-025: 오염 raw 13종이 근거문서에 실려 HCX 가 `or_co IN ('삼성','삼성KODEX')` 로 컬럼을 섞었다. 전부 오염이면 원본 유지."""
+    if node.node_type != "Organization":
+        return aliases
+    kept = [a for a in aliases if not _PRODUCT_NAME_RAW.search(a[2])]
+    return kept or aliases
+
+
+def ground_notes(ground_lines: list[str]) -> list[str]:
+    """Ground 라인의 ℹ 주석(구상호·후계 등) — 기계 조립 답변에 그대로 병기한다."""
+    return [m.group(1).strip() for ln in ground_lines for m in [re.search(r"ℹ (.*)$", ln)] if m]
 
 
 # ── 잔여 고유명 검출 (2026-08-31 밤 — FND-016 실측, §6-2d) ────────────────────
@@ -2741,7 +2836,7 @@ def _mapping_block(ctx: RuntimeContext, hits: list, target: set, relations: bool
     for node in hits:
         name = node.label_ko or node.label_en or node.node_id
         groups: dict[tuple[str, str], list[str]] = {}
-        for t, c, raw in target_aliases(ctx, node, target, relations):
+        for t, c, raw in _demote_product_name_raws(node, target_aliases(ctx, node, target, relations)):
             groups.setdefault((t, c), []).append(raw)
         for (t, c), vals in groups.items():
             uniq = sorted(set(vals), key=lambda v: (len(v), v))
@@ -3353,7 +3448,7 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = mgr
         return result
-    lk = _lookup_answer(sql, rows, n, name_token)
+    lk = _lookup_answer(sql, rows, n, name_token, ground_lines)
     if lk is not None:
         step("[Answer] 개별 조회 답변 기계 조립 — 대표명의 클래스 접미를 떼고 범위·클래스수·판매상태를 옮긴다 "
              "(2026-09-02 R4·S3: '종류A: 최고 189.77%' — 종류A 실값 187.94 · 같은 대표번호 행은 한 줄로)")

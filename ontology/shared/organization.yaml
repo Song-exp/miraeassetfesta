@@ -57,12 +57,14 @@ nodes:
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "한국투자", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00040067:
     label_ko: 신한
+    former_names: [신한BNP파리바자산운용, 신한BNPP자산운용]
     # codebook evidence B · 접두점유 0.957 · 488종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040067", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.957 · 488종목"}
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "신한", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00040007:
     label_ko: 우리
+    former_names: [프랭클린템플턴투자신탁운용, 동양자산운용]   # 합병·이관(구상호) — KG-002 실측: 프랭클린 이름 잔존 39펀드/68클래스가 00040007
     # codebook evidence B · 접두점유 0.947 · 432종목 · 구상호: 동양
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040007", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.947 · 432종목"}
@@ -93,6 +95,7 @@ nodes:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080029", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.993 · 278종목"}
   Org_00080035:
     label_ko: iM에셋
+    former_names: [DGB자산운용]
     # codebook evidence B · 접두점유 0.951 · 244종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080035", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.951 · 244종목"}
@@ -150,6 +153,7 @@ nodes:
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "트러스톤", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00040087:
     label_ko: KCGI
+    former_names: [메리츠자산운용]   # 구상호 — KG-003: 코드북에 '메리츠' 법인 없음 → 후계 KCGI 로 안내
     # codebook evidence C · 접두점유 0.897 · 146종목 · 구상호: 메리츠주
     aliases:
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "케이씨지아이", source: manual, evidence: "KCGI 한글표기 — 수작업 확인 260818"}
@@ -268,6 +272,7 @@ nodes:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080018", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.696 · 23종목"}
   Org_00040022:
     label_ko: 프랭클린
+    successor: Org_00040007   # 판매중 0행 · 현재 우리자산운용이 운용 (KG-002)
     # codebook evidence C · 접두점유 0.591 · 22종목 · 구상호: 템플턴프 / 템플턴퇴
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040022", source: codebook_v1, evidence: "codebook evidence C · 접두점유 0.591 · 22종목"}

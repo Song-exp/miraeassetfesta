@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import os
 import re
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -45,10 +46,19 @@ class KGNode:
     node_type: str
     label_ko: str | None
     label_en: str | None
+    # KG 1R S1 — 라벨 슬롯 체계: 정식명(코드북)·구상호·후계 노드·출처(curated/auto/derived). derived(종목명 접두 최빈값)는 매칭 키에서 제외
+    label_official: str | None = None
+    former_names: list = field(default_factory=list)
+    successor: str | None = None
+    provenance: str = "curated"
 
     @property
     def labels(self) -> list[str]:
-        return [x for x in (self.label_ko, self.label_en) if x]
+        out = []
+        for x in (self.label_ko, self.label_official, self.label_en):
+            if x and x not in out:
+                out.append(x)
+        return out
 
 
 @dataclass
@@ -60,6 +70,8 @@ class RuntimeContext:
     entity_property: dict = field(default_factory=dict)  # entity -> .ttl property 이름
     kg_nodes: list[KGNode] = field(default_factory=list)
     kg_aliases: dict = field(default_factory=dict)     # node_id -> [(table, column, raw)]
+    kg_node_by_id: dict = field(default_factory=dict)  # node_id -> KGNode (S1 후계 노드 조회)
+    kg_alias_kind: dict = field(default_factory=dict)  # (node_id, table, column, raw) -> match_kind ('token' 등, 'eq' 는 생략) — S3 token alias
     # 계층 — 조상 -> 후손 목록 (kg_closure, 이미 이행적). 정본 노드(Sec_m_*·CG_*·Idx_a_*)는 alias 가 0개고
     # 실물 노드가 여기 매달려 있다. 런타임이 이걸 안 읽으면 정본에 매칭돼도 SQL 에 넣을 값이 없다 (2026-08-30 ㉡).
     kg_closure: dict = field(default_factory=dict)     # ancestor_id -> [descendant_id]
@@ -251,14 +263,22 @@ def load_context() -> RuntimeContext:
     ctx.std_grades = _load_std_grades()
 
     with connect_readonly() as con:
-        for nid, ntype, lko, len_ in con.execute(
-            "select node_id, node_type, label_ko, label_en from kg_node"
+        node_cols = {r[1] for r in con.execute("pragma table_info(kg_node)")}
+        extra = "label_official, former_names, successor, provenance" if "provenance" in node_cols else "NULL, NULL, NULL, 'curated'"
+        for nid, ntype, lko, len_, lof, former, succ, prov in con.execute(
+            f"select node_id, node_type, label_ko, label_en, {extra} from kg_node"
         ):
-            ctx.kg_nodes.append(KGNode(nid, ntype, lko, len_))
-        for nid, t, c, raw in con.execute(
-            "select node_id, table_name, column_name, raw_value from kg_alias"
+            node = KGNode(nid, ntype, lko, len_, lof, json.loads(former) if former else [], succ, prov or "curated")
+            ctx.kg_nodes.append(node)
+            ctx.kg_node_by_id[nid] = node
+        alias_cols = {r[1] for r in con.execute("pragma table_info(kg_alias)")}
+        kind_col = "match_kind" if "match_kind" in alias_cols else "'eq'"
+        for nid, t, c, raw, kind in con.execute(
+            f"select node_id, table_name, column_name, raw_value, {kind_col} from kg_alias"
         ):
             ctx.kg_aliases.setdefault(nid, []).append((t, c, raw))
+            if kind and kind != "eq":
+                ctx.kg_alias_kind[(nid, t, c, raw)] = kind
         for anc, desc in con.execute("select ancestor_id, descendant_id from kg_closure"):
             ctx.kg_closure.setdefault(anc, []).append(desc)
         for child, parent in con.execute(

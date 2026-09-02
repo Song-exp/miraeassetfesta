@@ -273,3 +273,23 @@ def test_r10_estb_lookup_template():
     assert P.ensure_fund_estb_lookup(s, "2025년에 설정된 KB중국본토A주 펀드")[1] is False
     nofilter = "SELECT itm_no FROM public_funds WHERE sale_yn='판매중' LIMIT 30"
     assert P.ensure_fund_estb_lookup(nofilter, "설정일이 오래된 펀드 알려줘")[1] is False
+
+
+# ── ③-7 · 방언 토큰 기계 치환 · gold ③-B 5 · 보수도 랭킹 축 ─────────────────────
+def test_r10_dialect_top_rewrite():
+    """재검 ③-7 — U9 의 SQL 은 `TOP 3` 토큰 하나만 빼면 정상인데 기각→재생성 반복→오거절이었다."""
+    s = "SELECT TOP 3 itm_no, itm_nm FROM public_funds WHERE sale_yn='판매중' ORDER BY fd_nast_suma DESC LIMIT 30"
+    out, ok = P.rewrite_dialect_top(s)
+    assert ok and "TOP" not in out.upper().split("FROM")[0] and out.rstrip().endswith("LIMIT 3")
+    assert P.validate_sql(out) is None                       # 8R 은 여기서 기각했다
+    assert P.rewrite_dialect_top(out)[1] is False            # 멱등
+
+
+def test_r10_fee_is_rank_axis():
+    """gold ③-B 5 — 보수 4컬럼도 랭킹 축이다(오름차순이므로 MIN). 종전엔 축 목록에 없어 대표행 보정이 꺼졌다."""
+    assert set(P._FUND_FEE_COLS) <= set(P._FUND_RANK_COLS)
+    assert set(P._FUND_FEE_COLS) & set(P._FUND_RETURN_COLS) == set()      # 수익률 규칙(MIN~MAX 범위)엔 안 섞인다
+    s = ("SELECT itm_no, TRIM(itm_nm) AS itm_nm, or_co_rwrd_r FROM public_funds "
+         "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' ORDER BY or_co_rwrd_r ASC LIMIT 5")
+    out, ok = P.ensure_fund_rank_representative(s, "집합투자업자보수가 가장 낮은 공모펀드 5개")
+    assert ok and "MIN(or_co_rwrd_r)" in out and f"GROUP BY {P._FUND_KEY_EXPR}" in out and '"클래스수"' in out

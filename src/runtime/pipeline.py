@@ -382,6 +382,25 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
         " / ".join(f"({i}) {e}" for i, e in enumerate(errs[:3], 1))
 
 
+_TOP_N = re.compile(r"(\bselect\s+)(?:distinct\s+)?top\s+(\d+)\s+", re.I)
+
+
+def rewrite_dialect_top(sql: str) -> tuple[str, bool]:
+    """`SELECT TOP n` (T-SQL 방언)을 `SELECT … LIMIT n` 으로 기계 치환. (SQL, 치환했는지)
+
+    🔴 10R 재검 ③-7(부류 U′) — U9 의 SQL 은 토큰 하나만 빼면 완전히 정상이고 `LIMIT 30` 도 이미 붙어 있었는데,
+       가드가 사유 문장만 돌려주자 재생성이 같은 토큰을 또 냈다. 문법 기각은 **기계로 고칠 수 있으면 보정한다**
+       (`ensure_limit` 원칙). 오거절은 감점 축이 가장 크다. TOP n 은 명시 상한이므로 기존 LIMIT 보다 우선한다.
+    """
+    m = _TOP_N.search(sql)
+    if not m:
+        return sql, False
+    n = m.group(2)
+    out = sql[:m.start()] + m.group(1) + sql[m.end():]
+    out = re.sub(r"\blimit\s+\d+(\s+offset\s+\d+)?\s*$", "", out.strip(), flags=re.I).rstrip()
+    return f"{out} LIMIT {n}", True
+
+
 def ensure_limit(sql: str) -> tuple[str, bool]:
     """LIMIT 이 없으면 붙인다. (보정된 SQL, 보정했는지)
 
@@ -785,9 +804,12 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
     return (new, True) if new != sql else (sql, False)
 
 
-_FUND_RANK_COLS = ("fd_mm1_ern_r", "fd_mm3_ern_r", "fd_mm6_ern_r", "fd_mm18_ern_r",
-                   "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r", "fd_nast_suma")
-_FUND_RETURN_COLS = _FUND_RANK_COLS[:-1]
+_FUND_RETURN_COLS = ("fd_mm1_ern_r", "fd_mm3_ern_r", "fd_mm6_ern_r", "fd_mm18_ern_r",
+                     "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r")
+# 🔴 10R gold ③-B 5 — 보수 4컬럼도 랭킹 축이다('총보수가 가장 낮은 펀드'). 종전엔 축 목록에 없어
+#    대표행 보정·랭킹 기계 조립이 통째로 꺼졌고 FND-005 가 우연히 통과 중이었다. 오름차순이므로 MIN 이 대표값이다.
+_FUND_FEE_COLS = ("or_co_rwrd_r", "sale_co_rwrd_r", "trusc_rwrd_r", "ofwk_trus_rwrd_r")
+_FUND_RANK_COLS = _FUND_RETURN_COLS + ("fd_nast_suma",) + _FUND_FEE_COLS
 _FUND_LONGTERM_COLS = ("fd_mm18_ern_r", "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r")
 _RETURN_ERR_ITM = ("KR5157450126", "KR5153450511", "KR5119470012")   # 기준가 기점 오류 검증 3클래스 (리드 확정 08-31)
 _ORDER_BY_HEAD = re.compile(r"\border\s+by\s+([^,]+?)(?:\s+(asc|desc))?\s*(?:,|\blimit\b|$)", re.I | re.S)
@@ -5364,6 +5386,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     """
     # 🔴 10R gold N1 — **체인 맨 앞.** 뒤의 모든 가드가 `split_conjuncts`(최상위 AND 분해)를 전제하므로
     #    최상위 bare OR 를 먼저 접어야 그 가드들이 조건을 잘못 자르지 않는다.
+    sql, top_fixed = rewrite_dialect_top(sql)
+    if top_fixed:
+        step("[Guard] 방언 토큰 치환 — `SELECT TOP n` 을 `LIMIT n` 으로 (10R 재검 ③-7 · U9 실측: 토큰 하나 빼면 "
+             "정상인 SQL 이 문법 기각 → 재생성이 같은 토큰 반복 → 오거절. 기계로 고칠 수 있으면 보정한다)")
     sql, or_fixed = ensure_or_group_parens(sql)
     if or_fixed:
         step("[Guard] 최상위 OR 재괄호화 — 괄호 없이 섞인 `A AND B OR C` 를 `A AND (B OR C)` 로 보정 "

@@ -581,6 +581,18 @@ query_rules:
   월분배:
     triggers: [분배, 배당, 월, 매달, 매월, 다달, 월지급]
     text: pd_dvid_cycl = 'M'                                     # 🟢 신설 — 196건
+  분배금개별조회:
+    triggers: [분배금, 배당금, 분배액, 배당액, 분배, 배당]
+    text: >-
+      🔴 분배금 **절대액 컬럼(pd_divd_amt_pshr·pd_divd_amt_ann)을 SELECT 하지 않는다** —
+      100배 스케일 오염이 확정됐다. 실측 2026-09-02: TIGER 미국배당다우존스 pshr = 3603.4554
+      인데 검산(분배율 2.832% × NAV 15,267.79 ÷ 연 12회)은 **월 36.03원** — 정확히 100배.
+      서버가 "분배금은 3603.4554478원입니다" 오답을 냈다(검수 C 의 절대액 금지는 컬럼 메타에만
+      있어 프롬프트에 실리지 않았다 — 본문 승격). 필터(`pd_divd_amt_pshr > 0`)로는 써도 된다.
+      ✅ 형식: `SELECT pd_abrv_nm, pd_dvid_yield AS 연환산분배수익률pct, pd_dvid_cycl AS 분배주기,
+      pd_dvid_pay_cnt AS 연지급횟수, pd_dvid_pay_months AS 지급월 FROM domestic_etfs
+      WHERE TRIM(pd_abrv_nm) = '<호칭>'` — 답은 분배수익률(%)·주기(M=매월)·지급월로 하고,
+      금액을 물으면 "분배금 액수는 데이터 단위 오염이 확인되어 제공하지 않으며 분배수익률로 안내드립니다".
   기초지수: "COALESCE(NULLIF(TRIM(ref_base_index),''), NULLIF(TRIM(cu_base_index),''))"   # 🟢 신설 — ref 1순위, cu 보조
   복제방식_모수:
     triggers: [복제, 합성, 실물, 액티브, 패시브, 운용방식, 전략]

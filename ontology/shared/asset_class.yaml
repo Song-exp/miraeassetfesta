@@ -1,12 +1,15 @@
 # shared/asset_class — 투자자산군 개체 (횡단 층)
 # 국내ETF(한글 8종) ↔ 해외ETF(영문 6종) 표기를 잇는다.
 #
-# 값 근거: DB distinct 전수 확인 (2026-08-18)
-#   domestic_etfs.wu_inv_ast_type : 주식 1,069 · 채권 261 · 원자재 207 · 혼합자산 78 · 단기자금 42 · 통화 41 · 부동산 18 · 기타 18
-#   overseas_etfs.wu_inv_ast_type : Equity 2,500 · Alternatives 1,800 · Bond 1,084 · Mixed Assets 138 · Commodity 107 · Money Market 9
+# 값 근거: DB distinct 전수 확인 — 2차 데이터(기준일 2026-08-22) 2026-09-02 재확인. (1차 2026-08-18 수치는 괄호)
+#   domestic_etfs.wu_inv_ast_type : 주식 1,015 · 채권 221 · 원자재 211 · 대체투자 132 · 혼합자산 86 · 단기자금 45 · 기타 37 · 통화 29 · 부동산 4
+#                                   (1차: 주식 1,069 · 채권 261 · 원자재 207 · 혼합자산 78 · 단기자금 42 · 통화 41 · 부동산 18 · 기타 18 — 2차에 '대체투자' 신설)
+#   domestic_etfs.ref_ast_type    : Equity 790 · Bond 135 · Alternatives 132 · Mixed Assets 83 · Money Market 30 · Other 19 · Commodity 19 · NULL 572
+#   overseas_etfs.wu_inv_ast_type : Equity 2,595 · Alternatives 2,061 · Bond 1,112 · Mixed Assets 138 · Commodity 111 · Money Market 9 · NULL 11
+#                                   (1차: Equity 2,500 · Alternatives 1,800 · Bond 1,084 · Mixed Assets 138 · Commodity 107 · Money Market 9)
 #
-# 🔴 Alternatives 1,800건은 국내 대응 분류 없음 — "대응 없음"을 명시하는 것까지가 데이터 (BUILD_PLAN §4.1).
-#    국내 '기타' 18건과의 동치 여부는 워크샵 안건 → pending.
+# 🔴 해외 Alternatives 2,061건 — 2차에서 국내 '대체투자' 132건(ref_ast_type Alternatives 와 동일 행)이 생겨 대응이 생겼다.
+#    국내 '기타' 37건은 대체투자와 별개 표기 → AssetClass_Other.
 
 entity: AssetClass
 description: 투자자산군 (주식/채권/원자재 등)
@@ -18,54 +21,54 @@ nodes:
     label_en: Equity
     aliases:
       - {table: domestic_etfs, column: ref_ast_type, raw: "Equity", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "주식",   source: manual, evidence: "1,069건"}
-      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Equity", source: manual, evidence: "2,500건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "주식",   source: manual, evidence: "2차 1,015행 (1차 1,069)"}
+      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Equity", source: manual, evidence: "2차 2,595행 (1차 2,500)"}
   AssetClass_Bond:
     label_ko: 채권
     label_en: Bond
     aliases:
       - {table: domestic_etfs, column: ref_ast_type, raw: "Bond", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "채권", source: manual, evidence: "261건"}
-      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Bond", source: manual, evidence: "1,084건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "채권", source: manual, evidence: "2차 221행 (1차 261)"}
+      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Bond", source: manual, evidence: "2차 1,112행 (1차 1,084)"}
   AssetClass_Commodity:
     label_ko: 원자재
     label_en: Commodity
     aliases:
       - {table: domestic_etfs, column: ref_ast_type, raw: "Commodity", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "원자재",   source: manual, evidence: "207건"}
-      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Commodity", source: manual, evidence: "107건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "원자재",   source: manual, evidence: "2차 211행 (1차 207)"}
+      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Commodity", source: manual, evidence: "2차 111행 (1차 107)"}
   AssetClass_Mixed:
     label_ko: 혼합자산
     label_en: Mixed Assets
     aliases:
       - {table: domestic_etfs, column: ref_ast_type, raw: "Mixed Assets", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "혼합자산",     source: manual, evidence: "78건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "혼합자산",     source: manual, evidence: "2차 86행 (1차 78)"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Mixed Assets", source: manual, evidence: "138건"}
   AssetClass_MoneyMarket:
     label_ko: 단기자금
     label_en: Money Market
     aliases:
       - {table: domestic_etfs, column: ref_ast_type, raw: "Money Market", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "단기자금",     source: manual, evidence: "42건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "단기자금",     source: manual, evidence: "2차 45행 (1차 42)"}
       - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Money Market", source: manual, evidence: "9건"}
   AssetClass_Currency:
     label_ko: 통화
-    note: 국내ETF 에만 존재 (통화선물 ETF 41건) — 해외 분류엔 없음
+    note: 국내ETF 에만 존재 (통화선물 ETF — 2차 29행, 1차 41) — 해외 분류엔 없음
     aliases:
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "통화", source: manual, evidence: "41건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "통화", source: manual, evidence: "2차 29행 (1차 41)"}
   AssetClass_RealEstate:
     label_ko: 부동산
-    note: 국내ETF 에만 존재 (리츠 18건)
+    note: 국내ETF 에만 존재 (리츠 — 2차 4행, 1차 18)
     aliases:
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "부동산", source: manual, evidence: "18건"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "부동산", source: manual, evidence: "2차 4행 (1차 18)"}
   AssetClass_Alternatives:
     label_ko: 대체투자
     label_en: Alternatives
-    note: "🔴 해외 1,800건 — 국내 대응 분류 없음(명시). 국내 '기타' 18건과의 동치는 워크샵 안건"
+    note: "해외 2차 2,061행 (1차 1,800) — 국내 대응은 2차 '대체투자' 132행(동일 행 ref_ast_type Alternatives). 국내 '기타' 37행은 별개 표기(AssetClass_Other)"
     aliases:
-      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "대체투자", source: rule, evidence: "2차 국내ETF 132행 — ref_ast_type Alternatives 와 동일 행 (2026-08-25)"}
-      - {table: domestic_etfs, column: ref_ast_type, raw: "Alternatives", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25)"}
-      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Alternatives", source: manual, evidence: "1,800건 — 레버리지·인버스 등 포함 추정"}
+      - {table: domestic_etfs, column: wu_inv_ast_type, raw: "대체투자", source: rule, evidence: "2차 국내ETF 132행 — ref_ast_type Alternatives 와 동일 행 (2026-08-25 · 2026-09-02 재확인 132/132)"}
+      - {table: domestic_etfs, column: ref_ast_type, raw: "Alternatives", source: rule, evidence: "2차 국내ETF ref_ast_type (Lipper 분류, 2026-08-25) — 132행"}
+      - {table: overseas_etfs, column: wu_inv_ast_type, raw: "Alternatives", source: manual, evidence: "2차 2,061행 (1차 1,800) — 레버리지·인버스 등 포함 추정"}
 
   AssetClass_Other:
     label_ko: 기타

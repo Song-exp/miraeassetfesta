@@ -195,14 +195,14 @@ class SQLPlanner:
 def test_future_year_as_maturity_passes(ctx):
     p = SQLPlanner("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5")
     r = answer_question("B-04", "2027년 만기 채권 알려줘", planner=p, ctx=ctx)
-    assert "[Execute]" in r.think_trace and "2026-08-22" not in r.answer
+    assert "[Execute]" in r.think_trace and "2026-08-24" not in r.answer
     assert "# 시점 주의" in p.grounding
 
 
 def test_future_year_not_maturity_rejected(ctx):
     p = SQLPlanner("SELECT pd_nm, applied_yield FROM domestic_bonds ORDER BY applied_yield DESC LIMIT 5")
     r = answer_question("B-05", "2027년 채권 시장 전망 알려줘", planner=p, ctx=ctx)
-    assert "[Execute]" not in r.think_trace and "2026-08-22" in r.answer
+    assert "[Execute]" not in r.think_trace and "2026-08-24" in r.answer
     assert "mat_dt 조건에 쓰이지 않음" in r.think_trace
 
 

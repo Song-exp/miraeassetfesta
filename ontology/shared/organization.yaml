@@ -2,19 +2,22 @@
 # 이 파일은 scripts 로 codebooks/public_funds_asset_manager.derived.csv 에서 생성 후 수작업 보정한다.
 # 원천 코드북이 갱신되면(외부 코드북 회신) 재생성할 것.
 #
+# ⚠️ 2026-09-02 전수 재검증 — 아래 codebook_v1 alias 의 "접두점유 x.xxx · N종목" 45건은 1차 코드북(derived.csv, 2026-08-18·1차 DB) 수치다.
+#    2차 DB 의 어떤 척도(행수·std_itm_no·rptt_ksd_itm_no distinct)와도 맞지 않으며(예: 미래에셋 2,852 → 2차 행 4,536 · std 4,303 · rptt 1,132)
+#    KG 빌드는 raw 코드값만 쓰므로 런타임 영향은 없다. 코드북 재생성 시 함께 갱신할 것 — 개별 정정하지 않고 원천 주석으로 남긴다.
 # 채택 기준: evidence A(ETF 교차검증)·B(접두 점유율 90%+)·C(구상호 혼재하나 브랜드 식별) 만 확정.
-#           D(접두=상품명)·E(브랜드 미식별) 22종은 제외 — coverage report 미매핑으로 추적, 워크샵 안건.
+#           D(접두=상품명) 19종·E(브랜드 미식별) 2종 = 21종은 제외(2026-09-02 재계수, 옛 표기 22) — coverage report 미매핑으로 추적, 워크샵 안건.
 #
 # 🆕 2026-08-18 웹 관측 반영 (source: miraeasset_web · 근거: data/external/miraeasset_web/fund_pages_full.csv)
 #   미래에셋증권 펀드상세 페이지가 코드별 운용사 법인명(ADMICN)을 노출 — 67코드 전부 법인명 관측 완료.
-#   · 정식 법인명의 단일 원천은 codebooks/asset_manager.csv (67행 완성). 이 파일 label 은 브랜드 유지.
+#   · 정식 법인명의 단일 원천은 codebooks/asset_manager.csv (confirmed 67행 → 2차 275코드 전량 275행: confirmed 67·web_confirmed 50·web_estimated 1·derived 157, 2026-09-02). 이 파일 label 은 브랜드 유지.
 #   · D·E 로 제외됐던 코드들을 관측 근거로 신규 수록 (하단 "웹 관측 신규 노드" 절).
 #   · 🔶 이관 관측 (라벨≠현재 법인, 워크샵 안건): 00040023 알리안츠→우리글로벌자산운용(최빈),
 #     00040013 키움슈로더→키움투자자산운용(최빈. 00080052 와 동일 법인이면 노드 병합 대상),
 #     00040084 도이치→디더블유에스자산운용. 병합·개명은 담당(Song-exp) 확인 후 진행.
 # 🔴 미해결: former_names(동양→우리 등 구상호) 는 DB 값이 아니라 질의 표기라 kg_alias 에 못 넣음.
 #           질의측 동의어 테이블(kg_synonym)이 별도로 필요 — 후속 작업.
-# 🔴 미해결: domestic_bonds.pd_pbcm 발행사 8,018종은 규칙 정규화 트랙 별도 (§4.1).
+# 🔴 미해결: domestic_bonds.pd_pbcm 발행사 2차 1,818종(1차 8,018) — organization_issuer_auto.yaml 로 1,818/1,818 매핑 완료(2026-09-02 재확인)은 규칙 정규화 트랙 별도 (§4.1).
 
 entity: Organization
 description: 운용사·발행사 (자산운용사 브랜드 기준. 정식 법인명 아님 — 코드북 주석 참조)
@@ -40,7 +43,7 @@ nodes:
     label_ko: 삼성액티브
     note: "삼성자산운용과 별도 법인(액티브 운용 분사). 00080135 귀속 확정 — 웹 관측 260818"
     aliases:
-      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "삼성액티브", source: manual, evidence: "ETF 23건 — QA 260818 발견"}
+      - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "삼성액티브", source: manual, evidence: "ETF 2차 25행 (1차 23건) — QA 260818 발견"}
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080135", source: miraeasset_web, evidence: "웹 상세페이지 ADMICN='삼성액티브자산운용' 64종목 전건 — pending 해소"}
   Org_00040035:
     label_ko: KB
@@ -64,7 +67,7 @@ nodes:
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "신한", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00040007:
     label_ko: 우리
-    former_names: [프랭클린템플턴투자신탁운용, 동양자산운용]   # 합병·이관(구상호) — KG-002 실측: 프랭클린 이름 잔존 39펀드/68클래스가 00040007
+    former_names: [프랭클린템플턴투자신탁운용, 동양자산운용]   # 합병·이관(구상호) — KG-002 실측: 프랭클린 이름 잔존 2차 56클래스행(rptt_ksd_itm_no 11)이 00040007 (1차 39펀드/68클래스)
     # codebook evidence B · 접두점유 0.947 · 432종목 · 구상호: 동양
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040007", source: codebook_v1, evidence: "codebook evidence B · 접두점유 0.947 · 432종목"}
@@ -296,7 +299,7 @@ nodes:
   Org_00040011:
     label_ko: 멀티에셋
     aliases:
-      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040011", source: miraeasset_web, evidence: "ADMICN='멀티에셋자산운용' 최빈 262종목"}
+      - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040011", source: miraeasset_web, evidence: "ADMICN='멀티에셋자산운용' 총 262행 중 최빈 259행(미래에셋자산운용 3행 혼재, 2026-09-02 재계수)"}
   Org_00080031:
     label_ko: 알파
     aliases:

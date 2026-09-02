@@ -164,7 +164,12 @@ dead = []
 for col, in c.execute("SELECT DISTINCT column_name FROM kg_alias WHERE table_name='public_funds'"):
     if col not in COLS:
         dead.append((col, "컬럼 없음")); continue
-    n = c.execute(f"SELECT COUNT(*) FROM kg_alias a WHERE a.table_name='public_funds' AND a.column_name=? AND NOT EXISTS (SELECT 1 {F} p WHERE trim(CAST(p.{col} AS TEXT)) = a.raw_value)", (col,)).fetchone()[0]
+    # match_kind='token'(KG 1R S3, c82bf50) 은 콤마 목록 안의 태그 코드라 셀 등호가 아니라 ',raw,' 포함으로 실재를 본다
+    #   (2026-09-02 전수 재검증: prfd_attr_cds token alias 196건이 등호 검사에서 전부 '사어' 오탐).
+    n = c.execute(f"""SELECT COUNT(*) FROM kg_alias a WHERE a.table_name='public_funds' AND a.column_name=?
+                      AND NOT EXISTS (SELECT 1 {F} p WHERE CASE WHEN a.match_kind='token'
+                                          THEN ',' || CAST(p.{col} AS TEXT) || ',' LIKE '%,' || a.raw_value || ',%'
+                                          ELSE trim(CAST(p.{col} AS TEXT)) = a.raw_value END)""", (col,)).fetchone()[0]
     if n:
         dead.append((col, n))
 results.append(("KG-dead", "kg_alias(public_funds) raw_value 가 DB 에 실재", "사어 0", dead or 0, not dead))

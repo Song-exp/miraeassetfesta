@@ -57,7 +57,7 @@ def test_risk_grade_6_valid(ctx):
 def test_cutoff_future(ctx):
     # 🔴 08-30: 연도만 보고 게이트에서 기각하지 않는다 — 플래너가 없으면 해석을 검사할 수 없어 기준일 안내로 끝낸다
     r = answer_question("T-07", "2027년 만기 예정 수익률 전망 알려줘", ctx=ctx)
-    assert "[Gate] 기각" not in r.think_trace and "2026-08-22" in r.answer
+    assert "[Gate] 기각" not in r.think_trace and "2026-08-24" in r.answer
     assert "사후 판정" in r.think_trace
 
 
@@ -140,7 +140,7 @@ def test_cutoff_august_allowed(ctx):
 
 def test_cutoff_october_rejected(ctx):
     r = answer_question("T-12", "2026년 10월에 상장 예정인 국내 ETF 알려줘", ctx=ctx)
-    assert "2026-08-22" in r.answer and "['202610']" in r.think_trace
+    assert "2026-08-24" in r.answer and "['202610']" in r.think_trace
 
 
 def test_planner_context_has_rules(ctx):
@@ -190,7 +190,7 @@ def test_execute_renders_dates_as_int_and_strips_padding():
     assert _cell(7.123, "applied_yield") == "7.123"
     assert _cell(None, "crd_grd") == ""
     assert _cell("  국고채권 01500-2703  ", "pd_nm") == "국고채권 01500-2703"
-    rows, n = _execute("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt >= 20260822 LIMIT 3")
+    rows, n = _execute("SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt >= 20260824 LIMIT 3")
     assert n == 3
     for line in rows.splitlines()[1:]:
         name, mat = line.split(" | ")
@@ -210,18 +210,18 @@ def test_normalize_date_literals_quoted_and_noop():
     from src.runtime.pipeline import normalize_date_literals
     fixed, changed = normalize_date_literals("SELECT 1 FROM domestic_bonds WHERE mat_dt <= '2029-8-2' LIMIT 1")
     assert changed and "20290802" in fixed
-    same, changed2 = normalize_date_literals("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20290822 LIMIT 1")
+    same, changed2 = normalize_date_literals("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20290824 LIMIT 1")
     assert not changed2
 
 
 def test_maturity_lower_bound_injection():
     from src.runtime.pipeline import ensure_maturity_lower_bound
-    fixed, changed = ensure_maturity_lower_bound("SELECT pd_nm FROM domestic_bonds WHERE mat_dt <= 20290822 LIMIT 5")
-    assert changed and "(mat_dt >= 20260822 AND mat_dt <= 20290822)" in fixed
+    fixed, changed = ensure_maturity_lower_bound("SELECT pd_nm FROM domestic_bonds WHERE mat_dt <= 20290824 LIMIT 5")
+    assert changed and "(mat_dt >= 20260824 AND mat_dt <= 20290824)" in fixed
     # BETWEEN(자체 하한)·과거 상한("만기 지난")·하한 보유 SQL 은 건드리지 않는다
     assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 1")[1]
     assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260821 LIMIT 1")[1]
-    assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20260822 AND mat_dt <= 20290822 LIMIT 1")[1]
+    assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20260822 AND mat_dt <= 20290824 LIMIT 1")[1]
 
 
 class BuggyMaturityPlanner:
@@ -240,7 +240,7 @@ def test_full_path_buggy_date_sql_recovers(ctx):
                         planner=BuggyMaturityPlanner(), ctx=ctx)
     assert "[Guard] 날짜 리터럴 보정" in r.think_trace
     assert "[Guard] 만기 하한 보정" in r.think_trace
-    assert "(mat_dt >= 20260822 AND mat_dt <= 20290822)" in r.sql
+    assert "(mat_dt >= 20260824 AND mat_dt <= 20290822)" in r.sql   # 상한은 플래너 픽스처(2029-08-22) 그대로, 하한만 판정일 8/24
     assert "산금채 1706복10A" not in r.retrieved_context   # 만기일 미수록(mat_dt=0) 행이 더는 새지 않는다
     assert "[Execute] 30행 조회" in r.think_trace
 
@@ -374,12 +374,12 @@ def test_ensure_credit_backstop():
     assert not ensure_credit_backstop("SELECT 1 FROM domestic_bonds WHERE crd_grd='AAA' LIMIT 1", q)[1]
     full = _BACKSTOP_BUGGY_SQL.replace("OR pd_nm LIKE '%(정부보증)%')",
         "OR pd_nm LIKE '%(정부보증)%' OR TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')) "
-        "AND applied_yield > 0 AND mat_dt >= 20260822 AND pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모'")
+        "AND applied_yield > 0 AND mat_dt >= 20260824 AND pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모'")
     assert not ensure_credit_backstop(full, q)[1]
     # 2026-09-02 — 랭킹 제외에 만기 경과(mat_dt >= 기준일)가 추가됐다: 하한 없는 완성식은 그 절만 주입된다
-    without_mat = full.replace("AND mat_dt >= 20260822 ", "")
+    without_mat = full.replace("AND mat_dt >= 20260824 ", "")
     fixed3, changed3 = ensure_credit_backstop(without_mat, q)
-    assert changed3 and fixed3.count("mat_dt >= 20260822") == 1 and "사모" in fixed3
+    assert changed3 and fixed3.count("mat_dt >= 20260824") == 1 and "사모" in fixed3
 
 
 def test_ensure_risk_name_column():
@@ -480,11 +480,11 @@ def test_ensure_maturity_sort():
     sql = "SELECT pd_nm, mat_dt, dur FROM domestic_bonds WHERE TRIM(pd_pbcm)= '한국전력공사(주)' ORDER BY dur DESC LIMIT 1"
     q = "한전 채권 중 만기가 가장 긴 건 뭐야?"
     fixed, changed = ensure_maturity_sort(sql, q)
-    assert changed and "ORDER BY mat_dt DESC" in fixed and "mat_dt >= 20260822" in fixed
+    assert changed and "ORDER BY mat_dt DESC" in fixed and "mat_dt >= 20260824" in fixed
     # 만기 짧은 순(ASC)에도 하한 주입 — 만기일 0값 4행·만기 경과 49행이 1위로 오는 것 차단.
     # 하한은 >= — 당일 만기(잔존 1일) 7종목이 진짜 최단이다 (2026-09-01 서버 실측: > 로 누락)
     f2, c2 = ensure_maturity_sort("SELECT pd_nm FROM domestic_bonds ORDER BY dur ASC LIMIT 5", "만기 짧은 채권 5개 알려줘")
-    assert c2 and "ORDER BY mat_dt ASC" in f2 and "mat_dt >= 20260822" in f2
+    assert c2 and "ORDER BY mat_dt ASC" in f2 and "mat_dt >= 20260824" in f2
     # 불개입 — 듀레이션을 직접 물음 / 이미 mat_dt 정렬 / 채권 테이블 아님
     assert not ensure_maturity_sort(sql, "한전 채권 중 듀레이션 가장 긴 것")[1]
     assert not ensure_maturity_sort("SELECT pd_nm FROM domestic_bonds ORDER BY mat_dt DESC LIMIT 1", q)[1]
@@ -496,11 +496,12 @@ def test_ensure_cutoff_inclusive():
     # 2026-09-01 서버 실측 — '만기가 가장 짧은 채권 뭐야' 가 mat_dt > 20260822 로 당일 만기 7종목 누락
     fixed, changed = ensure_cutoff_inclusive(
         "SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt > 20260822 ORDER BY mat_dt ASC LIMIT 1")
-    assert changed and "mat_dt >= 20260822" in fixed and "mat_dt > 20260822" not in fixed
+    assert changed and "mat_dt >= 20260824" in fixed and "mat_dt > 20260822" not in fixed
     # REAL 적재 리터럴(20260822.0)도 교정
     assert ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20260822.0")[1]
     # 불개입 — 이미 >= / 기준일이 아닌 날짜의 부등호(사용자 조건) / 상한
-    assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt >= 20260822")[1]
+    assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt >= 20260824")[1]   # 판정일 리터럴은 불개입
+    assert ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt >= 20260822")[1]       # as-of 리터럴은 8/24 로 교정 (2026-09-02)
     assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20270101")[1]
     assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260822")[1]
 
@@ -533,7 +534,7 @@ def test_ensure_top_safety():
     # 2026-08-31 실측 — '가장 안전한 채권 3개' 가 IN ('15','16') + 수익률 내림차순으로 나가
     # 5등급 콜옵션부 7.1% 가 1~3위 (위험등급방향의 '16 단독' 분기 미적용)
     sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), applied_yield, pd_risk_gcd, pd_risk_nm FROM domestic_bonds "
-           "WHERE pd_risk_gcd IN ('15', '16') AND curr_cd = 'KRW' AND mat_dt >= 20260822 "
+           "WHERE pd_risk_gcd IN ('15', '16') AND curr_cd = 'KRW' AND mat_dt >= 20260824 "
            "AND applied_yield IS NOT NULL AND applied_yield > 0 AND pd_risk_gcd <> '11' "
            "AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모' ORDER BY applied_yield DESC LIMIT 3")
     q = "가장 안전한 채권 3개 추천해줘"
@@ -615,10 +616,10 @@ def test_strip_fabricated_risk_filter():
     # 2026-09-02 확장 — 추천·구매의향 문형도 받는다 ('1년만 굴릴 건데 어떤 채권 사면 돼?' 가
     # 최상급·_RECO_Q 어느 쪽에도 안 걸려 날조 '16' 통과 → 6등급 2·4·5·6·7위 답변 실측)
     win = ("SELECT DISTINCT pd_no, pd_nm, applied_yield, remaining_days FROM domestic_bonds "
-           "WHERE mat_dt >= 20260822 AND mat_dt <= 20270822 AND pd_risk_gcd = '16' "
+           "WHERE mat_dt >= 20260824 AND mat_dt <= 20270824 AND pd_risk_gcd = '16' "
            "ORDER BY applied_yield DESC LIMIT 30")
     f4, c4 = strip_fabricated_risk_filter(win, "1년만 굴릴 건데 어떤 채권 사면 돼?")
-    assert c4 and "pd_risk_gcd" not in f4 and "mat_dt >= 20260822" in f4
+    assert c4 and "pd_risk_gcd" not in f4 and "mat_dt >= 20260824" in f4
     assert strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]  # 옛 불개입 케이스 → 확장 후 양성
     # 부도-공포 서술형(_TOP_SAFE_Q)은 _RISK_VOCAB 밖이지만 '16' 이 정답 — 불개입 (오폭 봉인)
     assert not strip_fabricated_risk_filter(win, "망하지 않을 회사 채권만 골라줘")[1]
@@ -645,7 +646,7 @@ def test_distribution_answer_distinct_bonds():
 def test_ensure_positive_count_answered():
     from src.runtime.pipeline import ensure_positive_count_answered as f
     # 2026-09-02 서버 실측 — 퇴직연금 COUNT(*)=1,929 정상 반환에도 "정보가 포함되어 있지 않습니다" 오거절
-    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260822"
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260824"
     rows = "COUNT(DISTINCT pd_no)\n843"
     refusal = "조회 결과에 퇴직연금에서 구매 가능한 특정 채권에 대한 정보가 포함되어 있지 않습니다. 따라서 이에 대해 답변을 드릴 수 없습니다."
     fixed, changed = f(refusal, sql, rows, 1, "퇴직연금으로 살 수 있는 채권 있어?")
@@ -671,7 +672,7 @@ def test_ensure_positive_count_answered():
 def test_ensure_distinct_count_existence():
     from src.runtime.pipeline import ensure_distinct_count
     # 2026-09-02 — '있어?' 존재 문형에도 COUNT(*)→DISTINCT 교정 (옛 트리거는 종목·몇 개·개수만)
-    sql = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260822 LIMIT 30"
+    sql = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' AND curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30"
     fixed, changed = ensure_distinct_count(sql, "퇴직연금으로 살 수 있는 채권 있어?")
     assert changed and "COUNT(DISTINCT pd_no)" in fixed
     # COUNT 없는 목록 SELECT 는 불개입(존재 질문의 예시 목록은 살린다)
@@ -801,7 +802,7 @@ def test_ensure_count_query():
     # 2026-09-01 서버 실측 — '5% 넘는 건 몇 개야' 에 COUNT 없는 목록 + 잔존일수순 임의 3행
     sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm) as 상품명, applied_yield, pd_risk_gcd, pd_risk_nm, "
            "std_pd_mcls_nm, remaining_days FROM domestic_bonds WHERE curr_cd = 'KRW' "
-           "AND mat_dt >= 20260822 AND applied_yield > 5 ORDER BY remaining_days LIMIT 3")
+           "AND mat_dt >= 20260824 AND applied_yield > 5 ORDER BY remaining_days LIMIT 3")
     q = "지금 살 수 있는 채권 중에 수익률 5% 넘는 건 몇 개야?"
     fixed, changed = ensure_count_query(sql, q)
     assert changed and fixed.startswith("SELECT COUNT(DISTINCT pd_no)")

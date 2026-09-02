@@ -95,7 +95,7 @@ class UTF8JSONResponse(JSONResponse):
 
 app = FastAPI(
     title="미래에셋 금융상품 AI Agent",
-    description="평가용 REST API. 데이터 기준일 2026-08-22 (2차 배포본, 해외 8/23 KST).",
+    description="평가용 REST API. 데이터 기준일 2026-08-24 (2차 배포본 8/24 · 스냅샷 8/21~8/23 KST).",
     version="0.1.0-stub",
     default_response_class=UTF8JSONResponse,
 )

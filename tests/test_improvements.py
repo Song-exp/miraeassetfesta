@@ -40,7 +40,7 @@ class SeqPlanner:
 # ── R-9 SQL 프롬프트 두 줄 ─────────────────────────────────────────────
 
 def test_sql_system_has_cutoff_anchor_and_irrelevant_rule_note():
-    assert "2026-08-22" in _SQL_SYSTEM
+    assert "2026-08-24" in _SQL_SYSTEM
     assert "date('now')" in _SQL_SYSTEM or "date(\"now\")" in _SQL_SYSTEM
     assert "무관" in _SQL_SYSTEM
     assert "REFUSE:" in _SQL_SYSTEM

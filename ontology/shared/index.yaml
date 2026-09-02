@@ -24,94 +24,94 @@ nodes:
     parent: Idx_a_fa21f0fb15   # 자동 패밀리(KOSPI200, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "KOSPI200", source: rule, evidence: "ETF 9건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "KOSPI200", source: rule, evidence: "펀드 10,655건 — 표기 완전일치"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "KOSPI200", source: rule, evidence: "펀드 2차 1,522클래스행 (1차 10,655건) — 표기 완전일치"}
   Idx_KRX300:
     label_ko: KRX 300
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "KRX 300", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "KRX 300", source: rule, evidence: "펀드 212건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "KRX 300", source: rule, evidence: "펀드 2차 31클래스행 (1차 212건)"}
   Idx_KOSDAQ150_150:
     label_ko: 코스닥150 150%
     note: 레버리지 합성 표기 — 기초는 코스닥150. 분해 여부 워크샵 안건
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "코스닥150 150%", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "코스닥150 150%", source: rule, evidence: "펀드 45건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "코스닥150 150%", source: rule, evidence: "펀드 2차 6클래스행 (1차 45건)"}
   Idx_MSCI_ACWI:
     parent: Idx_a_83b9b8edb8   # 자동 패밀리(MSCI AC World, index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
     label_ko: MSCI ACWI
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI", source: rule, evidence: "ETF 6건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI", source: rule, evidence: "펀드 3,846건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI", source: rule, evidence: "펀드 2차 412클래스행 (1차 3,846건)"}
   Idx_MSCI_ACWI_IT:
     label_ko: MSCI ACWI Information Technology
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI Information Technology", source: rule, evidence: "ETF 2건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI Information Technology", source: rule, evidence: "펀드 1,247건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI Information Technology", source: rule, evidence: "펀드 2차 126클래스행 (1차 1,247건)"}
   Idx_MSCI_ACWI_HC:
     label_ko: MSCI ACWI Health Care
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI Health Care", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI Health Care", source: rule, evidence: "펀드 937건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI Health Care", source: rule, evidence: "펀드 2차 94클래스행 (1차 937건)"}
   Idx_MSCI_China:
     label_ko: MSCI CHINA
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI CHINA", source: rule, evidence: "ETF 2건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI CHINA", source: rule, evidence: "펀드 1,925건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI CHINA", source: rule, evidence: "펀드 2차 203클래스행 (1차 1,925건)"}
   Idx_MSCI_NA:
     label_ko: MSCI NORTH AMERICA
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI NORTH AMERICA", source: rule, evidence: "ETF 4건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI NORTH AMERICA", source: rule, evidence: "펀드 936건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI NORTH AMERICA", source: rule, evidence: "펀드 2차 97클래스행 (1차 936건)"}
   Idx_MSCI_EM:
     parent: Idx_a_c2f932ab65   # 자동 패밀리(MSCI EM (Emerging Markets), index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
     label_ko: MSCI EM (EMERGING MARKETS)
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "펀드 799건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "펀드 2차 91클래스행 (1차 799건)"}
   Idx_KapBond_3m1y:
     label_ko: 종합채권 3개월~1년
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "종합채권 3개월~1년", source: rule, evidence: "ETF 14건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "종합채권 3개월~1년", source: rule, evidence: "펀드 720건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "종합채권 3개월~1년", source: rule, evidence: "펀드 2차 107클래스행 (1차 720건)"}
   Idx_KapBond_1y2y:
     label_ko: 종합채권 1~2년
     aliases:
-      - {table: domestic_etfs, column: cu_base_index, raw: "종합채권 1~2년", source: rule, evidence: "ETF 6건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "종합채권 1~2년", source: rule, evidence: "펀드 957건"}
+      - {table: domestic_etfs, column: cu_base_index, raw: "종합채권 1~2년", source: rule, evidence: "ETF 2차 4행 (1차 6건)"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "종합채권 1~2년", source: rule, evidence: "펀드 2차 129클래스행 (1차 957건)"}
   Idx_KapBond03Y_90:
     label_ko: 종합채권03Y 90%
     note: 합성 벤치마크 표기
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "종합채권03Y 90%", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "종합채권03Y 90%", source: rule, evidence: "펀드 523건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "종합채권03Y 90%", source: rule, evidence: "펀드 2차 75클래스행 (1차 523건)"}
   Idx_KapCD6m_90:
     label_ko: KAP CD 6개월 90%
     note: 합성 벤치마크 표기 — 원문에 이중 공백 있음 (raw 는 trim 정규화 후 값)
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "KAP CD 6개월  90%", source: rule, evidence: "ETF 2건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "KAP CD 6개월  90%", source: rule, evidence: "펀드 1,259건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "KAP CD 6개월  90%", source: rule, evidence: "펀드 2차 209클래스행 (1차 1,259건)"}
   Idx_Composite_ACWI50_Bond50:
     label_ko: MSCI ACWI CR 50% + 종합채권01Y 50%
     note: "🔴 합성 벤치마크 — 단일 지수 아님. TDF·혼합형 상품군 관행 표기. 분해(성분 지수 edge) 여부 워크샵 안건"
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI CR 50% + 종합채권01Y 50%", source: rule, evidence: "ETF 3건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI CR 50% + 종합채권01Y 50%", source: rule, evidence: "펀드 9,196건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "MSCI ACWI CR 50% + 종합채권01Y 50%", source: rule, evidence: "펀드 2차 816클래스행 (1차 9,196건)"}
   Idx_ZeroinAlt:
     label_ko: 제로인 대안투자기대수익지수
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "제로인 대안투자기대수익지수", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "제로인 대안투자기대수익지수", source: rule, evidence: "펀드 1,350건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "제로인 대안투자기대수익지수", source: rule, evidence: "펀드 2차 164클래스행 (1차 1,350건)"}
   Idx_RogersIntlCommodity:
     label_ko: Rogers International Commodity TR
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "Rogers International Commodity TR", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "Rogers International Commodity TR", source: rule, evidence: "펀드 353건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "Rogers International Commodity TR", source: rule, evidence: "펀드 2차 40클래스행 (1차 353건)"}
   Idx_DWGRTT90:
     label_ko: DWGRTT 90%
     note: 합성 벤치마크 표기 — 의미 미상, EDA 필요
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "DWGRTT 90%", source: rule, evidence: "ETF 1건"}
-      - {table: public_funds,  column: bmrk_nm,       raw: "DWGRTT 90%", source: rule, evidence: "펀드 762건"}
+      - {table: public_funds,  column: bmrk_nm,       raw: "DWGRTT 90%", source: rule, evidence: "펀드 2차 82클래스행 (1차 762건)"}
   Idx_iSelect_KREITs:
     label_ko: iSelect K-REITs
     note: 국내ETF 전용 — 펀드 벤치마크에 없음
@@ -126,16 +126,16 @@ nodes:
     label_ko: S&P 500 TR
     parent: Idx_a_25e8381c5f   # 자동 패밀리(S&P 500, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
     note: >-
-      해외ETF 대표 지수. 수익률방식 변형(TR·CR·NR)을 alias 로 함께 묶는다 — 335→387건 통합 조회.
+      해외ETF 대표 지수. 수익률방식 변형(TR·CR·NR)은 2026-08-25 구조 변경으로 이 노드의 alias 가 아니라 패밀리 parent(Idx_a_25e8381c5f) closure 로 묶인다 — 2차: TR 339 · CR 66 · NR 1 = 406행 (1차 335→387 표기 폐기, 2026-09-02).
       노드 id 는 index_auto.yaml 이 edge 로 참조하므로 유지 (Idx_SP500 으로 개명 금지).
     aliases:
-      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 TR", source: manual, evidence: "해외ETF 335건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 TR", source: manual, evidence: "해외ETF 2차 339행 (1차 335건)"}
   Idx_BbgUSAgg:
     label_ko: Bloomberg US Aggregate Bond
     aliases:
-      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg U.S. Aggregate Bond TR", source: manual, evidence: "해외ETF 89건"}
+      - {table: overseas_etfs, column: cu_base_index, raw: "Bloomberg U.S. Aggregate Bond TR", source: manual, evidence: "해외ETF 2차 92행 (1차 89건)"}
 
-  # ── 해외ETF 지수 (2026-08-22 등록, 이병철) ──
+  # ── 해외ETF 지수 (2026-08-22 등록, 이병철 → 2026-08-25 수동 53노드는 index_auto.yaml 자동 노드로 이관, 이 절은 비어 있음) ──
   # 원천: ontology/codebooks/index_master.csv (base_index 정규화본)
   # 수익률방식(TR/CR/NR)·철자변형은 한 노드에 alias 로 통합 — 교차질의용
 absent_in:

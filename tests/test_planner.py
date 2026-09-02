@@ -76,7 +76,7 @@ def test_answer_prompt_forbids_outside_facts():
     # 환각 방지 문구가 시스템 프롬프트에서 사라지면 안 된다 (감점 1순위)
     from src.hcx.planner import _ANSWER_SYSTEM
 
-    assert "추정하지 않는다" in _ANSWER_SYSTEM and "2026-08-22" in _ANSWER_SYSTEM
+    assert "추정하지 않는다" in _ANSWER_SYSTEM and "2026-08-24" in _ANSWER_SYSTEM
 
 
 def test_sql_budget_fits_case_expressions():

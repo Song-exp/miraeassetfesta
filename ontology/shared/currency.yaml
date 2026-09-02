@@ -6,11 +6,11 @@
 #     status: confirmed(기본, KG에 들어감) | pending(보류 — KG 제외, 리포트에만 표시)
 #   absent_in : 컬럼 자체가 없는 테이블 → .ttl 속성 부재 선언 + 런타임 즉시 기각 근거
 #
-# 값 근거: DB distinct 전수 확인 (2026-08-18, financial_products.db)
-#   domestic_etfs.pd_curr_cd   : CURR_CD_KRW 1,732 · CURR_CD_000 1
-#   public_funds.curr_cd       : KRW 95,046 · USD 572
-#   domestic_bonds.curr_cd     : KRW 42,372 · USD 19 · JPY 1 · EUR 1 · 000 1
-#   overseas_etfs.pd_trd_ccy   : USD 5,646 (단일값)
+# 값 근거: DB distinct 전수 확인 — 2차 데이터(기준일 2026-08-22) 2026-09-02 재확인. (1차 2026-08-18 수치는 괄호)
+#   domestic_etfs.pd_curr_cd   : CURR_CD_KRW 1,776 · CURR_CD_000 1 · NULL 3   (1차 1,732 · 1)
+#   public_funds.curr_cd       : KRW 23,147 · USD 453 · EUR 56 · JPY 15 · GBP 2 · AUD 2 · SEK 1   (1차 KRW 95,046 · USD 572)
+#   domestic_bonds.curr_cd     : KRW 21,881 · 000 1 — 외화채 없음   (1차 KRW 42,372 · USD 19 · JPY 1 · EUR 1 · 000 1)
+#   overseas_etfs.pd_trd_ccy   : USD 6,037 (단일값)   (1차 5,646)
 
 entity: Currency
 description: 상품의 표시/거래 통화
@@ -32,8 +32,8 @@ nodes:
       # 🔴 2026-08-26 중복 키 수정 — evidence 가 두 번 선언돼 앞의 "외화채권 19건"(1차 실측)이 파서에서 소실되고 있었다.
       - {table: domestic_bonds, column: curr_cd,    raw: "USD", source: manual, status: pending,
          evidence: "1차 외화채권 19건 → 2차 데이터(8/22)에는 외화채 없음 (curr_cd distinct = KRW·000 뿐). pending 유지 — domestic_bonds.query_rules.외화채없음 과 정합"}
-      - {table: public_funds,   column: curr_cd,    raw: "USD", source: manual, evidence: "역외펀드 572건"}
-      - {table: overseas_etfs,  column: pd_trd_ccy, raw: "USD", source: manual, evidence: "해외ETF 전량 USD 5,646건"}
+      - {table: public_funds,   column: curr_cd,    raw: "USD", source: manual, evidence: "역외펀드 — 1차 572건 → 2차 453행 (2026-09-02 재확인)"}
+      - {table: overseas_etfs,  column: pd_trd_ccy, raw: "USD", source: manual, evidence: "해외ETF 전량 USD — 1차 5,646건 → 2차 6,037행 (2026-09-02 재확인)"}
 
   Curr_JPY:
     label_ko: 일본 엔

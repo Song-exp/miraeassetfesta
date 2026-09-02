@@ -30,7 +30,9 @@ REFUSE_PREFIX = "REFUSE:"
 # 🔴 0행은 재생성 대상이 아니다 — 거절이 정답인 문항에서 조건 완화 = 환각 (PROJECT.md §9)
 REGEN_BUDGET_S = 12.0
 SQL_TIMEOUT_S = 10.0
-CUTOFF_INT = int(gate.DATA_CUTOFF.replace("-", ""))   # 20260822 — 날짜 컬럼은 정수 YYYYMMDD (REAL 적재)
+CUTOFF_INT = int(gate.DATA_CUTOFF.replace("-", ""))   # 20260824 — 표기 기준일(리드 결정 09-02). 날짜 컬럼은 정수 YYYYMMDD (REAL 적재)
+# 🔴 만기 하한(구매가능)은 BUYABLE_INT(20260824) 를 쓴다 — as-of 와 판정일을 분리 (리드 결정 2026-09-02: 8/22·8/23 만기 14종목은 만기 경과).
+BUYABLE_INT = int(gate.BUYABLE_CUTOFF.replace("-", ""))
 
 
 @dataclass
@@ -316,13 +318,14 @@ def ensure_maturity_lower_bound(sql: str) -> tuple[str, bool]:
     if _MAT_LOWER.search(sql):
         return sql, False
     m = _MAT_UPPER.search(sql)
-    if not m or int(m.group(1)) <= CUTOFF_INT:
+    if not m or int(m.group(1)) <= BUYABLE_INT:
         return sql, False
     s, e = m.span()
-    return f"{sql[:s]}(mat_dt >= {CUTOFF_INT} AND {sql[s:e]}){sql[e:]}", True
+    return f"{sql[:s]}(mat_dt >= {BUYABLE_INT} AND {sql[s:e]}){sql[e:]}", True
 
 
-_CUTOFF_STRICT = re.compile(rf"\bmat_dt\s*>\s*{CUTOFF_INT}(?:\.0)?\b")
+# 옛 기준일(as-of 8/22 및 8/20~8/23) 하한 리터럴 — 초과(>)든 이상(>=)이든 구매가능 판정일 8/24 이상으로 교정한다.
+_CUTOFF_STRICT = re.compile(r"\bmat_dt\s*>=?\s*2026082[0-3](?:\.0)?\b|\bmat_dt\s*>\s*20260824(?:\.0)?\b")
 
 
 def ensure_cutoff_inclusive(sql: str) -> tuple[str, bool]:
@@ -330,9 +333,9 @@ def ensure_cutoff_inclusive(sql: str) -> tuple[str, bool]:
 
     2026-09-01 서버 실측: '만기가 가장 짧은 채권 뭐야' 가 mat_dt > 20260822 로 나가
     기준일 당일 만기 7종목(잔존 1일 동률 — 진짜 최단)을 건너뛰고 8/23 채권(잔존 2일)을 답함.
-    구매가능 모수는 mat_dt >= 20260822 다(규칙 구매가능 · gold 전 문항 동일 표기).
-    기준일 리터럴에 붙은 > 만 교정한다 — 다른 날짜의 부등호는 사용자 조건일 수 있어 불개입."""
-    new = _CUTOFF_STRICT.sub(f"mat_dt >= {CUTOFF_INT}", sql)
+    🔄 2026-09-02 리드 결정 — 구매가능 모수는 mat_dt >= 20260824(BUYABLE_INT) 다. as-of(8/22)·8/20~8/23 리터럴의 >·>= 하한을
+    전부 8/24 이상으로 교정한다(HCX 는 yaml 옛 표기나 as-of 를 하한으로 쓰기 쉽다). 그 외 날짜의 부등호는 사용자 조건일 수 있어 불개입."""
+    new = _CUTOFF_STRICT.sub(f"mat_dt >= {BUYABLE_INT}", sql)
     return (new, new != sql)
 
 
@@ -1615,7 +1618,7 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
         return answer, False
     unit = "종목" if re.search(r"DISTINCT\s+pd_no", sql, re.I) else "건(행 기준 — 종목 수와 다를 수 있음)"
     prefix = "네, 있습니다 — " if _EXIST_Q.search(question) else ""
-    return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 2026-08-22).", True
+    return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
 
 
 def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
@@ -2556,7 +2559,7 @@ def _rank_exclusions(sql: str, question: str) -> list[str]:
     # 만기 2026-08-20 경과 1063호가 1·2위. 전체 만기 경과 49행(최대 5.699%). gold 채권 랭킹 19개 중 17개가 이미
     # 이 절을 쓴다(나머지 2개도 하한 있음). 질문이 만기 경과를 콕 집으면(범주 언급 = 우회) 건너뛴다.
     if not re.search(r"mat_dt\s*>=?\s*\d", sql) and not _PAST_MATURITY_Q.search(question):
-        excl.append(f"mat_dt >= {CUTOFF_INT}")
+        excl.append(f"mat_dt >= {BUYABLE_INT}")
     if "'11'" not in sql and not re.search(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
         excl.append("pd_risk_gcd <> '11'")
     if "C0" not in sql and not re.search(r"C0|투기|부실", question, re.I):
@@ -2934,7 +2937,7 @@ def ensure_maturity_sort(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     if not re.search(r"mat_dt\s*>=?\s*\d", new):
         # >= — 당일 만기(잔존 1일)는 모수다. 0값·만기 경과 배제라는 원래 목적엔 >= 로 충분 (2026-09-01)
-        new, _ = _append_exclusions(new, [f"mat_dt >= {CUTOFF_INT}"])
+        new, _ = _append_exclusions(new, [f"mat_dt >= {BUYABLE_INT}"])
     return new, True
 
 
@@ -4101,10 +4104,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     """
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
-        step(f"[Guard] 만기 하한 보정 — mat_dt >= {CUTOFF_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외, 당일 만기는 모수)")
+        step(f"[Guard] 만기 하한 보정 — mat_dt >= {BUYABLE_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외 — 구매가능 판정일 8/24, as-of 8/22 와 분리)")
     sql, incl = ensure_cutoff_inclusive(sql)
     if incl:
-        step(f"[Guard] 기준일 경계 교정 — mat_dt > {CUTOFF_INT} 를 >= 로 (2026-09-01 서버 실측: '만기 가장 짧은' 이 당일 만기 7종목(잔존 1일)을 건너뛰고 8/23 채권을 답함)")
+        step(f"[Guard] 기준일 경계 교정 — 옛 기준일(8/20~8/23) 만기 하한을 mat_dt >= {BUYABLE_INT} 로 (2026-09-02 리드 결정: 8/22·8/23 만기 14종목은 8/24 에 만기 경과 — 2026-09-01 실측의 '당일 7종목' 도 이제 모수 밖)")
     sql, pop_fixed = ensure_fund_base_population(sql, q)
     if pop_fixed:
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")

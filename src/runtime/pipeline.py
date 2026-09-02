@@ -1072,15 +1072,28 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str |
         funds, classes = (int(float(v)) for v in lines[1].split(" | "))
     except ValueError:
         return None
-    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"))
+    # 🔴 라벨은 SQL 의 prvo_pbff_desc 조건에서 읽는다 — 2026-09-02 리뷰 ②-3: "한국투자신탁운용 사모펀드는 몇 개야?" 에
+    #    SQL 은 ='사모' 인데 답은 "공모펀드는 265개" 로 나갔다. 조건이 없으면 '펀드'(마스터에 사모 행 1,993개가 있다).
+    m_pop = re.search(r"prvo_pbff_desc\s*=\s*'(공모|사모)'", sql, re.I)
+    label = f"{m_pop.group(1)}펀드" if m_pop else "펀드"
+    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"),
+                              ("사모", r"prvo_pbff_desc\s*=\s*'사모'"))
              if re.search(pat, sql, re.I)]
     scope = f" ({'·'.join(basis)} 기준, 기준일 {gate.DATA_CUTOFF})" if basis else f" (기준일 {gate.DATA_CUTOFF})"
-    out = f"조회 조건에 해당하는 공모펀드는 {funds:,}개(클래스 {classes:,}개)입니다{scope}."
+    # 운용사 주어 + 합산 문장 — ground 의 Org 코드 중 **SQL 에 실제로 실린 코드**만 센다(KG 2코드 · SQL 1코드면 합산 아님)
+    subject, used_codes = "조회 조건에 해당하는", []
     for line in ground_lines:
-        codes = _ORG_CODES.findall(line)
-        if "Organization" in line and len(codes) >= 2:
-            out += f"\n운용사 코드 {len(codes)}건({'·'.join(codes)})을 합산했습니다."
+        codes = [c for c in _ORG_CODES.findall(line) if c in sql]
+        m_lab = re.match(r"'([^']+)'\s*→\s*Org_", line)
+        if "Organization" in line and codes and m_lab:
+            name = m_lab.group(1)
+            last = name[-1]
+            particle = "이" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "가"
+            subject, used_codes = f"{name}{particle} 운용하는", codes
             break
+    out = f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}."
+    if len(used_codes) >= 2:
+        out += f"\n운용사 코드 {len(used_codes)}건({'·'.join(used_codes)})을 합산했습니다."
     return out
 
 

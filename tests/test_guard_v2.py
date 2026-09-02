@@ -1020,3 +1020,25 @@ def test_distribution_not_for_topn_or_entity_axis(ctx):
     rows = "a | COUNT(*) | 펀드수\n" + "\n".join(f"c{i} | 10 | 5" for i in range(30))
     a = d(sql3, rows, 30)
     assert a and a.startswith("조회 결과 상위 30개 범주(전체 중 일부)") and "복수 범주" not in a and "전체 펀드 수" not in a
+
+
+def test_count_answer_label_and_merge_from_sql():
+    """리뷰 ②-3 — 사모 질의에 '공모펀드' 라벨 · KG 2코드인데 SQL 1코드에도 합산 문장. 둘 다 SQL 에서 읽는다."""
+    from src.runtime.pipeline import _count_answer as f
+
+    g = ["'한국투자신탁운용' → Org_00040024 (Organization) → public_funds.or_co_xtn_itt_cd='00040024' · public_funds.or_co_xtn_itt_cd='00040105'"]
+    private = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE prvo_pbff_desc = '사모' "
+               "AND TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') LIMIT 30")
+    a = f(private, "펀드수 | 클래스수\n265 | 273", 1, g)
+    assert "한국투자신탁운용이 운용하는 사모펀드는 265개(클래스 273개)" in a and "공모" not in a and "사모 기준" in a
+    one = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn = '판매중' "
+           "AND TRIM(or_co_xtn_itt_cd) = '00040024' AND prvo_pbff_desc = '공모' LIMIT 30")
+    a1 = f(one, "펀드수 | 클래스수\n142 | 540", 1, g)
+    assert "공모펀드는 142개(클래스 540개)" in a1 and "합산" not in a1                 # SQL 코드 1건 → 합산 문장 없음
+    both = one.replace("= '00040024'", "IN ('00040024', '00040105')")
+    a2 = f(both, "펀드수 | 클래스수\n143 | 541", 1, g)
+    assert "143개(클래스 541개)" in a2 and "운용사 코드 2건(00040024·00040105)을 합산" in a2   # R5 종전
+    # 모집 조건 없음 → '펀드' · 운용사 매핑 없음 → '조회 조건에 해당하는'
+    a3 = f("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn = '판매중' LIMIT 30",
+           "펀드수 | 클래스수\n10 | 20", 1, [])
+    assert a3.startswith("조회 조건에 해당하는 펀드는 10개(클래스 20개)")

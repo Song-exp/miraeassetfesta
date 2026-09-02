@@ -2169,7 +2169,12 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
     else:
         unit = "건(행 기준 — 종목 수와 다를 수 있음)"
     prefix = "네, 있습니다 — " if _EXIST_Q.search(question) else ""
-    return f"{prefix}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
+    # 8R ③-11(부류 X′) — 질의가 이름으로 특정한 대상이면 그 이름을 함께 싣는다. 7R U16 실측: "조회 결과 7클래스입니다"
+    #   만으로는 같은 '인도네시아' 문자열에 붙은 판매완료 산은 시리즈 14클래스와 구분할 수 없어 검증이 불가능했다.
+    #   이름은 창작하지 않고 **SQL 이 실제로 쓴 LIKE 리터럴 원문**을 그대로 쓴다.
+    m_lit = _NAME_LIKE_LIT.search(sql)
+    subject = f"'{m_lit.group(1)}' — " if m_lit else ""
+    return f"{prefix}{subject}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
 
 
 def _distribution_answer(sql: str, rows: str, n: int) -> str | None:

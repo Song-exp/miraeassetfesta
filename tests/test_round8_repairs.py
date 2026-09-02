@@ -237,3 +237,19 @@ def test_rank_answer_skips_without_class_count():
     # GROUP BY 펀드키가 없어도 조립하지 않는다(클래스 단위 행이라 '펀드 상위 N' 이 거짓이 된다)
     assert P._fund_rank_answer(RANK_SQL.replace("GROUP BY " + P._FUND_KEY_EXPR, "GROUP BY itm_no"),
                                "itm_no | TRIM(itm_nm) | fd_yr1_ern_r | 클래스수\nKR1 | 펀드 | 1.0 | 1", 1) is None
+
+
+# ── 항목 12 · 재검 ③-11 부류 X′ — 집계 답변에 대상 이름을 싣는다 ─────────────────────
+def test_count_answer_carries_subject_name():
+    """집계 오거절 교정 답변에 질의가 특정한 대상 이름이 함께 실린다 (U16)."""
+    sql = ("SELECT COUNT(*) AS cnt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND REPLACE(itm_nm,' ','') LIKE '%NH-Amundi인도네시아포커스%' LIMIT 30")
+    out, ok = P.ensure_positive_count_answered("클래스 개수는 확인할 수 없습니다.", sql, "cnt\n7", 1,
+                                               "NH-Amundi 인도네시아 포커스는 클래스가 몇 개야?")
+    assert ok and "NH-Amundi인도네시아포커스" in out and "7클래스" in out, out
+
+    # 이름 필터가 없는 질의는 종전 문형 그대로 — 없는 이름을 지어내지 않는다
+    bond = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn = 'Y' LIMIT 30"
+    out2, ok2 = P.ensure_positive_count_answered("정보가 포함되어 있지 않습니다.", bond, "cnt\n1929", 1,
+                                                 "퇴직연금으로 살 수 있는 채권 있어?")
+    assert ok2 and out2.startswith("네, 있습니다 — 조회 결과 1,929"), out2

@@ -778,11 +778,26 @@ def verify_product_names(answer: str, rows: str) -> tuple[str, list[str]]:
         tok = m.group(0)
         if any(tok in nm for nm in names):
             return tok
-        close = difflib.get_close_matches(tok, vocab, n=1, cutoff=0.85)
-        if not close or close[0] == tok:
+        # 🔴 조사를 떼고 어간만 대조, 치환 시 조사를 되붙인다 — 2026-09-02 리뷰 ②-4 실측: "…신탁3호는 조회되지
+        #    않았습니다" 가 조사 '는' 을 삼킨 채 '…2호' 로 치환돼 부정문의 주어가 뒤바뀌었다(의미 반전).
+        stem = _PARTICLE.sub("", tok)
+        particle = tok[len(stem):]
+        if len(stem) < 8 or any(stem in nm for nm in names):
             return tok
-        fixes.append(f"'{tok}' → '{close[0]}'")
-        return close[0]
+        close = difflib.get_close_matches(stem, vocab, n=1, cutoff=0.85)
+        if not close or close[0] == stem:
+            return tok
+        cand = close[0]
+        # 🔴 치환 금지 — 상위/하위 문자열(KODEX200TR ↔ KODEX200 · H/UH · 1호/2호 접미)이거나 숫자열이 다르면
+        #    별개 상품이다(종목명 구조 §3.3). 리뷰 실측: 'KODEX200TR' → 'KODEX200'(유사도 0.95) 다른 상품 치환.
+        if stem in cand or cand in stem or re.findall(r"\d+", stem) != re.findall(r"\d+", cand):
+            return tok
+        # 'TR'·'U' 처럼 글자가 **끼어들거나 빠진** 짝(KODEX200TR / UH)은 중간 삽입이라 위 검사에 안 걸린다 —
+        # 오타형(FOSS→FOCUS)은 replace 만으로 이뤄지므로 insert/delete 가 하나라도 있으면 별개 상품으로 본다.
+        if any(op in ("insert", "delete") for op, *_ in difflib.SequenceMatcher(None, stem, cand).get_opcodes()):
+            return tok
+        fixes.append(f"'{stem}' → '{cand}'")
+        return cand + particle
 
     out = _NAME_TOKEN.sub(_fix, answer)
     return (out, fixes) if fixes else (answer, [])

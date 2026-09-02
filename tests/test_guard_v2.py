@@ -1042,3 +1042,21 @@ def test_count_answer_label_and_merge_from_sql():
     a3 = f("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE sale_yn = '판매중' LIMIT 30",
            "펀드수 | 클래스수\n10 | 20", 1, [])
     assert a3.startswith("조회 조건에 해당하는 펀드는 10개(클래스 20개)")
+
+
+def test_verify_product_names_no_cross_product_or_particle_loss():
+    """리뷰 ②-4 — 'KODEX200TR'→'KODEX200'(다른 실제 상품) 치환 · '…3호는'→'…2호'(조사 삭제 + 부정문 주어 반전)."""
+    from src.runtime.pipeline import verify_product_names as f
+
+    rows = ("itm_nm\n삼성KODEX200증권상장지수투자신탁[주식]\n미래에셋차이나솔로몬증권투자신탁2호(주식)C2\n"
+            "삼성중국본토중소형FOCUS증권자투자신탁UH(주식)Ce")
+    a = "삼성KODEX200TR증권상장지수투자신탁 은 조회되지 않았습니다."
+    assert f(a, rows) == (a, [])                                                    # 상위 문자열 — 별개 상품
+    b = "미래에셋차이나솔로몬증권투자신탁3호는 조회되지 않았습니다."
+    assert f(b, rows) == (b, [])                                                    # 숫자열 상이 — 별개 상품
+    c = "미래에셋차이나솔로몬증권투자신탁2호는 높은 위험입니다."
+    assert f(c, rows) == (c, [])                                                    # 정확(조사 뗀 어간이 부분문자열)
+    out, fixes = f("삼성중국본토중소형FOSS증권자투자신탁UH의 1년 수익률", rows)
+    assert out == "삼성중국본토중소형FOCUS증권자투자신탁UH의 1년 수익률" and len(fixes) == 1   # 종전 교정 + 조사 보존
+    d = "삼성중국본토중소형FOCUS증권자투자신탁H(주식) 은 없습니다."
+    assert f(d, rows) == (d, [])                                                    # H/UH — 하위 문자열

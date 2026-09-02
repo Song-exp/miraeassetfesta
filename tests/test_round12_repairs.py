@@ -243,3 +243,20 @@ def test_rows_answered_uses_ko_labels():
 
     # 값을 하나라도 인용한 부분 유보는 불개입(종전 규칙)
     assert p.ensure_rows_answered("17.41% 는 확인되나 나머지는 알 수 없습니다.", rows, 1)[1] is False
+
+
+# ── P13 · 재검 ③-9 · KG ③-16 · gold ③-20 — 금지 문형은 어휘가 아니라 문형으로 ──
+def test_disclaimer_covers_recommend_form():
+    """U9 '권장합니다' · X13 '참고용으로만' · OFFICIAL-003 '유용한 정보를 제공' 이 사전을 빠져나갔다."""
+    for text, gone in (
+            ("3년 수익률은 17.4%입니다. 투자 결정 전에 추가 정보를 확인하는 것을 권장합니다.", "권장"),
+            ("분포는 다음과 같습니다. 이 결과는 참고용으로만 활용하시기 바랍니다.", "참고용"),
+            ("조회 결과입니다. 우주항공 ETF는 유용한 정보를 제공할 것입니다.", "유용한")):
+        out, ok = p.strip_disclaimer(text)
+        assert ok and gone not in out and out.split(".")[0] in text, out
+
+    # 🔴 데이터에서 나온 주의 문구·값 문장은 대상이 아니다
+    for keep in ("수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다.",
+                 "설정일 2019-10-21 (약 6년 10개월).",
+                 "위험등급 6등급(매우 낮은 위험)입니다."):
+        assert p.strip_disclaimer(keep) == (keep, False), keep

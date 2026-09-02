@@ -61,6 +61,39 @@
 
 ---
 
+## 3-bis. 집행 결과 (구현 종료 시점 기록)
+
+| 항목 | 상태 | 커밋 | 회귀 테스트 | 예측한 충돌이 실제로 났는가 |
+| :-- | :-- | :-- | :-- | :-- |
+| N1 · Q1 · N2 (뿌리②) | 구현 | `bbcbec7` | `test_r10_or_group_parens` · `test_r10_scope_split_no_false_reject` · `test_r10_precheck_collects_all` | 없음 |
+| Z1 · Z2 · E2 · ③-5 (뿌리①) | 구현 | `6870e74` | `test_r10_guard_replaces_wrong_clause` · `test_r10_rank_group_axis_canonical` · `test_r10_class_count_off_value_predicate` | **예측대로** V16 이 조립기 경로로 이동(③-3 이 요구한 변경) |
+| R1 · R2 (뿌리③) | 구현 | `89cf5d5` | `test_r10_lookup_group_rptt` · `test_r10_lookup_class_no_shape` · `test_r10_lookup_answer_only_for_name_lookup` | **예측 밖 2건** — `_has_name_filter` 가 ⓐ 리터럴 안의 괄호로 그룹 범위를 놓치고 ⓑ 연결식 컬럼을 못 봐서, 이름 필터 중복 주입(S5)과 태그 질의 오판(KG-021)이 났다. 둘 다 그 함수에서 닫았다 |
+| A1 접두 앵커 | 구현 | `7aa7256` | `test_r10_name_anchor_prefix` | **예측대로** R4 6→2 · W9 3→2 · X18 20→10 (심사관 ③-A 승인분) |
+| D1 자릿수 · N8 기준일 리터럴 | 구현 | `d64892e` | `test_r10_amount_thousands` · `test_r10_future_date_literal` | 조립기 3곳의 `int()` 파싱이 콤마에 걸렸다 — 전부 콤마 허용으로 고침 |
+| I1 부정 술어 · H1 미조회 축 | 구현 | `9244216` | `test_r10_no_inverted_predicate` · `test_r10_unsourced_axis_sentence` | 없음 |
+| T1 ETF 지수 · S1 머리줄 조건 | 구현 | `fa5c137` | `test_r10_etf_ref_index` · `test_r10_rank_head_conditions` | 없음 (지수 확정식은 모수 가드보다 **앞**이어야 한다 — 순서 조정) |
+| E1 설정일 확정식 | 구현 | `e93fe2d` | `test_r10_estb_lookup_template` | 없음 (묶기 코드 무변경 — 예측대로 등급·클래스수 계열 불변) |
+| ③-7 TOP n · gold 5 보수 축 | 구현 | `6018609` | `test_r10_dialect_top_rewrite` · `test_r10_fee_is_rank_axis` | 없음 |
+| N6 · ③-11 · gold 1·4 | 구현 | `7b8fb63` | `test_r10_zero_is_display_rule` · `test_r10_etf_scope_note` · `test_r10_manager_template_not_for_pinned_org` | 술어의 **리터럴이 질문에 있으면 존중** 조건이 빠져 지수 절이 지워졌다 — 추가 |
+| ③-10 근접 후보 · N7 행 전사 | 구현 | `990c35a` | `test_r10_nearest_candidates_and_rows_answered` | 축소 하한을 3자로 고정하니 3자 토큰의 오타 회복이 죽었다 — 토큰의 2/3(최소 2자)로 |
+
+### 보류 (근거 명시)
+
+| 항목 | 보류 사유 |
+| :-- | :-- |
+| 재검 ③-B 의 **S1 4·5위 중복** | rptt 축은 개수·열거에만 쓰기로 한 경계(랭킹 `COUNT(DISTINCT 펀드키)` 불변)의 반대쪽이다. 랭킹 GROUP BY 를 rptt 로 바꾸면 정본 펀드 수 3,040 → 1,919 로 움직여 R1·T1·V5 가 흔들린다 |
+| 부류 T 의 **운용사 축**(`ref_fund_mgmt_co`) | 한글 브랜드 ↔ 영문 정식명 매핑이 필요하고, DB 실측(`LIKE 'Samsung%'` 265/268)이 심사관 수치(240/243)와 어긋난다. 근거 확인 후로 |
+| gold ③-B 3 **2차 실패 시 최소 SQL 대체 실행** | "가드가 만든 최소 SQL" 의 정의가 없어 임의 완화가 된다(§9 조건 완화 금지와 충돌). N1·N2 로 무응답 원인 두 개가 닫혔으므로 남은 폭을 다음 라운드에 재측정 |
+| gold ③-B 22 **보수 4항목 합계 주입** | SELECT 재작성 폭이 커 랭킹·묶기 두 경로와 동시에 부딪힌다 |
+| N5 **교차 경로 펀드 가드**(CROSS-001) | 펀드 가드 전부가 `union` 을 불개입 사유로 쓴다. UNION 가지 단위 적용은 가드 10여 개의 진입 조건을 한꺼번에 바꾸는 일이라 한 라운드를 따로 써야 한다 |
+| N4 서수 ORDER BY 재검증 · G-D 되묻기 · G-E 형태소 분해 등 | 값 기여가 작거나 폭이 커서 이번 예산 밖 |
+| 온톨로지 보고 3건 · gold 파일 오류 5건 | 경계 규정대로 **구현하지 않음** |
+
+**③-13(미검증 규칙) 확인 결과**: `0행 원인 절 제거` 마커는 죽은 코드가 아니다 —
+`drop_unquestioned_numeric_clause` 는 살아 있고 회귀 테스트(`test_r6_O_numeric_clause_rerun`)도 통과한다.
+발동 조건이 **0행 + 질문에 없는 숫자 임계값 + 그 절 단독으로도 0행** 세 개가 동시에 맞아야 해서 실제 라운드에
+잘 안 걸릴 뿐이다. 이번 라운드에 HAVING 으로 옮겨 간 값 술어까지 보도록 범위를 넓혔다.
+
 ## 4. 검증 절차 (항목마다)
 
 ```bash

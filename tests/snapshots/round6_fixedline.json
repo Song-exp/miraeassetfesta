@@ -328,7 +328,7 @@
   "nodes": [
    "Fund_284530e1ea"
   ],
-  "where": "REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')",
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*'))",
   "assembler": "HCX",
   "rows": 7,
   "answer_head": ""
@@ -541,7 +541,7 @@
   "nodes": [
    "Org_00080008"
   ],
-  "where": "TRIM(public_funds.or_co_xtn_itt_cd) = '00080008' AND REPLACE(public_funds.itm_nm,' ','') LIKE '%코어테크증권자투자신탁%'",
+  "where": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(public_funds.or_co_xtn_itt_cd) = '00080008' AND REPLACE(public_funds.itm_nm,' ','') LIKE '%코어테크증권자투자신탁%')",
   "assembler": "HCX",
   "rows": 20,
   "answer_head": ""

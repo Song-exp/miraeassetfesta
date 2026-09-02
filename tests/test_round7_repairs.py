@@ -212,9 +212,15 @@ def test_base_population_post_chain(ctx):
     assert ok and "sale_yn = '판매중'" in out and out.count("prvo_pbff_desc") == 1
     assert f(out, "q", post=True)[1] is False                       # 멱등
 
-    # 🟡 개별 조회는 사후조건에서 건드리지 않는다 (F6′ 보류 — 동결선 W5·X18 이탈)
+    # 🔴 F6′ — 개별 조회(이름 LIKE)도 사후조건에서 기본모수를 받는다. 6R W2 사모 3펀드·Y11 판매완료 혼입.
+    #    동결선 W5·X18 은 where 문자열만 바뀌고 rows·assembler·answer_head 는 불변임을 확인하고 스냅샷을 갱신했다.
     lookup = ("SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%코어테크%' LIMIT 30")
-    assert f(lookup, "미래에셋코어테크 펀드 알려줘", post=True)[1] is False
+    out2, ok2 = f(lookup, "미래에셋코어테크 펀드 알려줘", post=True)
+    assert ok2 and "sale_yn = '판매중'" in out2 and "prvo_pbff_desc = '공모'" in out2
+    assert "LIKE '%코어테크%'" in out2                                   # 이름 절 보존
+    assert f(out2, "미래에셋코어테크 펀드 알려줘", post=True)[1] is False   # 멱등
+    # 모수 확장 질의는 여전히 불개입 — 개별 조회라고 무조건 좁히지 않는다
+    assert f(lookup, "미래에셋코어테크 펀드 사모 포함 전체 알려줘", post=True)[1] is False
     # JOIN 의 `ON e.itm_no = p.itm_no` 는 개별 조회의 키 핀이 아니다 — 사후조건이 꺼지면 안 된다
     joined = ("SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
               "WHERE prvo_pbff_desc = '공모' LIMIT 30")

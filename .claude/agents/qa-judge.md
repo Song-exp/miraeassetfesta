@@ -21,7 +21,7 @@ tools: Bash, Read, Grep, Glob, Write
 | :-- | :-- |
 | 펀드키 표현식 | `src/runtime/pipeline.py` 의 `_FUND_KEY_EXPR` — `printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(7자리 zero-pad(mtco_itm_no), itm_no)` |
 | 기본모수 | `sale_yn='판매중' AND prvo_pbff_desc='공모'` (클래스 8,969행 / 3,040펀드) |
-| **운용사·기관 이름** | 🔴 `kg_node.label_official` — `ext_fund_page.mgmt_co_nm` 은 오염돼 있다(FND-035 원인). 이름 gold 를 저기서 뽑지 마라 |
+| **운용사·기관 이름** | 🔴 `COALESCE(kg_node.label_official, label_ko, canonical_name)` — **슬롯 하나만 보고 판단하지 마라**. 운용사(`Org_*`)는 `label_official` 이 차 있지만 수탁사(`Org_trustee_*`) 48개는 `label_official` 이 전부 NULL 이고 이름은 `label_ko`·`canonical_name` 에 있다. `label_official IS NULL` 을 "KG 에 없다"로 읽으면 정상 노드를 미수록으로 오판한다(6R KG-008 실제 사례). `ext_fund_page.mgmt_co_nm` 은 오염돼 있으니(FND-035) 이름 gold 를 저기서 뽑지 마라 |
 | gold SQL 예시 | `eval/questions_*.jsonl` 의 `gold_sql` 필드 (경로 아님 — 필드다) |
 | 기준일 표기 | `gate.DATA_CUTOFF` = **2026-08-24** (데이터 as-of 8/22 와 분리 — 답변·판정은 8/24) |
 

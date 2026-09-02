@@ -499,12 +499,10 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
         return sql, False
     if any(t in question for t in _POP_WIDEN):
         return sql, False
-    # 🟡 6R F6′(이월) — **개별 조회**(이름 LIKE·펀드키 리터럴 핀)의 재작성 SQL 에 `prvo_pbff_desc='공모'` 를 주입하면
-    #    W2 의 사모 3펀드 혼입·Y11 판매완료 혼입이 닫힌다. 그러나 7R 실측 결과 W5·X18 의 WHERE 텍스트가 바뀌어
-    #    동결선(tests/test_snapshot_round6.py)을 이탈한다 — 값·행수·조립기는 전부 불변이었지만 동결선 우선 원칙에 따라
-    #    사후조건 경로에서는 개별 조회를 건드리지 않는다. 필수였던 G1(집계·목록 경로)만 남긴다.
-    if post and (_has_name_filter(sql) or _has_fund_key_pin(sql)):
-        return sql, False
+    # 🔴 7R F6′ — 개별 조회(이름 LIKE·펀드키 핀)의 재작성 SQL 도 사후조건에서 기본모수를 받는다.
+    #    6R W2 는 사모 3펀드가, Y11 은 판매완료가 개별 조회 결과에 섞였다. 처음엔 동결선 이탈(W5·X18 의 WHERE 텍스트)
+    #    때문에 제외했으나, 동결선 대조 결과 **rows·assembler·answer_head·route·nodes 전부 불변이고 where 문자열만
+    #    바뀐다** — 동결선은 값 회귀를 잡으려고 둔 것이지 SQL 문자열을 얼리려는 게 아니다. 스냅샷을 갱신하고 규칙을 살린다.
     # 🔴 질문이 '공모' 를 명시했는데 SQL 이 사모까지 포함하면 좁힌다 — 2026-09-01 FND-038 실측:
     #    "공모펀드는 유형별로 몇 개씩?" 에 prvo_pbff_desc IN ('공모','사모') 가 나가 사모 1,993개가
     #    답에 실렸다. 위 _POP_WIDEN 이 이미 '사모' 질문을 걸러내므로 여기 오는 것은 공모 질의뿐이다.

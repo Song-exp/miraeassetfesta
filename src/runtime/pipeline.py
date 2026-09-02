@@ -435,7 +435,7 @@ def _strictify_base_population(sql: str) -> tuple[str, bool]:
     return sql[:m_w.start()] + " WHERE " + " AND ".join(out) + " " + sql[m_w.end():].lstrip(), True
 
 
-def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
+def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> tuple[str, bool]:
     """펀드 랭킹 SQL 에 기본모수(판매중·공모)를 기계 주입. (보정된 SQL, 보정했는지)
 
     2026-08-31 paired v2: answer 실패 1순위(값 불일치 37건)가 기본모수·대표행 규칙 미적용 —
@@ -456,9 +456,18 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     # 🔴 랭킹(ORDER BY)뿐 아니라 **집계(COUNT/SUM/AVG)** 도 기본모수 대상이다 — 기본모수 규칙이
     #    "집계·Top-N" 을 함께 말한다. 2026-08-31 밤 FND-030 실측: COUNT 질의에 sale_yn 이 빠졌다.
-    if not re.search(r"\border\s+by\b", sql, re.I) and not re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I):
+    # 🔴 7R G1/F6′ — `post=True`(가드 체인 끝 재호출)는 이 **모양 조건을 보지 않는다.** 6R KG-018·W2·Y11 실측:
+    #    HCX 원 SQL 에 정렬·집계가 없어 여기서 건너뛰었는데, 그 **뒤에** 묶기·목록 가드가 GROUP BY·ORDER BY·COUNT 를
+    #    붙였다 — 기본모수 가드는 이미 지나간 뒤였다. 재작성된 모양으로 한 번 더 보는 것이 처방이고, 멱등이다.
+    if not post and not re.search(r"\border\s+by\b", sql, re.I) and not re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I):
         return sql, False
     if any(t in question for t in _POP_WIDEN):
+        return sql, False
+    # 🟡 6R F6′(이월) — **개별 조회**(이름 LIKE·펀드키 리터럴 핀)의 재작성 SQL 에 `prvo_pbff_desc='공모'` 를 주입하면
+    #    W2 의 사모 3펀드 혼입·Y11 판매완료 혼입이 닫힌다. 그러나 7R 실측 결과 W5·X18 의 WHERE 텍스트가 바뀌어
+    #    동결선(tests/test_snapshot_round6.py)을 이탈한다 — 값·행수·조립기는 전부 불변이었지만 동결선 우선 원칙에 따라
+    #    사후조건 경로에서는 개별 조회를 건드리지 않는다. 필수였던 G1(집계·목록 경로)만 남긴다.
+    if post and (_has_name_filter(sql) or _has_fund_key_pin(sql)):
         return sql, False
     # 🔴 질문이 '공모' 를 명시했는데 SQL 이 사모까지 포함하면 좁힌다 — 2026-09-01 FND-038 실측:
     #    "공모펀드는 유형별로 몇 개씩?" 에 prvo_pbff_desc IN ('공모','사모') 가 나가 사모 1,993개가
@@ -916,7 +925,9 @@ def _has_name_filter(sql: str) -> bool:
 _LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
 # 식별자·키 컬럼 — 이걸로 정렬한 것은 '랭킹' 이 아니라 모양 잡음이다 (7R M′)
 _FUND_ID_COLS = frozenset({"itm_no", "itm_nm", "rptt_ksd_itm_no", "mtco_itm_no", "or_co_xtn_itt_cd", "itm_abrv_nm"})
-_FUND_KEY_PIN = re.compile(r"\b(?:rptt_ksd_itm_no|itm_no|mtco_itm_no)\s*\)?\s*(?:=|IN\s*\()", re.I)
+# 🔴 우변은 **리터럴**이어야 한다 — JOIN 의 `ON e.itm_no = p.itm_no` 는 조인 조건이지 개별 조회의 핀이 아니다
+#    (7R: 기본모수 F6′ 분기가 이걸 개별 조회로 오인해 ext_fund_page 조인 랭킹에서 판매중 주입이 꺼졌다)
+_FUND_KEY_PIN = re.compile(r"\b(?:rptt_ksd_itm_no|itm_no|mtco_itm_no)\s*\)?\s*(?:=\s*'|IN\s*\(\s*')", re.I)
 
 
 def _has_fund_key_pin(sql: str) -> bool:
@@ -4597,6 +4608,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if qualified:
         step(f"[Guard] JOIN 모호 컬럼 한정 — {', '.join(qualified)} → FROM 테이블 한정 "
              "(2026-09-02 R2 재검: 재생성 SQL 이 펀드단위 규칙의 COALESCE(…, itm_no) 를 JOIN 에 그대로 옮겨 기각 → 거절)")
+    sql, pop_post = ensure_fund_base_population(sql, q, post=True)
+    if pop_post:
+        step("[Guard] 펀드 기본모수 사후조건 — 재작성된 SQL 에 모수 절이 없어 체인 끝에서 주입(개별 조회는 '공모'만) "
+             "(7R G1/F6′ · 6R KG-018 실측: HCX 원 SQL 에 정렬·집계가 없어 초기 가드를 건너뛴 뒤 목록 묶기가 "
+             "ORDER BY·COUNT 를 붙여 96펀드가 판매완료 포함 모수로 나갔다 · W2 사모 3펀드 혼입)")
     sql, topn_fixed = ensure_default_topn(sql, q)
     if topn_fixed:
         step(f"[Guard] 기본 TOP-N — 개수 없는 랭킹 질의의 LIMIT 을 {DEFAULT_TOPN} 으로 (2026-09-02 서버 실측: '한전 채권 수익률 낮은 순' 30행 전사 22.2초 — 리드 결정: 상위 5 + 전체 종목수 병기)")

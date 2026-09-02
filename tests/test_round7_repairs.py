@@ -196,3 +196,38 @@ def test_lookup_grouping_shape_invariant(ctx):
     # 멱등 — 이미 펀드키로 묶인 SQL 은 다시 묶지 않는다
     out, _ = f(_S4, "KB차이나 펀드 위험등급 알려줘")
     assert not f(out, "KB차이나 펀드 위험등급 알려줘")[1]
+
+
+# ── 뿌리①-B — 기본모수 사후조건 (G1 · F6′ 일부 보류) ──
+
+def test_base_population_post_chain(ctx):
+    """G1 — 기본모수 주입은 SQL 모양과 무관하다. 6R KG-018: HCX 원 SQL 에 정렬·집계가 없어 초기 가드를 건너뛴 뒤
+    목록 묶기가 ORDER BY·COUNT 를 붙여 판매완료 포함 모수(96펀드/427클래스)로 나갔다."""
+    from src.runtime.pipeline import ensure_fund_base_population as f, answer_question
+
+    # 모양 조건(ORDER BY·집계) 없는 SQL — 초기 호출은 종전대로 건너뛰고, 사후조건(post)은 주입한다
+    plain = "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' LIMIT 30"
+    assert f(plain, "단위형이면서 개방형인 공모펀드도 있어?")[1] is False
+    out, ok = f(plain, "단위형이면서 개방형인 공모펀드도 있어?", post=True)
+    assert ok and "sale_yn = '판매중'" in out and out.count("prvo_pbff_desc") == 1
+    assert f(out, "q", post=True)[1] is False                       # 멱등
+
+    # 🟡 개별 조회는 사후조건에서 건드리지 않는다 (F6′ 보류 — 동결선 W5·X18 이탈)
+    lookup = ("SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%코어테크%' LIMIT 30")
+    assert f(lookup, "미래에셋코어테크 펀드 알려줘", post=True)[1] is False
+    # JOIN 의 `ON e.itm_no = p.itm_no` 는 개별 조회의 키 핀이 아니다 — 사후조건이 꺼지면 안 된다
+    joined = ("SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+              "WHERE prvo_pbff_desc = '공모' LIMIT 30")
+    assert f(joined, "설정일이 오래된 공모펀드", post=True)[1] is True
+
+    # 전 체인 — KG-018 실측 SQL 이 판매중 모수를 얻는다
+    class P:
+        def plan_sql(self, q, g):
+            return ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
+                    "AND han_clas_policies LIKE '%폐쇄형%' LIMIT 30")
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-KG018", "단위형이면서 개방형인 공모펀드도 있어?", planner=P(), ctx=ctx)
+    assert "sale_yn = '판매중'" in r.sql and "기본모수 사후조건" in r.think_trace

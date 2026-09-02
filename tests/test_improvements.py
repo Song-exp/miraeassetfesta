@@ -125,7 +125,10 @@ def test_pipeline_regenerates_once_on_value_violation(ctx):
     assert p.calls == 2
     assert "[Guard] 값 검사" in r.think_trace and "[Plan] 재생성" in r.think_trace
     assert "이전 SQL 의 문제" in p.groundings[1]
-    assert r.sql == good and r.answer == "테스트 답변"
+    # 서현의 근거컬럼 병기 가드(2026-09-02 병합)가 SELECT 에 TRIM(crd_grd) 를 덧붙인다 —
+    # 이 테스트의 관심사는 재생성 1회이지 SQL 원형 보존이 아니므로 포함 검사로 완화.
+    assert good.replace(" LIMIT 5", "") .split("FROM")[1] in r.sql and "crd_grd = 'AA-'" in r.sql
+    assert r.answer == "테스트 답변"
 
 
 def test_pipeline_refuses_when_regeneration_still_bad(ctx):

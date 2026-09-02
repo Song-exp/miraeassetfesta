@@ -71,6 +71,10 @@ _FORBIDDEN = re.compile(
 
 
 _TABLE_QUALIFIER = re.compile(r"\b([A-Za-z_]\w*)\s*\.\s*[A-Za-z_]\w*")
+# 서버 실측 2026-09-02 "바이오 ETF 추천" — OR 사슬 뒤에 괄호 없이 AND 필터를 붙여
+# 필터가 마지막 OR 가지에만 걸렸다(괄호를 치면 0행, 안 치면 모수 오염 — 어느 쪽도 오답).
+# 말로 하는 규칙은 무시되므로 기계적으로 차단한다.
+_WHERE_SEG = re.compile(r"(?<![A-Za-z_])WHERE(?![A-Za-z_])(.*?)(?=(?<![A-Za-z_])(?:GROUP|ORDER)\s+BY|(?<![A-Za-z_])LIMIT|(?<![A-Za-z_])UNION|$)", re.I | re.S)
 # ext_* ↔ 마스터 조인 짝 (external_join 정본). validate_sql 이 남남 조인을 기각하는 근거.
 _EXT_PAIR = {"ext_etf_holdings": "domestic_etfs", "ext_ovs_etf_holdings": "overseas_etfs",
              "ext_fund_holdings": "public_funds", "ext_fund_page": "public_funds"}
@@ -122,6 +126,14 @@ def validate_sql(sql: str) -> str | None:
         return "SELECT 만 허용"
     if _FORBIDDEN.search(s):
         return "금지 키워드 포함"
+    for seg_m in _WHERE_SEG.finditer(s):
+        seg = re.sub(r"'[^']*'", "''", seg_m.group(1))   # 문자열 리터럴 안의 OR/AND 무시
+        prev = None
+        while prev != seg:                                # 괄호 안쪽부터 반복 제거 → 최상위만 남긴다
+            prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
+        if re.search(r"\sOR\s", seg, re.I) and re.search(r"\sAND\s", seg, re.I):
+            return ("WHERE 최상위에 괄호 없는 OR 와 AND 가 섞여 있다 — AND 가 먼저 묶여 "
+                    "필터가 마지막 OR 가지에만 걸린다. OR 가지 전체를 괄호로 감싸라: (A OR B) AND 필터")
     used = {t for t in TABLES if re.search(rf"\b{t}\b", s, re.I)}
     if not used:
         m = re.search(r"\bfrom\s+([\w.]+)", s, re.I)

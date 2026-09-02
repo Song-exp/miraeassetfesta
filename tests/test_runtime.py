@@ -1272,7 +1272,9 @@ def test_triggers_cover_overseas(ctx):
 def test_triggers_trim_prompt(ctx):
     """트리거 도입의 목적 — 무관 규칙이 빠져 프롬프트가 줄어야 한다 (도입 전 11,760자 고정)."""
     p = ctx.planner_context(["domestic_etfs"], question="ETF 알려줘")
-    assert len(p) < 6000, len(p)
+    # 6000 → 7000 (2026-09-02): 바이오 실측 수리로 always-on 3건 추가(질문에_없는_필터금지 등).
+    # 도입 전 11,760자 대비 여전히 40%+ 절감 — 상한은 "다시 무한정 붇지 않게" 만 지킨다.
+    assert len(p) < 7000, len(p)
     assert "- 환헤지:" not in p and "- 선물:" not in p     # 무관 규칙은 빠진다
     assert "- ETF만:" in p                                  # 보편 제약은 남는다
 
@@ -1294,3 +1296,22 @@ def test_paraphrases_still_get_critical_rules(ctx):
     misses = [f"{q} → {rule}" for q, rule in cases
               if f"- {rule}:" not in ctx.planner_context(["domestic_etfs"], question=q)]
     assert not misses, f"바꿔 말한 질의에서 규칙 누락: {misses}"
+
+
+def test_validate_sql_rejects_unparenthesized_or_and():
+    """서버 실측 2026-09-02 '바이오 ETF 추천' — OR 사슬 뒤 괄호 없는 AND 필터는
+    마지막 가지에만 걸린다. validate_sql 이 기계적으로 기각해야 한다."""
+    from src.runtime.pipeline import validate_sql
+    bad = ("SELECT pd_nm FROM domestic_etfs WHERE pd_nm LIKE '%바이오%' "
+           "OR ref_base_index LIKE '%Bio%' AND pd_grp_no='ETF' LIMIT 5")
+    assert validate_sql(bad) and "괄호" in validate_sql(bad)
+    ok = [
+        ("SELECT pd_nm FROM domestic_etfs WHERE (pd_nm LIKE '%바이오%' "
+         "OR ref_base_index LIKE '%Bio%') AND pd_grp_no='ETF' LIMIT 5"),
+        "SELECT pd_nm FROM domestic_etfs WHERE pd_nm LIKE '%a%' OR pd_nm LIKE '%b%' LIMIT 5",
+        ("SELECT pd_nm FROM domestic_etfs WHERE pd_grp_no='ETF' AND "
+         "(pd_nm LIKE '%a%' OR (pd_nm LIKE '%b%' AND du_clpr>0)) LIMIT 5"),
+        "SELECT pd_nm FROM domestic_etfs WHERE pd_nm LIKE '% OR %' AND du_clpr>0 LIMIT 5",
+    ]
+    for q in ok:
+        assert validate_sql(q) is None, q

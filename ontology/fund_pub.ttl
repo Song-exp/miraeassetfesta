@@ -16,6 +16,13 @@ fp:navTotal a owl:DatatypeProperty ;
 
 # ABSENT: fp:PublicFund 에는 fp:hasCreditGrade 없음 — 신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)
 fp:PublicFund rdfs:comment "hasCreditGrade 속성 없음: 신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)"@ko .
+# 값 범위 — fp:PublicFund 의 fp:riskGradeValue 는 1~6 (0등급 없음 — 등급 미수록 클래스는 NULL(0 아님))
+fp:riskGradeValue_PublicFund rdfs:subPropertyOf fp:riskGradeValue ;
+    rdfs:domain fp:PublicFund ;
+    rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;
+                 owl:withRestrictions ( [ xsd:minInclusive 1 ] [ xsd:maxInclusive 6 ] ) ] ;
+    rdfs:comment "1(매우 높은 위험)~6(매우 낮은 위험) — 0등급 없음 — 등급 미수록 클래스는 NULL(0 아님)"@ko .
+
 # ABSENT: fp:PublicFund 에는 fp:hasUnitsOutstanding 없음 — 공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다. (대체: fd_nast_suma·bns_bpr)
 fp:PublicFund rdfs:comment "hasUnitsOutstanding 속성 없음: 공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다."@ko .
 # ABSENT: fp:PublicFund 에는 fp:hasFundManager 없음 — 펀드 운용역(펀드매니저) 정보는 마스터·설명서 수집분에 없어 답할 수 없습니다. (대체: or_co_xtn_itt_cd)

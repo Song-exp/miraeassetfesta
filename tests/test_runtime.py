@@ -44,7 +44,8 @@ def test_enum_crd_valid_not_rejected(ctx):
 
 def test_risk_grade_out_of_range(ctx):
     r = answer_question("T-05", "위험등급 9등급 펀드 보여줘", ctx=ctx)
-    assert "[Gate] 기각" in r.think_trace and "0~6" in r.think_trace
+    # 2026-09-02 KG 1R S6 — 범위는 테이블별 선언(range_by_table)에서: 펀드는 1~6 (종전 공용 상수 0~6)
+    assert "[Gate] 기각" in r.think_trace and "1~6" in r.think_trace and "1(매우 높은 위험)~6" in r.answer
 
 
 def test_risk_grade_6_valid(ctx):

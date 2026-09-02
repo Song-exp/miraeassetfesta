@@ -74,6 +74,7 @@ class RuntimeContext:
     value_vocab: dict = field(default_factory=dict)    # R-1 — (table, column) -> [값…]  범주형 컬럼의 실제 값 목록 (enums/<domain>.vocab.yaml, 생성물)
     value_index: dict = field(default_factory=dict)    # R-4 — (table, column) -> {정규화 값}  WHERE 리터럴 검사용. **전 값을 아는 컬럼만** 들어간다
     gate_constants: dict = field(default_factory=dict) # R-5 ① 층 — table -> [{column, value, triggers[], answer}] 상수 컬럼 위반 (enums yaml gate_constants)
+    grade_ranges: dict = field(default_factory=dict)   # KG 1R S6 — table -> {min,max,label_min,label_max,note} (shared/risk_grade.yaml range_by_table)
     absent_props: dict = field(default_factory=dict)   # KG 1R S5 — table -> [{property, why, vocab[], substitute}] 부재 속성 선언 (enums yaml absent_properties → ttl ABSENT + 게이트 어휘)
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
@@ -237,6 +238,8 @@ def load_context() -> RuntimeContext:
         ctx.entity_property[entity] = doc.get("property") or entity
         for table, why in (doc.get("absent_in") or {}).items():
             ctx.absent[(entity, table)] = why
+        for table, spec in (doc.get("range_by_table") or {}).items():
+            ctx.grade_ranges[table] = dict(spec, entity=entity)
 
     # 신용등급 화이트리스트 — 채권 yaml value_semantics 가 원천 (2차 데이터 15종 + 무접미 표기 'AA' 등)
     # 컬럼 키는 대문자(1차)·소문자(2차) 어느 쪽이든 받는다.

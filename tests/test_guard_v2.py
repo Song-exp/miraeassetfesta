@@ -1478,3 +1478,26 @@ def test_absent_properties_gate(ctx):
     ttl = open("ontology/fund_pub.ttl", encoding="utf-8").read()
     assert "# ABSENT: fp:PublicFund 에는 fp:hasUnitsOutstanding 없음" in ttl
     assert "fp:hasCreditGradeHistory" in open("ontology/bond_kr.ttl", encoding="utf-8").read()
+
+
+def test_risk_grade_range_by_table(ctx):
+    """KG 1R S6/R16 (KG-013·014) — 공용 상수 0~6 이 펀드 0등급을 허용(NULL 422 ≠ 0)하고 즉답 문구도 "0~6". 일반 규칙: enum 제약은
+    테이블별 선언(range_by_table)에서 판정·문구·ttl 제약을 생성한다. 채권 0(미분류 '00')은 답변 가능."""
+    from src.runtime import gate
+    from src.runtime.pipeline import answer_question
+
+    assert ctx.grade_ranges["public_funds"]["min"] == 1 and ctx.grade_ranges["domestic_bonds"]["min"] == 0
+    g = gate.check("위험등급 7등급인 공모펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "1(매우 높은 위험)~6(매우 낮은 위험)" in g.answer and "0~6" not in g.answer and "7등급은 없습니다" in g.answer
+    g0 = gate.check("위험등급 0등급 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert g0.rejected and "0등급은 없습니다" in g0.answer and "NULL" in g0.answer
+    assert not gate.check("위험등급 0등급 국내채권은 몇 개야?", ctx, ["domestic_bonds"]).rejected        # U25 — 미분류 '00' 답변 가능
+    assert gate.check("위험등급 7등급 국내채권 알려줘", ctx, ["domestic_bonds"]).rejected
+    assert gate.check("위험등급 0등급 ETF 알려줘", ctx, ["domestic_etfs"]).rejected
+    assert not gate.check("위험등급 0등급 상품 알려줘", ctx, []).rejected                                # 미특정 = 합집합 0~6
+    assert not gate.check("위험등급 2등급 공모펀드 알려줘", ctx, ["public_funds"]).rejected
+    r = answer_question("T-KG014", "위험등급 0등급 공모펀드는 몇 개야?", planner=None, ctx=ctx)
+    assert "[Gate] 기각" in r.think_trace and "0등급은 없습니다" in r.answer and "422" not in r.answer
+    ttl = open("ontology/fund_pub.ttl", encoding="utf-8").read()
+    assert "fp:riskGradeValue_PublicFund rdfs:subPropertyOf fp:riskGradeValue" in ttl and "xsd:minInclusive 1 ] [ xsd:maxInclusive 6" in ttl
+    assert "xsd:minInclusive 0 ] [ xsd:maxInclusive 6" in open("ontology/bond_kr.ttl", encoding="utf-8").read()

@@ -502,6 +502,22 @@ def emit_ttl(shared, con=None, enums=None):
             D = F[TABLE_TTL[t]]
             D.append(f"# ABSENT: fp:{TABLE_CLASS[t]} 에는 fp:{prop_orig} 없음 — {why}")
             D.append(f"fp:{TABLE_CLASS[t]} rdfs:comment \"{ttl_str(f'{prop_orig} 속성 없음: {why}')}\"@ko .")
+        # 테이블별 값 범위(KG 1R S6) — enum 제약은 테이블별로 선언하고 ttl 제약·게이트 상수는 선언에서 생성한다(코드 상수 금지).
+        vprop = doc.get("value_property")
+        for t, r in (doc.get("range_by_table") or {}).items():
+            if t not in TABLE_TTL or not vprop:
+                continue
+            D = F[TABLE_TTL[t]]
+            cls = TABLE_CLASS[t]
+            note = r.get("note", "")
+            D.append(f"# 값 범위 — fp:{cls} 의 fp:{vprop} 는 {r['min']}~{r['max']} ({note})")
+            D.append(f"fp:{vprop}_{cls} rdfs:subPropertyOf fp:{vprop} ;")
+            D.append(f"    rdfs:domain fp:{cls} ;")
+            D.append("    rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ;")
+            D.append(f"                 owl:withRestrictions ( [ xsd:minInclusive {r['min']} ] [ xsd:maxInclusive {r['max']} ] ) ] ;")
+            desc = f"{r['min']}({r.get('label_min', '')})~{r['max']}({r.get('label_max', '')}) — {note}"
+            D.append(f"    rdfs:comment \"{ttl_str(desc)}\"@ko .")
+            D.append("")
         for node_id, node in (doc.get("nodes") or {}).items():
             nid = ttl_local(node_id)
             labels = [f"\"{ttl_str(node['label_ko'])}\"@ko"] if node.get("label_ko") else []

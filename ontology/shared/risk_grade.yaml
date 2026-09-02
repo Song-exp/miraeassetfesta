@@ -18,6 +18,15 @@ property: hasRiskGrade
 scale: "0~6 (정수)"
 direction: "낮을수록 위험 (1=매우높은위험, 6=매우낮은위험)"
 
+# ── 테이블별 값 범위 (2026-09-02 KG 1R S6) — enum 제약은 테이블별로 선언하고 게이트 상수·ttl 제약은 여기서 생성한다(코드 상수 금지).
+#    펀드·국내ETF 는 1~6 (0 없음 — 펀드 등급 미수록 422클래스는 NULL 이지 0 이 아니다) · 채권은 '00' 미분류 코드가 실재해 0~6.
+#    KG-013 실측: 7등급 즉답 문구가 "0~6" · KG-014: 펀드 0등급을 정의역으로 허용해 게이트 미발동 → "0개" 단언.
+value_property: riskGradeValue
+range_by_table:
+  public_funds:   {min: 1, max: 6, label_min: "매우 높은 위험", label_max: "매우 낮은 위험", note: "0등급 없음 — 등급 미수록 클래스는 NULL(0 아님)"}
+  domestic_etfs:  {min: 1, max: 6, label_min: "매우높은위험", label_max: "매우낮은위험", note: "0등급 없음"}
+  domestic_bonds: {min: 0, max: 6, label_min: "매우높은위험", label_max: "매우낮은위험", unclassified: 0, note: "0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재 — 답변 가능"}
+
 nodes:
   RiskGrade_1:
     label_ko: 매우 높은 위험

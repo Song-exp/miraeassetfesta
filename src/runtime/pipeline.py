@@ -689,6 +689,23 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
     return f"{sql[:s]}WHERE {cond} {sql[s:]}", True
 
 
+# 🔴 11R gold ③-1 — **가드가 주입·치환한 술어의 표식.** SQL 주석이라 실행 의미는 0이고, 뒤 가드의
+#    「날조 술어 제거」가 자기 앞 가드의 출력을 지우는 것을 막는다(가드 A 가 만든 리터럴을 가드 B 가
+#    날조로 보고 지운 계열 — OFFICIAL-004 · Z19). 확정식을 새로 만드는 가드는 이 표식을 붙인다.
+_GUARD_MARK = "/*g*/"
+
+
+def marked_conjuncts(sql: str) -> list[str]:
+    """WHERE 의 최상위 절 중 확정식 가드가 주입한 것(`_GUARD_MARK` 표식) — 체인 끝 사후조건의 재료.
+
+    🔴 11R 1순위 — **확정식은 원자적이어야 한다.** 지우고 대체를 못 넣거나(Z19), 뒤 가드가 대체를
+    날조로 보고 지우면(OFFICIAL-004) 질문의 의미 조건이 통째로 증발해 전수 조회가 그럴듯한 답으로 나간다.
+    체인은 확정식이 만든 절을 기억했다가 끝에서 살아 있는지 검사한다 — 사라졌으면 되돌리고 트레이스에 남긴다.
+    """
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    return [c for c in guard.split_conjuncts(m_w.group(1)) if _GUARD_MARK in c] if m_w else []
+
+
 _ETF_TBL = re.compile(r"\bfrom\s+(?:domestic_etfs|overseas_etfs)\b", re.I)
 _ETN_Q = re.compile(r"ETN|상장지수증권", re.I)
 _ETF_WIDEN = ("판매완료", "판매 완료", "판매중단", "판매 중단", "판매종료", "상장폐지", "전체 ETF", "모든 ETF")
@@ -757,6 +774,13 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
             axis = order_by.group(0) if order_by else ""
             kept = []
             for c in guard.split_conjuncts(m_w.group(1)):
+                # 🔴 11R gold ③-1 (부류 Z) — **가드가 주입한 술어는 날조 술어가 아니다.** 확정식이 만든 절에는
+                #    `_GUARD_MARK` 가 붙어 있다. 종전엔 그 절을 HCX 원문과 구분하지 못해, 앞선 지수 확정식이 만든
+                #    영문 지수명 canon 을 "질문에 근거 없는 술어" 로 판정해 지웠다(OFFICIAL-004 `Aerospace` ·
+                #    Z19 나스닥100 → 판매중 ETF 전수 1,160). 날조 판별은 표식 없는 절에만 건다.
+                if _GUARD_MARK in c:
+                    kept.append(c)
+                    continue
                 cols = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", _SQL_LITERAL.sub("''", c))}
                 cols &= {x.lower() for x, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get(tbl, ())}
                 # 술어의 **리터럴이 질문에 있으면** 사용자 조건이다(`ref_base_index LIKE '%S&P500%'`) — 컬럼
@@ -811,7 +835,7 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
         kept.append(c)
     if not hit or re.search(r"[*?\[\]]", hit):
         return sql, False
-    canon = (f"(REPLACE(ref_base_index,' ','') GLOB '{hit}' "
+    canon = (f"{_GUARD_MARK}(REPLACE(ref_base_index,' ','') GLOB '{hit}' "
              f"OR REPLACE(ref_base_index,' ','') GLOB '{hit}[CTP]R*')")
     new = sql[:m_w.start(1)] + " " + " AND ".join(kept + [canon]) + " " + sql[m_w.end(1):]
     return (new, True) if new != sql else (sql, False)
@@ -5490,6 +5514,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 지수 확정식이 **모수 가드보다 먼저** 돌아야 한다 — 모수 가드의 날조 술어 제거가 오염 컬럼의
     #    지수 절을 '근거 없는 술어' 로 보고 지워 버린다(순서가 뒤면 지수 조건이 통째로 사라진다).
     sql, idx_fixed = ensure_etf_index_canon(sql)
+    injected = marked_conjuncts(sql)          # 체인 끝 사후조건의 재료 (1순위 — 확정식 원자성)
     if idx_fixed:
         step("[Guard] ETF 기초지수 확정식 — 오염 컬럼 cu_base_index(95.5% 공백 · 값 있는 9행은 무관 상품)를 "
              "정본 ref_base_index 순수추종식(지수명 + CR/TR/PR 접미)으로 교체 "
@@ -5667,6 +5692,15 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 펀드 기본모수 사후조건 — 재작성된 SQL 에 모수 절이 없어 체인 끝에서 주입(개별 조회는 '공모'만) "
              "(7R G1/F6′ · 6R KG-018 실측: HCX 원 SQL 에 정렬·집계가 없어 초기 가드를 건너뛴 뒤 목록 묶기가 "
              "ORDER BY·COUNT 를 붙여 96펀드가 판매완료 포함 모수로 나갔다 · W2 사모 3펀드 혼입)")
+    # 🔴 11R 1순위 사후조건 — **확정식이 만든 조건은 체인 끝에 살아 있어야 한다.** 가드 A 의 출력을 가드 B 가
+    #    날조로 보고 지우거나(OFFICIAL-004: 지수 조건이 사라진 전수 조회 30행 중 이름에 '우주항공' 이 든 1건을
+    #    골라 답했다 — gold 48), 확정식이 지우고 대체를 못 넣으면(Z19: 판매중 ETF 전수 1,160) 질문의 의미 조건이
+    #    증발한 채 그럴듯한 답이 나간다 — 무응답보다 나쁘다. 되돌려 0행 경로로 정직하게 보내고 트레이스에 남긴다.
+    lost = [c for c in injected if c not in sql]
+    if lost:
+        sql, _ = _append_exclusions(sql, lost)
+        step(f"[Guard] 확정식 조건 소실 사후조건 — 뒤 가드가 지운 확정식 {len(lost)}건을 되돌렸다: "
+             f"{' · '.join(c[:70] for c in lost)} (11R 1순위: 조건이 증발한 전수 조회를 답으로 내지 않는다)")
     sql, topn_fixed = ensure_default_topn(sql, q)
     if topn_fixed:
         step(f"[Guard] 기본 TOP-N — 개수 없는 랭킹 질의의 LIMIT 을 {DEFAULT_TOPN} 으로 (2026-09-02 서버 실측: '한전 채권 수익률 낮은 순' 30행 전사 22.2초 — 리드 결정: 상위 5 + 전체 종목수 병기)")

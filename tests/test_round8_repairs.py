@@ -96,3 +96,28 @@ def test_holdings_template_on_etf_leak():
     assert ok and "ext_fund_holdings" in out and "코어테크" in out, out
     # 라우팅이 ETF 면 불개입 — ETF 구성종목 질의를 펀드 템플릿으로 덮지 않는다
     assert P.ensure_fund_holdings_template(sql, q, _ctx(), "코어테크", route_fund=False) == (sql, False)
+
+
+# ── 항목 7 · 재검 ③-9 부류 B-5′ — 기준일·방법론 날조 문장 제거 ────────────────────
+def test_strip_wrong_cutoff():
+    """정본과 다른 기준일 주장·집계 방법론 날조·품질 추측만 버리고, 정당한 날짜 문장은 남긴다."""
+    from src.runtime import gate
+    assert gate.DATA_CUTOFF == "2026-08-24"
+
+    y3 = ("1년 수익률 하위 5개는 다음과 같습니다. "
+          "이 데이터는 2026년 8월 21일을 기준으로 한 정보이며, 모든 클래스의 수익률을 합하여 나타낸 내용입니다.")
+    out, hit = P.strip_disclaimer(y3)
+    assert hit and "8월 21일" not in out and "합하여" not in out, out
+    assert "하위 5개는 다음과 같습니다" in out, out
+
+    # 정본 기준일 문장은 남는다 — 기계 조립 머리줄이 매 답변에 굽는 문형이다
+    keep = "조회된 공모펀드 1개입니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위)."
+    assert P.strip_disclaimer(keep) == (keep, False)
+
+    # 설정일·만기일 같은 정당한 날짜 답은 기준 주장 문형이 아니라 건드리지 않는다
+    estb = "이 펀드의 설정일은 2011년 3월 22일이며, 약 15년간 운용되고 있습니다."
+    assert P.strip_disclaimer(estb) == (estb, False)
+
+    # Y1 — 근거 없는 품질 추측
+    y1, hit1 = P.strip_disclaimer("1위는 660.63%입니다. 다만 기준가 산정에 오류가 있을 가능성도 있습니다.")
+    assert hit1 and "가능성" not in y1, y1

@@ -1901,14 +1901,39 @@ def strip_false_hedge(text: str, sql: str, n: int) -> tuple[str, bool]:
     return (out, True) if out else (text, False)
 
 
+# 8R B-5′ — 답변 표면 금지 문형 셋을 더한다(제거만 하고 대체 문장을 만들지 않는다).
+#   ⓐ 기준일 주장: '…을 기준으로 한 정보' 문장에 든 날짜가 gate.DATA_CUTOFF 와 다르면 그 문장을 통째로 버린다.
+#      🔴 날짜가 든 문장을 무조건 버리면 안 된다 — 설정일·만기일은 정당한 답이다. **기준 주장 문형** 안의 날짜만 본다.
+#      7R Y3 실측: "이 데이터는 2026년 8월 21일을 기준으로 한 정보이며" — 주최 규칙이 정한 기준일(2026-08-24)을
+#      답변이 다른 날짜로 명시했다. 값 판정과 별개로 직접 감점 축이다.
+#   ⓑ 집계 방법론 날조: "모든 클래스의 수익률을 합하여" — 결과는 클래스별 값이지 합산이 아니다(Y3).
+#   ⓒ 데이터 품질 추측: "기준가 산정 오류가 있을 가능성" — HCX 가 근거 없이 지어낸 유보(Y1).
+_CUTOFF_CLAIM = re.compile(r"[^.!?\n]*(?:기준일|기준\s*시점|(?:을|를)?\s*기준으로\s*한)[^.!?\n]*[.!?]?")
+_DATE_IN_TEXT = re.compile(r"((?:19|20)\d{2})\s*[년\-]\s*(\d{1,2})\s*[월\-]\s*(\d{1,2})\s*일?")
+_FAKE_BASIS = re.compile(
+    r"[^.!?\n]*(?:모든\s*클래스[^.!?\n]*(?:합하여|합한|합산|더하여|더한)"
+    r"|(?:기준가|수익률|순자산)\s*산정[^.!?\n]*오류가?\s*있을\s*가능성)[^.!?\n]*[.!?]?")
+
+
+def _drop_wrong_cutoff(text: str) -> str:
+    """기준일을 주장하는 문장에 정본(gate.DATA_CUTOFF)과 다른 날짜가 있으면 그 문장만 버린다."""
+    def _cut(m: re.Match) -> str:
+        for y, mo, d in _DATE_IN_TEXT.findall(m.group(0)):
+            if f"{int(y):04d}-{int(mo):02d}-{int(d):02d}" != gate.DATA_CUTOFF:
+                return ""
+        return m.group(0)
+    return _CUTOFF_CLAIM.sub(_cut, text)
+
+
 def strip_disclaimer(text: str) -> tuple[str, bool]:
-    """답변에서 면책 상투구 문장을 걷어낸다. (정리된 답변, 제거했는지)
+    """답변에서 면책 상투구·기준일 날조·방법론 날조 문장을 걷어낸다. (정리된 답변, 제거했는지)
 
     2026-09-01 실측 — answer_rules 의 면책 금지가 하루 5회 재발("금융기관에 문의"·"전문가와
     상담"): 규칙이 실려도 답변기가 습관적으로 붙인다(법칙 1). 값·목록은 그대로 두고 해당 문장만
     통째로 제거. 전부 지워지면(면책 한 줄짜리 답) 원문 유지 — 빈 답변이 더 나쁘다.
+    8R B-5′ 로 기준일 주장·집계 방법론·품질 추측 문형이 같은 함수에 들어왔다(가드 중복 0).
     """
-    out = _DISCLAIMER.sub("", text)
+    out = _drop_wrong_cutoff(_FAKE_BASIS.sub("", _DISCLAIMER.sub("", text)))
     if out == text:
         return text, False
     out = re.sub(r"[ \t]{2,}", " ", out)

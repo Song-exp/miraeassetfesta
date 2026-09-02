@@ -1606,13 +1606,16 @@ def _code_label_map() -> dict:
     return out
 
 
-def label_code_columns(rows: str, sql: str) -> tuple[str, list[str]]:
+def label_code_columns(rows: str, sql: str, skip: list | None = None) -> tuple[str, list[str]]:
     """KG 4R G4 — 답변 입력의 **기관 코드 컬럼 값**을 기계가 확정 표기한다. (정리된 표, 표기한 컬럼)
 
     컬럼 판정은 **별칭이 아니라 SELECT 항목의 원 컬럼 표현식**으로 한다 — KG-008 실측:
     `trim(trusc_xtn_itt_cd) AS 수탁회사명` 이 이름 열처럼 보여 HCX 가 운용사 이름 3개를 통째로 날조했다.
     매핑이 있으면 `이름(코드)`, 없으면 `코드 00020088(기관명 미수록)` 으로 굽는다 — **숨기지 않는다**:
     숨김은 Z23("수탁사 정보가 수록되어 있지 않습니다") 처럼 값이 있는데 부재로 서술하는 결과를 낳았다.
+
+    🔴 8R 부류 D — 전제(헤더 arity) 때문에 못 걸린 경우 `skip` 에 사유를 담는다. 7R 은 이 자리가 **무음 종료**라
+    KG-008 이 "고쳤는데 안 고쳐진" 상태로 두 라운드를 돌았다 — 트레이스에 흔적이 없으면 다음 라운드도 헛돈다.
     """
     lines = rows.splitlines()
     frm = re.search(r"\bfrom\b", sql or "", re.I)
@@ -1621,6 +1624,8 @@ def label_code_columns(rows: str, sql: str) -> tuple[str, list[str]]:
     cols = lines[0].split(" | ")
     items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I))
     if len(items) != len(cols):
+        if skip is not None and _CODE_COL_RX.search(" , ".join(items)):
+            skip.append(f"SELECT 항목 {len(items)}개 ≠ 결과 열 {len(cols)}개 — 선행 가드가 열을 바꿨다")
         return rows, []
     code_cols = {i: m.group(1).lower() for i, it in enumerate(items) if (m := _CODE_COL_RX.search(it))}
     if not code_cols:
@@ -1647,7 +1652,7 @@ _NAME_COL = re.compile(r"\b(?:itm_nm|itm_abrv_nm|pd_nm|pd_abrv_nm|etf_name)\b", 
 _NAME_TOKEN = re.compile(r"[0-9A-Za-z가-힣]{8,}")
 
 
-def verify_product_names(answer: str, rows: str) -> tuple[str, list[str]]:
+def verify_product_names(answer: str, rows: str, skip: list | None = None) -> tuple[str, list[str]]:
     """답변의 상품명 토큰을 조회 원문 사전과 대조해 근사 전사 오류를 DB 원문으로 되돌린다. (교정된 답변, 교정 목록)
 
     2026-09-02 R3 재검: "삼성중국본토중소형**FOSS**" — 실제 FOCUS, DB 에 'FOSS' 0행. 자릿수 훼손과 같은 계열
@@ -1662,6 +1667,10 @@ def verify_product_names(answer: str, rows: str) -> tuple[str, list[str]]:
     cols = lines[0].split(" | ")
     idx = [i for i, c in enumerate(cols) if _NAME_COL.search(c)]
     if not idx:
+        # 🔴 8R 부류 C — 사전이 비면 교정이 아예 안 걸린다(무음). X18 실측: `SELECT DISTINCT mother_fund_names_raw` 가
+        #    itm_nm 을 안 실어 `ext_fund_page` 원문 오염('코어텍')이 교정 없이 답변에 나갔다.
+        if skip is not None and re.search(r"\b(?:mother_fund_names_raw|mgmt_co_nm|holding_nm)\b", rows.splitlines()[0], re.I):
+            skip.append("결과에 정본 이름 열(itm_nm 등)이 없어 대조 사전이 비었다 — ext_* 원문 오염을 교정할 수 없다")
         return answer, []
     names = set()
     for ln in lines[1:]:
@@ -5149,13 +5158,21 @@ def answer_question(
     # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
     #    "총 10개" 라고 셌다. 순자산 자릿수 훼손과 같은 계열 — 모델에게 산술(개수 세기)을 시키지
     #    말고 복사만 하게 한다. retrieved_context(조회 원문)는 건드리지 않고 답변 입력에만 붙인다.
-    answer_rows, hidden = _hide_answer_columns(rows, sql)
-    if hidden:
-        step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
-    answer_rows, labeled = label_code_columns(answer_rows, sql)
+    # 🔴 8R 부류 D — **표기가 먼저, 숨김이 나중.** 표기 가드는 원본 SQL 의 SELECT 항목과 결과 헤더가 1:1 일 때만
+    #    성립하므로(별칭이 아니라 원 컬럼 표현식으로 판정한다) 체인의 맨 앞이 유일하게 안전한 자리다. 7R KG-008 실측:
+    #    숨김이 `수탁금액` 열을 먼저 지워 4항목 vs 3열이 되자 표기 가드가 arity 검사에서 **무음 종료**했고, HCX 가
+    #    `trim(trusc_xtn_itt_cd) AS 수탁회사명` 별칭에 속아 운용사 이름 3개를 날조했다(같은 상호배제에 Z21·AA15).
+    #    숨김은 **헤더명**으로 판정하므로 표기가 값을 바꿔도 영향이 없다 — 순서를 뒤집어도 종전 동작이다.
+    label_skip: list = []
+    answer_rows, labeled = label_code_columns(rows, sql, label_skip)
     if labeled:
         step(f"[Answer] 기관 코드 확정 표기 — {', '.join(labeled)} 를 정본 이름(kg_node.label_official) 또는 '코드 X(기관명 미수록)' 로 "
              "(KG 4R G4 · KG-008 실측: `trim(trusc_xtn_itt_cd) AS 수탁회사명` 별칭에 속아 운용사 이름 3개 날조 · Z23 은 값이 있는데 '미수록' 서술)")
+    elif label_skip:
+        step(f"[Guard] 기관 코드 확정 표기 적용 불가 — {label_skip[0]} (8R 부류 D: 가드가 전제 때문에 스킵되면 트레이스에 남긴다)")
+    answer_rows, hidden = _hide_answer_columns(answer_rows, sql)
+    if hidden:
+        step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
     header = f"(조회 결과: 총 {n}행)"
     bond_cov = _bond_coverage_counts(sql) if (n >= MAX_ROWS or _explicit_limit_hit(sql, n)) else None
     if bond_cov and bond_cov[1] > n:
@@ -5188,10 +5205,13 @@ def answer_question(
     if hedged:
         step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
              "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
-    result.answer, name_fixes = verify_product_names(result.answer, rows)
+    name_skip: list = []
+    result.answer, name_fixes = verify_product_names(result.answer, rows, name_skip)
     if name_fixes:
         step(f"[Guard] 상품명 전사 교정 — {' · '.join(name_fixes[:3])} (조회 원문 밖 이름 {len(name_fixes)}건 — "
              "2026-09-02 R3 재검: '삼성중국본토중소형FOSS' 는 DB 에 0행, 실제 FOCUS)")
+    elif name_skip:
+        step(f"[Guard] 상품명 전사 교정 적용 불가 — {name_skip[0]} (8R 부류 C · X18 실측)")
     # 3R ④-2 — 팀원 가드는 채권 문형(pd_no 순위 복원·단일 집계 오거절)이다. 펀드는 조립기가 받으므로 채권 SQL 에만(동작 불변, 범위만)
     result.answer, topcited_fixed = ensure_top_row_cited(result.answer, sql, rows) if "domestic_bonds" in sql else (result.answer, False)
     if topcited_fixed:

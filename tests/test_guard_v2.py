@@ -710,7 +710,8 @@ def test_fund_lookup_grouping():
     rows = con.execute(s).fetchall()
     assert len(rows) == 6                                          # 6펀드 (2026-09-02 DB 실측)
     assert rows[0][1].startswith("미래에셋코어테크증권자투자신탁") and rows[0][2] == 9   # 본체가 첫 행(최단 이름) · <>0 필터 후 9클래스
-    assert (rows[0][3], rows[0][4]) == (189.77, 187.09)            # 최고·최저 — 1클래스(188.83)만 답하던 것의 재료
+    assert rows[0][3] == 9                                         # 판매중클래스수 (리뷰 ②-7 — 기본모수 미주입의 보완)
+    assert (rows[0][4], rows[0][5]) == (189.77, 187.09)            # 최고·최저 — 1클래스(188.83)만 답하던 것의 재료
     # R6 — 등급명만 SELECT → 묶기 + 근거컬럼 가드의 역방향 gcd 병기. 🔴 이 펀드는 클래스마다 mtco_itm_no 가
     #    달라(531101~531107) 정본 펀드키로는 6행이다 — 값은 전 행 '높은 위험'·2 로 같고 클래스수 합이 7.
     s6, ok6 = f(_R6_SQL, "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘")
@@ -718,7 +719,8 @@ def test_fund_lookup_grouping():
     s6, ok6b = ev(s6)
     assert ok6b and "zrin_fd_ivst_risk_gcd" in s6
     rows6 = con.execute(s6).fetchall()
-    assert rows6 and all(r[3] == "높은 위험" and r[4] == 2 for r in rows6) and sum(r[2] for r in rows6) == 7
+    assert rows6 and all(r[4] == "높은 위험" and r[5] == 2 for r in rows6) and sum(r[2] for r in rows6) == 7
+    assert sum(r[3] for r in rows6) == 7                           # 7클래스 전부 판매중 (리뷰 ②-7)
     # 비발동 — '클래스' 열거(033) · 보수(020) · ORDER BY 랭킹(P1 담당) · COUNT 집계 · 이름 필터 없음
     q33 = "미래에셋코어테크 펀드는 어떤 클래스들이 있어?"
     s33 = ("SELECT itm_no, TRIM(itm_nm) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' "

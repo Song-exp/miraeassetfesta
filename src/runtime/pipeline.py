@@ -665,7 +665,10 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     types = _fund_col_types()
     if not types:
         return sql, False
-    new = ["MIN(itm_no) AS 대표_itm_no", "MIN(TRIM(itm_nm)) AS itm_nm", 'COUNT(*) AS "클래스수"']
+    # 판매중클래스수 병기 (2026-09-02 리뷰 ②-7) — 이름 조회에 기본모수를 박으면 판매완료·사모 14,707행 개별 조회가
+    # 0행 오거절이라 주입하지 않는 대신, "클래스 7개 중 판매중 7개" 재료를 0행 위험 없이 싣는다.
+    new = ["MIN(itm_no) AS 대표_itm_no", "MIN(TRIM(itm_nm)) AS itm_nm", 'COUNT(*) AS "클래스수"',
+           "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\""]
     for it in _split_select_items(sel):
         m = _SELECT_PLAIN_ITEM.fullmatch(it.strip())
         if not m:

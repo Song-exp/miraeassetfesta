@@ -676,8 +676,14 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
         t = types.get(col)
         if t is None:
             return sql, False
-        if t.startswith(("numeric", "int", "real", "double", "float", "decimal")) and not col.endswith("_dt"):
-            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']
+        if col == "fd_nast_suma":
+            # 🔴 순자산은 SUM — 이 DB 의 fd_nast_suma 는 **클래스별 값**이라 펀드 순자산은 합계다 (2026-09-02 리뷰 ②-6 실측:
+            #    코어테크 본체 10클래스 합 2조9,148억 vs 최대 클래스 7,348억 · 삼성MMF법인제1호 4클래스 12.4조/1,051억/…).
+            #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
+            new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
+                    "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\""]
+        elif col in _FUND_RETURN_COLS:
+            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']     # 최고/최저는 수익률 8종에만
         else:
             new.append(f"MAX({col}) AS {alias or col}")
     tail = sql[frm.start():].rstrip()

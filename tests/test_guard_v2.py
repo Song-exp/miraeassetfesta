@@ -1084,3 +1084,22 @@ def test_fund_rank_sort_col_inside_function():
     assert ok3 and "ROUND(MAX(fd_mm6_ern_r),1)" in out3 and len(con.execute(out3).fetchall()) == 3
     # bare 컬럼 경로는 종전(별칭 유지)
     assert "MAX(fd_yr1_ern_r) AS fd_yr1_ern_r" in f(_R7_SQL, "q")[0]
+
+
+def test_fund_lookup_grouping_net_assets_sum_in_eok():
+    """리뷰 ②-6 — 이 DB 의 fd_nast_suma 는 클래스별 값이라 펀드 순자산은 SUM. 개별 조회 묶기가 MAX/MIN _최고/_최저 원 단위
+    '.0' 로 실던 것을 정수 SUM + 억원 병기로. 최고/최저는 수익률 8종에만."""
+    from src.runtime.pipeline import ensure_fund_lookup_grouping as f, ensure_fund_evidence_columns as ev
+
+    s = ("SELECT fd_nast_suma, itm_nm, fd_yr1_ern_r FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' "
+         "AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
+    out, ok = f(s, "미래에셋코어테크 펀드 순자산 알려줘")
+    assert ok and "CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma" in out and '"순자산_억원"' in out
+    assert "fd_nast_suma_최고" not in out and '"fd_yr1_ern_r_최고"' in out
+    out2, _ = ev(out)
+    assert out2.count("순자산_억원") == 1                                    # 근거컬럼 가드가 억원을 중복 병기하지 않는다
+    cols = [d[0] for d in _ro().execute(out2).description]
+    row = _ro().execute(out2).fetchone()
+    rec = dict(zip(cols, row))
+    assert rec["클래스수"] == 10 and rec["fd_nast_suma"] == 2914801034334 and rec["순자산_억원"] == "29148억원"
+    assert isinstance(rec["fd_nast_suma"], int)                                # '.0' 없음

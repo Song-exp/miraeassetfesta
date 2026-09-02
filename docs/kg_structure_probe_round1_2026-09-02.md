@@ -1,7 +1,7 @@
 # 온톨로지·KG 구조 검증 35문항 — 서버 기준선(31e72ef) 채점 1R — 2026-09-02
 
 > 채점자: 에이전트 B(도메인·온톨로지 심사). 코드는 손대지 않았다.
-> 대상: `eval/probe_kg_structure_2026-09-02.json`(서버 원본 응답 35건) ↔ `eval/questions_kg_structure.jsonl` gold.
+> 대상: `eval/probe_kg_structure_2026-09-02.json`(서버 원본 응답 35건) ↔ `eval/kg_structure_questions.jsonl` gold.
 > 기준: `docs/domain/public_funds.md`(도메인 최우선, 2차 데이터와 어긋나면 DB 실측 우선) · 설계 문서 `docs/kg_structure_probe_design_2026-09-02.md` · 채점 톤 `question_design_public_funds_2026-08-31.md` §7("결정층까지 내렸다 = 됐다").
 > 실측: DB `data/financial_products.db`(8/22 정본, 기본모수 8,969행/3,040펀드) · `kg_*` 4테이블 · `ontology/*.ttl` · `shared/*.yaml` · `codebooks/*.csv` · `src/runtime/{pipeline,gate,router,guard}.py` 읽기만.
 > 판정 JSON: `eval/verdicts_kg_2026-09-02.json`.

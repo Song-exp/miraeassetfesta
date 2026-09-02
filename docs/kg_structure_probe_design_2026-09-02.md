@@ -1,7 +1,7 @@
 # 온톨로지·KG 구조 검증 문항 설계 — 2026-09-02
 
 > 목적: 재검 중인 19문항(HANDOFF §1 P1 7 + 형제 12, `eval/probe_recheck_2026-09-02_r2.txt`)이 **결정층 수리의 재현**을 보는 세트라면, 이 세트는 **온톨로지(.ttl)·KG(kg_* 4테이블)·규칙(yaml)·코드북이 서로 맞물려 있는가**를 시험한다.
-> 산출물: `eval/questions_kg_structure.jsonl` (35문항, KG-001~035) + 이 문서. 코드·yaml 은 손대지 않았다.
+> 산출물: `eval/kg_structure_questions.jsonl` (35문항, KG-001~035) + 이 문서. 코드·yaml 은 손대지 않았다.
 > gold 는 전부 DB(`data/financial_products.db`, 8/22 정본) 실측이며 기본모수 = `sale_yn='판매중' AND prvo_pbff_desc='공모'` 8,969행 / 3,040펀드(현행 펀드키). 실측이 불가능한 문항은 reject 가 정답임을 명시했다.
 
 ---
@@ -134,7 +134,7 @@
 `ID<TAB>질문` 형식 — 그대로 `eval/probe_kg_structure_2026-09-02.txt` 로 저장해 `eval/probe_server.py` 에 넣을 수 있다.
 
 ```
-# KG 구조 검증 35문항 — 2026-09-02 (gold: eval/questions_kg_structure.jsonl)
+# KG 구조 검증 35문항 — 2026-09-02 (gold: eval/kg_structure_questions.jsonl)
 KG-001	Mirae Asset이 운용하는 공모펀드는 몇 개야?
 KG-002	프랭클린템플턴이 운용하는 공모펀드 알려줘
 KG-003	메리츠자산운용이 운용하는 공모펀드는 몇 개야?

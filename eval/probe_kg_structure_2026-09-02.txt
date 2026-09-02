@@ -1,4 +1,4 @@
-# KG 구조 검증 35문항 — eval/questions_kg_structure.jsonl (서버 31e72ef 기준선)
+# KG 구조 검증 35문항 — eval/kg_structure_questions.jsonl (서버 31e72ef 기준선)
 KG-001	Mirae Asset이 운용하는 공모펀드는 몇 개야?
 KG-002	프랭클린템플턴이 운용하는 공모펀드 알려줘
 KG-003	메리츠자산운용이 운용하는 공모펀드는 몇 개야?

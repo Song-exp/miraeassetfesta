@@ -125,7 +125,8 @@ def test_pipeline_regenerates_once_on_value_violation(ctx):
     assert p.calls == 2
     assert "[Guard] 값 검사" in r.think_trace and "[Plan] 재생성" in r.think_trace
     assert "이전 SQL 의 문제" in p.groundings[1]
-    assert r.sql == good and r.answer == "테스트 답변"
+    # 재생성된 SQL 이 채택됐는지만 본다 — 이후 가드(신용등급 컬럼 보강 등)가 SELECT 를 넓힐 수 있어 문자열 등호는 쓰지 않는다
+    assert "crd_grd = 'AA-'" in r.sql and "AA-등급" not in r.sql and r.answer == "테스트 답변"
 
 
 def test_pipeline_refuses_when_regeneration_still_bad(ctx):

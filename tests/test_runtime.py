@@ -619,6 +619,23 @@ def test_strip_fabricated_risk_filter():
     assert not strip_fabricated_risk_filter(win, "돈 떼일 걱정 없는 채권 중 수익률 최고는?")[1]
 
 
+def test_distribution_answer_distinct_bonds():
+    from src.runtime.pipeline import _distribution_answer as d
+    # 2026-09-02 서버 실측 — '신용등급별 몇 종목' 전사 실패(AA+ 2,516 누락 · BB0→'B0' 라벨 뒤틀림 ·
+    # 무등급을 '기타' 창작 · 14/16줄). 조립기가 COUNT(DISTINCT pd_no) 를 안 받아 미발동이 원인
+    sql = ("SELECT TRIM(crd_grd) AS 신용등급, COUNT(DISTINCT pd_no) AS 종목수 FROM domestic_bonds "
+           "GROUP BY 1 ORDER BY 1 LIMIT 30")
+    rows = "신용등급 | 종목수\n | 2954\nAA+ | 2516\nAAA | 8646"
+    out = d(sql, rows, 3)
+    assert out and "AA+" in out and "2,516종목" in out and "(미수록): 2,954종목" in out
+    assert "전체" in out and "중복" in out          # 범주 합 ≠ 전체 DISTINCT 주석 (실제 DB 재계산)
+    # 불개입 — 3열(2열째가 COUNT 아님 · 위험등급 코드+이름 꼴) / 펀드 테이블 COUNT(DISTINCT pd_no) 없음
+    assert d("SELECT pd_risk_gcd, pd_risk_nm, COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY 1,2 LIMIT 30",
+             "a | b | c\n11 | x | 1\n12 | y | 2", 2) is None
+    assert d("SELECT zrin_btyp_nm, COUNT(DISTINCT pd_no) FROM public_funds GROUP BY 1 LIMIT 30",
+             "a | b\nx | 1\ny | 2", 2) is None
+
+
 def test_ensure_positive_count_answered():
     from src.runtime.pipeline import ensure_positive_count_answered as f
     # 2026-09-02 서버 실측 — 퇴직연금 COUNT(*)=1,929 정상 반환에도 "정보가 포함되어 있지 않습니다" 오거절
@@ -630,6 +647,13 @@ def test_ensure_positive_count_answered():
     # 존재 문형 아니면 접두 없음 · COUNT(*) 는 행 기준 단서
     f2, c2 = f(refusal, "SELECT COUNT(*) FROM domestic_bonds WHERE pd_pen_tr_yn='Y'", "COUNT(*)\n1929", 1, "퇴직연금 채권 몇 개야")
     assert c2 and "1,929" in f2 and "행 기준" in f2
+    # 2026-09-02 확장 — 거절이 아닌 '없습니다' 부정 단정 (COUNT 19 반환에도 '0등급 채권은 없습니다')
+    sql00 = "SELECT COUNT(*) FROM domestic_bonds WHERE pd_risk_gcd = '00'"
+    f3, c3 = f("조회 결과에 따르면, 위험등급 0등급인 채권은 없습니다. 6등급을 추천드립니다.",
+               sql00, "COUNT(*)\n19", 1, "위험등급 0등급인 채권 있어?")
+    assert c3 and "19" in f3 and f3.startswith("네, 있습니다")
+    # 숫자를 인용한 답변은 '없' 이 있어도 불개입 ('0등급은 없고 해당없음 19종목')
+    assert not f("정식 0등급은 없습니다만 등급 미부여(해당없음) 19종목이 있습니다.", sql00, "COUNT(*)\n19", 1, "있어?")[1]
     # 불개입 — 정상 답변 / 값 0 / 다행 결과 / 집계 아닌 SELECT / 2항목 SELECT
     assert not f("네, 843종목 있습니다.", sql, rows, 1, "있어?")[1]
     assert not f(refusal, sql, "COUNT(DISTINCT pd_no)\n0", 1, "있어?")[1]

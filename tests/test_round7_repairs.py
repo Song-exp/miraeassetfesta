@@ -98,8 +98,9 @@ def test_fund_key_column_correction(ctx):
     assert notes and "rptt_ksd_itm_no" in fixed, notes
     assert "MIN(itm_no) AS 대표_itm_no" in fixed, "SELECT 의 같은 컬럼명까지 바꿨다"
     rows, n = _execute(fixed)
-    assert n == 1 and "14" in rows and "3,34" not in rows, rows      # 14클래스 · 3,345억
-    assert "3345억원" in rows or "3344억원" in rows, rows
+    # 10R ③-6 — 표시 열은 천 단위 구분자까지 완성해 내보낸다(HCX 가 콤마를 임의 위치에 찍지 않게)
+    assert n == 1 and "14" in rows and "3,344억원" in rows, rows      # 14클래스 · 3,344억
+    assert "3,345억원" in rows or "3,344억원" in rows, rows
 
     # V4 계열 — 이미 옳은 컬럼을 쓴 SQL 은 불변
     v4 = "SELECT itm_no FROM public_funds WHERE rptt_ksd_itm_no = '030230002D36' LIMIT 30"

@@ -177,3 +177,26 @@ def test_r10_name_anchor_prefix():
                               "FROM public_funds WHERE prvo_pbff_desc='공모' AND TRIM(or_co_xtn_itt_cd)='00040024' "
                               f"AND REPLACE(itm_nm,' ','') LIKE '%{lit}%'")[0].splitlines()[1])
     assert cnt("베트남그로스증권자투자신탁") == 3 and cnt("한국투자베트남그로스증권자투자신탁") == 2
+
+
+# ── D1 · 표시 열 자릿수 · N8 · 기준일 이후 SQL 리터럴 ────────────────────────────
+def test_r10_amount_thousands():
+    """재검 ③-6 — 숫자와 단위만 붙여 주면 HCX 가 콤마를 임의 위치에 찍는다(U8 `425,2800백만USD`)."""
+    assert P._cell("4378085백만USD", "총순자산_백만USD") == "4,378,085백만USD"
+    assert P._cell("12195억원", "순자산_억원") == "12,195억원"
+    assert P._cell("3억원", "순자산_억원") == "3억원"            # 4자리 미만은 그대로
+    assert P._cell("4,378,085백만USD", "x") == "4,378,085백만USD"   # 멱등
+
+
+def test_r10_future_date_literal():
+    """gold N8 — 기준일 가드가 질문 토큰만 보고 SQL 리터럴은 안 봤다(FND-R02 거짓 사유 거절)."""
+    s = ("SELECT itm_nm, fd_mm1_ern_r FROM public_funds WHERE sale_yn='판매중' "
+         "AND fd_daily_bas_dt BETWEEN 20260915 AND 20260922 AND fd_mm1_ern_r IS NOT NULL "
+         "ORDER BY fd_mm1_ern_r DESC LIMIT 5")
+    out, dropped = P.strip_future_basis_date(s)
+    assert dropped and "fd_daily_bas_dt" not in out and P._execute(out)[1] == 5
+    # 기준일 이내는 사용자 조건 — 손대지 않는다. 만기(mat_dt)는 미래가 정상이라 대상 밖이다.
+    keep = "SELECT itm_nm FROM public_funds WHERE fd_daily_bas_dt = 20260824 LIMIT 5"
+    assert P.strip_future_basis_date(keep) == (keep, None)
+    mat = "SELECT pd_no FROM domestic_bonds WHERE mat_dt <= 20301231 LIMIT 5"
+    assert P.strip_future_basis_date(mat) == (mat, None)

@@ -417,6 +417,36 @@ def normalize_date_literals(sql: str) -> tuple[str, bool]:
     return fixed, fixed != sql
 
 
+_BASIS_DT_COL = re.compile(r"\b(?:\w+\.)?\w*(?:_bas_dt|_base_dt)\b", re.I)
+
+
+def strip_future_basis_date(sql: str) -> tuple[str, str | None]:
+    """기준일 컬럼(`*_bas_dt`·`*_base_dt`)을 **기준일 이후 날짜**와 비교하는 절을 제거. (SQL, 제거한 절)
+
+    🔴 10R gold N8 — 기준일 가드가 **질문 토큰만** 보고 SQL 리터럴은 안 봤다. FND-R02 실측:
+       HCX 가 `fd_daily_bas_dt BETWEEN 20260915 AND 20260922` 로 기준일(2026-08-24) 이후 날짜를 지어내
+       0행을 만들고, 그 0행을 "조건 교집합이 0" 이라는 **거짓 사유**로 포장해 거절했다. 값을 지어내진
+       않았지만 사유를 지어낸 것이라 환각 방지 축의 다른 얼굴이다.
+    만기(`mat_dt`)는 미래가 정상이므로 대상이 아니다 — 그쪽은 `ensure_maturity_lower_bound` 담당(중복 0).
+    """
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, None
+    fold = "\x01"
+    body = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", m_w.group(1), flags=re.I)
+    kept, dropped = [], []
+    for c in guard.split_conjuncts(body):
+        lits = [int(x) for x in re.findall(r"\b(\d{8})(?:\.0)?\b", c)]
+        if _BASIS_DT_COL.search(c) and lits and max(lits) > CUTOFF_INT:
+            dropped.append(c.replace(fold, " AND ").strip())
+            continue
+        kept.append(c.replace(fold, " AND ").strip())
+    if not dropped:
+        return sql, None
+    where = (" WHERE " + " AND ".join(kept) + " ") if kept else " "
+    return sql[:m_w.start()] + where + sql[m_w.end():].lstrip(), " · ".join(dropped)
+
+
 _MAT_UPPER = re.compile(r"\bmat_dt\s*<=?\s*(\d{8})\b", re.I)
 _MAT_LOWER = re.compile(r"\bmat_dt\s*>=?\s*\d|\bmat_dt\s+between\b", re.I)
 
@@ -1008,6 +1038,7 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
 _AMOUNT_COL_RX = re.compile(r"\b(fd_nast_suma|du_last_aum)\b", re.I)   # 최소 단위 금액 컬럼 — 펀드 순자산 · ETF 순자산
 # 8R B-4″ — 사람이 읽는 **표시 열**의 단위 표기. 원화는 '억원', 외화는 '백만<통화코드>'.
 _DISPLAY_UNIT = re.compile(r"억원|백만[A-Z]{3}")
+_DISPLAY_AMOUNT = re.compile(r"(-?\d{4,})(억원|백만[A-Z]{3})")   # 표시 열 값 — 천 단위 구분자를 기계가 넣는다 (10R ③-6)
 
 
 @lru_cache(maxsize=1)
@@ -3035,7 +3066,10 @@ def _manager_rank_answer(sql: str, rows: str, n: int) -> str | None:
             f_, c_ = int(float(funds)), int(float(classes))
         except ValueError:
             return None
-        fund_part, asset_part = f"펀드 {f_:,}개(클래스 {c_:,}개)", f"순자산 {int(eok.replace('억원', '')):,}억원" if eok.endswith("억원") else f"순자산 {eok}"
+        # 10R ③-6 — 표시 열은 이미 천 단위 구분자가 찍혀 온다(`_cell`). 콤마를 떼고 다시 굽는다(멱등)
+        eok_n = eok[:-2].replace(",", "") if eok.endswith("억원") else ""
+        fund_part = f"펀드 {f_:,}개(클래스 {c_:,}개)"
+        asset_part = f"순자산 {int(eok_n):,}억원" if eok_n.lstrip("-").isdigit() else f"순자산 {eok}"
         first, second = (asset_part, fund_part) if by_assets else (fund_part, asset_part)
         out.append(f"{i}. {name or '(이름 미수록)'}({code}): {first} · {second}")
     return "\n".join(out)
@@ -5051,7 +5085,12 @@ def _cell(v, col: str) -> str:
     if isinstance(v, float) and v.is_integer() and (col.endswith("_gcd") or col.endswith("_cd")):
         return str(int(v))
     if isinstance(v, str):
-        return v.strip()
+        v = v.strip()
+        # 🔴 10R 재검 ③-6 — 표시 열 문자열은 **자릿수까지 완성**해서 내보낸다. 숫자와 단위만 붙여 주면
+        #    HCX 가 콤마를 임의 위치에 찍는다(U8 `425,2800백만USD` — 왼쪽부터 · Y16 `4378085백만USD` 무구분).
+        #    값이 없어 나던 환각 → 단위가 없어 나던 환각(8R) → **자릿수가 없어 나는 환각**. 같은 계열의 세 번째 얼굴.
+        m_amt = _DISPLAY_AMOUNT.fullmatch(v)
+        return f"{int(m_amt.group(1)):,}{m_amt.group(2)}" if m_amt else v
     return str(v)
 
 
@@ -5156,6 +5195,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 최상위 OR 재괄호화 — 괄호 없이 섞인 `A AND B OR C` 를 `A AND (B OR C)` 로 보정 "
              "(10R gold N1 · FND-009 실측: 기각당한 문장이 근거문서에 실은 우리 규칙 원문 enums:949 라 "
              "자연어 피드백으로는 1·2차 모두 못 고쳐 무응답)")
+    sql, future_dt = strip_future_basis_date(sql)
+    if future_dt:
+        step(f"[Guard] 기준일 이후 SQL 리터럴 제거 — '{future_dt}' (10R gold N8 · FND-R02 실측: HCX 가 기준일"
+             f"({gate.DATA_CUTOFF}) 이후 날짜를 지어내 0행을 만들고 '조건 교집합 0' 이라는 거짓 사유로 거절했다)")
     sql, lb = ensure_maturity_lower_bound(sql)
     if lb:
         step(f"[Guard] 만기 하한 보정 — mat_dt >= {BUYABLE_INT} 주입 (만기일 미수록 0값·만기 경과 행 제외 — 구매가능 판정일 8/24, as-of 8/22 와 분리)")

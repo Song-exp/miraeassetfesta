@@ -810,6 +810,43 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None) -
     return "\n".join(out)
 
 
+def _list_answer(sql: str, rows: str, n: int) -> str | None:
+    """순자산순 펀드 목록(ensure_fund_list_grouping 형)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
+
+    2026-09-02 2R — 커버리지 가드가 "(전체 560행/248펀드 중 30펀드 표시)" 를 구웠는데 R3 는 5행·S7 은 10행만 옮기고
+    "일부입니다", S6 는 30행을 다 옮기고도 총량 대신 "더 많은 펀드가 있을 수 있습니다". 목록 전사는 분포(FND-038)와 같은
+    결론 — LLM 에 맡길 수 없다. 발동: SQL 에 `GROUP BY 펀드키` + `ORDER BY fd_nast_suma DESC`, 헤더에 itm_nm·클래스수·순자산_억원.
+    """
+    if n < 1 or f"GROUP BY {_FUND_KEY_EXPR}" not in sql or not re.search(r"\border\s+by\s+fd_nast_suma\s+desc\b", sql, re.I):
+        return None
+    lines = rows.splitlines()
+    if len(lines) != n + 1:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if not {"itm_nm", "클래스수", "순자산_억원"} <= set(cols):
+        return None
+    recs = []
+    for ln in lines[1:]:
+        parts = [p.strip() for p in ln.split(" | ")]
+        if len(parts) != len(cols):
+            return None
+        recs.append(dict(zip(cols, parts)))
+    cov = _coverage_counts(sql)
+    pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
+    if cov and cov[1] is not None and cov[1] > n:
+        head = (f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개)이며, 순자산 상위 {n}개 펀드는 다음과 같습니다"
+                f" (기준일 {gate.DATA_CUTOFF}, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위).")
+    else:
+        total = f"(클래스 {cov[0]:,}개)" if cov else ""
+        head = f"조건에 해당하는 {pop}는 전체 {n}개{total}이며, 순자산 순으로 다음과 같습니다 (기준일 {gate.DATA_CUTOFF})."
+    out = [head, ""]
+    for i, r in enumerate(recs, 1):
+        eok = r.get("순자산_억원", "")
+        eok_txt = f"{int(eok.replace('억원', '')):,}억원" if eok.endswith("억원") and eok[:-2].lstrip("-").isdigit() else (eok or "미수록")
+        out.append(f"{i}. {_fund_stem(r['itm_nm'])}: 순자산 {eok_txt} · 클래스 {int(float(r['클래스수'] or 0))}개")
+    return "\n".join(out)
+
+
 def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     """ORDER BY 없는 펀드 목록(태그·유형 필터)을 펀드키로 묶어 순자산순 대표행으로. (보정된 SQL, 보정했는지)
 
@@ -3103,6 +3140,13 @@ def answer_question(
              "(2026-09-02 R4·S3: '종류A: 최고 189.77%' — 종류A 실값 187.94 · 같은 대표번호 행은 한 줄로)")
         result.think_trace = "\n".join(trace)
         result.answer = lk
+        return result
+    lst = _list_answer(sql, rows, n)
+    if lst is not None:
+        step("[Answer] 목록 답변 기계 조립 — 순자산순 펀드 목록 전 행 + 총량 머리줄 "
+             "(2026-09-02 R3·S7: 30행 중 5·10행만 옮김 · S6: 총량 대신 '더 있을 수 있음')")
+        result.think_trace = "\n".join(trace)
+        result.answer = lst
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

@@ -4,6 +4,8 @@ import glob
 import json
 import os
 
+import re
+
 import pytest
 
 from src.runtime import guard
@@ -813,26 +815,30 @@ def test_hide_answer_columns():
 
 
 def test_r3_pipeline_markers(ctx):
-    """R3 경로 통합 — 목록 묶기 · 내부 코드 숨김 · 커버리지 병기 · 이름 교정이 한 번에 발동한다 (HCX 0회)."""
+    """HCX 경로 통합 — 내부 코드 숨김 · 커버리지 병기 · 이름 교정이 한 번에 발동한다.
+    (2R Q5 이후 R3 원형은 목록 조립기에서 끝나므로, ORDER BY 가 있어 목록 묶기가 안 도는 형제 SQL 로 HCX 경로를 검증한다.)"""
     from src.runtime.pipeline import answer_question
+
+    hcx_path = _R3_SQL.replace("LIMIT 30", "ORDER BY itm_nm LIMIT 30")
 
     class P:
         def plan_sql(self, q, g):
-            return _R3_SQL
+            return hcx_path
 
         def compose_answer(self, q, rows, answer_rules=""):
             self.rows = rows
-            return "* KB중국본토A주증권자투자신닥[주식]A 등이 있습니다."
+            self.first = rows.splitlines()[2].split(" | ")[1].strip()
+            return f"* {self.first.replace('투자신탁', '투자신닥')} 등이 있습니다."
 
     p = P()
     r = answer_question("T-R3", "중국에 투자하는 공모펀드 알려줘", planner=p, ctx=ctx)
-    assert "[Guard] 목록 펀드 묶기" in r.think_trace and "[Answer] 내부 코드 컬럼 숨김 — prfd_attr_cds" in r.think_trace
+    assert "[Guard] 목록 펀드 묶기" not in r.think_trace and "[Answer] 내부 코드 컬럼 숨김 — prfd_attr_cds" in r.think_trace
     assert "[Answer] 커버리지 병기 — LIMIT 도달, 전체 560행 / 248펀드" in r.think_trace
-    assert p.rows.startswith("(조회 결과: 전체 560행 / 248펀드 중 30펀드 표시") and "prfd_attr_cds" not in p.rows
+    assert p.rows.startswith("(조회 결과: 전체 560행 / 248펀드 중 30행 표시") and "prfd_attr_cds" not in p.rows
     assert "prfd_attr_cds" in r.retrieved_context                    # 조회 원문은 그대로
-    assert "[Guard] 상품명 전사 교정" in r.think_trace and "신닥" not in r.answer and "KB중국본토A주증권자투자신탁[주식]A" in r.answer
+    assert "[Guard] 상품명 전사 교정" in r.think_trace and "신닥" not in r.answer and p.first in r.answer
     # LIMIT 미도달이면 종전 머리줄 그대로
-    P.plan_sql = lambda self, q, g: _R3_SQL.replace("LIMIT 30", "LIMIT 5")
+    P.plan_sql = lambda self, q, g: hcx_path.replace("LIMIT 30", "LIMIT 5")
     r2 = answer_question("T-R3b", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
     assert "커버리지 병기" not in r2.think_trace
 
@@ -1339,3 +1345,37 @@ def test_lookup_answer_assembled(ctx):
     P.plan_sql = lambda self, q, g: _R6_SQL
     r6 = answer_question("T-R6", "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘", planner=P(), ctx=ctx)
     assert r6.answer.count("\n- ") == 1 and "위험등급 2등급(높은 위험) · 클래스 7개" in r6.answer
+
+
+def test_list_answer_assembled(ctx):
+    """2R Q5 — R3·S7: 커버리지를 구워 줘도 5·10행만 옮기고 "일부입니다" · S6: 총량 대신 "더 있을 수 있음". 목록은 전 행 + 총량 머리줄로 기계 조립."""
+    from src.runtime.pipeline import answer_question, _list_answer as f
+
+    class P:
+        calls = 0
+        sql = _R3_SQL
+
+        def plan_sql(self, q, g):
+            return P.sql
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-R3L", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Answer] 목록 답변 기계 조립" in r.think_trace
+    assert r.answer.startswith("조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드는 다음과 같습니다")
+    body = [ln for ln in r.answer.splitlines() if re.match(r"\d+\. ", ln)]
+    assert len(body) == 30 and body[0].startswith("1. KB중국본토A주증권자투자신탁[주식]: 순자산 1,453억원 · 클래스 14개")
+    assert "일부" not in r.answer and "있을 수 있" not in r.answer
+    # S7 베트남 — 38펀드 · 30줄
+    P.sql = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
+             "AND (',' || prfd_attr_cds || ',' LIKE '%,VNM,%' OR prfd_attr_cds LIKE '%VNM%') AND sale_yn = '판매중' LIMIT 30")
+    r7 = answer_question("T-S7", "베트남에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "전체 38개(클래스 119개)" in r7.answer and sum(1 for ln in r7.answer.splitlines() if re.match(r"\d+\. ", ln)) == 30
+    # 절단 없음(LIMIT 5) → "전체 5개"
+    P.sql = _R3_SQL.replace("LIMIT 30", "LIMIT 5")
+    r5 = answer_question("T-R3s", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    assert "상위 5개" in r5.answer or "전체 5개" in r5.answer
+    # 비발동 — 목록 형이 아닌 결과
+    assert f("SELECT itm_nm FROM public_funds LIMIT 5", "itm_nm\nA", 1) is None

@@ -150,6 +150,22 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
     """`tables` 는 라우터가 정한 테이블(미특정이면 빈 목록)."""
     entities = detect_entities(question)
 
+    # ①-0 absent_properties — 속성 자체가 없는 부류(좌수·운용역·기준가 시계열…): enums yaml 선언(= ttl ABSENT)이 곧
+    #    게이트 어휘다. HCX 0회 — 컬럼명 유사어(fd_set_pcd ≈ '설정')로 모델이 대체 계산하는 경로를 먼저 끊는다
+    #    (2026-09-02 KG-027: 설정유형코드 '10' 을 "10좌" 로 6펀드 단언). 대체 안내는 선언의 substitute 만.
+    if len(tables) == 1:
+        for item in ctx.absent_props.get(tables[0], []):
+            for pat in item.get("vocab") or []:
+                hit = re.search(pat, question)
+                if hit:
+                    sub = item.get("substitute") or {}
+                    note = f" {sub['note']}" if sub.get("note") else ""
+                    return GateResult(
+                        rejected=True,
+                        reason=f"온톨로지 ABSENT — {tables[0]} 에 {item['property']} 속성 없음 · 질문의 '{hit.group(0)}' (enums absent_properties → HCX 0회)",
+                        answer=f"{item['why']}{note}",
+                    )
+
     # ① absent — 온톨로지 속성 부재 (질의가 특정 테이블 하나로 좁혀질 때만 기각)
     if len(tables) == 1:
         for entity in entities:

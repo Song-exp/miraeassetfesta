@@ -74,6 +74,7 @@ class RuntimeContext:
     value_vocab: dict = field(default_factory=dict)    # R-1 — (table, column) -> [값…]  범주형 컬럼의 실제 값 목록 (enums/<domain>.vocab.yaml, 생성물)
     value_index: dict = field(default_factory=dict)    # R-4 — (table, column) -> {정규화 값}  WHERE 리터럴 검사용. **전 값을 아는 컬럼만** 들어간다
     gate_constants: dict = field(default_factory=dict) # R-5 ① 층 — table -> [{column, value, triggers[], answer}] 상수 컬럼 위반 (enums yaml gate_constants)
+    absent_props: dict = field(default_factory=dict)   # KG 1R S5 — table -> [{property, why, vocab[], substitute}] 부재 속성 선언 (enums yaml absent_properties → ttl ABSENT + 게이트 어휘)
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
@@ -225,6 +226,8 @@ def load_context() -> RuntimeContext:
             ctx.enums[doc["domain"]] = doc
             for item in doc.get("gate_constants") or []:
                 ctx.gate_constants.setdefault(doc["domain"], []).append(item)
+            for item in doc.get("absent_properties") or []:
+                ctx.absent_props.setdefault(doc["domain"], []).append(item)
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
         doc = _load_yaml(p, header_only_if_big=True)

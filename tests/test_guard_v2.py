@@ -1450,3 +1450,31 @@ def test_guard_keeps_qualifier_inside_function(ctx):
         _ro().execute(chained).fetchall()                                   # 실행 가능
     # 무한정 형은 종전대로
     assert t("SELECT 1 FROM public_funds WHERE or_co_xtn_itt_cd = '00040022' LIMIT 1")[0].count("TRIM(or_co_xtn_itt_cd)") == 1
+
+
+def test_absent_properties_gate(ctx):
+    """KG 1R S5/R2 (KG-027) — 좌수 환각: fd_set_pcd '10' 을 "10좌" 로 6펀드 단언. 일반 규칙: enums absent_properties 선언 =
+    ttl ABSENT = 게이트 어휘 → HCX 0회 즉답. 기준가(있음)는 통과, '기준가 추이'(시계열)는 기각. 4도메인 같은 형식."""
+    from src.runtime import gate
+    from src.runtime.pipeline import answer_question
+
+    assert ctx.absent_props.get("public_funds") and ctx.absent_props.get("domestic_etfs") and ctx.absent_props.get("domestic_bonds")
+    g = gate.check("미래에셋코어테크 펀드 설정 좌수 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "좌수" in g.answer and "좌입니다" not in g.answer and "억좌" not in g.answer and "순자산" in g.answer
+    assert gate.check("미래에셋코어테크 펀드 잔존좌수 알려줘", ctx, ["public_funds"]).rejected
+    assert gate.check("미래에셋코어테크 펀드 운용역이 누구야?", ctx, ["public_funds"]).rejected
+    assert gate.check("미래에셋코어테크 펀드 기준가 추이 알려줘", ctx, ["public_funds"]).rejected
+    assert not gate.check("미래에셋코어테크 펀드 기준가 알려줘", ctx, ["public_funds"]).rejected        # U14 대조군
+    assert not gate.check("변동성이 낮은 공모펀드 알려줘", ctx, ["public_funds"]).rejected
+    assert gate.check("KODEX 200 구성종목 변화 알려줘", ctx, ["domestic_etfs"]).rejected
+    assert not gate.check("KODEX 200 구성종목 알려줘", ctx, ["domestic_etfs"]).rejected
+    assert gate.check("한국전력 채권 신용등급 추이 알려줘", ctx, ["domestic_bonds"]).rejected
+    assert not gate.check("한국전력 채권 신용등급 알려줘", ctx, ["domestic_bonds"]).rejected
+    assert not gate.check("설정 좌수 알려줘", ctx, []).rejected                                           # 미특정은 불개입
+    # 파이프라인 — HCX 0회 · trace 에 ABSENT 근거
+    r = answer_question("T-KG027", "미래에셋코어테크 펀드 설정 좌수 알려줘", planner=None, ctx=ctx)
+    assert "[Gate] 기각 — 온톨로지 ABSENT" in r.think_trace and "좌수" in r.answer and "좌입니다" not in r.answer
+    # ttl 사영
+    ttl = open("ontology/fund_pub.ttl", encoding="utf-8").read()
+    assert "# ABSENT: fp:PublicFund 에는 fp:hasUnitsOutstanding 없음" in ttl
+    assert "fp:hasCreditGradeHistory" in open("ontology/bond_kr.ttl", encoding="utf-8").read()

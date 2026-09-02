@@ -1129,3 +1129,13 @@ gate_constants:
   - '기타\s*비용'
   - '기타비용'
   answer: "국내 ETF·ETN 의 기타비용요율(cu_charge_etc_rt)은 전 종목 미수록(0)이라 기타비용 기준의 조회·비교는 제공할 수 없습니다. 총보수(cu_charge_rt) 기준을 원하시면 다시 질문해 주세요."
+
+# ── 부재 속성 선언 (2026-09-02 KG 1R S5 — 4도메인 같은 형식. build → etf_kr.ttl ABSENT · gate 어휘) ──
+absent_properties:
+  - property: hasHoldingsHistory
+    why: "ETF 구성종목은 수집 기준일 1시점(ext_etf_holdings)만 있고 시계열(변화·추이)은 수록되어 있지 않습니다."
+    vocab: ["(?:보유|구성|편입)[ ]?종목.{0,8}?(?:추이|변동(?!성)|변화|이력|히스토리)"]
+    substitute: {column: "ext_etf_holdings", note: "수집 기준일의 구성종목·비중은 안내할 수 있습니다."}
+  - property: hasNavHistory
+    why: "ETF 시세·기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동)은 수록되어 있지 않습니다."
+    vocab: ["(?:기준가|시세)[ ]?(?:추이|변동(?!성)|흐름|이력|그래프|히스토리)"]

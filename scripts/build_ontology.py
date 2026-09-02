@@ -400,7 +400,7 @@ DATATYPE_PROPS = {
 }
 
 
-def emit_ttl(shared, con=None):
+def emit_ttl(shared, con=None, enums=None):
     """제출 규격 5분할 출력 — common.ttl(공통 클래스·공유 개체) + 도메인 4파일.
 
     분할 원칙:
@@ -514,6 +514,20 @@ def emit_ttl(shared, con=None):
         for e in doc.get("edges") or []:
             C.append(f"fp:{ttl_local(e['src'])} fp:{e['predicate']} fp:{ttl_local(e['dst'])} .")
         C.append("")
+
+    # ── 부재 속성(enums/*.yaml absent_properties) → 해당 도메인 ttl ABSENT (KG 1R S5 — 선언이 곧 게이트 어휘) ──
+    for _, doc in sorted((enums or {}).items()):
+        table = doc.get("domain")
+        if table not in TABLE_TTL:
+            continue
+        D = F[TABLE_TTL[table]]
+        for item in doc.get("absent_properties") or []:
+            prop, why = item.get("property"), item.get("why", "")
+            sub = (item.get("substitute") or {}).get("column")
+            D.append(f"# ABSENT: fp:{TABLE_CLASS[table]} 에는 fp:{prop} 없음 — {why}" + (f" (대체: {sub})" if sub else ""))
+            D.append(f"fp:{TABLE_CLASS[table]} rdfs:comment \"{ttl_str(f'{prop} 속성 없음: {why}')}\"@ko .")
+        if doc.get("absent_properties"):
+            D.append("")
 
     out = {}
     for key, (fname, _) in TTL_FILES.items():
@@ -629,7 +643,7 @@ def main():
         print("✅ 검증 통과 (--check 모드 — 산출물 생성 생략)")
     else:
         n_node, n_alias, n_edge, n_closure = emit_kg(con, shared)
-        ttl_out = emit_ttl(shared, con)
+        ttl_out = emit_ttl(shared, con, enums)
         print(f"📦 [3 Emit] kg_node {n_node} · kg_alias {n_alias} · kg_edge {n_edge} · kg_closure {n_closure}")
         detail = " · ".join(f"{name} {n:,}줄" for name, n in ttl_out.items())
         print(f"           ttl 5분할(제출 규격 p.9) → ontology/ — {detail}")

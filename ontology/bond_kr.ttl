@@ -24,3 +24,6 @@ fp:DomesticBond rdfs:comment "hasAssetClass 속성 없음: 자산군 컬럼 없�
 fp:DomesticBond rdfs:comment "tracksIndex 속성 없음: 기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각"@ko .
 # ABSENT: fp:DomesticBond 에는 fp:hasRegion 없음 — 투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)
 fp:DomesticBond rdfs:comment "hasRegion 속성 없음: 투자지역 컬럼 없음 — PD_CTRY_CD(발행국)는 42,393/42,394가 KR 인 사실상 상수 (enums 판정: kg_entity null)"@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasCreditGradeHistory 없음 — 채권 신용등급은 기준일 현재 등급(crd_grd)만 있고 등급 추이·변동 이력(상향·하향)은 수록되어 있지 않습니다.
+fp:DomesticBond rdfs:comment "hasCreditGradeHistory 속성 없음: 채권 신용등급은 기준일 현재 등급(crd_grd)만 있고 등급 추이·변동 이력(상향·하향)은 수록되어 있지 않습니다."@ko .
+

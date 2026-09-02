@@ -1963,7 +1963,7 @@ def ensure_fund_mgmt_modal_name(sql: str) -> tuple[str, bool]:
 #   읽는다 — _country_tag_map(). '대만·호주·말레이시아…' 코드북 17국 전부가 자동으로 확정식 대상이 된다(KG-021 사전 밖 오거절).
 
 
-def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
+def ensure_fund_country_tag(sql: str, question: str, name_token: str | None = None) -> tuple[str, bool]:
     """국가 질의의 지역 컬럼 오용을 태그 확정식으로 교체. (보정된 SQL, 보정했는지)
 
     2026-09-01 FND-026 재검 실측 — 국가태그 규칙이 실려도 플래너가 ① fd_ivst_rgn_desc='중국'
@@ -1974,6 +1974,11 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql):
         return sql, False
+    if name_token and _has_name_filter(sql):
+        # 6R I′ — 이름 토큰이 실린 개별 조회엔 국가 태그를 싣지 않는다(태그는 클래스별 결측 — 이름이 특정한 펀드의 합계를 깬다, W2).
+        #    HCX 가 이미 쓴 태그·속성명 절도 같은 이유로 걷어낸다(W3 'JPN' 절이 14클래스 → 1클래스).
+        stripped = _strip_tag_predicates(sql)
+        return (stripped, True) if stripped != sql else (sql, False)
     # 유형 축('중국주식 유형')은 국가어가 소분류 값 안에 붙어 있어 독립 낱말 판정을 통과하지 못한다 — R10 분기는 값 포함으로 판정
     ptn_q = _ptn_value_in_question(question) if "유형" in question else None
     hits = [(w, t, sp) for w, t, sp in _country_tag_map()
@@ -2026,6 +2031,27 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
         sql = re.sub(rf"\(\s*{c}\s+OR\s+{c}\s*\)", c_txt, sql, flags=re.I)
         sql = re.sub(rf"{c}\s+OR\s+{c}", c_txt, sql, flags=re.I)
     return sql, sql != orig
+
+
+_TAG_PREDICATE = re.compile(
+    r"(?:',' \|\| )?(?:\b\w+\.)?(?:prfd_attr_cds|zrin_attr_nms)(?: \|\| ',')?\s+LIKE\s+'[^']*'|(?:\b\w+\.)?fd_ivst_rgn_desc\s*=\s*'[^']*'", re.I)
+
+
+def _strip_tag_predicates(sql: str) -> str:
+    """WHERE 의 태그·속성명·지역 술어만 걷어낸다(괄호 묶음의 다른 술어는 보존 — T14 '(코드 AND 태그 AND 이름)'). 빈 자리는 1=1 로 메운 뒤 정리."""
+    frm = re.search(r"\bwhere\b", sql, re.I)
+    if not frm:
+        return sql
+    head, body = sql[:frm.end()], sql[frm.end():]
+    if not _TAG_PREDICATE.search(body):
+        return sql
+    body = _TAG_PREDICATE.sub("1=1", body)
+    for _ in range(3):
+        body = re.sub(r"\(\s*1=1\s*\)", "1=1", body)
+        body = re.sub(r"\b1=1\s+(?:AND|OR)\s+", "", body, flags=re.I)
+        body = re.sub(r"\s+(?:AND|OR)\s+1=1\b", "", body, flags=re.I)
+    body = re.sub(r"\bwhere\s*1=1\s*(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", "", head[-5:] + body, flags=re.I) if False else body
+    return head + body
 
 
 @lru_cache(maxsize=1)
@@ -2199,7 +2225,18 @@ def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
     if not m:
         return sql, False
     body = m.group(1)
-    kept = [c for c in guard.split_conjuncts(body) if f"{n}호" not in c]
+    kept = []
+    for c in guard.split_conjuncts(body):
+        if f"{n}호" not in c:
+            kept.append(c)
+            continue
+        # 6R J′ — 'N호' 절을 걷어낼 때 절 안의 **이름 LIKE 리터럴**은 'N호' 만 떼어 보존한다(W6: HCX 의 이름+4호 결합 LIKE 를 통째로 제거해
+        #    이름 필터가 사라지고 목록 경로로 빠졌다). 호 경계는 아래 GLOB 이 맡는다.
+        m_like = re.search(r"((?:REPLACE\((?:\w+\.)?itm_nm,' ',''\)|(?:\b\w+\.)?itm_nm)\s+LIKE\s+')%([^%']*)%'", c, re.I)
+        if m_like:
+            lit = m_like.group(2).replace(f"{n}호", "").replace(" ", "").strip()
+            if len(lit) >= 3:
+                kept.append(f"{m_like.group(1)}%{lit}%'")
     new_body = " " + " AND ".join(kept + [bound]) + " "
     return sql[:m.start(1)] + new_body + sql[m.end(1):], True
 
@@ -3049,7 +3086,9 @@ def _ground(
             if not span:
                 continue
             label = span
-        if bounded and not _boundary_hit(label, consumed):
+        # 6R I′ — 경계 판정은 **원문 question** 기준: 앞 라벨의 소비(' ' 치환)가 뒤 라벨의 경계를 만들지 않는다(W2 '미래에셋베트남' 에서 Org 소비 뒤
+        #    '베트남' 이 독립 낱말처럼 보여 Country 태그가 실렸다). 소비 중복 방지는 위 `label not in consumed` 가 이미 맡는다.
+        if bounded and not _boundary_hit(label, question if label in question else consumed):
             # 보조 키는 단어 경계까지 본다 — 'Apple' 이 'Pineapple' 에 붙는 것을 막는다
             continue
         if drop_trustee and node.node_id.startswith("Org_trustee_"):
@@ -3248,7 +3287,10 @@ def _country_name_component(label: str, question: str) -> tuple[str, str] | None
         return tail, (label + tail).replace(" ", "")
     words = re.findall(r"[0-9A-Za-z가-힣.\-]+", question)
     for i, w in enumerate(words):
-        if w != label and _PARTICLE.sub("", w) != label:
+        base = _PARTICLE.sub("", w).strip(".")
+        if base != label and label in base and len(base) > len(label) and _name_chunk_exists(base):
+            return base, base          # 6R I′ — 라벨을 **품은 낱말 전체**('미래에셋베트남'·'피델리티재팬')가 종목명 부분열이면 그 낱말이 토큰
+        if w != label and base != label:
             continue
         for j in (i + 1, i - 1):
             if not 0 <= j < len(words):
@@ -3298,6 +3340,10 @@ def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
             tok = _PARTICLE.sub("", tail).strip()
             if len(tok) >= 3 and tok not in _GENERIC_NAME_TOKEN:
                 return tok
+            # 6R I′ — 잔여가 짧아도(재팬 2자) 라벨+잔여 낱말 전체가 종목명 부분열이면 낱말 전체가 토큰('피델리티재팬')
+            whole = (label + tok).replace(" ", "")
+            if len(tok) >= 2 and tok not in _GENERIC_NAME_TOKEN and _name_chunk_exists(whole):
+                return whole
     if not ground_lines:
         return _standalone_name_token(question)
     return None
@@ -3836,7 +3882,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
              "소수 이름 제외로 교정 (2026-09-01 FND-035 재검: 00040007 이 프랭클린템플턴(10행)으로 표기 — 정본은 우리자산운용 373행)")
     before_ctag = sql
-    sql, ctag_fixed = ensure_fund_country_tag(sql, q)
+    sql, ctag_fixed = ensure_fund_country_tag(sql, q, name_token)
     if ctag_fixed:
         step("[Guard] 국가 태그 확정식 — 국가어 질의의 지역·설립국·태그·속성명·이름 OR 절을 KG Country 토큰 canon 하나로 접음 "
              f"(KG 1R S3·3R C: 어떤 태그를 썼든 교정 · '유형' 이면 zrin_ptn_nm) · 전: {before_ctag[before_ctag.upper().find('WHERE'):][:120]}")
@@ -3935,6 +3981,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, brep_fixed = ensure_bond_representative(sql)
     if brep_fixed:
         step("[Guard] 채권 대표행 보정 — 목록 SELECT 를 GROUP BY pd_no 로 종목 단위 묶기 + 정렬 컬럼 MAX/MIN (2026-09-02 실측: 장내·장외 중복행으로 발행사 39곳 top5 에 같은 종목 2회 — gold 38개 중 37개가 GROUP BY pd_no)")
+    if name_token and _FUND_TBL.search(sql):
+        # 6R J′ — 사후조건: 어느 가드가 절을 걷어냈든(호수 가드가 이름+N호 결합 LIKE 를 통째로 제거 — W6) 이름 토큰은 살아남는다. 멱등(N2 규칙 재사용)
+        sql, post_fixed = ensure_fund_name_filter(sql, name_token)
+        if post_fixed:
+            step(f"[Guard] 이름 토큰 사후조건 — 체인 끝에 '{name_token}' 이 itm_nm LIKE 에 없어 다시 주입 (6R J′: 호수 가드가 이름+N호 결합 절을 제거)")
     sql, qualified = qualify_join_columns(sql, ctx)
     if qualified:
         step(f"[Guard] JOIN 모호 컬럼 한정 — {', '.join(qualified)} → FROM 테이블 한정 "

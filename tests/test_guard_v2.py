@@ -2037,3 +2037,45 @@ def test_r6_F2_class_dependent_range(ctx):
     first = [ln for ln in r.answer.splitlines() if ln.startswith("- 미래에셋코어테크증권자투자신탁(주식):")][0]
     assert f"{lo:,.2f}".rstrip("0").rstrip(".") in first and f"{hi:,.2f}".rstrip("0").rstrip(".") in first and "클래스에 따라 다름" in first and "종류" not in first
     assert "매매기준가" in first
+
+
+def test_r6_Iprime_Jprime(ctx):
+    """6R I′·J′ (W2·W3·W6) — 경계·성분 판정은 원문 기준(앞 라벨 소비가 뒤 경계를 만들지 않음) · 라벨을 품은 낱말 전체가 토큰 ·
+    이름 토큰 개별 조회엔 Country 태그 불탑재 · 체인 끝 이름 토큰 사후조건."""
+    from src.runtime.pipeline import _ground, residual_name_token, ensure_fund_country_tag as ct, answer_question
+
+    def g(q):
+        hits, lines = _ground(q, ctx, ["public_funds"])
+        return [h.node_id for h in hits], lines
+
+    ids, lines = g("미래에셋베트남 펀드 순자산 알려줘")
+    assert "Country_VNM" not in ids and ids == ["Org_00080008"]
+    ids, lines = g("피델리티재팬 펀드 1년 수익률 알려줘")
+    assert "Country_JPN" not in ids and ids == ["Org_00080029"]
+    assert g("베트남에 투자하는 공모펀드 알려줘")[0] == ["Country_VNM"]
+    ids, _ = g("미래에셋이 운용하는 베트남 펀드 알려줘")
+    assert "Country_VNM" in ids and "Org_00080008" in ids
+    s = "SELECT itm_nm FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%베트남%' AND prfd_attr_cds LIKE '%VNM%' LIMIT 30"
+    s2, ok2 = ct(s, "미래에셋베트남 펀드 순자산 알려줘", "베트남")                  # 이름 토큰 개별 조회 — 태그 절 제거(주입 없음)
+    assert ok2 and "prfd_attr_cds" not in s2 and "'%베트남%'" in s2
+    assert ct(s, "베트남에 투자하는 공모펀드 알려줘")[1]                                   # 목록 질의는 종전대로
+
+    class P:
+        sql = ("SELECT fd_yr1_ern_r, itm_no, TRIM(itm_nm) AS itm_nm, prfd_attr_cds FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080029' "
+               "AND prfd_attr_cds LIKE '%JPN%' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 LIMIT 1")
+
+        def plan_sql(self, q, g):
+            return P.sql
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r3 = answer_question("T-W3", "피델리티재팬 펀드 1년 수익률 알려줘", planner=P(), ctx=ctx)
+    assert "[Answer] 개별 조회 답변 기계 조립" in r3.think_trace and "JPN" not in r3.sql and "'%피델리티재팬%'" in r3.sql
+    assert "34.36%~36.28%" in r3.answer and "클래스 13개" in r3.answer and "판매완료" in r3.answer   # 14클래스 = 판매중 13 + 판매완료 1(별도 대표번호)
+    # J′ — W6: 이름+4호 결합 LIKE 를 호수 가드가 제거해도 토큰이 체인 끝에서 복원
+    P.sql = ("SELECT zrin_fd_ivst_risk_grd_nm, itm_nm FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+             "AND REPLACE(itm_nm,' ','') LIKE '%미래에셋디스커버리증권투자신탁4호%' LIMIT 30")
+    r6 = answer_question("T-W6", "미래에셋디스커버리증권투자신탁 4호 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert "LIKE '%미래에셋디스커버리증권투자신탁%'" in r6.sql and "4호*'" in r6.sql      # 호수 가드가 이름 리터럴을 보존(사후조건은 벨트)
+    assert "[Answer] 개별 조회 답변 기계 조립" in r6.think_trace and "위험등급 2등급" in r6.answer and "클래스 2개" in r6.answer

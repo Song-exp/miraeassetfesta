@@ -38,6 +38,9 @@
 | `../proposal_data_pipeline_section.md` | §02-① 데이터 파이프라인 (수집·적재·활용 로직) | 리드 |
 | `ontology_engineering_etf.md` | §02-② 온톨로지 엔지니어링 — ETF 트랙 결함→설계 인과 | 이병철 |
 | `NUMBERS.md` | **제안서에 쓸 수치 단일 출처** — 재생성 명령 포함 | 공용 |
+| `PROPOSAL_DIRECTION_2026-09-02.md` | **6대 목차 × 3인 도메인 분담 작성 방향** — 공통 템플릿·용어 규율·일정 | 공용 |
+| `PROPOSAL_TOC_2026-09-02.md` | **상세 목차** — 절마다 한 줄 설명 + 담당 표기 | 공용 |
+| `ONTOLOGY_FIGURE_DESIGN_2026-09-02.md` | **온톨로지 구성도 설계** — 통합 그림 A · 도메인 그림 B×3 · 연결 매트릭스 C (kg_alias 실측) | 공용 |
 
 ## 규칙
 

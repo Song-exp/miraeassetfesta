@@ -1361,9 +1361,14 @@ def _hide_answer_columns(rows: str, sql: str = "") -> tuple[str, list[str]]:
     # 3R/4R B-4 — 원 단위 금액(fd_nast_suma·du_last_aum 및 그 집계·HCX 별칭 total_aum)은 억원 문자열이 함께 실리므로 13자리 원값은 숨긴다
     #    (021·022·031·T3·S11·V7 자릿수 훼손 계열). 별칭은 SQL 텍스트로 판정. 억원 컬럼('…억원')은 남긴다.
     amount_headers = {h.strip().lower() for _, h, _ in _amount_select_items(sql)} if sql else set()
+    # 7R B-4′ — 숨김과 병기는 한 쌍이다. 대체 표시 열('…억원')이 결과에 **실제로 없으면** 원값을 숨기지 않는다.
+    #    6R Y16 실측: 억원 병기 가드는 public_funds·domestic_etfs 만 다루는데 숨김은 전 테이블이라
+    #    overseas_etfs 의 SUM(du_last_aum) 이 대체 열 없이 삭제 → 답변기에 숫자가 0개 → 환각·투자권유가 빈칸을 메웠다.
+    has_display = any("억원" in c for c in cols)
     drop = [i for i, c in enumerate(cols)
-            if c.strip().lower() in _HIDE_FROM_ANSWER or (_RAW_AMOUNT_COL.search(c) and "억원" not in c)
-            or (c.strip().lower() in amount_headers and "억원" not in c)]
+            if c.strip().lower() in _HIDE_FROM_ANSWER
+            or (has_display and "억원" not in c
+                and (_RAW_AMOUNT_COL.search(c) or c.strip().lower() in amount_headers))]
     if not drop or len(drop) == len(cols):
         return rows, []
     keep = [i for i in range(len(cols)) if i not in drop]
@@ -1372,6 +1377,63 @@ def _hide_answer_columns(rows: str, sql: str = "") -> tuple[str, list[str]]:
         parts = ln.split(" | ")
         out.append(" | ".join(parts[i] for i in keep if i < len(parts)))
     return "\n".join(out), [cols[i].strip() for i in drop]
+
+
+_CODE_COL_RX = re.compile(r"\b(\w+_itt_cd)\b", re.I)
+
+
+@lru_cache(maxsize=1)
+def _code_label_map() -> dict:
+    """(코드 컬럼, 8자리 코드) → 기관 정본 이름. 원천은 `kg_alias` × `kg_node.label_official` — 하드코딩 0."""
+    ctx = _ev_ctx()
+    out: dict = {}
+    by_id = getattr(ctx, "kg_node_by_id", {}) or {}
+    for nid, aliases in (getattr(ctx, "kg_aliases", {}) or {}).items():
+        node = by_id.get(nid)
+        name = (getattr(node, "label_official", None) or getattr(node, "label_ko", None)) if node else None
+        if not name:
+            continue
+        for _t, col, raw in aliases:
+            if col and col.lower().endswith("_itt_cd") and str(raw).strip():
+                out.setdefault((col.lower(), str(raw).strip().zfill(8)), name)
+    return out
+
+
+def label_code_columns(rows: str, sql: str) -> tuple[str, list[str]]:
+    """KG 4R G4 — 답변 입력의 **기관 코드 컬럼 값**을 기계가 확정 표기한다. (정리된 표, 표기한 컬럼)
+
+    컬럼 판정은 **별칭이 아니라 SELECT 항목의 원 컬럼 표현식**으로 한다 — KG-008 실측:
+    `trim(trusc_xtn_itt_cd) AS 수탁회사명` 이 이름 열처럼 보여 HCX 가 운용사 이름 3개를 통째로 날조했다.
+    매핑이 있으면 `이름(코드)`, 없으면 `코드 00020088(기관명 미수록)` 으로 굽는다 — **숨기지 않는다**:
+    숨김은 Z23("수탁사 정보가 수록되어 있지 않습니다") 처럼 값이 있는데 부재로 서술하는 결과를 낳았다.
+    """
+    lines = rows.splitlines()
+    frm = re.search(r"\bfrom\b", sql or "", re.I)
+    if len(lines) < 2 or not frm:
+        return rows, []
+    cols = lines[0].split(" | ")
+    items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I))
+    if len(items) != len(cols):
+        return rows, []
+    code_cols = {i: m.group(1).lower() for i, it in enumerate(items) if (m := _CODE_COL_RX.search(it))}
+    if not code_cols:
+        return rows, []
+    mapping = _code_label_map()
+    out, touched = [lines[0]], []
+    for ln in lines[1:]:
+        parts = ln.split(" | ")
+        for i, col in code_cols.items():
+            if i >= len(parts):
+                continue
+            v = parts[i].strip()
+            if not v or not v.isdigit():
+                continue
+            name = mapping.get((col, v.zfill(8)))
+            parts[i] = f"{name}({v})" if name else f"코드 {v}(기관명 미수록)"
+            if cols[i].strip() not in touched:
+                touched.append(cols[i].strip())
+        out.append(" | ".join(parts))
+    return ("\n".join(out), touched) if touched else (rows, [])
 
 
 _NAME_COL = re.compile(r"\b(?:itm_nm|itm_abrv_nm|pd_nm|pd_abrv_nm|etf_name)\b", re.I)
@@ -1588,10 +1650,14 @@ def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
 
 # 면책 상투구가 든 문장 통째 — 문장 경계는 마침표·물음표·느낌표·줄바꿈 (쉼표는 문장 내부)
 _DISCLAIMER = re.compile(
-    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견)"
+    r"[^.!?\n]*(?:전문가(?:와의?|의)?\s*(?:상담|조언|의견)"
     # 2026-09-02 R2 재검 — "추가 정보가 필요하시다면 관련 기관에 문의하시기 바랍니다" 가 '관련 기관' 이라 빠져나갔다
-    r"|(?:관련|해당|금융|각)\s*기관(?:에|으로|을\s*통해)\s*(?:문의|확인|상담)|추가\s*정보가\s*필요"
-    r"|자세한\s*(?:내용|사항)은[^.!?\n]*(?:문의|확인|상담|참고|참조))"
+    # 7R B-5 — KG 4R Z21·Z23 실측: "금융 기관에 **직접** 문의" 처럼 부사가 끼면 빠져나갔다. 기관어와 동사 사이 부사를 허용한다
+    r"|(?:관련|해당|금융|각|공식)?\s*(?:금융\s*)?기관(?:에|으로|을\s*통해)\s*(?:직접\s*|따로\s*)?(?:문의|확인|상담)|추가\s*정보가\s*필요"
+    r"|자세한\s*(?:내용|사항)은[^.!?\n]*(?:문의|확인|상담|참고|참조)"
+    # 7R B-5 — 투자권유형. 6R Y16 실측: 값이 통째로 숨겨진 자리를 "안정성과 성장성 … 긍정적으로 검토해볼 수 있을 것입니다" 가 메웠다.
+    #   답변 규칙의 투자권유 금지가 HCX 문장에 맡겨져 재발한다(면책과 같은 계열 — 같은 함수가 처리한다)
+    r"|긍정적으로\s*검토|검토해\s*볼\s*(?:만|수)|안정성과\s*성장성|투자를\s*(?:고려|권|추천)|매수를\s*(?:고려|권|추천))"
     r"[^.!?\n]*[.!?]?")
 # 전수 집계 결과에 붙는 거짓 유보 — "더 있을 수 있습니다"(5행 전수인데) · "조회된 데이터를 기반으로 한 것이며" · "일부"
 _FALSE_HEDGE = re.compile(
@@ -1867,9 +1933,16 @@ def _zero_row_reason(sql: str) -> str:
                     near = _nearest_fund_names(m_nm.group(1))
                     return (f"질문의 「{m_nm.group(1)}」를 데이터의 종목명으로 식별하지 못했습니다"
                             + (f" (가까운 표기: {' · '.join(near)})" if near else "") + ".")
-                lit = next((m.group(3) for m in guard._EQ.finditer(c)), None) or next((m.group(3).strip('%') for m in guard._LIKE.finditer(c)), None)
+                # 7R S′ — 리터럴 추출은 `=`·`LIKE`·**`IN`** 세 형 전부. 어느 것도 못 뽑으면 사람말(_humanize_cond)만 쓰고
+                #   그것도 없으면 (a) 갈래로 떨어뜨린다 — **절 원문을 사용자에게 보이지 않는다**.
+                #   6R W11 실측: 답변에 「itm_no IN ('030230002D36')」 SQL 절이 그대로 나갔다(값 오류를 넘는 감점 축).
+                lit = (next((m.group(3) for m in guard._EQ.finditer(c)), None)
+                       or next((m.group(3).strip('%') for m in guard._LIKE.finditer(c)), None)
+                       or next((v for m in guard._IN.finditer(c) for v in guard._LIT.findall(m.group(3))), None))
                 desc = guard._humanize_cond(c)
-                return (f"질문의 「{lit or desc or c.strip()}」를 데이터 표기로 식별하지 못했습니다 — 값 사전·개체 매핑에 없는 표기입니다.")
+                if not (lit or desc):
+                    break
+                return (f"질문의 「{lit or desc}」를 데이터 표기로 식별하지 못했습니다 — 값 사전·개체 매핑에 없는 표기입니다.")
             if base:
                 try:
                     with_base = con.execute(f"SELECT COUNT(*) FROM public_funds WHERE {c} AND {' AND '.join(base)}").fetchone()[0]
@@ -4785,6 +4858,10 @@ def answer_question(
     answer_rows, hidden = _hide_answer_columns(rows, sql)
     if hidden:
         step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
+    answer_rows, labeled = label_code_columns(answer_rows, sql)
+    if labeled:
+        step(f"[Answer] 기관 코드 확정 표기 — {', '.join(labeled)} 를 정본 이름(kg_node.label_official) 또는 '코드 X(기관명 미수록)' 로 "
+             "(KG 4R G4 · KG-008 실측: `trim(trusc_xtn_itt_cd) AS 수탁회사명` 별칭에 속아 운용사 이름 3개 날조 · Z23 은 값이 있는데 '미수록' 서술)")
     header = f"(조회 결과: 총 {n}행)"
     bond_cov = _bond_coverage_counts(sql) if (n >= MAX_ROWS or _explicit_limit_hit(sql, n)) else None
     if bond_cov and bond_cov[1] > n:

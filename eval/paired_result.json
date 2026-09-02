@@ -1,0 +1,350 @@
+{
+ "CROSS-001": {
+  "full": false,
+  "layered": false
+ },
+ "CROSS-002": {
+  "full": false,
+  "layered": false
+ },
+ "CROSS-003": {
+  "full": false,
+  "layered": false
+ },
+ "UNANS-001": {
+  "full": true,
+  "layered": true
+ },
+ "UNANS-002": {
+  "full": true,
+  "layered": true
+ },
+ "UNANS-003": {
+  "full": true,
+  "layered": true
+ },
+ "UNANS-004": {
+  "full": true,
+  "layered": true
+ },
+ "UNANS-005": {
+  "full": false,
+  "layered": true
+ },
+ "UNANS-006": {
+  "full": false,
+  "layered": true
+ },
+ "BND-D-001": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-002": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-003": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-004": {
+  "full": false,
+  "layered": false
+ },
+ "BND-R-005": {
+  "full": true,
+  "layered": true
+ },
+ "BND-D-006": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-007": {
+  "full": false,
+  "layered": false
+ },
+ "BND-A-008": {
+  "full": true,
+  "layered": true
+ },
+ "BND-D-009": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-010": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-011": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-012": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-013": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-014": {
+  "full": false,
+  "layered": false
+ },
+ "BND-A-015": {
+  "full": false,
+  "layered": false
+ },
+ "BND-C-016": {
+  "full": false,
+  "layered": false
+ },
+ "BND-C-017": {
+  "full": false,
+  "layered": false
+ },
+ "BND-U-018": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-019": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-020": {
+  "full": false,
+  "layered": false
+ },
+ "BND-F-021": {
+  "full": false,
+  "layered": false
+ },
+ "BND-D-022": {
+  "full": false,
+  "layered": false
+ },
+ "BND-R-023": {
+  "full": true,
+  "layered": true
+ },
+ "BND-D-024": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-001": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-002": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-003": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-004": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-005": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-006": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-007": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-008": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-009": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-010": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-011": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-012": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-013": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-014": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-015": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-D-016": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-D-017": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-D-018": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-019": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-020": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-D-021": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-022": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-D-023": {
+  "full": false,
+  "layered": false
+ },
+ "OFFICIAL-001": {
+  "full": false,
+  "layered": false
+ },
+ "OFFICIAL-002": {
+  "full": false,
+  "layered": false
+ },
+ "OFFICIAL-003": {
+  "full": false,
+  "layered": false
+ },
+ "OFFICIAL-004": {
+  "full": false,
+  "layered": false
+ },
+ "OFFICIAL-005": {
+  "full": false,
+  "layered": false
+ },
+ "OFFICIAL-NA-001": {
+  "full": true,
+  "layered": true
+ },
+ "OFFICIAL-NA-002": {
+  "full": false,
+  "layered": true
+ },
+ "OFFICIAL-NA-003": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-001": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-002": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-003": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-004": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-005": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-006": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-007": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-008": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-009": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-010": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-011": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-012": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-013": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-014": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-015": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-016": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-017": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-018": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-019": {
+  "full": true,
+  "layered": true
+ },
+ "ETF-O-020": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-021": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-022": {
+  "full": false,
+  "layered": false
+ },
+ "ETF-O-023": {
+  "full": false,
+  "layered": false
+ }
+}

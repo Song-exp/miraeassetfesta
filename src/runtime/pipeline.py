@@ -3889,6 +3889,44 @@ def _cell(v, col: str) -> str:
     return str(v)
 
 
+_NUM_CMP = re.compile(r"^\(?\s*(?:\w+\.)?(\w+)\s*(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)\s*\)?$", re.S)
+
+
+def drop_unquestioned_numeric_clause(sql: str, question: str) -> tuple[str, str | None]:
+    """6R O — 0행일 때, **질문에 없는 숫자**로 만든 수치 비교 절(`fd_yr3_ern_r < -100` 류)이 단독으로도 0행이면 그 절만 뗀다.
+    부류: 단일 FROM · 최상위 AND 절 · `col (<|>|<=|>=) 숫자` 한 항 · 그 숫자(부호·소수 무시한 자릿수열)가 질문 어디에도 없음.
+    질문의 숫자를 쓴 절(예: '수익률 10% 이상')은 사용자의 조건이므로 손대지 않는다 — 조건 완화 금지(§9)와 충돌하지 않는 유일한 경우다:
+    플래너가 지어낸 임계값은 사용자 조건이 아니다 (5R S2: '3년 수익률 최하위 5개' → `< -100` 환각으로 0행 → 거절).
+    (보정 SQL, 뗀 절) — 못 떼면 (원문, None)."""
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    frm = re.findall(r"\b(?:from|join)\s+([A-Za-z_]\w*)", sql, re.I)
+    if not m_w or len(frm) != 1 or re.search(r"\(\s*select\b|\bunion\b", sql, re.I):
+        return sql, None
+    q_digits = set(re.findall(r"\d+", question.replace(",", "")))
+    conjs = guard.split_conjuncts(m_w.group(1))
+    con = connect_readonly()
+    try:
+        for c in conjs:
+            m = _NUM_CMP.match(c.strip())
+            if not m:
+                continue
+            digits = re.sub(r"\.0+$", "", m.group(3).lstrip("-"))
+            if digits in q_digits or any(digits in d for d in q_digits):
+                continue
+            try:
+                alone = con.execute(f"SELECT COUNT(*) FROM {frm[0]} WHERE {c}").fetchone()[0]
+            except sqlite3.Error:
+                continue
+            if alone:
+                continue
+            rest = [x for x in conjs if x is not c]
+            new_where = (" WHERE " + " AND ".join(x.strip() for x in rest) + " ") if rest else " "
+            return sql[:m_w.start()] + new_where + sql[m_w.end():], c.strip()
+    finally:
+        con.close()
+    return sql, None
+
+
 def _execute(sql: str) -> tuple[str, int]:
     con = connect_readonly()
     try:
@@ -4276,6 +4314,18 @@ def answer_question(
         result.answer = "데이터 조회 중 오류가 발생해 확인할 수 없습니다."
         return result
     step(f"[Execute] {n}행 조회 (상한 {MAX_ROWS})")
+    if n == 0:
+        # 6R O — 질문에 없는 숫자로 만든 수치 비교 절이 단독 0행이면 그 절만 떼고 **1회** 재실행 (5R S2 `fd_yr3_ern_r < -100`)
+        sql_o, dropped = drop_unquestioned_numeric_clause(sql, q)
+        if dropped:
+            try:
+                rows_o, n_o = _execute(sql_o)
+            except sqlite3.Error:
+                rows_o, n_o = rows, 0
+            step(f"[Guard] 0행 — 질문에 없는 숫자의 수치 절 폐기 후 1회 재실행: '{dropped}' → {n_o}행 (플래너 임계값 환각은 사용자 조건이 아니다)")
+            if n_o:
+                sql, rows, n = sql_o, rows_o, n_o
+                result.sql = sql
     result.retrieved_context = rows
 
     if n == 0:

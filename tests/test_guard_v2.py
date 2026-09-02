@@ -2115,3 +2115,28 @@ def test_r6_F4_zero_row_three_ways(ctx):
 
     r3 = answer_question("T-X3", "미래에셋 코어택 펀드 순자산 알려줘", planner=P(), ctx=ctx)
     assert "식별하지 못했" in r3.answer and "자체가 없습니다" not in r3.answer
+
+
+def test_r6_O_numeric_clause_rerun(ctx):
+    """6R O (5R S2) — 질문에 없는 숫자의 수치 비교 절(`fd_yr3_ern_r < -100`)이 단독 0행이면 그 절만 떼고 1회 재실행.
+    질문의 숫자를 쓴 절·단독으로 행이 있는 절·서브쿼리는 손대지 않는다(조건 완화 금지)."""
+    from src.runtime.pipeline import drop_unquestioned_numeric_clause as drop, answer_question
+
+    s2 = ("SELECT itm_nm, fd_yr3_ern_r FROM public_funds WHERE fd_yr3_ern_r < -100 AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+          "ORDER BY fd_yr3_ern_r ASC LIMIT 5")
+    out, dropped = drop(s2, "3년 수익률이 가장 낮은 공모펀드 5개 알려줘")
+    assert dropped == "fd_yr3_ern_r < -100" and "-100" not in out and "sale_yn = '판매중'" in out
+    # 질문의 숫자(10) 를 쓴 절 → 불개입 · 단독으로 행이 있는 절 → 불개입
+    assert drop(s2.replace("< -100", "> 10"), "3년 수익률 10% 이상인 펀드")[1] is None
+    assert drop(s2.replace("< -100", "< 0"), "3년 수익률이 마이너스인 펀드")[1] is None
+    assert drop("SELECT 1 FROM public_funds WHERE fd_yr3_ern_r < -100 AND itm_no IN (SELECT itm_no FROM ext_fund_page) LIMIT 1", "x")[1] is None
+
+    class P:
+        def plan_sql(self, q, g):
+            return s2
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-S2", "3년 수익률이 가장 낮은 공모펀드 5개 알려줘", planner=P(), ctx=ctx)
+    assert "-100" not in r.sql and "수치 절 폐기" in r.think_trace and "확인되지 않습니다" not in r.answer

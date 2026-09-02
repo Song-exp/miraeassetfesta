@@ -35,6 +35,10 @@ PRODUCT: dict[str, frozenset[str]] = {
     "상장지수펀드": _ETF_TABLES,
     "상장지수증권": _ETF_TABLES,
     "펀드": frozenset({"public_funds"}),
+    # 🔴 오타 흡수 — 2026-09-02 R7 재검: "공모펌드 중 1년 수익률…" 이 미특정 → 4테이블 49,634자 근거문서로 빠져
+    #    답변 규칙이 12,443자로 희석되고 residual_name_token(이름 필터)이 꺼졌다. 결정층 본체는 pipeline 의
+    #    SQL 사후 라우팅 보정이고 이것은 벨트-멜빵(비용 0). 표현형은 무한하므로 이것으로 닫았다고 보지 않는다.
+    "펌드": frozenset({"public_funds"}),
 }
 # 머리 명사 바로 앞의 지역 수식어 — 마스터 파일 이름의 '국내/해외' 그대로. '미국' 은 해외ETF 의 투자지역 값.
 QUALIFIER: dict[str, frozenset[str]] = {

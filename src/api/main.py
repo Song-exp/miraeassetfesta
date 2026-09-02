@@ -120,18 +120,27 @@ def run_pipeline(question_id: str, question: str):
     """
     from src.runtime.pipeline import PipelineResult
 
-    try:
-        from src.runtime.pipeline import answer_question as run
+    # 🔴 9/1 실측: HCX 일시 오류(연속 호출 시)도 이 catch 에 잡혀 "로드 실패" 스텁으로
+    # 나갔다 — 6문항 중 3건이 0.6~4s 만에 오답 처리. 게이트 경로(HCX 0회)는 10/10 정상이라
+    # 로드 문제가 아니다. 읽기 전용 파이프라인이므로 1회 재실행이 안전한 복구다.
+    for attempt in (1, 2):
+        try:
+            from src.runtime.pipeline import answer_question as run
 
-        return run(question_id, question, planner=get_planner())
-    except Exception:
-        log.exception("runtime pipeline unavailable — falling back to stub")
-        return PipelineResult(
-            question_id=question_id,
-            question=question,
-            think_trace="1. [Error] 런타임 파이프라인 로드 실패 — 답변 보류",
-            answer="현재 시스템 구축 중으로 답변을 제공할 수 없습니다.",
-        )
+            r = run(question_id, question, planner=get_planner())
+            if attempt == 2:
+                # 재시도 가시화 (2026-09-02 재검 P7-c) — R5 34.8s 같은 이상 지연이 전 파이프라인 재시도인지 trace 로 판별
+                r.think_trace = "0. [Retry] 1차 실행 런타임 오류 — 재실행\n" + (r.think_trace or "")
+            return r
+        except Exception:
+            log.exception("runtime pipeline error (attempt %d) — %s",
+                          attempt, "retrying once" if attempt == 1 else "falling back to stub")
+    return PipelineResult(
+        question_id=question_id,
+        question=question,
+        think_trace="1. [Error] 런타임 오류(재시도 1회 포함) — 답변 보류",
+        answer="현재 시스템 구축 중으로 답변을 제공할 수 없습니다.",
+    )
 
 
 def answer_question(question_id: str, question: str) -> AnswerResponse:

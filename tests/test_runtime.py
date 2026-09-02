@@ -99,6 +99,37 @@ def test_full_path_with_planner(ctx):
     assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측
 
 
+def test_manager_full_name_grounds(ctx):
+    """FND-034 실측 — 라벨이 약칭('삼성', 2자)뿐이라 매칭 하한(한글 3자)에 걸려 Ground 0 →
+    플래너가 수탁사 코드 서브쿼리를 지어내 '0개' 오답. 정식명 라벨 병합('삼성/삼성자산운용')로
+    '삼성자산운용' 질의가 운용사 코드에 매핑돼야 한다."""
+    from src.runtime.pipeline import _ground
+    _, lines = _ground("삼성자산운용이 운용하는 공모펀드는 몇 개야?", ctx, ["public_funds"])
+    assert any("Org_00040010" in l and "or_co_xtn_itt_cd" in l for l in lines), lines
+    # 약칭 2자('삼성')는 여전히 매칭에 참여하지 않는다 — '삼성전자' 질의 오탐 방지
+    _, l2 = _ground("삼성전자를 담은 공모펀드 알려줘", ctx, ["public_funds"], cross=True)
+    assert not any("Org_00040010" in l for l in l2), l2
+    # 🔴 회귀 보호 — 정식명을 label_ko 에 '/' 병합하면 조각에 단어경계가 붙어 브랜드+상품명
+    #    합성어('미래에셋코어테크')의 브랜드 매칭이 죽는다 (2026-09-01 저녁 FND-016 재검 실측)
+    _, l3 = _ground("미래에셋코어테크 펀드 1년 수익률 알려줘", ctx, ["public_funds"])
+    assert any("Org_00080008" in l for l in l3), l3
+
+
+def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):
+    """FND-032 실측 — '펀드' 명사 없는 질의가 미특정으로 빠져 FROM domestic_bonds 완전일치 → 오거절.
+
+    ① Ground 매핑이 public_funds 만 가리키면 라우팅을 그 상품군으로 좁힌다.
+    ② Fund 노드의 코드가 질문의 호수와 다를 수 있으면(디스커버리 노드 rptt = 4호에 2호 질문)
+       코드 매핑을 싣지 않고 이름 검색을 지시한다 — 4호 값이 2호의 답으로 나가는 것을 막는다.
+    """
+    r = answer_question("T-032", "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘", ctx=ctx)
+    assert "미특정 보정" in r.think_trace and "public_funds" in r.think_trace
+    assert "코드 매핑을 싣지 않는다" in r.think_trace and "rptt_ksd_itm_no" not in r.think_trace
+    # 호수 없는 질의는 코드 매핑 유지(불개입) — 좁히기는 동일하게 발동
+    r2 = answer_question("T-032b", "미래에셋디스커버리증권투자신탁 위험등급 알려줘", ctx=ctx)
+    assert "미특정 보정" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
+
+
 def test_cutoff_august_allowed(ctx):
     # 기준일 2026-08-22 — 8월은 기준일 포함 월이라 게이트를 통과해야 한다 (2차 데이터 전환 회귀 테스트)
     r = answer_question("T-11", "2026년 8월 상장한 국내 ETF 알려줘", ctx=ctx)
@@ -184,7 +215,7 @@ def test_normalize_date_literals_quoted_and_noop():
 def test_maturity_lower_bound_injection():
     from src.runtime.pipeline import ensure_maturity_lower_bound
     fixed, changed = ensure_maturity_lower_bound("SELECT pd_nm FROM domestic_bonds WHERE mat_dt <= 20290822 LIMIT 5")
-    assert changed and "(mat_dt > 20260822 AND mat_dt <= 20290822)" in fixed
+    assert changed and "(mat_dt >= 20260822 AND mat_dt <= 20290822)" in fixed
     # BETWEEN(자체 하한)·과거 상한("만기 지난")·하한 보유 SQL 은 건드리지 않는다
     assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 1")[1]
     assert not ensure_maturity_lower_bound("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260821 LIMIT 1")[1]
@@ -207,7 +238,7 @@ def test_full_path_buggy_date_sql_recovers(ctx):
                         planner=BuggyMaturityPlanner(), ctx=ctx)
     assert "[Guard] 날짜 리터럴 보정" in r.think_trace
     assert "[Guard] 만기 하한 보정" in r.think_trace
-    assert "(mat_dt > 20260822 AND mat_dt <= 20290822)" in r.sql
+    assert "(mat_dt >= 20260822 AND mat_dt <= 20290822)" in r.sql
     assert "산금채 1706복10A" not in r.retrieved_context   # 만기일 미수록(mat_dt=0) 행이 더는 새지 않는다
     assert "[Execute] 30행 조회" in r.think_trace
 
@@ -381,6 +412,27 @@ def test_ensure_reco_exclusions():
     # 발동 조건 밖 — 랭킹 신호 없음(개수·조회) / 채권 테이블 아님
     assert not ensure_reco_exclusions(sql, "표면금리 5% 넘는 회사채 30개 보여줘")[1]
     assert not ensure_reco_exclusions("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
+    # '골라줘' 도 추천 신호 (2026-09-01 실측: '골라줘' 질의가 제외 없이 나감)
+    assert ensure_reco_exclusions(sql, "안전한 회사채 몇 개만 골라줘")[1]
+
+
+def test_ensure_reco_sort():
+    from src.runtime.pipeline import ensure_reco_sort
+    # 2026-09-01 서버 실측 — '망하지 않을 회사가 발행한 채권만 골라줘' 가 정렬 없는 임의 5행
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), applied_yield, pd_risk_nm FROM domestic_bonds "
+           "WHERE pd_risk_gcd = '16' LIMIT 5")
+    q = "망하지 않을 회사가 발행한 채권만 골라줘"
+    fixed, changed = ensure_reco_sort(sql, q)
+    assert changed and "ORDER BY applied_yield DESC" in fixed
+    assert fixed.index("ORDER BY") < fixed.index("LIMIT")
+    # 불개입 — 이미 정렬 있음 / 다른 축 요구(만기) / 집계 / applied_yield 미선택(DISTINCT 제약) /
+    # 추천 신호 없음 / 채권 테이블 아님
+    assert not ensure_reco_sort(fixed, q)[1]
+    assert not ensure_reco_sort(sql, "만기 짧은 걸로 골라줘")[1]
+    assert not ensure_reco_sort("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_risk_gcd='16'", q)[1]
+    assert not ensure_reco_sort("SELECT DISTINCT pd_no, TRIM(pd_nm) FROM domestic_bonds LIMIT 5", q)[1]
+    assert not ensure_reco_sort(sql, "위험등급 6등급 채권 5개 보여줘")[1]
+    assert not ensure_reco_sort("SELECT pd_abrv_nm, applied_yield FROM domestic_etfs LIMIT 5", q)[1]
 
 
 def test_server_probe_fixes_20260831_night(ctx):
@@ -422,14 +474,29 @@ def test_ensure_maturity_sort():
     sql = "SELECT pd_nm, mat_dt, dur FROM domestic_bonds WHERE TRIM(pd_pbcm)= '한국전력공사(주)' ORDER BY dur DESC LIMIT 1"
     q = "한전 채권 중 만기가 가장 긴 건 뭐야?"
     fixed, changed = ensure_maturity_sort(sql, q)
-    assert changed and "ORDER BY mat_dt DESC" in fixed and "mat_dt > 20260822" in fixed
-    # 만기 짧은 순(ASC)에도 하한 주입 — 만기일 0값 4행·만기 경과 49행이 1위로 오는 것 차단
+    assert changed and "ORDER BY mat_dt DESC" in fixed and "mat_dt >= 20260822" in fixed
+    # 만기 짧은 순(ASC)에도 하한 주입 — 만기일 0값 4행·만기 경과 49행이 1위로 오는 것 차단.
+    # 하한은 >= — 당일 만기(잔존 1일) 7종목이 진짜 최단이다 (2026-09-01 서버 실측: > 로 누락)
     f2, c2 = ensure_maturity_sort("SELECT pd_nm FROM domestic_bonds ORDER BY dur ASC LIMIT 5", "만기 짧은 채권 5개 알려줘")
-    assert c2 and "ORDER BY mat_dt ASC" in f2 and "mat_dt > 20260822" in f2
+    assert c2 and "ORDER BY mat_dt ASC" in f2 and "mat_dt >= 20260822" in f2
     # 불개입 — 듀레이션을 직접 물음 / 이미 mat_dt 정렬 / 채권 테이블 아님
     assert not ensure_maturity_sort(sql, "한전 채권 중 듀레이션 가장 긴 것")[1]
     assert not ensure_maturity_sort("SELECT pd_nm FROM domestic_bonds ORDER BY mat_dt DESC LIMIT 1", q)[1]
     assert not ensure_maturity_sort("SELECT pd_abrv_nm FROM domestic_etfs ORDER BY dur DESC LIMIT 1", q)[1]
+
+
+def test_ensure_cutoff_inclusive():
+    from src.runtime.pipeline import ensure_cutoff_inclusive
+    # 2026-09-01 서버 실측 — '만기가 가장 짧은 채권 뭐야' 가 mat_dt > 20260822 로 당일 만기 7종목 누락
+    fixed, changed = ensure_cutoff_inclusive(
+        "SELECT pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt > 20260822 ORDER BY mat_dt ASC LIMIT 1")
+    assert changed and "mat_dt >= 20260822" in fixed and "mat_dt > 20260822" not in fixed
+    # REAL 적재 리터럴(20260822.0)도 교정
+    assert ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20260822.0")[1]
+    # 불개입 — 이미 >= / 기준일이 아닌 날짜의 부등호(사용자 조건) / 상한
+    assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt >= 20260822")[1]
+    assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt > 20270101")[1]
+    assert not ensure_cutoff_inclusive("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260822")[1]
 
 
 def test_price_ambiguity_clarify(ctx):
@@ -479,6 +546,17 @@ def test_ensure_top_safety():
     for variant in ("가장 위험이 낮은 채권 골라줘", "위험도가 가장 낮은 채권", "리스크가 가장 낮은 채권 추천",
                     "가장 덜 위험한 채권", "안전성이 가장 높은 채권 3개"):
         assert ensure_top_safety(sql, variant)[1], variant
+    # 부도-공포 서술형(2026-09-01 실측 사각 보강) — S-009 '원금 잃기 싫은데' 계열
+    for variant in ("망하지 않을 회사 채권 골라줘", "돈 떼일 걱정 없는 채권 뭐 있어?",
+                    "원금 잃기 싫은데 채권 뭐 사면 돼?", "부도 걱정 없는 채권"):
+        assert ensure_top_safety(sql, variant)[1], variant
+    # '망하지 않을 회사가 발행한' — 회사채(6등급 0행)를 지목하므로 완화 branch: 16 단독 → IN ('15','16')
+    f_corp, c_corp = ensure_top_safety(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' AND TRIM(std_pd_mcls_nm)='회사채' LIMIT 5",
+        "망하지 않을 회사가 발행한 채권만 골라줘")
+    assert c_corp and "IN ('15','16')" in f_corp
+    # '원금을 잃을 수도 있어?' 사실확인은 트리거 밖 — 잃기 싫/잃으면 안 꼴만
+    assert not ensure_top_safety(sql, "채권도 원금을 잃을 수 있어?")[1]
     # 구조표시 CASE 동반 — 치환은 WHERE 범위만: SELECT 의 pd_risk_gcd IN ('11','12','13') 은 보존 (전수조사 실측 파손)
     case_sql = ("SELECT pd_nm, CASE WHEN TRIM(bd_knd) IN ('특수은행채','일반은행채','금융지주회사채') "
                 "AND pd_risk_gcd IN ('11','12','13') THEN '은행 자본성증권' ELSE '' END AS 구조, pd_risk_nm "
@@ -494,6 +572,41 @@ def test_ensure_top_safety():
     assert not ensure_top_safety(sql, "가장 안전한 회사채 3개 추천해줘")[1]
     assert not ensure_top_safety(sql, "가장 안전한 채권과 가장 위험한 채권 하나씩 알려줘")[1]
     assert not ensure_top_safety("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 3", q)[1]
+
+
+def test_strip_fabricated_risk_filter():
+    from src.runtime.pipeline import strip_fabricated_risk_filter
+    # 2026-09-01 서버 실측 — '수익률이 제일 높은 채권' 에 pd_risk_gcd = '16' 이 날조되어
+    # 6등급 최고 6.231% 오답 (실제 최고 신보 유동화 728.524% C0·1등급. _TOP_SAFE_Q 미매치 확인)
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm) as 상품명, applied_yield FROM domestic_bonds "
+           "WHERE pd_risk_gcd = '16' AND applied_yield IS NOT NULL AND applied_yield > 0 "
+           "ORDER BY applied_yield DESC LIMIT 5")
+    q = "수익률이 제일 높은 채권이 뭐야?"
+    fixed, changed = strip_fabricated_risk_filter(sql, q)
+    assert changed and "pd_risk_gcd" not in fixed and "applied_yield > 0" in fixed
+    assert "ORDER BY applied_yield DESC" in fixed
+    # 절이 중간·끝에 있어도 앞뒤 AND 와 함께 떨어진다 · IN 꼴도 · '가장 낮은' 방향도
+    f2, c2 = strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' AND pd_risk_gcd IN ('15','16') "
+        "ORDER BY applied_yield DESC LIMIT 5", "수익률이 가장 낮은 채권은?")
+    assert c2 and "pd_risk_gcd" not in f2 and "curr_cd='KRW'" in f2 and " AND  AND " not in f2
+    # WHERE 가 그 절뿐이면 WHERE 통째 제거
+    f3, c3 = strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' ORDER BY applied_yield DESC LIMIT 5", q)
+    assert c3 and "WHERE" not in f3 and "ORDER BY applied_yield DESC" in f3
+    # 불개입 — 위험·안전·등급 어휘가 필터를 정당화 / 고위험제외(<>)는 음의 필터라 보존 /
+    # WHERE 에 OR(그룹 논리) / 위험 필터 없음 / 수익률 최상급 아님 / 채권 테이블 아님
+    assert not strip_fabricated_risk_filter(sql, "가장 안전하면서 수익률이 제일 높은 채권")[1]
+    assert not strip_fabricated_risk_filter(sql, "위험등급 1등급 중 수익률이 제일 높은 채권")[1]
+    assert not strip_fabricated_risk_filter(sql, "1등급 채권 중 수익률이 가장 높은 건?")[1]
+    assert not strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd <> '11' ORDER BY applied_yield DESC LIMIT 5", q)[1]
+    assert not strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE (pd_risk_gcd = '16' OR crd_grd='AAA') LIMIT 5", q)[1]
+    assert not strip_fabricated_risk_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 5", q)[1]
+    assert not strip_fabricated_risk_filter(sql, "수익률 높은 순으로 5개 추천해줘")[1]
+    assert not strip_fabricated_risk_filter("SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_risk_cd='PD_RISK_GCD_16' LIMIT 5", q)[1]
 
 
 def test_ensure_ktb_kind_and_distinct_count():
@@ -566,6 +679,31 @@ def test_ensure_trimmed_compare():
     assert not ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE crd_grd = 'AAA' LIMIT 1")[1]
 
 
+def test_ensure_count_query():
+    from src.runtime.pipeline import ensure_count_query, _cell
+    # 2026-09-01 서버 실측 — '5% 넘는 건 몇 개야' 에 COUNT 없는 목록 + 잔존일수순 임의 3행
+    sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm) as 상품명, applied_yield, pd_risk_gcd, pd_risk_nm, "
+           "std_pd_mcls_nm, remaining_days FROM domestic_bonds WHERE curr_cd = 'KRW' "
+           "AND mat_dt >= 20260822 AND applied_yield > 5 ORDER BY remaining_days LIMIT 3")
+    q = "지금 살 수 있는 채권 중에 수익률 5% 넘는 건 몇 개야?"
+    fixed, changed = ensure_count_query(sql, q)
+    assert changed and fixed.startswith("SELECT COUNT(DISTINCT pd_no)")
+    assert "applied_yield > 5" in fixed and "ORDER BY" not in fixed and "LIMIT" not in fixed
+    # 의문 어구 변종
+    for v in ("은행채는 몇 종목이나 있어?", "국고채는 총 몇 종목이야?", "표면금리 0%인 채권 개수 좀"):
+        assert ensure_count_query(sql, v)[1], v
+    # 불개입 — 개수 지정 추천('몇 개만 골라줘') / 이미 COUNT / GROUP BY(범주별 집계) / 중첩 SELECT / 타 테이블
+    assert not ensure_count_query(sql, "안전한 채권 몇 개만 골라줘")[1]
+    assert not ensure_count_query(sql, "채권 3개 보여줘")[1]
+    assert not ensure_count_query("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds", q)[1]
+    assert not ensure_count_query("SELECT bd_knd, COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY bd_knd", q)[1]
+    assert not ensure_count_query("SELECT * FROM (SELECT pd_no FROM domestic_bonds) LIMIT 5", q)[1]
+    assert not ensure_count_query("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", q)[1]
+    # 잔존일수 렌더 — 1년 미만은 '6일(약 0.0년)' 이 아니라 '6일' (2026-09-01 서버 답변 관측)
+    assert _cell(6.0, "remaining_days") == "6일"
+    assert _cell(9375.0, "remaining_days") == "9375일(약 25.7년)"
+
+
 def test_ensure_kind_filter():
     from src.runtime.pipeline import ensure_kind_filter
     # 2026-08-31 저녁 실측 — 'AA등급 이상 회사채' 인데 종류 조건 통째 부재
@@ -596,6 +734,15 @@ def test_ensure_kind_filter():
     assert c7 and "신용카드채" in f7 and "std_pd_mcls_nm" not in f7
     f8, c8 = ensure_kind_filter(sql, "정부가 발행한 채권 보여줘")
     assert c8 and "TRIM(std_pd_mcls_nm)='국공채'" in f8
+    # 2026-09-01 서버 실측 — SELECT 의 TRIM(pd_pbcm) 표시 컬럼은 필터가 아니다: 발동해야 함
+    show_sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), TRIM(pd_pbcm) as 발행기관, applied_yield "
+                "FROM domestic_bonds WHERE pd_risk_gcd = '16' LIMIT 5")
+    f9, c9 = ensure_kind_filter(show_sql, "망하지 않을 회사가 발행한 채권만 골라줘")
+    assert c9 and "TRIM(std_pd_mcls_nm)='회사채'" in f9
+    # WHERE 의 pd_pbcm 은 발행사 필터 — 종전대로 불개입 (발행사조회 영역)
+    assert not ensure_kind_filter(
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%한국전력%' LIMIT 5",
+        "회사가 발행한 채권 알려줘")[1]
     # 특정 발행사 지칭 — SQL 에 발행사 필터가 있으면 종류를 덧씌우지 않는다 (발행사조회 영역)
     issuer_sql = "SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%삼성전자%' LIMIT 30"
     assert not ensure_kind_filter(issuer_sql, "삼성전자라는 회사가 발행한 채권 알려줘")[1]
@@ -806,6 +953,28 @@ def test_gate_annualized_return_absent(ctx):
     # '연평균' 이 없으면 발동하지 않는다
     g2 = gate.check("1년 수익률이 가장 높은 공모펀드 알려줘", ctx, ["public_funds"])
     assert not g2.rejected
+
+
+def test_gate_ac_class_choice_is_conditional_answer(ctx):
+    """A/C 클래스 유불리는 게이트 즉답 — 플래너가 '정보가 없다'+전문가 면책으로 오거절 (FND-C04 실측)."""
+    from src.runtime import gate
+    g = gate.check("같은 펀드면 A클래스랑 C클래스 중 뭐가 유리해?", ctx, ["public_funds"])
+    assert g.rejected and "투자 기간" in g.answer and "판매보수" in g.answer
+    # 조회 질의(보수 알려줘)는 발동하지 않는다 — 판단 어휘가 있어야 한다
+    g2 = gate.check("솔로몬 펀드 A클래스랑 C클래스 보수 알려줘", ctx, ["public_funds"])
+    assert not g2.rejected
+
+
+def test_gate_no_redemption_fee_is_qualified_answer(ctx):
+    """환매수수료 '없음'은 게이트 즉답 — SQL 은 미수록 30행 조회에 성공했는데 답변기가 통째 거절 (FND-R07 실측)."""
+    from src.runtime import gate
+    g = gate.check("환매 수수료가 없는 펀드 알려줘", ctx, ["public_funds"])
+    assert g.rejected and "단정할 수 없" in g.answer and "297" in g.answer
+    g2 = gate.check("환매수수료 면제되는 펀드 있어?", ctx, ["public_funds"])
+    assert g2.rejected
+    # 조회 질의(조건 알려줘)·안내 요청은 발동하지 않는다
+    for q in ("미래에셋 펀드 환매수수료 알려줘", "환매수수료 안내해줘"):
+        assert not gate.check(q, ctx, ["public_funds"]).rejected
 
 
 def test_ground_uses_yaml_synonyms(ctx):

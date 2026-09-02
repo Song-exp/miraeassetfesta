@@ -69,6 +69,8 @@ _CONJ = re.compile(r"\s*(이랑|랑|와|과|및|하고|이나|나|또는|혹은|
 _QUAL_WINDOW = 8          # 머리 명사 앞에서 수식어를 찾는 글자 수 ('삼성전자를 보유한 국내/해외 ETF')
 _SCORE_KEEP = 0.7         # ② 겹에서 최고점의 70% 이상인 테이블은 함께 넘긴다 (HCX 가 고르게 둔다)
 _LONG_TERM = 5            # 이 길이 이상의 값(상품명)은 공백 무시 부분 일치를 허용 ('KODEX 국고채3년')
+# 한글 값 뒤에 붙어도 값의 끝으로 인정하는 조사 — 뒤에 한글이 더 오면 조사가 아니다 (2026-09-02: '국고채는' 미특정 실측)
+_PARTICLE = r"(?:은|는|이|가|을|를|의|에|에서|에게|로|으로|도|만|과|와|랑|이랑|부터|까지|처럼|보다|밖에|마다|조차|이나|나|든지|든|이란|란)"
 
 
 @dataclass
@@ -140,7 +142,10 @@ def _bound_in(term: str, question: str, squeezed: str) -> bool:
         #    경계 검사는 squeezed 에서도 유지해 짧은 토큰의 오탐을 막는다.
         return len(term) >= _LONG_TERM and re.search(
             rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", squeezed) is not None
-    if re.search(rf"(?<![가-힣]){re.escape(term)}(?![가-힣])", question):
+    # 🔴 한글 값의 뒤 경계는 조사를 허용한다 — 2026-09-02 gold 재투입 실측: '국고채는 총 몇 종목이야?' 가 '국고채'+'는' 으로
+    #    경계에 걸려 미특정 → HCX FROM 판단 → 라우팅 범위 가드가 정답 SQL 을 기각했다. 조사 뒤에는 한글이 오지 않아야 한다
+    #    ('국고채는' ✓ · '국고채권' ✗ — '권' 은 조사가 아니다 · '회사채는' 의 '채는' 은 '채' 가 값 끝이라 그대로 조사 처리).
+    if re.search(rf"(?<![가-힣]){re.escape(term)}(?:(?![가-힣])|{_PARTICLE}(?![가-힣]))", question):
         return True
     return len(term) >= _LONG_TERM and term in squeezed   # 긴 값(상품명)은 공백 무시 부분 일치 허용
 

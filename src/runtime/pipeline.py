@@ -130,6 +130,11 @@ def validate_sql(sql: str) -> str | None:
         return "금지 키워드 포함"
     for seg_m in _WHERE_SEG.finditer(s):
         seg = re.sub(r"'[^']*'", "''", seg_m.group(1))   # 문자열 리터럴 안의 OR/AND 무시
+        if re.search(r"\bOVER\s*\(", seg, re.I):
+            # 2026-09-02 프로브 재투입(V5 '순자산이 가장 큰 자산운용사 5곳'): HCX 가 WHERE 에 COUNT(...) OVER(PARTITION BY …) 를
+            # 써 SQLite 가 "misuse of window function" 으로 죽었다 — 실행 오류는 재생성 경로가 없어 '조회 중 오류' 로 나간다.
+            # 실행 전에 기각해 재생성 1회를 준다 (WHERE 의 윈도우 함수는 표준 SQL 에서도 불가).
+            return "WHERE 에 윈도우 함수(OVER)를 쓸 수 없다 — 집계 조건은 GROUP BY … HAVING 또는 서브쿼리로 옮긴다"
         prev = None
         while prev != seg:                                # 괄호 안쪽부터 반복 제거 → 최상위만 남긴다
             prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)

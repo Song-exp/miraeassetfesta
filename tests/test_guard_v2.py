@@ -1155,7 +1155,7 @@ def test_rank_exclusions_add_maturity_cutoff():
     sql = "SELECT pd_nm, applied_yield FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사(주)' ORDER BY applied_yield ASC LIMIT 5"
     q = "한전 채권 수익률 낮은 순으로 알려줘"
     fixed, ch = f(sql, q)
-    assert ch and "mat_dt >= 20260822" in fixed and fixed.index("mat_dt") < fixed.index("ORDER BY")
+    assert ch and "mat_dt >= 20260824" in fixed and fixed.index("mat_dt") < fixed.index("ORDER BY")
     assert not f(fixed, q)[1]                                                       # 멱등 — 하한 있으면 재주입 없음
     assert "mat_dt" not in f(sql, "만기 지난 한전 채권 수익률 높은 순으로 알려줘")[0]     # 범주 언급 = 우회
     assert not f(sql.replace(" ORDER BY applied_yield ASC", ""), "한전 채권 알려줘")[1]  # 조회는 제외하지 않는다
@@ -1164,7 +1164,7 @@ def test_rank_exclusions_add_maturity_cutoff():
 def test_bond_evidence_and_representative(ctx):
     from src.runtime.pipeline import ensure_bond_evidence_columns as ev, ensure_bond_representative as rep, _execute
     sql = ("SELECT pd_nm, applied_yield FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사(주)' AND applied_yield > 0 "
-           "AND mat_dt >= 20260822 ORDER BY applied_yield ASC LIMIT 5")
+           "AND mat_dt >= 20260824 ORDER BY applied_yield ASC LIMIT 5")
     s1, c1 = ev(sql)
     assert c1 and "mat_dt" in s1 and "TRIM(crd_grd) AS crd_grd" in s1
     assert not ev(s1)[1]
@@ -1182,7 +1182,7 @@ def test_bond_evidence_and_representative(ctx):
     assert not rep("SELECT pd_nm, applied_yield FROM domestic_bonds GROUP BY pd_no LIMIT 30")[1]
     assert not rep("SELECT pd_nm, pd_exg_mkt FROM domestic_bonds LIMIT 30")[1]
     assert not rep("SELECT applied_yield FROM domestic_bonds LIMIT 30")[1]
-    assert not ev("SELECT pd_nm FROM domestic_bonds WHERE mat_dt >= 20260822 ORDER BY mat_dt DESC LIMIT 5")[1]
+    assert not ev("SELECT pd_nm FROM domestic_bonds WHERE mat_dt >= 20260824 ORDER BY mat_dt DESC LIMIT 5")[1]
 
 
 def test_zero_count_answer_and_issuer_clarify(ctx):

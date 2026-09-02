@@ -124,11 +124,12 @@ def test_route_narrowed_by_ground_and_series_no_mismatch(ctx):
        코드 매핑을 싣지 않고 이름 검색을 지시한다 — 4호 값이 2호의 답으로 나가는 것을 막는다.
     """
     r = answer_question("T-032", "미래에셋디스커버리증권투자신탁 2호 위험등급 알려줘", ctx=ctx)
-    assert "미특정 보정" in r.think_trace and "public_funds" in r.think_trace
+    # 3R A-3 — '투자신탁' 이 상품 명사(§3.3 법적형태)라 라우터가 바로 public_funds 를 정한다(종전 미특정 → Ground 보정 경로)
+    assert "머리명사 투자신탁" in r.think_trace and "public_funds" in r.think_trace
     assert "코드 매핑을 싣지 않는다" in r.think_trace and "rptt_ksd_itm_no" not in r.think_trace
-    # 호수 없는 질의는 코드 매핑 유지(불개입) — 좁히기는 동일하게 발동
+    # 호수 없는 질의는 코드 매핑 유지(불개입)
     r2 = answer_question("T-032b", "미래에셋디스커버리증권투자신탁 위험등급 알려줘", ctx=ctx)
-    assert "미특정 보정" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
+    assert "public_funds" in r2.think_trace and "rptt_ksd_itm_no" in r2.think_trace
 
 
 def test_cutoff_august_allowed(ctx):

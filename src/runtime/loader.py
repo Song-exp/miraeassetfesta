@@ -390,6 +390,11 @@ def _build_route_vocab(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
         for (v,) in con.execute(f"select distinct trim(pd_abrv_nm) from {t} where pd_abrv_nm is not null"):
             add(t, v, 3)
     for t in TABLES:
-        for term in ((ctx.enums.get(t) or {}).get("synonyms") or {}):
+        cols = {r[1].lower() for r in con.execute(f"pragma table_info({t})")}
+        for term, canon in (((ctx.enums.get(t) or {}).get("synonyms") or {}).items()):
+            # 3R B-1 — 값이 **컬럼명**인 동의어('순자산 → du_last_aum')는 측정축 낱말이지 그 테이블의 값이 아니다.
+            #    T2 "순자산 합계가 가장 큰 자산운용사" 가 값 ['순자산'] 로 ETF 단독 라우팅된 직접 원인. 값 동의어(통안채→통화안정채권)만.
+            if isinstance(canon, str) and canon.strip().lower() in cols:
+                continue
             add(t, term, 2, min_len=2)          # '국채'·'만기' 같은 2자 통칭 — yaml 이 고른 것만
     return vocab

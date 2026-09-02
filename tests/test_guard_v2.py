@@ -1631,8 +1631,9 @@ def test_sql_precheck_generalized(ctx):
     assert "템플릿 자리표시자 <CHN>" in validate_sql("SELECT COUNT(*) FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,<CHN>,%' LIMIT 30")
     assert "TOP" in validate_sql("SELECT TOP 1 pd_nm FROM domestic_etfs LIMIT 30")
     k28 = "SELECT constituent, weight_pct FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE domestic_etfs.pd_abrv_nm LIKE '%코어테크%' ORDER BY weight_pct DESC LIMIT 30"
-    assert "라우팅 대상(public_funds) 밖 테이블 사용: domestic_etfs" in pc(k28, ctx, ["public_funds"], False)
-    assert pc(k28, ctx, ["public_funds"], True) is None and pc(k28, ctx, ["domestic_etfs"], False) is None   # 교차·라우팅 일치는 통과
+    assert "밖 테이블 사용: domestic_etfs" in pc(k28, ctx, ["public_funds"], False)
+    # KG 2R N1 — 교차 판정이어도 허용 집합은 라우터 마스터 + 짝 ext 뿐(KG-028 ETF 종목 환각) · 라우팅 일치는 통과
+    assert "밖 테이블 사용" in pc(k28, ctx, ["public_funds"], True) and pc(k28, ctx, ["domestic_etfs"], False) is None
     # 통합 — KG-004 형(날조 코드)이 "0개" 단언으로 나가지 않는다 (1차 기각 → 재생성 → 재기각 → 유보)
     class P:
         def plan_sql(self, q, g):
@@ -1812,3 +1813,38 @@ def test_r4_skip_pin_token_J_K_L(ctx):
     a = _count_answer("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
                       "펀드수 | 클래스수\n229 | 962", 1, [], "삼성 이름이 들어간 공모펀드는 몇 개야?")
     assert a.startswith("'삼성' 이름이 들어간 공모펀드는 229개(클래스 962개)") and "운용사 코드별" in a
+
+
+def test_kg2r_table_scope_and_name_pin_N1_N2_M(ctx):
+    """KG 2R N1·N2 + 4R M — 교차 플래그여도 허용 = 라우터 마스터 + 짝 ext(KG-028 ETF 종목 환각) · 이름 리터럴이 토큰을 포함하지 않으면
+    토큰 치환(T8 'KB차이나'→'KB차이나그로스' · KG-034 '코어텍') · 코드 핀 개별 조회도 묶기(V4)."""
+    from src.runtime.pipeline import _sql_precheck as pc, ensure_fund_name_filter as nf, ensure_fund_lookup_grouping as lg, _has_fund_key_pin, answer_question
+
+    k28 = ("SELECT domestic_etfs.pd_abrv_nm, ext_etf_holdings.weight_pct FROM domestic_etfs JOIN ext_etf_holdings "
+           "ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE domestic_etfs.pd_nm LIKE '%코어테크%' ORDER BY 2 DESC LIMIT 1")
+    assert "domestic_etfs" in (pc(k28, ctx, ["public_funds"], True) or "")                 # cross=True 여도 기각
+    ok28 = ("SELECT h.holding_nm, h.weight_pct FROM ext_fund_holdings h WHERE h.itm_no IN (SELECT p.itm_no FROM public_funds p "
+            "WHERE REPLACE(p.itm_nm,' ','') LIKE '%코어테크%') ORDER BY h.weight_pct DESC LIMIT 3")
+    assert pc(ok28, ctx, ["public_funds"], True) is None                                    # 짝 ext 는 허용
+    assert pc("SELECT pd_nm FROM domestic_etfs LIMIT 5", ctx, ["domestic_etfs", "public_funds"], True) is None
+    # N2
+    s = "SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나%' LIMIT 30"
+    out, ok = nf(s, "KB차이나그로스")
+    assert ok and "'%KB차이나그로스%'" in out and out.count("LIKE") == 1
+    out2, ok2 = nf("SELECT 1 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어텍%' LIMIT 30", "코어테크")
+    assert ok2 and "'%코어테크%'" in out2
+    assert not nf("SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나그로스증권자투자신탁%' LIMIT 30", "KB차이나그로스")[1]   # 더 긴 정식명 존중
+    # M — 코드 핀 개별 조회(V4)
+    v4 = ("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, TRIM(itm_nm) AS itm_nm, zrin_fd_ivst_risk_gcd FROM public_funds "
+          "WHERE TRIM(rptt_ksd_itm_no) IN ('030230002D36') AND zrin_fd_ivst_risk_grd_nm IS NOT NULL LIMIT 1")
+    assert _has_fund_key_pin(v4) and lg(v4, "KB중국본토A주증권자투자신탁 위험등급 알려줘")[1]
+
+    class P:
+        def plan_sql(self, q, g):
+            return v4
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-V4", "KB중국본토A주증권자투자신탁 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert "KB중국본토A주증권자투자신탁(주식): 위험등급 2등급(높은 위험) · 클래스 14개(전부 판매중)" in r.answer

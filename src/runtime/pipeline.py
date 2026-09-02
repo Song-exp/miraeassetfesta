@@ -195,11 +195,15 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
         if amb:
             err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
                    + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
-    if not err and tables and not cross:
-        outside = sorted({t for t in guard.sql_tables(sql) if t in TABLES} - set(tables))
+    if not err and tables:
+        # KG 2R N1 — 교차 판정이어도 허용 집합은 **라우터가 정한 마스터 + 그 짝 ext_***. `not cross` 로 검사를 끄면 펀드 질의에
+        #    domestic_etfs + ext_etf_holdings 가 통과해 엉뚱한 ETF 종목이 답으로 나간다(KG-028 'IBK K-AI반도체코어테크' 57.12% 환각).
+        #    다른 마스터는 질문에 그 상품군 명사가 있을 때 라우터가 이미 tables 에 넣었다.
+        allowed = set(tables) | {e for e, m in _EXT_PAIR.items() if m in tables}
+        outside = sorted(set(guard.sql_tables(sql)) - allowed)
         if outside:
-            err = (f"라우팅 대상({', '.join(tables)}) 밖 테이블 사용: {', '.join(outside)} — "
-                   "질문의 상품군 테이블로 다시 쓴다 (교차 질의가 아니다)")
+            err = (f"라우팅 대상({', '.join(tables)} + 짝 ext_*) 밖 테이블 사용: {', '.join(outside)} — "
+                   "질문의 상품군 테이블(과 그 외부 수집 테이블)로만 쓴다")
     if not err:
         bad = guard.check_code_literals(sql, ctx)
         if bad:
@@ -742,6 +746,13 @@ def _has_name_filter(sql: str) -> bool:
             return True
     return False
 _LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
+_FUND_KEY_PIN = re.compile(r"\b(?:rptt_ksd_itm_no|itm_no|mtco_itm_no)\s*\)?\s*(?:=|IN\s*\()", re.I)
+
+
+def _has_fund_key_pin(sql: str) -> bool:
+    """WHERE 절에 펀드 키(대표예탁원번호·종목번호·운용사종목번호) 등호/IN 이 있는가 — 개별 조회의 또 다른 특정 조건 (4R M)."""
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    return bool(frm) and bool(_FUND_KEY_PIN.search(sql[frm.end():]))
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
 
 
@@ -768,7 +779,9 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
         return sql, False
-    if not _has_name_filter(sql) or any(t in question for t in _LOOKUP_ROW_UNIT):
+    # 4R 부류 M — 개별 조회의 판정은 "펀드를 하나로 특정하는 조건": 이름 LIKE **또는** 펀드 키 핀(rptt/itm_no/mtco 등호·IN — KG Fund 노드가
+    #    코드를 핀한 정식명 질의 V4 'KB중국본토A주증권자투자신탁' → LIMIT 1 1클래스 답).
+    if not (_has_name_filter(sql) or _has_fund_key_pin(sql)) or any(t in question for t in _LOOKUP_ROW_UNIT):
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
@@ -3163,8 +3176,25 @@ def ensure_fund_name_filter(sql: str, token: str | None) -> tuple[str, bool]:
     0행이 나오면 그것이 정답이다 — 없는 상품을 물었으면 '없음' 이 맞고(FND-R05 계열),
     조건을 완화해 아무 행이나 집어오는 것이 바로 이 사고였다.
     """
-    if not token or not _FUND_TBL.search(sql) or _has_name_filter(sql):
+    if not token or not _FUND_TBL.search(sql):
         return sql, False
+    if _has_name_filter(sql):
+        # KG 2R N2 — 이름 리터럴이 Ground 의 고유명 토큰을 **포함하지 않으면** 토큰으로 치환한다(1회): 오타('코어텍' — KG-034 거짓 유보) ·
+        #    절단('KB차이나' ⊂ 'KB차이나그로스' — 4R T8 형제 4펀드 혼입). 리터럴이 토큰보다 길면(정식명을 그대로 적음) 존중.
+        tok = token.replace(" ", "")
+        pat = re.compile(r"((?:REPLACE\((?:\w+\.)?itm_nm,' ',''\)|(?:\b\w+\.)?itm_nm)\s+LIKE\s+')%([^%']+)%'", re.I)
+        lits = [m.group(2) for m in pat.finditer(sql)]
+        if not lits or any(tok in lit.replace(" ", "") for lit in lits):
+            return sql, False
+        done = False
+
+        def _swap(m: re.Match) -> str:
+            nonlocal done
+            if done:
+                return m.group(0)
+            done = True
+            return f"{m.group(1)}%{tok}%'"
+        return pat.sub(_swap, sql), True
     sql, _ = _append_exclusions(sql, [f"itm_nm LIKE '%{token}%'"])
     # 🔴 LIMIT 1 도 함께 푼다 — 이름으로 좁힌 개별 조회는 클래스가 여럿이다(코어테크 10클래스).
     #    1행만 보면 답변이 "클래스 n개" 를 말할 수 없고, 어느 클래스인지도 임의가 된다.

@@ -2384,7 +2384,49 @@ def ensure_ext_join(sql: str, ctx) -> tuple[str, list[str]]:
 _HOLD_Q = re.compile(r"보유\s*(?:종목|주식|자산|비중|하고|한)|담(?:은|고|았)|구성\s*종목|편입|포트폴리오|투자\s*(?:종목|하는\s*종목)|(?:상위|주요|많이\s*가진)\s*종목")
 
 
-def ensure_fund_holdings_template(sql: str, question: str, ctx) -> tuple[str, bool]:
+_ORDINAL_KO = {"첫": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10}
+
+
+def _outer_group(s: str) -> str | None:
+    """`(...)` 하나로 통째 감싼 식이면 안쪽을, 아니면 None. `(a) OR (b)` 는 겉괄호가 짝이 아니라 None."""
+    if not (s.startswith("(") and s.endswith(")")):
+        return None
+    depth, in_q = 0, False
+    for i, ch in enumerate(s):
+        if ch == "'":
+            in_q = not in_q
+        elif not in_q:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    return s[1:-1] if i == len(s) - 1 else None
+    return None
+
+
+def _flat_conjuncts(expr: str) -> list[str]:
+    """최상위 AND 로 가르되 **괄호로 묶인 AND 그룹은 안으로 들어간다**. OR 가 든 그룹은 통째로 둔다(의미 보존).
+
+    🔴 8R 뿌리 β — `ensure_fund_base_population` 은 모수를 주입할 때 원 WHERE 를 통째로 괄호로 감싼다
+    (`WHERE 모수 AND (원문)` — L530, 'a OR b' 에 그냥 AND 를 붙이면 새기 때문). 그 뒤 절 단위로 술어를 고르는
+    가드가 `guard.split_conjuncts` 를 쓰면 그 괄호가 **한 절**이라, 안에 버릴 컬럼이 하나만 있어도 같은 괄호의
+    이름 필터까지 함께 버려진다. 7R Z7·AA18 실측: 구성종목 서브쿼리의 preds 가 기본모수 둘만 남아
+    **전 우주 순자산 1위 펀드**의 종목이 답으로 나갔다(남의 펀드).
+    """
+    out: list[str] = []
+    for c in guard.split_conjuncts(expr):
+        s = c.strip()
+        inner = _outer_group(s)
+        if inner is not None and not re.search(r"\bOR\b", inner, re.I):
+            out.extend(_flat_conjuncts(inner))
+        else:
+            out.append(s)
+    return out
+
+
+def ensure_fund_holdings_template(sql: str, question: str, ctx, name_token: str | None = None,
+                                  route_fund: bool = False) -> tuple[str, bool]:
     """6R F3 — 특정 펀드의 **구성종목** 질의를 ext_fund_holdings JOIN 확정식으로 교체. (보정 SQL, 교체했는지)
 
     부류: 질문에 구성종목 트리거(보유 종목·담은·편입·포트폴리오…) + 펀드 개별 지정(_has_name_filter 또는 펀드키 핀) + SQL 이 아직
@@ -2398,15 +2440,17 @@ def ensure_fund_holdings_template(sql: str, question: str, ctx) -> tuple[str, bo
     #    확정식이 **이미 만든 SQL**(비중_pct 표기)일 때만 불개입한다(멱등).
     if not _HOLD_Q.search(question) or re.search(r"\bunion\b", sql, re.I) or '"비중_pct"' in sql:
         return sql, False
-    if not re.search(r"\b(?:from|join)\s+public_funds\b", sql, re.I) or not (_has_name_filter(sql) or _has_fund_key_pin(sql)):
+    on_funds = bool(re.search(r"\b(?:from|join)\s+public_funds\b", sql, re.I))
+    # 🔴 8R 부류 A-b — 라우팅이 public_funds 인 구성종목 질의는 HCX 가 어느 테이블로 새어 나갔든(X1·X2·KG-028 은
+    #    domestic_etfs + ext_etf_holdings 로 갔다가 테이블 화이트리스트 기각 → 오거절) 확정식으로 교체한다.
+    #    그때 펀드를 고르는 재료는 Ground 의 잔여 상품 고유명뿐이다 — 없으면 종전대로 불개입.
+    if not ((on_funds and (_has_name_filter(sql) or _has_fund_key_pin(sql))) or (route_fund and name_token)):
         return sql, False
     schema = getattr(ctx, "schema", {}) or {}
     hcols = {c.lower() for c, *_ in schema.get("ext_fund_holdings", ())}
     if not {"holding_nm", "weight_pct", "itm_no", "grp", "or_co"} <= hcols:
         return sql, False
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-    if not m_w:
-        return sql, False
     m_f = re.search(r"\bfrom\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", sql, re.I) \
         or re.search(r"\bjoin\s+public_funds\b(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit|on)\b)(\w+))?", sql, re.I)
     alias = m_f.group(1) if m_f else None
@@ -2415,22 +2459,38 @@ def ensure_fund_holdings_template(sql: str, question: str, ctx) -> tuple[str, bo
     # 펀드 쪽 술어만 남긴다 — 보유 테이블 쪽 절(`f.weight_pct = 1.0`)은 HCX 가 지어낸 무의미 조건이라 버린다
     h_only = {c.lower() for c, *_ in schema.get("ext_fund_holdings", ())} - {c.lower() for c, *_ in schema.get("public_funds", ())}
     preds = []
-    for c in guard.split_conjuncts(m_w.group(1)):
-        masked = _SQL_LITERAL.sub("''", c)
-        if (h_alias and re.search(rf"\b{re.escape(h_alias)}\.", masked)) or "ext_fund_holdings." in masked.lower() \
-                or any(re.search(rf"(?<![\w.])({w})\b", masked, re.I) for w in h_only):
-            continue
-        c = re.sub(r"\bpublic_funds\.", "p.", c)
-        if alias:
-            c = re.sub(rf"\b{re.escape(alias)}\.", "p.", c)
-        c = re.sub(r"(?<![\w.])itm_no\b", "p.itm_no", c)
-        preds.append(c.strip())
+    if on_funds and m_w:
+        for c in _flat_conjuncts(m_w.group(1)):
+            masked = _SQL_LITERAL.sub("''", c)
+            if (h_alias and re.search(rf"\b{re.escape(h_alias)}\.", masked)) or "ext_fund_holdings." in masked.lower() \
+                    or any(re.search(rf"(?<![\w.])({w})\b", masked, re.I) for w in h_only):
+                continue
+            c = re.sub(r"\bpublic_funds\.", "p.", c)
+            if alias:
+                c = re.sub(rf"\b{re.escape(alias)}\.", "p.", c)
+            c = re.sub(r"(?<![\w.])itm_no\b", "p.itm_no", c)
+            preds.append(c.strip())
+    else:
+        preds = ["p.sale_yn = '판매중'", "p.prvo_pbff_desc = '공모'"]   # 타 테이블에서 끌어온 경로 — 기본모수를 확정식으로
+    # 🔴 8R 부류 A — 서브쿼리는 **펀드를 하나로 특정**해야 한다. 이름 필터·펀드키 핀이 살아남지 않았으면
+    #    Ground 의 고유명으로 되살리고, 그것도 없으면 확정식을 쓰지 않는다 — 임의 펀드의 종목을 내보내는 것보다
+    #    오거절이 낫다(7R Z7·AA18: 기본모수만 남아 전 우주 순자산 1위 펀드의 종목이 나갔다).
+    joined = " AND ".join(preds)
+    if not (_has_name_filter(f"FROM public_funds WHERE {joined}") or _has_fund_key_pin(joined)):
+        if not name_token:
+            return sql, False
+        preds.append(f"REPLACE(p.itm_nm,' ','') LIKE '%{name_token.replace(' ', '')}%'")
     if not preds:
         return sql, False
     # 개수는 질문의 숫자('3개·5종목')가 우선 — 앞선 개별 조회 가드가 LIMIT 을 30 으로 올려둔 뒤라 SQL 의 LIMIT 은 믿을 수 없다
     m_q = re.search(r"(\d+)\s*(?:개|종목|가지|위)", question)
     m_lim = re.search(r"\blimit\s+(\d+)", sql, re.I)
     k = int(m_q.group(1)) if m_q else (int(m_lim.group(1)) if m_lim else 10)
+    # 서수 질의('두 번째로 많이 담은')는 그 순위까지 실어야 답이 있다 — LIMIT 1 이면 1위만 보고 2위를 답할 수 없다(AA18)
+    m_ord = re.search(r"(첫|두|세|네|다섯|여섯|일곱|여덟|아홉|열|\d+)\s*번째", question)
+    if m_ord:
+        w = m_ord.group(1)
+        k = max(k, int(w) if w.isdigit() else _ORDINAL_KO[w])
     k = min(max(k, 1), MAX_ROWS)
     extra = ", h.asset_type AS \"자산유형\"" if "asset_type" in hcols else ""
     extra += ", h.bas_dt AS \"기준일\"" if "bas_dt" in hcols else ""
@@ -2506,7 +2566,7 @@ def ensure_fund_manager_ranking(sql: str, question: str, notes: list | None = No
     extra = []
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if m_w:
-        for c in guard.split_conjuncts(m_w.group(1)):
+        for c in _flat_conjuncts(m_w.group(1)):     # 8R 뿌리 β — 기본모수 주입이 만든 괄호 안의 부가 절도 보존한다
             if _MGR_SKIP_CONJ.search(c):
                 continue
             if _MGR_COMPLEX_CONJ.search(c):
@@ -4606,7 +4666,7 @@ def ensure_default_topn(sql: str, question: str) -> tuple[str, bool]:
     return f"{body} LIMIT {DEFAULT_TOPN}", True
 
 
-def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx) -> str:
+def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
 
     🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
@@ -4768,7 +4828,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, brep_fixed = ensure_bond_representative(sql)
     if brep_fixed:
         step("[Guard] 채권 대표행 보정 — 목록 SELECT 를 GROUP BY pd_no 로 종목 단위 묶기 + 정렬 컬럼 MAX/MIN (2026-09-02 실측: 장내·장외 중복행으로 발행사 39곳 top5 에 같은 종목 2회 — gold 38개 중 37개가 GROUP BY pd_no)")
-    sql, hold_fixed = ensure_fund_holdings_template(sql, q, ctx)
+    sql, hold_fixed = ensure_fund_holdings_template(sql, q, ctx, name_token, tables == ["public_funds"])
     if hold_fixed:
         step("[Guard] 구성종목 확정식 — 개별 펀드의 보유 종목 질의를 ext_fund_holdings(grp+or_co) JOIN 템플릿으로 교체, 대표 클래스 1개의 목록을 비중순으로 "
              "(5R KG-028·KG-034·X1·X2: public_funds 단독 조회 또는 ETF 구성종목 테이블로 이탈)")
@@ -4967,7 +5027,7 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
+    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
@@ -4995,7 +5055,7 @@ def answer_question(
         # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
         #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
         sql2, _ = normalize_date_literals(raw2)
-        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx)
+        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx, tables)
         result.sql = sql2
         step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql2)
         err2 = _sql_precheck(sql2, ctx, tables, cross)

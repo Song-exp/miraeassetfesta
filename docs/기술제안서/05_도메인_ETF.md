@@ -25,7 +25,17 @@ ETF 는 외부 수집의 98% 를 차지하므로 2.1 절 전체의 통합자다.
 > 해외 NPORT-P 는 보고기준일이 8종(2025-10-31 ~ 2026-06-30)으로 흩어져 최대 8개월 시차가 있다. 답변에 `report_date` 를 병기하는 원칙은 여기서 나왔다. 현금·파생 등 티커 없는 10,123행은 Security 노드로 만들지 않았다 — 구성종목 수 집계를 오염시키기 때문이다.
 > 신뢰성 관리 사례 하나: 온톨로지 감사(9/2)에서 2차 데이터 신규 컬럼 `ref_geo_focus` 23종이 Region 에 0/23 연결된 것을 커버리지 리포트가 잡아냈고 87% 로 복구했다. 반대로 원천 자체의 지역 오분류(미국 28건·중국 15건, 예: `TIGER 미국S&P500선물(H)` → 국내)는 값을 고치지 않고 `지역질의_합집합` 규칙으로 우회했다(466→494건).
 
-▶ 채울 것: 국내 커버리지 93.9%·해외 22.7% 가 NUMBERS 와 일치하는지. 수집 스크립트 이름과 실행 명령 1줄(적재 Flow 도해용).
+✅ 커버리지 NUMBERS 일치 확인(2026-09-03 재생성분): 국내 1,160/1,235 = **93.9%** · 해외 1,356/5,972 = **22.7%**.
+🔴 국내 모수 주의 — '1,160/1,780 = 65.2%' 로 쓰지 말 것. 안 붙는 620건은 ETN 545(구성종목 개념 없음) + 판매종료 ETF 75건이라 유효 모수는 ETF 1,235다(`external_join.coverage` 주석 확정).
+
+수집·적재 4단 (적재 Flow 도해용):
+
+```bash
+python scripts/fetch_etf_holdings.py        # 국내: KRX 공시 구성종목 → 75,859행
+python scripts/fetch_overseas_holdings.py   # 해외: SEC EDGAR NPORT-P → 906,848행
+python scripts/load_external_holdings.py    # ext_etf_holdings · ext_ovs_etf_holdings 적재
+python scripts/build_ontology.py            # KG 재생성 + V1~V7 검증 게이트 + coverage report
+```
 
 ---
 
@@ -80,14 +90,14 @@ flowchart LR
 
 기존 원고의 각 건에 **층 / 런타임에서 / 실측 사례** 세 줄을 덧붙인다. 템플릿은 `04_도메인_채권.md` §B.2 와 동일.
 
-| # | 기존 원고 | 층 | 런타임에서 | 실측 사례 후보 (▶ probe ID·응답 채우기) |
+| # | 기존 원고 | 층 | 런타임에서 | 실측 사례 (probe ID·응답 — 채움 완료 9/3) |
 | :-: | :-- | :-: | :-- | :-- |
-| 1 | 2-1 ETN 545건 혼입 → `disjointWith` + 축 분리 | 선언·2 | Plan 이 `ETF만: pd_grp_no='ETF'` 규칙을 always_on 주입 | "ETF 중 총보수 낮은 것" 에 ETN 이 안 섞임 |
+| 1 | 2-1 ETN 545건 혼입 → `disjointWith` + 축 분리 | 선언·2 | Plan 이 `ETF만: pd_grp_no='ETF'` 규칙을 always_on 주입 | **ETF-D-025** — "인버스 ETF 3개"(8/31 실측)가 규칙 누락 시 1위에 ETN(KB 블룸버그 인버스2X 천연가스선물 ETN)을 냈다. 인버스 235건 중 189건(80%)이 ETN — 규칙 도입 후 ETF 46건만 응답 |
 | 2 | 2-2 해외 위험등급 컬럼 부재 → ABSENT | 3 | Gate `absent_in` — HCX 0회 기각 + 대체 안내 | "위험등급 낮은 해외ETF" → 기각 응답 |
-| 3 | 2-3 총보수 유효 67건, 0=미입력 → `보수유효` + 모수 명시 | 2 | Plan 규칙(triggered: '보수'·'수수료') + 조립이 모수 병기 | 2026-08-31 paired 실측 ETF-O-020: 규칙 없이는 0값 419건이 "가장 저렴" 도배 |
-| 4 | 2-5 레버리지 부호 소실 → 이름으로 방향, `ABS()` 배수 | 2 | `derivation_rules.inverse_direction` | "인버스 ETF" 163건이 양수 배수로도 잡힘. 한계: `ABS>1` 경계 |
+| 3 | 2-3 총보수 유효 67건, 0=미입력 → `보수유효` + 모수 명시 + **적용 범위** | 2 | Plan 규칙 + 조립이 모수 병기 | ETF-O-020(8/31): 규칙 없이는 0값 419건이 "가장 저렴" 도배. 🔴 반대 방향도 실측 — **ETF-D-036**(9/2): 이 조건이 개수 집계에 **과잉 적용**돼 삼성 227개가 18개로. "보수를 묻지 않은 질의에는 걸지 않는다" 적용 범위 명시로 해소(재검증 9/3 ◎). 규칙엔 조건만이 아니라 **적용 범위와 반례**가 함께 있어야 한다는 교훈의 대표 사례 |
+| 4 | 2-5 레버리지 부호 소실 → 이름으로 방향, `ABS()` 배수 | 2 | `derivation_rules.inverse_direction` | 상품명 '인버스' 225건 vs 음수 부호 23건 — 부호만 믿으면 90% 소실. 해외도 동형: **ETF-O-033**(9/1) 플래그 단독 조건이 진짜 인버스 8건(QBER·SNK 등)을 누락 → 플래그+배수+이름 합집합 조건으로 확정 |
 | 5 | 2-6 지수 표기 불일치 → `fp:Index` 독립 개체 + closure | 1 | Ground 가 변형 표기를 정본 노드로 접지, closure 후손 전개 | `Idx_MSCI_ACWI` 하나에 국내ETF·해외ETF·펀드 — **2.2.5 통합 증거로 리드가 인용** |
-| 6 | 2-7·2-8 지역 삼중 표기 → Region 계층 / 구성종목 부재 → Security 노드 | 1 | Ground: Security 키 우선순위(티커>cusip>LEI>이름), **이름만 같으면 병합 금지**(삼성전자↔삼성전기) | 공식 예시 #3 캠브리콘 표기 6종 합집합 / 감사: `ref_geo_focus` 0→87% |
+| 6 | 2-7·2-8 지역 삼중 표기 → Region 계층 / 구성종목 부재 → Security 노드 | 1 | Ground: Security 키 우선순위(티커>cusip>LEI>이름), **이름만 같으면 병합 금지**(삼성전자↔삼성전기) | 공식 예시 #3 캠브리콘 — Ground 가 표기 **6종**(ticker '688256 C1' · constituent · isin · holding_nm 2종 · cusip)을 한 노드로 내려줌(9/3 서버 재검증 trace, §C 원문). 감사: `ref_geo_focus` 0→87% 복구 |
 
 기존 2-4(위험등급 0~6)는 채권 절과 겹치므로 한 줄로 줄이고 채권 B.2-2 를 참조한다.
 
@@ -95,40 +105,50 @@ flowchart LR
 
 ### B.3 한계 (3줄)
 
-▶ 채울 것. 후보: ① 해외 구성종목 22.7%, 보고기준일 시차 ② 원천 지역 오분류 잔존(`TIGER 중국소비테마` 양쪽 다 오분류 — 컬럼으로 복구 불가) ③ 레버리지 `ABS>1` 경계 미확정(인버스2X 98/308) ④ 고아 쓰레기값 3종(`cu_fund_mgmt_co='.'` 등)은 기록만.
+① 해외 구성종목 커버리지 22.7%(AUM 상위 위주)에 보고기준일이 8종으로 흩어져 최대 8개월 시차 — 답변에 모수와 `report_date` 를 병기하는 것으로 대응하고, 그 이상은 수집 원천(NPORT-P 분기 공시)의 한계다.
+② 원천 지역 오분류는 규칙(`지역질의_합집합`)으로 43건을 복구했지만, `TIGER 중국소비테마` 처럼 **두 컬럼이 모두** 틀린 잔존 사례는 컬럼으로 복구할 수 없다 — 값을 고치지 않는 원칙(§1)의 비용이며, 전수조사 문서에 기록만 남겼다.
+③ 레버리지 `ABS>1` 경계가 인버스2X(98/308)를 포함하는 문제는 업무 정의 사안으로 미확정 — 제외 대신 혼입 경고 병기로 운용한다.
 
 ---
 
 ## §C. 기능 흐름도 — ETF (→ 4.2) — 1쪽
 
-**질의**: 공식 예시 #5 *"에코프로의 자회사를 편입한 ETF 중 순자산이 큰 상품의 위험요인"* (3-hop 이 값 접지로 풀리는 사례. 대안: 예시 #3 캠브리콘)
+**질의**: 공식 예시 #3 *"캠브리콘이 편입된 중국 반도체 ETF를 알려줘"*
+(템플릿 1안은 예시 #5 에코프로였으나, **2026-09-03 현행 배포에서 받은 trace 원문**이 있는 캠브리콘으로 확정 — 대안 허용 조항. 표기 정규화·구성종목 조인·교차질의 게이트가 한 질의에 다 나온다.)
 
-```bash
-# eval/probe_etf_flow.txt:  ETF-FLOW-1<TAB>에코프로의 자회사를 편입한 ETF 중 순자산이 큰 상품의 위험요인 알려줘
-export PYTHONIOENCODING=utf-8
-./.venv/Scripts/python.exe eval/probe_server.py eval/probe_etf_flow.txt -o eval/probe_etf_flow.json
+### 실제 think_trace (2026-09-03 서버 응답 원문 발췌)
+
+```
+2. [Route] 상품군 — domestic_etfs, overseas_etfs · 근거: 머리명사 ETF · 값 ['반도체', '중국']
+3. [Ground] KG 개체 매핑 — '캠브리콘' → Sec_m_cambricon (Security) [+후손 3]
+   → ext_etf_holdings.ticker='688256 C1' · constituent='Cambricon Technologies Corp Ltd'
+   · ext_fund_holdings.isin='CNE1000041R8' · holding_nm 2종 · ext_ovs_etf_holdings.cusip='Y10823105'
+   / '중국' → Region_China [+후손 1: Region_HongKong] → wu_inv_rgn='중국' · ref_geo_focus='China' …
+4. [Gate] 통과 — 교차질의(구성종목 조인 — ext_* 테이블 허용, 기준일 병기)
+7. [Plan] SQL — … JOIN ext_etf_holdings ON etf_code = pd_itm_no WHERE constituent LIKE '%Cambricon%' …
+9. [Execute] 9행 조회
 ```
 
 | 단계 | 이 질의에서 일어나는 일 | 읽는 온톨로지 요소 |
 | :-- | :-- | :-- |
-| Route | "ETF" 머리명사 → `domestic_etfs` (+ 교차 여부 판정) | 라우팅 어휘 |
-| Ground | "에코프로" → `Sec_m_*` 정본 노드, `_asks_subsidiaries` 감지 → `subsidiaryOf` 1단 전개: 에코프로비엠·에코프로머티리얼즈·에코프로에이치엔 (DART 2025 사업보고서 근거) | 1층 Security + edge `subsidiaryOf` 3 |
-| Gate | 부재·enum·상수 해당 없음 → 통과 | 3층 |
-| Plan | KG 개체 매핑에 자회사 3사의 `ext_etf_holdings` 실제 값 주입, 조인키 `etf_code = pd_itm_no`, 규칙 `편입비중상위`·`ETF만`·`수익률정상` | 2층 + 조인키 |
-| 검증 | WHERE 리터럴 ↔ 값 사전, JOIN 템플릿 준수 | 3층 |
-| 실행 | holdings JOIN → `du_last_aum` 내림차순 | — |
-| 조립 | 상위 상품 + 위험요인은 ▶ (마스터에 위험요인 텍스트가 있는지 확인 — 없으면 ABSENT 안내로 답하는 것이 정답) | answer_rules |
+| Route | "ETF" 머리명사 + 값('반도체'·'중국') → 국내·해외 병행 | 라우팅 어휘(자동 생성) |
+| Ground | '캠브리콘' 이 **표기 6종**(중국 본토 티커·영문 사명 2형·ISIN·CUSIP)을 가진 한 Security 노드로 접지 — 사용자는 어느 표기도 몰라도 된다 | 1층 Security + alias |
+| Gate | ext_* 조인 허용 판정 + 조인키 짝 주입(`etf_code = pd_itm_no`) | 3층 + external_join |
+| Plan | KG 매핑 값을 그대로 WHERE 에 사용 — 문자열 유추 없음 | 2층 규칙 |
+| 검증 | 테이블 화이트리스트 · ext↔마스터 짝 검사 · WHERE 값 사전 대조 | 3층 |
+| 실행·조립 | 구성종목 JOIN → 국내 9종 응답 | answer_rules |
 
-▶ 채울 것: 실제 think_trace 원문, answer 첫 3줄, 자회사 전개 없이 답했을 때와의 차이 한 줄(전개로 답이 통째로 바뀐 사례).
-
----
+**규칙이 없을 때와의 차이 (같은 질문의 실패 이력 — 회귀 3단)**:
+① 9/1 실측 — `wu_inv_ast_type LIKE '%반도체%'` 로 자산군을 섹터로 오독해 **0건**(자산군엔 '반도체' 값이 없다) → `섹터테마질의` 3축 규칙.
+② KG 에 캠브리콘 국내 티커가 없어 접지 실패 → codebook 감사로 9개 종목·852행 복구(`--db-only` 배포).
+③ 9/3 재검증 — 접지·조인 성공(위 trace). 잔여: 지역 필터 중첩이 16→9건으로 잘라 `지역질의_합집합` 에 "구성종목 근거가 있으면 지역 필터를 겹치지 않는다" 보강(진짜 중국 상품 5종이 rgn 오분류로 잘림 실측). ▶ 다음 배포 후 16건 재확인.
 
 ## §D. 현업 적용 지점 (→ 5.2) — 1단락
 
 **예시 문장:**
 > 운용사 합병·상호 변경은 `fp:formerName`·`fp:successor` 슬롯으로 흡수되므로 "구상호로 물어도 현재 운용사로 답하고 그 사실을 밝힌다." 원천의 지역 오분류는 값을 고치지 않고 규칙으로 우회하되 답변 근거에 드러나므로, 챗봇이 마스터 데이터 정비의 입력이 된다.
 
-▶ 한 문장 더: 상품 기획·마케팅에서 "구성종목 기준 테마 ETF 탐색"이 상품명 기반 탐색과 어떻게 다른지.
+> 구성종목 기준 탐색은 상품명 기반 탐색과 **답이 다르다** — 실측 대조(8/30): 시판 챗봇(키움)은 "삼성전자를 가장 많이 편입한 ETF" 에 이름 기반으로 'KODEX 삼성전자채권혼합'(실제 비중 28.6%)을 1위로 답했지만, 구성종목 실측 비중 기준 1위는 'KODEX 삼성전자단일종목레버리지' 96.6% 다. 상품 기획·마케팅에서 테마 노출도를 잴 때 이름이 아니라 보유 비중으로 재는 것 — 이 차이가 이 온톨로지가 현업에 주는 즉물적 가치다.
 
 ---
 
@@ -185,7 +205,27 @@ query_rules:
 gate_constants: (pd_trd_ccy 등 상수 컬럼 — "EUR 거래 해외ETF" 0.5s 기각)
 ```
 
-▶ 채울 것: `derivation_rules.inverse_direction` 원문, `external_join` 블록 원문.
+```yaml
+# domestic_etfs.yaml — derivation_rules (컬럼을 만들지 않고 규칙으로 선언)
+derivation_rules:
+  inverse_direction:
+    규칙: "CASE WHEN pd_abrv_nm LIKE '%인버스%' THEN 'Inverse' ELSE 'Long' END"
+    근거: 2차 배포에서 cu_lev_fector 부호 소실 — 상품명 '인버스' 225건 vs 음수 22건.
+          부호 있는 22건은 OR 로 추가 포착 (pd_abrv_nm LIKE '%인버스%' OR cu_lev_fector < 0)
+
+# domestic_etfs.yaml — external_join (구성종목 조인 계약)
+external_join:
+  ext_etf_holdings:
+    key: "ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no"
+    as_of: "2026-08-21"    # 전건 단일 · 마스터 기준일 대비 1일 전
+    coverage: 유효 모수는 ETF 1,235 (ETN 545 는 구성종목 개념 없음 · 판매종료 75 제외)
+
+# overseas_etfs.yaml — external_join
+external_join:
+  ext_ovs_etf_holdings:
+    # 🔴 ISIN 조인 금지 — 실증: FILL.K 를 ISIN 조인하면 다른 ETF 의 구성종목 69행이 붙는다
+    key: "ext_ovs_etf_holdings.etf_ticker = replace(replace(pd_itm_no,'.K',''),'.O','')"
+```
 
 ### E.4 값 수 표 (부록 C, 매트릭스 국내·해외 열) — §B.1 표 그대로. ▶ 조판 직전 재실측.
 

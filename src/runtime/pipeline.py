@@ -914,8 +914,32 @@ def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
 
 # 면책 상투구가 든 문장 통째 — 문장 경계는 마침표·물음표·느낌표·줄바꿈 (쉼표는 문장 내부)
 _DISCLAIMER = re.compile(
-    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견))"
+    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견)"
+    # 2026-09-02 R2 재검 — "추가 정보가 필요하시다면 관련 기관에 문의하시기 바랍니다" 가 '관련 기관' 이라 빠져나갔다
+    r"|(?:관련|해당|금융|각)\s*기관(?:에|으로|을\s*통해)\s*(?:문의|확인|상담)|추가\s*정보가\s*필요"
+    r"|자세한\s*(?:내용|사항)은[^.!?\n]*(?:문의|확인|상담|참고|참조))"
     r"[^.!?\n]*[.!?]?")
+# 전수 집계 결과에 붙는 거짓 유보 — "더 있을 수 있습니다"(5행 전수인데) · "조회된 데이터를 기반으로 한 것이며" · "일부"
+_FALSE_HEDGE = re.compile(
+    r"[^.!?\n]*(?:더\s*많은[^.!?\n]*있을\s*수\s*있|조회된\s*데이터를\s*기반으로\s*한\s*것이|일부(?:입니다|일\s*수|만))"
+    r"[^.!?\n]*[.!?]?")
+
+
+def strip_false_hedge(text: str, sql: str, n: int) -> tuple[str, bool]:
+    """전수 집계(GROUP BY·COUNT/SUM, 행수 < 상한) 답변에서 '더 있을 수 있음' 류 거짓 유보 문장을 걷어낸다.
+
+    2026-09-02 R2 재검: 운용사 top5 (전수 집계 5행) 에 "이 순위는 조회된 데이터를 기반으로 한 것이며, 더 많은
+    펀드를 운용하는 곳이 있을 수 있습니다" — 집계가 전수라 유보가 거짓이다. 목록이 LIMIT 에 잘린 경우(커버리지
+    병기)는 유보가 정당하므로 불개입. 전부 지워지면 원문 유지.
+    """
+    if n >= MAX_ROWS or not re.search(r"\bgroup\s+by\b|\b(?:count|sum)\s*\(", sql, re.I):
+        return text, False
+    out = _FALSE_HEDGE.sub("", text)
+    if out == text:
+        return text, False
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return (out, True) if out else (text, False)
 
 
 def strip_disclaimer(text: str) -> tuple[str, bool]:
@@ -2707,6 +2731,10 @@ def answer_question(
     if stripped:
         step("[Guard] 면책 문구 제거 — '금융기관 문의·전문가 상담' 류 문장을 답변에서 걷어냄 "
              "(answer_rules 금지 규칙 미준수 5회 재발 — 2026-09-01 결정층行)")
+    result.answer, hedged = strip_false_hedge(result.answer, sql, n)
+    if hedged:
+        step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
+             "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
     result.answer, name_fixes = verify_product_names(result.answer, rows)
     if name_fixes:
         step(f"[Guard] 상품명 전사 교정 — {' · '.join(name_fixes[:3])} (조회 원문 밖 이름 {len(name_fixes)}건 — "

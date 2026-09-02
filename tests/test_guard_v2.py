@@ -902,3 +902,33 @@ def test_distribution_fund_count_three_columns(ctx):
     assert "- 해외주식형: 펀드 953개 (클래스 2,784개)" in r.answer and "- (미수록): 펀드 308개 (클래스 418개)" in r.answer
     assert "182건은 복수 범주에 계수" in r.answer and "합(3,222)" in r.answer
     assert sum(1 for ln in r.answer.splitlines() if ln.startswith("- ")) == 19
+
+
+_R2_ANSWER = ("펀드를 가장 많이 운용하는 운용사 상위 5곳은 다음과 같습니다.\n\n"
+              "1. 미래에셋자산운용: 823개의 펀드 운용\n2. 우리자산운용: 235개의 펀드 운용\n3. 삼성자산운용: 207개의 펀드 운용\n"
+              "4. iM에셋자산운용: 205개의 펀드 운용\n5. 한국투자신탁운용: 142개의 펀드 운용\n\n"
+              "이 순위는 조회된 데이터를 기반으로 한 것이며, 더 많은 펀드를 운용하는 곳이 있을 수 있습니다. "
+              "추가 정보가 필요하시다면 관련 기관에 문의하시기 바랍니다.")
+_R2_SQL = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS 운용사코드, MAX(mgmt_co_nm) AS 운용사이름, "
+           "COUNT(DISTINCT mtco_itm_no) AS 펀드수 FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no "
+           "WHERE public_funds.sale_yn = '판매중' GROUP BY 1 ORDER BY 3 DESC LIMIT 5")
+
+
+def test_strip_disclaimer_r2_tail_and_false_hedge():
+    """R2 재검 — '관련 기관에 문의' 는 종전 패턴 밖(로컬 재현 False) + 전수 집계 5행에 '더 있을 수 있음' 거짓 유보."""
+    from src.runtime.pipeline import strip_disclaimer as d, strip_false_hedge as h
+
+    s, ok = d(_R2_ANSWER)
+    assert ok and "관련 기관" not in s and "추가 정보" not in s
+    s, ok2 = h(s, _R2_SQL, 5)
+    assert ok2 and "있을 수 있습니다" not in s and "기반으로 한 것이며" not in s
+    assert all(v in s for v in ("823개", "235개", "207개", "205개", "142개")) and "다음과 같습니다." in s   # 값 5줄 보존
+    # 패턴 확장 형제 — '해당 기관으로 확인' · '자세한 사항은 … 참고' · '일부' 유보
+    assert "확인" not in d("순자산은 1,000억원입니다. 해당 기관으로 확인하시기 바랍니다.")[0]
+    assert d("순자산은 1,000억원입니다. 자세한 사항은 운용사 홈페이지를 참고하세요.")[0] == "순자산은 1,000억원입니다."
+    assert d("자세한 내용은 다음과 같습니다. 1. A펀드")[1] is False                    # 안내 도입부는 면책이 아니다
+    assert h("A: 3개. 이는 일부일 수 있습니다.", "SELECT a, COUNT(*) FROM public_funds GROUP BY 1 LIMIT 30", 3)[0] == "A: 3개."
+    # 불개입 — LIMIT 도달 목록(유보 정당) · 집계 아닌 목록 · 유보 문장 없음
+    assert not h(_R2_ANSWER, _R2_SQL, 30)[1]
+    assert not h("더 많은 펀드가 있을 수 있습니다.", "SELECT itm_nm FROM public_funds WHERE sale_yn='판매중' LIMIT 30", 5)[1]
+    assert h("1위 823개입니다.", _R2_SQL, 5) == ("1위 823개입니다.", False)

@@ -1119,6 +1119,100 @@ def test_fund_lookup_grouping_net_assets_sum_in_eok():
     assert isinstance(rec["fd_nast_suma"], int)                                # '.0' 없음
 
 
+# ── 2026-09-02 한전·삼성전자 실측 후속 — 값 검사 TRIM 사각 · 랭킹 만기 제외 · 채권 대표행 · 0 집계 · 커버리지 ──
+
+def test_check_values_sees_trim_wrapped_literals(ctx):
+    """ensure_trimmed_compare 가 pd_pbcm·bd_knd 를 TRIM 으로 감싼 뒤에 값 검사가 돌아, 발행사·등급 리터럴 검사가 0건이었다."""
+    def v(where):
+        return [(x.column, x.literal) for x in guard.check_values(f"SELECT pd_nm FROM domestic_bonds WHERE {where} LIMIT 30", ctx)]
+    assert v("TRIM(pd_pbcm) = '삼성전자'") == [("pd_pbcm", "삼성전자")]
+    assert v("TRIM(crd_grd) = 'AAAA'") == [("crd_grd", "AAAA")]
+    assert v("TRIM(pd_pbcm) = '한국전력공사'") == [("pd_pbcm", "한국전력공사")]          # '(주)' 누락 — 0행 오거절 원인
+    assert v("pd_nm LIKE '%삼성전자%' OR TRIM(pd_pbcm) = '삼성전자'") == [("pd_pbcm", "삼성전자")]
+    # 정상 값은 통과 — 등호·IN·COALESCE 감싸기 전부
+    assert v("TRIM(pd_pbcm) = '한국전력공사(주)'") == []
+    assert v("COALESCE(TRIM(pd_pbcm),'')='한국은행'") == []
+    assert v("TRIM(crd_grd) IN ('AAA','AA+','AA0','AA-')") == []
+    # '(주)' 누락 위반의 힌트에 실제 표기가 앞에 온다 — 재생성이 이걸로 고친다
+    vs = guard.check_values("SELECT pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사' LIMIT 5", ctx)
+    assert vs[0].hint and vs[0].hint[0] == "한국전력공사(주)"
+
+
+def test_check_values_trim_aware_no_false_positive_on_gold(ctx):
+    """검증 gold SQL 전부(TRIM·COALESCE 감싼 리터럴 포함)에서 위반 0 — 정상 값을 기각하면 안 된다."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for f in sorted(glob.glob(os.path.join(root, "eval", "questions_*.jsonl"))):
+        for line in open(f, encoding="utf-8"):
+            if not line.strip():
+                continue
+            q = json.loads(line)
+            if q.get("gold_sql") and q.get("gold_verified"):
+                assert guard.check_values(q["gold_sql"], ctx) == [], q["qid"]
+
+
+def test_rank_exclusions_add_maturity_cutoff():
+    from src.runtime.pipeline import ensure_reco_exclusions as f
+    sql = "SELECT pd_nm, applied_yield FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사(주)' ORDER BY applied_yield ASC LIMIT 5"
+    q = "한전 채권 수익률 낮은 순으로 알려줘"
+    fixed, ch = f(sql, q)
+    assert ch and "mat_dt >= 20260822" in fixed and fixed.index("mat_dt") < fixed.index("ORDER BY")
+    assert not f(fixed, q)[1]                                                       # 멱등 — 하한 있으면 재주입 없음
+    assert "mat_dt" not in f(sql, "만기 지난 한전 채권 수익률 높은 순으로 알려줘")[0]     # 범주 언급 = 우회
+    assert not f(sql.replace(" ORDER BY applied_yield ASC", ""), "한전 채권 알려줘")[1]  # 조회는 제외하지 않는다
+
+
+def test_bond_evidence_and_representative(ctx):
+    from src.runtime.pipeline import ensure_bond_evidence_columns as ev, ensure_bond_representative as rep, _execute
+    sql = ("SELECT pd_nm, applied_yield FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사(주)' AND applied_yield > 0 "
+           "AND mat_dt >= 20260822 ORDER BY applied_yield ASC LIMIT 5")
+    s1, c1 = ev(sql)
+    assert c1 and "mat_dt" in s1 and "TRIM(crd_grd) AS crd_grd" in s1
+    assert not ev(s1)[1]
+    s2, c2 = rep(s1)
+    assert c2 and "GROUP BY pd_no" in s2 and "MIN(applied_yield) AS applied_yield" in s2 and "ORDER BY MIN(applied_yield) ASC" in s2
+    rows, n = _execute(s2)
+    names = [l.split(" | ")[0] for l in rows.splitlines()[1:]]
+    assert n == 5 and len(set(names)) == 5 and "한국전력공사채권1063" not in names      # 중복 없음 · 만기 경과 없음
+    assert names[0] == "한국전력공사채권1065"
+    # DESC 는 MAX
+    assert "MAX(applied_yield)" in rep("SELECT pd_nm, applied_yield FROM domestic_bonds ORDER BY applied_yield DESC LIMIT 5")[0]
+    # 불개입 — 집계 · DISTINCT · 기존 GROUP BY · 장내/장외 컬럼 · 이름 컬럼 없음 · 만기 정렬(근거컬럼)
+    assert not rep("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE applied_yield > 5 LIMIT 30")[1]
+    assert not rep("SELECT DISTINCT pd_nm FROM domestic_bonds LIMIT 30")[1]
+    assert not rep("SELECT pd_nm, applied_yield FROM domestic_bonds GROUP BY pd_no LIMIT 30")[1]
+    assert not rep("SELECT pd_nm, pd_exg_mkt FROM domestic_bonds LIMIT 30")[1]
+    assert not rep("SELECT applied_yield FROM domestic_bonds LIMIT 30")[1]
+    assert not ev("SELECT pd_nm FROM domestic_bonds WHERE mat_dt >= 20260822 ORDER BY mat_dt DESC LIMIT 5")[1]
+
+
+def test_zero_count_answer_and_issuer_clarify(ctx):
+    from src.runtime.pipeline import _zero_count_answer as z, _suggest_similar_issuers as s, _issuer_literal as lit, _violated_issuer
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_nm LIKE '%삼성전자%' OR TRIM(pd_pbcm) = '삼성전자' LIMIT 30"
+    a = z(sql, "COUNT(DISTINCT pd_no)\n0", 1)
+    assert a and "확인되지 않습니다" in a and "0종목" in a and "삼성카드(주)(323종목)" in a and "삼성전자" in a
+    assert z(sql, "COUNT(DISTINCT pd_no)\n5", 1) is None                          # 양수는 불개입
+    assert z("SELECT pd_nm FROM domestic_bonds LIMIT 1", "pd_nm\nx", 1) is None    # 집계 아님
+    assert z(sql, "COUNT(DISTINCT pd_no)\n0", 0) is None                          # 0행은 별도 경로
+    assert lit(sql) == "삼성전자" and lit("SELECT 1 FROM domestic_bonds WHERE pd_pbcm = '삼성카드(주)'") == "삼성카드(주)"
+    c = s("한국전력공사")
+    assert c and c[0].startswith("한국전력공사(주)(")                                  # 어간 포함 후보 우선
+    assert s("삼") == [] and s(None) == []
+    vs = guard.check_values("SELECT pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '삼성전자' LIMIT 5", ctx)
+    assert _violated_issuer(vs) == "삼성전자" and _violated_issuer([]) is None
+
+
+def test_explicit_limit_hit_and_hedge_exemption():
+    from src.runtime.pipeline import _explicit_limit_hit as hit, strip_false_hedge as h
+    top5 = ("SELECT pd_nm, MAX(applied_yield) AS applied_yield FROM domestic_bonds WHERE applied_yield > 0 "
+            "GROUP BY pd_no ORDER BY MAX(applied_yield) DESC LIMIT 5")
+    assert hit(top5, 5) and not hit(top5, 4)
+    assert not hit(top5.replace("LIMIT 5", "LIMIT 30"), 30)                         # 상한은 종전 커버리지 경로
+    assert not hit("SELECT pd_nm FROM domestic_bonds LIMIT 5", 5)                   # 정렬 없는 목록은 '상위' 가 아니다
+    # 잘린 개체 목록의 '더 있다' 는 참 — 걷어내지 않는다 / COUNT 정렬 top-k 는 전수 집계 — 종전대로 걷어낸다
+    assert not h("상위 5개입니다. 이외에도 더 많은 채권이 있을 수 있습니다.", top5, 5)[1]
+    assert h("A: 3개. 이는 일부일 수 있습니다.", "SELECT a, COUNT(*) FROM public_funds GROUP BY 1 ORDER BY 2 DESC LIMIT 5", 5)[0] == "A: 3개."
+
+
 # ── 2026-09-02 라운드 2 (docs/recheck_2026-09-02_round2.md §③ Q1~Q7) ──
 _R2_FIRST_SQL = ("SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) AS 운용사코드, MAX(mtco_nm) AS 운용사명, "
                  "COUNT(DISTINCT CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END) AS 펀드수 "

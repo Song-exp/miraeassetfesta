@@ -17,8 +17,14 @@ from dataclasses import dataclass
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly
 
 # col = 'lit'  ·  tbl.col = 'lit'  ·  col IN ('a','b')  — 문자열 리터럴만 (숫자 비교는 값 사전 대상이 아니다)
-_EQ = re.compile(r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)\s*=\s*'((?:[^']|'')*)'", re.I)
-_IN = re.compile(r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)\s+IN\s*\(([^)]*)\)", re.I)
+# 🔴 TRIM(col) = 'lit' · COALESCE(TRIM(col),'') = 'lit' 도 잡는다 — 2026-09-02 실측: ensure_trimmed_compare 가
+#    pd_pbcm·bd_knd 등호를 전부 TRIM 으로 감싼 뒤에 이 검사가 돌아, 발행사·종류·등급 리터럴 검사가 사실상 0건이었다
+#    (TRIM(pd_pbcm)='삼성전자'·TRIM(crd_grd)='AAAA'·TRIM(pd_pbcm)='한국전력공사'(주 누락) 전부 통과 → 0행 오거절).
+#    안전성: 검증 gold SQL 109개에 적용해 위반 0건, pd_pbcm 값 사전은 DB distinct 1,818 = 100% 커버.
+_WRAP = r"(?:COALESCE\(\s*)?(?:TRIM\(\s*)?"
+_UNWRAP = r"\s*\)?(?:\s*,\s*''\s*\))?"
+_EQ = re.compile(_WRAP + r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)" + _UNWRAP + r"\s*=\s*'((?:[^']|'')*)'", re.I)
+_IN = re.compile(_WRAP + r"(?:\b([A-Za-z_]\w*)\.)?\b([A-Za-z_]\w*)" + _UNWRAP + r"\s+IN\s*\(([^)]*)\)", re.I)
 _LIT = re.compile(r"'((?:[^']|'')*)'")
 _FROM = re.compile(r"\b(?:from|join)\s+([A-Za-z_]\w*)", re.I)
 _MAX_HINT = 4
@@ -136,7 +142,7 @@ def ambiguous_columns(sql: str, ctx: RuntimeContext) -> list[str]:
     return out
 
 
-_SUFFIX_NOISE = ("형", "型", "펀드", " ")
+_SUFFIX_NOISE = ("형", "型", "펀드", " ", "(주)")   # '(주)' — 발행사 법인 접미(2026-09-02: '한국전력공사' → '한국전력공사(주)' 유일 후보)
 
 
 def nearest_enum_value(index: dict, table: str, column: str, literal: str) -> str | None:

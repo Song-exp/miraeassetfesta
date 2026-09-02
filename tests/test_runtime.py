@@ -374,8 +374,12 @@ def test_ensure_credit_backstop():
     assert not ensure_credit_backstop("SELECT 1 FROM domestic_bonds WHERE crd_grd='AAA' LIMIT 1", q)[1]
     full = _BACKSTOP_BUGGY_SQL.replace("OR pd_nm LIKE '%(정부보증)%')",
         "OR pd_nm LIKE '%(정부보증)%' OR TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')) "
-        "AND applied_yield > 0 AND pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모'")
+        "AND applied_yield > 0 AND mat_dt >= 20260822 AND pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모'")
     assert not ensure_credit_backstop(full, q)[1]
+    # 2026-09-02 — 랭킹 제외에 만기 경과(mat_dt >= 기준일)가 추가됐다: 하한 없는 완성식은 그 절만 주입된다
+    without_mat = full.replace("AND mat_dt >= 20260822 ", "")
+    fixed3, changed3 = ensure_credit_backstop(without_mat, q)
+    assert changed3 and fixed3.count("mat_dt >= 20260822") == 1 and "사모" in fixed3
 
 
 def test_ensure_risk_name_column():

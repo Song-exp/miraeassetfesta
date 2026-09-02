@@ -336,10 +336,13 @@ def _build_value_index(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
             continue
         if n and len(vals) >= 0.98 * n:
             index[(t, c)] = vals
-            index[("_raw", t, c)] = sorted(raw_by_col[(t, c)])[:12]
+            # 🔴 원값은 **전부** 둔다 — 2026-09-02 실측: 12개 표본만 두면 pd_pbcm(1,818값)의 힌트·근사치환이
+            #    사전순 앞 12개('(주)BNK금융지주'…)에 갇혀 '한국전력공사' → '한국전력공사(주)' 를 찾지 못한다.
+            #    힌트는 guard._value_hints 가 어간 포함 순으로 4개만 추리고, 근사치환은 유일 후보일 때만 한다.
+            index[("_raw", t, c)] = sorted(raw_by_col[(t, c)])
     for (t, c), values in ctx.value_vocab.items():
         index[(t, c)] = {str(v).strip().casefold() for v in values}
-        index[("_raw", t, c)] = list(values)[:12]
+        index[("_raw", t, c)] = list(values)
     return index
 
 

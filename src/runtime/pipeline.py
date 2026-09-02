@@ -900,6 +900,56 @@ def _has_fund_key_pin(sql: str) -> bool:
     """WHERE 절에 펀드 키(대표예탁원번호·종목번호·운용사종목번호) 등호/IN 이 있는가 — 개별 조회의 또 다른 특정 조건 (4R M)."""
     frm = re.search(r"\bfrom\b", sql, re.I)
     return bool(frm) and bool(_FUND_KEY_PIN.search(sql[frm.end():]))
+_FUND_KEY_COLS = ("rptt_ksd_itm_no", "itm_no", "mtco_itm_no")
+
+
+@lru_cache(maxsize=512)
+def _fund_key_owners(lit: str) -> tuple:
+    """리터럴이 실재하는 펀드 키 컬럼들 — DB 실측(컬럼당 1행 조회). 이름·코드 하드코딩 0."""
+    if not lit.strip():
+        return ()
+    con = connect_readonly()
+    try:
+        return tuple(c for c in _FUND_KEY_COLS
+                     if con.execute(f"SELECT 1 FROM public_funds WHERE TRIM({c}) = ? LIMIT 1", (lit.strip(),)).fetchone())
+    except sqlite3.Error:
+        return ()
+    finally:
+        con.close()
+
+
+def ensure_fund_key_column(sql: str) -> tuple[str, list[str]]:
+    """7R S′ — 펀드 키 리터럴이 **다른 키 컬럼**에 실렸으면 실재하는 컬럼으로 교정. (보정된 SQL, 교정 목록)
+
+    6R W11 실측: Ground 가 `public_funds.rptt_ksd_itm_no='030230002D36'` 을 핀했는데 HCX 는
+    `itm_no IN ('030230002D36')` 을 썼다 — `check_code_literals` 는 `*_itt_cd` 만, `check_values` 는
+    값 사전이 있는 컬럼만 보므로 둘 다 통과해 0행 오거절이 됐다(5R 은 HCX 가 우연히 옳은 컬럼을 써서 ✅ — 비결정).
+    Ground 를 참조하지 않는다: **DB 실측만으로** "이 컬럼엔 0행, 형제 키 컬럼 정확히 하나에 실재" 가 판정된다.
+    형제가 둘 이상이거나 어디에도 없으면 손대지 않는다(값 검사·0행 진단에 맡긴다).
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, []
+    pairs: list[tuple[str, str]] = []
+    for _t, col, lit in guard._EQ.findall(sql):
+        if col.lower() in _FUND_KEY_COLS:
+            pairs.append((col, lit))
+    for _t, col, body in guard._IN.findall(sql):
+        if col.lower() in _FUND_KEY_COLS:
+            pairs += [(col, lit) for lit in guard._LIT.findall(body)]
+    fixes = []
+    for col, lit in pairs:
+        owners = _fund_key_owners(lit)
+        if len(owners) != 1 or owners[0] == col.lower():
+            continue
+        # 그 리터럴이 든 술어의 **좌변만** 바꾼다 (SELECT·GROUP BY 의 같은 컬럼명은 건드리지 않는다)
+        pat = re.compile(rf"\b{re.escape(col)}\b(\s*(?:=\s*'{re.escape(lit)}'|IN\s*\([^)]*'{re.escape(lit)}'[^)]*\)))", re.I)
+        new, cnt = pat.subn(owners[0] + r"\1", sql)
+        if cnt:
+            sql = new
+            fixes.append(f"{col} → {owners[0]} ('{lit}')")
+    return sql, fixes
+
+
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
 
 
@@ -4339,6 +4389,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, incl = ensure_cutoff_inclusive(sql)
     if incl:
         step(f"[Guard] 기준일 경계 교정 — 옛 기준일(8/20~8/23) 만기 하한을 mat_dt >= {BUYABLE_INT} 로 (2026-09-02 리드 결정: 8/22·8/23 만기 14종목은 8/24 에 만기 경과 — 2026-09-01 실측의 '당일 7종목' 도 이제 모수 밖)")
+    sql, key_fixes = ensure_fund_key_column(sql)
+    if key_fixes:
+        step(f"[Guard] 펀드 키 컬럼 교정 — {' · '.join(key_fixes)} (7R S′ · 6R W11 실측: KG 가 rptt_ksd_itm_no 를 핀했는데 "
+             "HCX 가 같은 값을 itm_no IN (…) 에 실어 0행 오거절 — 값 검사·코드 검사 둘 다 펀드 키 컬럼을 안 본다)")
     sql, pop_fixed = ensure_fund_base_population(sql, q)
     if pop_fixed:
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")

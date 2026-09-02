@@ -83,3 +83,27 @@ def test_zero_row_reason_never_leaks_sql(ctx):
         assert txt
         for tok in ("itm_no", "REPLACE(", "LIKE '%", "IN (", "sale_yn", "SELECT"):
             assert tok not in txt, (tok, txt)
+
+
+# ── 뿌리② — 펀드 키 컬럼 교정 (S′ 앞) ──
+
+def test_fund_key_column_correction(ctx):
+    """6R W11 실측 SQL — `itm_no IN ('030230002D36')` 은 0행. 그 값은 rptt_ksd_itm_no 에만 실재한다."""
+    from src.runtime.pipeline import ensure_fund_key_column, _execute
+
+    w11 = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds "
+           "WHERE itm_no IN ('030230002D36') AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30")
+    fixed, notes = ensure_fund_key_column(w11)
+    assert notes and "rptt_ksd_itm_no" in fixed, notes
+    assert "MIN(itm_no) AS 대표_itm_no" in fixed, "SELECT 의 같은 컬럼명까지 바꿨다"
+    rows, n = _execute(fixed)
+    assert n == 1 and "14" in rows and "3,34" not in rows, rows      # 14클래스 · 3,345억
+    assert "3345억원" in rows or "3344억원" in rows, rows
+
+    # V4 계열 — 이미 옳은 컬럼을 쓴 SQL 은 불변
+    v4 = "SELECT itm_no FROM public_funds WHERE rptt_ksd_itm_no = '030230002D36' LIMIT 30"
+    assert ensure_fund_key_column(v4) == (v4, [])
+    # 어느 키에도 없는 리터럴은 손대지 않는다 (값 검사·0행 진단에 맡긴다)
+    bogus = "SELECT itm_no FROM public_funds WHERE itm_no = 'ZZZNOTAKEY' LIMIT 30"
+    assert ensure_fund_key_column(bogus) == (bogus, [])

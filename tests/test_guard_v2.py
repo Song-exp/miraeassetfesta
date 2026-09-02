@@ -719,9 +719,11 @@ def test_fund_lookup_grouping():
     assert ok6 and "MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm" in s6 and "LIMIT 1" not in s6
     s6, ok6b = ev(s6)
     assert ok6b and "zrin_fd_ivst_risk_gcd" in s6
-    rows6 = con.execute(s6).fetchall()
-    assert rows6 and all(r[4] == "높은 위험" and r[5] == 2 for r in rows6) and sum(r[2] for r in rows6) == 7
-    assert sum(r[3] for r in rows6) == 7                           # 7클래스 전부 판매중 (리뷰 ②-7)
+    cols6 = [d[0] for d in con.execute(s6).description]
+    rows6 = [dict(zip(cols6, r)) for r in con.execute(s6).fetchall()]
+    assert rows6 and all(r["zrin_fd_ivst_risk_grd_nm"] == "높은 위험" and r["zrin_fd_ivst_risk_gcd"] == 2 for r in rows6)
+    assert sum(r["클래스수"] for r in rows6) == 7 and sum(r["판매중클래스수"] for r in rows6) == 7   # 7클래스 전부 판매중 (리뷰 ②-7)
+    assert all(r["대표번호"] == "031910531100" for r in rows6)         # 2R Q4-b 표시 단위 — 조립기가 1줄로 접는 근거
     # 비발동 — '클래스' 열거(033) · 보수(020) · ORDER BY 랭킹(P1 담당) · COUNT 집계 · 이름 필터 없음
     q33 = "미래에셋코어테크 펀드는 어떤 클래스들이 있어?"
     s33 = ("SELECT itm_no, TRIM(itm_nm) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' "
@@ -743,7 +745,8 @@ def test_fund_evidence_grade_code_symmetric():
     assert ok and s.startswith("SELECT zrin_fd_ivst_risk_grd_nm, itm_no, itm_nm, zrin_fd_ivst_risk_gcd FROM")
     assert not f(s)[1]                                             # 멱등
     s2, ok2 = f("SELECT itm_no, itm_nm FROM public_funds WHERE zrin_fd_ivst_risk_gcd = 2 LIMIT 30")
-    assert ok2 and "zrin_fd_ivst_risk_grd_nm" in s2 and s2.count("zrin_fd_ivst_risk_gcd") == 1
+    assert ok2 and "zrin_fd_ivst_risk_grd_nm" in s2 and s2.count("zrin_fd_ivst_risk_gcd") == 2   # WHERE 1 + SELECT 쌍 병기 1 (2R Q4-d)
+    assert not f(s2)[1]                                            # 멱등 — 쌍은 한 패스에 붙는다
 
 
 _R3_SQL = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
@@ -1267,3 +1270,72 @@ def test_country_tag_guard_catches_bare_and_name_forms():
     s3, ok3 = f(s7, "베트남에 투자하는 공모펀드 알려줘")
     assert ok3 and s3.count("'%,VNM,%'") == 1 and " OR " not in s3
     assert con.execute(s3.replace("SELECT itm_no, itm_nm", "SELECT COUNT(*)").replace(" LIMIT 30", "")).fetchone() == (119,)
+
+
+_R4_ROWS = ("대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | fd_yr1_ern_r_최고 | fd_yr1_ern_r_최저\n"
+            "KR5153450780 | 미래에셋코어테크증권자투자신탁(주식) 종류A | 9 | 9 | 189.77 | 187.09\n"
+            "KR5153450910 | 미래에셋코어테크청년소득공제증권자투자신탁(주식) 종류A | 4 | 4 | 188.63 | 186.98\n"
+            "KR5153451151 | 미래에셋차이나코어테크증권자투자신탁(주식)(H) 종류C-I | 3 | 3 | 13.66 | 13.19\n"
+            "KR5153451160 | 미래에셋차이나코어테크증권자투자신탁(주식)(UH) 종류A-e | 5 | 5 | 15.98 | 15.21")
+_S3_ROWS = ("대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | fd_yr1_ern_r_최고 | fd_yr1_ern_r_최저\n"
+            "KR5114450100 | 삼성코리아대표분할매수증권투자신탁 1[주식혼합] | 1 | 1 | 105.49 | 105.49\n"
+            "KR5114450011 | 삼성코리아대표증권자투자신탁 제1호[주식](A) | 9 | 9 | 109.72 | 106.71\n"
+            "KR5114450170 | 삼성코리아대표그룹목표전환증권투자신탁 제1호[채권] A | 2 | 0 |  | \n"
+            "KR5114440010 | 삼성코리아대표분할매수목표전환증권투자신탁 1[채권]_A | 2 | 0 |  | ")
+_R6_ROWS = ("대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | zrin_fd_ivst_risk_grd_nm | zrin_fd_ivst_risk_gcd | 대표번호\n"
+            + "\n".join(f"KR51090268{i}M | 미래에셋차이나솔로몬증권투자신탁2호(주식)C{i+1} | 1 | 1 | 높은 위험 | 2 | 031910531100" for i in range(5))
+            + "\nKR510902045M | 미래에셋차이나솔로몬증권투자신탁2호(주식)(C-A) | 2 | 2 | 높은 위험 | 2 | 031910531100")
+
+
+def test_fund_stem():
+    from src.runtime.pipeline import _fund_stem as f
+
+    assert f("미래에셋코어테크증권자투자신탁(주식) 종류A") == "미래에셋코어테크증권자투자신탁(주식)"
+    assert f("삼성코리아대표증권자투자신탁 제1호[주식](A)") == "삼성코리아대표증권자투자신탁 제1호[주식]"
+    assert f("미래에셋차이나코어테크증권자투자신탁(주식)(UH) 종류A-e") == "미래에셋차이나코어테크증권자투자신탁(주식)(UH)"
+    assert f("미래에셋차이나본토증권자투자신탁2호(UH)(주식)C3") == "미래에셋차이나본토증권자투자신탁2호(UH)(주식)"
+    assert f("KB차이나고배당40증권자투자신탁(채권혼합)C-P클래스") == "KB차이나고배당40증권자투자신탁(채권혼합)"
+    assert f("Plus신종개인용MMF2호 종류CP-1") == "Plus신종개인용MMF2호"
+    assert f("삼성MMF법인제1호 C 클래스") == "삼성MMF법인제1호"
+
+
+def test_lookup_answer_assembled(ctx):
+    """2R Q4 — R4·S3: '종류A: 최고 189.77%'(종류A 실값 187.94)·판매완료 재료 미전달 · R6: '등급 지수 2.0'. 기계 조립."""
+    from src.runtime.pipeline import _lookup_answer as f, _cell, ensure_fund_evidence_columns as ev, answer_question
+
+    a = f(_R4_SQL, _R4_ROWS, 4, "코어테크")
+    assert a.startswith("'코어테크' 이름의 공모펀드 4개가 조회됐습니다")
+    assert "- 미래에셋코어테크증권자투자신탁(주식): 1년 수익률 187.09%~189.77% (클래스에 따라 다름, 누적) · 클래스 9개(전부 판매중)" in a
+    assert "종류A" not in a and "(H)" in a and "(UH)" in a
+    b = f("SELECT x FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%' AND prvo_pbff_desc = '공모' LIMIT 30", _S3_ROWS, 4)
+    assert "'삼성코리아대표' 이름의 공모펀드 4개" in b and "(A)" not in b and "106.71%~109.72%" in b
+    assert b.count("판매완료(신규 가입 불가)") == 2 and "1년 수익률 105.49% (누적)" in b
+    c = f(_R6_SQL, _R6_ROWS, 6)
+    assert c.count("\n- ") == 1 and "- 미래에셋차이나솔로몬증권투자신탁2호(주식): 위험등급 2등급(높은 위험) · 클래스 7개(전부 판매중)" in c
+    assert _cell(2.0, "zrin_fd_ivst_risk_gcd") == "2" and _cell(2.5, "zrin_fd_ivst_risk_gcd") == "2.5"
+    # 비발동 — lookup 형이 아닌 결과
+    assert f(_R4_SQL, "itm_no | itm_nm\nA | B", 1) is None
+    # S4: WHERE 에 gcd IS NOT NULL 이 있어도 SELECT 에 없으면 gcd 병기 (역방향 판정은 head 기준)
+    s4 = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm "
+          "FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나%' AND zrin_fd_ivst_risk_gcd IS NOT NULL GROUP BY itm_no LIMIT 30")
+    s, ok = ev(s4)
+    assert ok and ", zrin_fd_ivst_risk_gcd FROM" in s
+    # 통합 — R4 SQL → 묶기(대표번호 포함) → 기계 조립(HCX 0회), 6펀드
+    class P:
+        calls = 0
+
+        def plan_sql(self, q, g):
+            return _R4_SQL
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            P.calls += 1
+            return "x"
+
+    r = answer_question("T-R4", "미래에셋코어테크 펀드 1년 수익률 알려줘", planner=P(), ctx=ctx)
+    assert P.calls == 0 and "[Answer] 개별 조회 답변 기계 조립" in r.think_trace and "대표번호" in r.retrieved_context
+    assert "미래에셋코어테크증권자투자신탁(주식): 1년 수익률 187.09%~189.77%" in r.answer and "종류A" not in r.answer
+    assert r.answer.count("\n- ") == 6
+    # R6 통합 — 6행이 1줄 '클래스 7개' 로 접힌다 (표시 단위만 rptt · 카운트 gold 불변)
+    P.plan_sql = lambda self, q, g: _R6_SQL
+    r6 = answer_question("T-R6", "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘", planner=P(), ctx=ctx)
+    assert r6.answer.count("\n- ") == 1 and "위험등급 2등급(높은 위험) · 클래스 7개" in r6.answer

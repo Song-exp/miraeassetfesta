@@ -515,11 +515,12 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
     if "itm_nm" not in head and "itm_no" not in head and not re.search(r"\bcount\s*\(", head, re.I):
         add.append("itm_no")
         add.append("TRIM(itm_nm) AS itm_nm")
-    if "zrin_fd_ivst_risk_gcd" in sql and "zrin_fd_ivst_risk_grd_nm" not in sql:
+    # 일반 규칙: 위험등급은 **이름·코드가 SELECT 에 항상 쌍**으로 실린다 — 한쪽만 있으면 답이 '높은 위험' 으로 끝나거나
+    #    '2.0' 코드만 남는다(R6 '2등급' 미병기 · S4: WHERE 의 `gcd IS NOT NULL` 을 보고 병기를 건너뜀). 판정은 `head` 기준이고
+    #    한 패스에 둘 다 붙여 멱등을 지킨다(이름→코드·코드→이름을 번갈아 붙이면 패스마다 열이 는다).
+    if "zrin_fd_ivst_risk_gcd" in sql and "zrin_fd_ivst_risk_grd_nm" not in head:
         add.append("zrin_fd_ivst_risk_grd_nm")
-    # 역방향 — 등급명만 조회하면 답이 '높은 위험' 으로 끝나고 등급 숫자를 못 붙인다 (2026-09-02 R6 재검:
-    #    '2등급' 미병기). 이름→코드 한 방향만 있던 것을 대칭으로.
-    if "zrin_fd_ivst_risk_grd_nm" in head and "zrin_fd_ivst_risk_gcd" not in sql:
+    if ("zrin_fd_ivst_risk_grd_nm" in head or "zrin_fd_ivst_risk_grd_nm" in add) and "zrin_fd_ivst_risk_gcd" not in head:
         add.append("zrin_fd_ivst_risk_gcd")
     target = _fund_sort_target(sql)
     if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
@@ -689,10 +690,124 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
             new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']     # 최고/최저는 수익률 8종에만
         else:
             new.append(f"MAX({col}) AS {alias or col}")
+    # 2R Q4-b — 대표예탁원번호(rptt_ksd_itm_no)를 **표시 단위**로만 싣는다: 조립기가 같은 대표번호 행을 한 줄로 접는다
+    #    (R6 6행 → "클래스 7개" 1줄). 카운트·랭킹 gold 의 펀드키는 그대로다(리뷰 ④ 완화 ⓐ).
+    new.append("MIN(rptt_ksd_itm_no) AS 대표번호")
     tail = sql[frm.start():].rstrip()
     tail = re.sub(r"\blimit\s+\d+\s*$", "", tail, flags=re.I).rstrip()
     return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_KEY_EXPR} "
             f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
+
+
+# ── 개별 조회 답변 기계 조립 (2R Q4 — R4·S3·S4·S5·R6·S12) ──
+_STEM_ASSET = re.compile(
+    r"^(.*?[\(\[][^\)\]]*(?:주식|채권|혼합|재간접|파생|MMF|부동산|특별자산|REITs|인프라|자산)[^\)\]]*[\)\]](?:\s*\((?:H|UH)\))?)", re.I)
+_STEM_CLASS_TAIL = re.compile(r"\s*(?:종류|클래스|Class|_?C[A-Za-z0-9\-]*\s*클래스).*$")
+_LOOKUP_HEAD = ["대표_itm_no", "itm_nm", "클래스수", "판매중클래스수"]
+_RET_LABEL = {"fd_mm1_ern_r": "1개월", "fd_mm3_ern_r": "3개월", "fd_mm6_ern_r": "6개월", "fd_mm18_ern_r": "18개월",
+              "fd_yr1_ern_r": "1년", "fd_yr2_ern_r": "2년", "fd_yr3_ern_r": "3년", "fd_yr5_ern_r": "5년"}
+
+
+def _fund_stem(name: str) -> str:
+    """종목명에서 클래스 접미를 떼고 자산유형 괄호(+환헤지 표기)까지 남긴다 — public_funds.md §3.3 종목명 구조.
+
+    2026-09-02 R4·S3 재검: 대표명이 `… 종류A`·`(A)` 인 채로 범위값이 붙어 "종류A: 최고 189.77%" — 종류A 실값은 187.94.
+    괄호가 없는 이름(MMF 등)은 '종류·클래스' 꼬리만 자르고, 그마저 없으면 원문.
+    """
+    n = name.strip()
+    m = _STEM_ASSET.match(n)
+    if m:
+        return m.group(1).strip()
+    return _STEM_CLASS_TAIL.sub("", n).strip() or n
+
+
+def _pct(v: str) -> str:
+    s = f"{float(v):.2f}".rstrip("0").rstrip(".")
+    return s
+
+
+def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None) -> str | None:
+    """개별 조회 묶기(lookup grouping) 결과의 답변을 기계 조립한다. 아니면 None. HCX 0회.
+
+    2026-09-02 2R — 묶기 가드가 6행을 정확히 만들었는데 HCX 가 (R4·S3) 대표명의 클래스 접미에 범위값을 붙여 특정 클래스의
+    값처럼 썼고, 클래스수·판매중클래스수(S3 판매완료)·gcd(R6·S5 "등급 지수 2.0") 재료를 옮기지 않았다. 같은 펀드의 클래스 간
+    수익률 차이는 보수 차이(§3.1)라 "클래스에 따라 X%~Y%" 범위 표기가 적절하다 — 단 클래스명 없이.
+    같은 대표번호(rptt_ksd_itm_no, 없으면 stem) 행은 한 줄로 접는다(클래스수 합·min/max 재계산 — 등급이 다르면 접지 않음).
+    """
+    lines = rows.splitlines()
+    if n < 1 or len(lines) != n + 1:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if cols[:4] != _LOOKUP_HEAD:
+        return None
+    recs = []
+    for ln in lines[1:]:
+        parts = [p.strip() for p in ln.split(" | ")]
+        if len(parts) != len(cols):
+            return None
+        recs.append(dict(zip(cols, parts)))
+    ret_cols = [c for c in _RET_LABEL if f"{c}_최고" in cols]
+    has_grade = "zrin_fd_ivst_risk_grd_nm" in cols or "zrin_fd_ivst_risk_gcd" in cols
+    has_nast = "fd_nast_suma" in cols
+    if not (ret_cols or has_grade or has_nast):
+        return None
+    groups: dict[str, dict] = {}
+    order: list[str] = []
+    for r in recs:
+        stem = _fund_stem(r["itm_nm"])
+        key = r.get("대표번호") or f"stem:{stem}"
+        grade = (r.get("zrin_fd_ivst_risk_grd_nm", ""), r.get("zrin_fd_ivst_risk_gcd", ""))
+        if key in groups and has_grade and groups[key]["grade"] != grade:
+            key = f"{key}#{r['대표_itm_no']}"
+        if key not in groups:
+            groups[key] = {"stem": stem, "n": 0, "m": 0, "grade": grade, "nast": 0, "ret": {c: [None, None] for c in ret_cols}}
+            order.append(key)
+        g = groups[key]
+        g["n"] += int(float(r["클래스수"] or 0))
+        g["m"] += int(float(r["판매중클래스수"] or 0))
+        if has_nast and r.get("fd_nast_suma"):
+            g["nast"] += int(float(r["fd_nast_suma"]))
+        for c in ret_cols:
+            lo, hi = r.get(f"{c}_최저", ""), r.get(f"{c}_최고", "")
+            if lo != "" and hi != "":
+                cur = g["ret"][c]
+                g["ret"][c] = [float(lo) if cur[0] is None else min(cur[0], float(lo)),
+                               float(hi) if cur[1] is None else max(cur[1], float(hi))]
+    pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
+    token = name_token
+    if not token:
+        m_like = re.search(r"(?:LIKE|GLOB)\s+'[%*]?([^'%*]+)[%*]?'", sql, re.I)
+        token = m_like.group(1) if m_like else None
+    head = (f"'{token}' 이름의 {pop} {len(order)}개가 조회됐습니다" if token else f"조회된 {pop} {len(order)}개입니다") \
+        + f" (기준일 {gate.DATA_CUTOFF}, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위)."
+    out = [head, ""]
+    for key in order:
+        g = groups[key]
+        parts = []
+        if g["m"] == 0:
+            parts.append("판매완료(신규 가입 불가)")
+        for c in ret_cols:
+            lo, hi = g["ret"][c]
+            label = _RET_LABEL[c]
+            if lo is None:
+                parts.append(f"{label} 수익률 미수록")
+            elif lo == hi:
+                parts.append(f"{label} 수익률 {_pct(lo)}% (누적)")
+            else:
+                parts.append(f"{label} 수익률 {_pct(lo)}%~{_pct(hi)}% (클래스에 따라 다름, 누적)")
+        if has_grade:
+            nm, gcd = g["grade"]
+            if gcd:
+                parts.append(f"위험등급 {int(float(gcd))}등급" + (f"({nm})" if nm else ""))
+            elif nm:
+                parts.append(f"위험등급 {nm}")
+            else:
+                parts.append("위험등급 미수록")
+        if has_nast:
+            parts.append(f"순자산 {g['nast'] // 100000000:,}억원 (클래스 합계)")
+        tail = f"클래스 {g['n']}개" + ("(전부 판매중)" if g["m"] == g["n"] else f", 판매중 {g['m']}개")
+        out.append(f"- {g['stem']}: " + " · ".join(parts) + f" · {tail}")
+    return "\n".join(out)
 
 
 def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
@@ -2536,6 +2651,9 @@ def _cell(v, col: str) -> str:
         return f"{int(v)}일(약 {v / 365:.1f}년)" if v >= 365 else f"{int(v)}일"
     if isinstance(v, float) and v.is_integer() and ("_dt" in col or col.endswith("dt") or "date" in col):
         return str(int(v))
+    # 코드 컬럼(*_gcd·*_cd)도 REAL 로 들어 있다 — 2026-09-02 R6·S5 재검: '2.0' 이 "등급 지수는 2.0" 으로 나갔다(정본 "2등급")
+    if isinstance(v, float) and v.is_integer() and (col.endswith("_gcd") or col.endswith("_cd")):
+        return str(int(v))
     if isinstance(v, str):
         return v.strip()
     return str(v)
@@ -2978,6 +3096,13 @@ def answer_question(
              "(2026-09-02 R2·S11 재검: 면책·유보 문장 계열도 함께 소멸)")
         result.think_trace = "\n".join(trace)
         result.answer = mgr
+        return result
+    lk = _lookup_answer(sql, rows, n, name_token)
+    if lk is not None:
+        step("[Answer] 개별 조회 답변 기계 조립 — 대표명의 클래스 접미를 떼고 범위·클래스수·판매상태를 옮긴다 "
+             "(2026-09-02 R4·S3: '종류A: 최고 189.77%' — 종류A 실값 187.94 · 같은 대표번호 행은 한 줄로)")
+        result.think_trace = "\n".join(trace)
+        result.answer = lk
         return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))

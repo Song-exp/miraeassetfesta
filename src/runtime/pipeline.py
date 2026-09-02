@@ -394,7 +394,10 @@ _SQL_GRADE_IN_FULL = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*IN\s*\(([^)]*)\)
 _FUND_TBL = re.compile(r"\bfrom\s+public_funds\b", re.I)
 _SQL_ANCHOR = re.compile(r"\bgroup\s+by\b|\border\s+by\b", re.I)
 # 질문이 모수 밖을 명시하면 주입하지 않는다 — '사모 펀드 중 큰 것' 에 공모 필터를 박으면 정반대 오답
-_POP_WIDEN = ("사모", "판매완료", "판매 완료", "판매중단", "판매 중단", "역외", "전체 펀드", "모든 펀드", "판매종료")
+# 🔴 8R 부류 F (KG 1R R6) — 목록에서 '역외' 를 뺐다. 역외는 **운용사 코드 집합**을 넓히는 말이지 판매상태·공모여부를
+#   넓히는 말이 아니다 — 7R KG-031 실측: '역외까지 포함' 이라는 낱말 하나로 `sale_yn` 이 통째로 빠져 판매완료가
+#   섞였다(167/350, gold 153/293). 역외 코드 집합은 Ground 와 `_offshore_sibling_note` 가 따로 다룬다.
+_POP_WIDEN = ("사모", "판매완료", "판매 완료", "판매중단", "판매 중단", "전체 펀드", "모든 펀드", "판매종료")
 
 
 _BASE_STRICT = {"sale_yn": "sale_yn = '판매중'", "prvo_pbff_desc": "prvo_pbff_desc = '공모'"}
@@ -537,6 +540,34 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
         return sql, False
     s = anchor.start()
     return f"{sql[:s]}WHERE {cond} {sql[s:]}", True
+
+
+_ETF_TBL = re.compile(r"\bfrom\s+(?:domestic_etfs|overseas_etfs)\b", re.I)
+_ETN_Q = re.compile(r"ETN|상장지수증권", re.I)
+_ETF_WIDEN = ("판매완료", "판매 완료", "판매중단", "판매 중단", "판매종료", "상장폐지", "전체 ETF", "모든 ETF")
+
+
+def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
+    """ETF 랭킹·집계 SQL 에 상품군 확정식을 기계 주입. (보정된 SQL, 보정했는지) — `ensure_fund_base_population` 의 ETF 판.
+
+    8R 부류 B-4″-b / KG 부류 F — `grep pd_sale_yn src/runtime` 이 0건이었다: ETF 쪽엔 기본모수 가드가 **아예 없었다.**
+    7R U8 실측이 그 부재의 발현이다 — 모수 절이 없으니 HCX 가 `pd_sale_yn=1 AND cu_charge_rt>0 AND cu_base_index
+    NOT LIKE '%not provided%'` 라는 **아무도 요구하지 않은 모수**를 지어냈다. AA22 는 `pd_sale_yn` 자체가 없어 49(gold 45).
+    확정식 둘: `pd_grp_no='ETF'`(주최 규칙의 ETF/ETN 분리 — 두 테이블 다 ETN 행을 담고 있다) · `pd_sale_yn=1`(판매모수).
+    발동 조건은 펀드판과 같다 — 랭킹(ORDER BY)이나 집계(COUNT/SUM/AVG) 꼴이고, 질문이 그 축을 명시적으로 넓히지 않았을 때만.
+    """
+    if not _ETF_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    if not re.search(r"\border\s+by\b", sql, re.I) and not re.search(r"\b(?:count|sum|avg)\s*\(", sql, re.I):
+        return sql, False
+    if any(t in question for t in _ETF_WIDEN):
+        return sql, False
+    missing = []
+    if not re.search(r"\bpd_grp_no\b", sql, re.I) and not _ETN_Q.search(question):
+        missing.append("pd_grp_no = 'ETF'")
+    if not re.search(r"\bpd_sale_yn\b", sql, re.I):
+        missing.append("pd_sale_yn = 1")
+    return _append_exclusions(sql, missing) if missing else (sql, False)
 
 
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
@@ -4755,6 +4786,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, pop_fixed = ensure_fund_base_population(sql, q)
     if pop_fixed:
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
+    sql, etf_pop = ensure_etf_base_population(sql, q)
+    if etf_pop:
+        step("[Guard] ETF 기본모수 주입 — 상품군 확정식(pd_grp_no='ETF' · pd_sale_yn=1)이 SQL 에 없어 주입 "
+             "(8R B-4″-b · 7R U8 실측: 모수 절이 없으니 HCX 가 cu_charge_rt>0 · NOT LIKE '%not provided%' 라는 "
+             "아무도 요구하지 않은 모수를 지어냈다 · AA22 49 vs gold 45)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "

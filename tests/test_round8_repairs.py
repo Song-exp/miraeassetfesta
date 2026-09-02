@@ -166,3 +166,40 @@ def test_overseas_amount_display_unit():
     dom = "SELECT cu_fund_mgmt_co, SUM(du_last_aum) as total_aum FROM domestic_etfs GROUP BY 1 LIMIT 3"
     assert "억원" in P.ensure_amount_eok_columns(dom)[0]
     assert "억원" in P.ensure_amount_eok_columns("SELECT itm_nm, fd_nast_suma FROM public_funds LIMIT 5")[0]
+
+
+# ── 항목 11 · KG 부류 F / 재검 ③-5 — 기본모수의 반쪽 주입 ────────────────────────
+def test_offshore_is_not_a_sale_axis_widener():
+    """'역외' 는 운용사 코드 집합을 넓히는 말이지 판매상태를 넓히는 말이 아니다 (KG-031 167/350 → gold 153/293)."""
+    q = "피델리티가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?"
+    sql = ("SELECT COUNT(*) FROM public_funds WHERE or_co_xtn_itt_cd IN ('00080029','00130001') "
+           "AND prvo_pbff_desc = '공모'")
+    out, ok = P.ensure_fund_base_population(sql, q)
+    assert ok and "sale_yn = '판매중'" in out, out
+    # 판매상태·공모여부를 실제로 넓히는 말은 종전대로 존중한다
+    assert P.ensure_fund_base_population("SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc='사모'",
+                                         "한국투자신탁운용 사모펀드는 몇 개야?")[1] is False
+    assert P.ensure_fund_base_population("SELECT COUNT(*) FROM public_funds WHERE sale_yn='판매완료'",
+                                         "판매완료 펀드는 몇 개야?")[1] is False
+
+
+def test_etf_base_population_injected():
+    """ETF 랭킹·집계에 상품군 확정식(pd_grp_no='ETF' · pd_sale_yn=1)을 주입한다 (U8 모수 날조 · AA22 49 vs 45)."""
+    aa22 = "SELECT COUNT(*) FROM domestic_etfs WHERE ref_base_index LIKE '%S&P 500%'"
+    out, ok = P.ensure_etf_base_population(aa22, "S&P500 추종 국내 ETF는 몇 개야?")
+    assert ok and "pd_grp_no = 'ETF'" in out and "pd_sale_yn = 1" in out, out
+    assert P.ensure_etf_base_population(out, "S&P500 추종 국내 ETF는 몇 개야?") == (out, False)   # 멱등
+
+    # 이미 있는 절은 다시 넣지 않는다
+    u8 = ("SELECT cu_fund_mgmt_co, SUM(du_last_aum) FROM overseas_etfs WHERE pd_sale_yn=1 "
+          "GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    out2, _ = P.ensure_etf_base_population(u8, "해외 ETF 순자산 상위 5개 운용사 알려줘")
+    assert out2.count("pd_sale_yn") == 1 and "pd_grp_no = 'ETF'" in out2, out2
+
+    # ETN 질의는 상품군 확정식을 붙이지 않는다(주최 규칙의 ETF/ETN 분리를 거꾸로 적용하지 않는다)
+    etn, _ = P.ensure_etf_base_population("SELECT COUNT(*) FROM domestic_etfs ORDER BY 1", "국내 ETN 몇 개야?")
+    assert "pd_grp_no" not in etn, etn
+
+    # 랭킹·집계 꼴이 아니면 불개입
+    plain = "SELECT pd_nm FROM domestic_etfs LIMIT 5"
+    assert P.ensure_etf_base_population(plain, "국내 ETF 알려줘") == (plain, False)

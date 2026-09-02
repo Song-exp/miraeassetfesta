@@ -364,7 +364,7 @@
  "W10": {
   "route": "domestic_etfs, overseas_etfs",
   "nodes": [],
-  "where": "",
+  "where": "pd_grp_no = 'ETF' AND pd_sale_yn = 1",
   "assembler": "HCX",
   "rows": 5,
   "answer_head": ""

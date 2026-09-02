@@ -97,7 +97,11 @@ class FakePlanner:
 def test_full_path_with_planner(ctx):
     r = answer_question("T-10", "국내 ETF 몇 개야?", planner=FakePlanner(), ctx=ctx)
     assert "[Execute] 1행 조회" in r.think_trace
-    assert "1235" in r.retrieved_context   # ETF 1,235건 — 2차 배포본(2026-08-22) 실측
+    # 8R B-4″-b — ETF 기본모수 확정식(`pd_grp_no='ETF' AND pd_sale_yn=1`)이 서면서 기준이 바뀌었다.
+    #   1,780(무필터) → 1,235(ETF만) → **1,160(ETF∧판매중)**. 판매중 기준은 이 프로젝트의 기본모수 규칙이고
+    #   KG 4R G1(`domestic_etfs: pd_sale_yn=1`)이 명시한 축이다 — KG 심사관 gold 도 같은 축을 쓴다
+    #   (X8 'S&P500 추종 국내 ETF' 24 · AA22 광의 45 둘 다 pd_sale_yn=1 에서 재현).
+    assert "1160" in r.retrieved_context
 
 
 def test_manager_full_name_grounds(ctx):

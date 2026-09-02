@@ -2201,3 +2201,28 @@ def test_r6_F3_holdings_join_template(ctx):
     r = answer_question("T-F3", "IBK중소형주코리아 펀드가 가장 많이 보유한 종목 3개 알려줘", planner=P(), ctx=ctx)
     assert "ext_fund_holdings" in r.sql and "구성종목 확정식" in r.think_trace
     assert "종목명" in r.retrieved_context and len(r.retrieved_context.splitlines()) == 4
+
+
+def test_r6_F6_base_population_strict_and_join_count():
+    """6R F6 (X10·KG-005·KG-035·X19) — 기본모수 판정은 단독 절: OR IS NULL·IN(판매완료)·<> 를 확정식으로 교체(다른 컬럼과 섞인 절·모수 확장 질의는 불개입)
+    · 펀드단위 COUNT 치환이 LEFT JOIN ext_* 경로에서도 별칭 한정 키로 동작."""
+    from src.runtime.pipeline import ensure_fund_base_population as bp, ensure_fund_distinct_count as dc
+
+    q = "해외주식형 공모펀드는 몇 개야?"
+    x10 = "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '해외주식형' AND (sale_yn = '판매중' OR sale_yn IS NULL) AND prvo_pbff_desc IN ('공모','사모') LIMIT 30"
+    out, ok = bp(x10, q)
+    assert ok and "sale_yn = '판매중'" in out and "IS NULL" not in out and "prvo_pbff_desc = '공모'" in out and "'사모'" not in out
+    assert "zrin_btyp_nm = '해외주식형'" in out
+    out2, ok2 = bp("SELECT COUNT(*) FROM public_funds p WHERE p.sale_yn <> '판매완료' AND p.prvo_pbff_desc = '공모' LIMIT 30", q)
+    assert ok2 and "p.sale_yn = '판매중'" in out2 and "<>" not in out2
+    # 이미 확정식 → 불개입 · 모수 확장 질의 → 불개입 · 다른 컬럼과 섞인 절 → 불개입
+    assert bp("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30", q)[1] is False
+    assert bp(x10, "해외주식형 펀드는 판매완료 포함해서 몇 개야?")[1] is False
+    mixed = "SELECT COUNT(*) FROM public_funds WHERE (sale_yn = '판매중' OR zrin_btyp_nm = '주식형') AND prvo_pbff_desc = '공모' LIMIT 30"
+    assert "zrin_btyp_nm = '주식형'" in bp(mixed, q)[0]
+    # JOIN 경로 펀드단위 COUNT
+    x19 = ("SELECT COUNT(*) FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no "
+           "WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND e.estb_dt < 20100101 LIMIT 30")
+    out3, ok3 = dc(x19, "2010년 이전에 설정된 공모펀드는 몇 개야?")
+    assert ok3 and "COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd" in out3 and "p.mtco_itm_no" in out3 and ", p.itm_no)" in out3
+    assert dc("SELECT COUNT(*) FROM public_funds p JOIN domestic_etfs d ON d.pd_itm_no = p.itm_no LIMIT 1", "펀드 몇 개")[1] is False

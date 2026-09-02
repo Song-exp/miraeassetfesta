@@ -372,6 +372,44 @@ _SQL_ANCHOR = re.compile(r"\bgroup\s+by\b|\border\s+by\b", re.I)
 _POP_WIDEN = ("사모", "판매완료", "판매 완료", "판매중단", "판매 중단", "역외", "전체 펀드", "모든 펀드", "판매종료")
 
 
+_BASE_STRICT = {"sale_yn": "sale_yn = '판매중'", "prvo_pbff_desc": "prvo_pbff_desc = '공모'"}
+_SQL_WORDS = {"or", "and", "is", "not", "null", "in", "trim", "coalesce", "like", "upper", "lower"}
+
+
+def _strictify_base_population(sql: str) -> tuple[str, bool]:
+    """sale_yn / prvo_pbff_desc **만** 든 최상위 AND 절이 확정식(= '판매중' / = '공모')이 아니면 확정식으로 교체. (SQL, 교체했는지)
+    한정자(p.·public_funds.)는 유지한다. 서브쿼리·UNION 은 첫 WHERE 만 본다(보수적)."""
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, False
+    conjs = guard.split_conjuncts(m_w.group(1))
+    out, changed = [], False
+    for c in conjs:
+        new_c = c
+        for col, strict in _BASE_STRICT.items():
+            if not re.search(rf"\b{col}\b", c, re.I):
+                continue
+            masked = _SQL_LITERAL.sub("''", c)
+            idents = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", masked)} - _SQL_WORDS - {col}
+            idents = {w for w in idents if not re.fullmatch(r"[a-z]\w{0,3}|public_funds", w)}   # 별칭·테이블 한정자
+            if idents:
+                break                                            # 다른 컬럼과 섞인 절 — 의도 불명, 불개입
+            strict_val = strict.split(chr(39))[1]
+            if strict_val not in c and not re.search(r"IS\s+NULL|<>|!=|\bNOT\b", c, re.I):
+                break                                            # 다른 단일 값(= '판매완료' · = '사모')은 의도적 별개 모수 — 존중
+            m_q = re.search(rf"\b(\w+\.)?{col}\b", c, re.I)
+            qual = m_q.group(1) or ""
+            if re.fullmatch(rf"\(?\s*(?:{re.escape(qual)})?{col}\s*=\s*'{strict.split(chr(39))[1]}'\s*\)?", c.strip(), re.I):
+                break                                            # 이미 확정식
+            new_c = qual + strict
+            changed = True
+            break
+        out.append(new_c.strip())
+    if not changed:
+        return sql, False
+    return sql[:m_w.start()] + " WHERE " + " AND ".join(out) + " " + sql[m_w.end():].lstrip(), True
+
+
 def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     """펀드 랭킹 SQL 에 기본모수(판매중·공모)를 기계 주입. (보정된 SQL, 보정했는지)
 
@@ -400,18 +438,19 @@ def ensure_fund_base_population(sql: str, question: str) -> tuple[str, bool]:
     # 🔴 질문이 '공모' 를 명시했는데 SQL 이 사모까지 포함하면 좁힌다 — 2026-09-01 FND-038 실측:
     #    "공모펀드는 유형별로 몇 개씩?" 에 prvo_pbff_desc IN ('공모','사모') 가 나가 사모 1,993개가
     #    답에 실렸다. 위 _POP_WIDEN 이 이미 '사모' 질문을 걸러내므로 여기 오는 것은 공모 질의뿐이다.
-    m_in = re.search(r"\bprvo_pbff_desc\s+IN\s*\([^)]*'사모'[^)]*\)", sql, re.I)
-    if m_in and "공모" in question:
-        sql = sql[:m_in.start()] + "prvo_pbff_desc = '공모'" + sql[m_in.end():]
-        return sql, True
     # 🔴 **빠진 쪽만** 주입한다 — 예전엔 둘 중 하나라도 있으면 통째로 건너뛰어서, 한쪽만 쓴 SQL 이
     #    반쪽 모수로 나갔다(2026-08-31 밤 FND-030 실측: prvo_pbff_desc 만 있고 sale_yn 누락).
     #    모수를 넓히는 질의는 위 _POP_WIDEN 이 이미 막으므로 모델 의도를 해치지 않는다.
+    # 6R F6 — 기본모수 판정은 **단독 절**(`sale_yn = '판매중'` 하나짜리 최상위 AND 절)로 한다. 컬럼 언급만으로 존중하면
+    #    `(sale_yn = '판매중' OR sale_yn IS NULL)`·`sale_yn IN ('판매중','판매완료')`·`sale_yn <> '판매완료'` 가 모수를 넓혀 나갔다
+    #    (5R X10·KG-005·KG-035). 그 컬럼**만** 든 절이면 확정식으로 교체하고, 다른 컬럼과 섞인 절은 손대지 않는다(의도 불명).
+    #    모수 확장 질의(_POP_WIDEN)는 위에서 이미 돌려보냈다.
+    sql, replaced = _strictify_base_population(sql)
     missing = [c for c, pat in (("sale_yn = '판매중'", r"\bsale_yn\b"),
                                 ("prvo_pbff_desc = '공모'", r"\bprvo_pbff_desc\b"))
                if not re.search(pat, sql, re.I)]
     if not missing:
-        return sql, False
+        return sql, replaced
     cond = " AND ".join(missing)
     m = re.search(r"\bwhere\b", sql, re.I)
     if m:
@@ -2351,14 +2390,24 @@ def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     ③ 질문이 '펀드 … 몇 개/개수' 형 ④ 질문에 '클래스' 없음(클래스 수를 물으면 불개입).
     클래스 수는 지우지 않고 병기한다 — 답변기가 두 기준을 함께 말할 재료.
     """
-    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by)\b", sql, re.I):
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:union|group\s+by)\b", sql, re.I):
         return sql, False
     if not _Q_FUND_COUNT.search(question) or "클래스" in question:
+        return sql, False
+    # 6R F6 — JOIN 은 public_funds + 짝 ext_* 만(타 상품군 조인은 불개입). 키 식은 FROM 별칭으로 한정해 ambiguous 를 막는다 (X19·KG-035).
+    joined = {t for t in guard.sql_tables(sql) if t != "public_funds"}
+    if joined and not joined <= {e for e, m in _EXT_PAIR.items() if m == "public_funds"}:
         return sql, False
     m = re.match(r"(\s*SELECT\s+)COUNT\(\s*\*\s*\)(?:\s+AS\s+\w+)?(\s+FROM\b)", sql, re.I)
     if not m:
         return sql, False
-    head = (f'COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수"')
+    qual = ""
+    if joined:
+        mm = _FROM_MASTER.search(sql)
+        qual = ((mm.group(2) or mm.group(1)) + ".") if mm else "public_funds."
+    key = (_FUND_KEY_EXPR.replace("or_co_xtn_itt_cd", qual + "or_co_xtn_itt_cd")
+           .replace("mtco_itm_no", qual + "mtco_itm_no").replace(", itm_no)", f", {qual}itm_no)"))
+    head = (f'COUNT(DISTINCT {key}) AS "펀드수", COUNT(*) AS "클래스수"')
     return sql[:m.end(1)] + head + sql[m.start(2):], True
 
 

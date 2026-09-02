@@ -2640,6 +2640,27 @@ _REFUSAL_ANSWER = re.compile(
 _EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
 
 
+def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
+    """조회 결과가 있는데 결과를 **하나도 인용하지 않고** 거절한 답변을 기계 전사로 교체. (답변, 교체했는지)
+
+    🔴 10R gold N7 — `[Execute]` 가 1행 이상을 돌려준 뒤에는 "정보가 없습니다" 를 낼 수 없다.
+       OFFICIAL-005 실측: 1행을 받고도 거절문이 나갔다. 못 답하는 축이 있으면 그 축만 밝히면 된다.
+    답변이 결과의 값을 하나라도 인용했으면 부분 유보이므로 불개입 — 여기서 걸리는 것은 전량 폐기뿐이다.
+    """
+    lines = rows.splitlines()
+    if n < 1 or len(lines) < 2 or not _REFUSAL_ANSWER.search(answer):
+        return answer, False
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    body = [[v.strip() for v in ln.split(" | ")] for ln in lines[1:]]
+    if any(len(v) >= 2 and v in answer for r in body for v in r):
+        return answer, False
+    out = [f"조회 결과 {n}행입니다 (기준일 {gate.DATA_CUTOFF})."]
+    out += ["- " + " · ".join(f"{c} {v}" for c, v in zip(cols, r) if v) for r in body[:10]]
+    if n > 10:
+        out.append(f"… 외 {n - 10}행")
+    return "\n".join(out), True
+
+
 def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
                                    question: str) -> tuple[str, bool]:
     """양수 단일 집계 결과를 받고도 '정보 없음' 으로 오거절한 답변을 기계 조립으로 교체한다.
@@ -2798,13 +2819,26 @@ def _nearest_fund_names(lit: str, limit: int = 3) -> list[str]:
     toks = [t for t in toks if len(t) >= 2]
     if not toks:
         return []
+    base = ("SELECT DISTINCT TRIM(itm_nm) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+            "AND {} ORDER BY fd_nast_suma DESC LIMIT 12")
     con = connect_readonly()
     try:
+        # 🔴 10R 재검 ③-10(부류 W1′) — **AND 조합부터** 시도한다. 종전엔 가장 긴 토큰 하나를 한 글자씩 줄이며
+        #    첫 매치를 썼는데, 그러면 '삼성 베스트 MMF 법인 제1호' 에 '삼성아세안플러스베트남증권자투자신탁'
+        #    같은 무관 상품이 후보로 나온다(U12·W1). 없는 상품을 물었는데 엉뚱한 상품을 권하는 형태다.
+        #    성분을 다 만족하는 상품이 없을 때만 가장 긴 성분 하나로 내려간다. 축소 하한 3자.
+        cands = [t for t in toks if len(t) >= 2][:4]
+        if len(cands) >= 2:
+            where = " AND ".join(["REPLACE(itm_nm,' ','') LIKE ?"] * len(cands))
+            rows = con.execute(base.format(where), tuple(f"%{t}%" for t in cands)).fetchall()
+            stems = list(dict.fromkeys(_fund_stem(r[0]) for r in rows))
+            if stems:
+                return stems[:limit]
         for tok in toks[:2]:
-            # 오타는 뒤가 틀리기 쉽다('코어택') — 토큰 → 접두를 한 글자씩 줄이며(최소 2자) 첫 매치를 쓴다
-            for k in range(len(tok), 1, -1):
-                rows = con.execute("SELECT DISTINCT TRIM(itm_nm) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
-                                   "AND REPLACE(itm_nm,' ','') LIKE ? ORDER BY fd_nast_suma DESC LIMIT 12", (f"%{tok[:k]}%",)).fetchall()
+            # 오타는 뒤가 틀리기 쉽다('코어택') — 토큰 → 접두를 한 글자씩 줄이며 첫 매치를 쓴다.
+            # 축소 하한은 **토큰의 2/3**(최소 2자): 긴 토큰을 두세 글자까지 깎으면 무관 상품이 후보가 된다(③-10).
+            for k in range(len(tok), max(2, (len(tok) * 2 + 2) // 3) - 1, -1):
+                rows = con.execute(base.format("REPLACE(itm_nm,' ','') LIKE ?"), (f"%{tok[:k]}%",)).fetchall()
                 stems = list(dict.fromkeys(_fund_stem(r[0]) for r in rows))
                 if stems:
                     return stems[:limit]
@@ -6088,6 +6122,10 @@ def answer_question(
         step("[Guard] 집계 오거절 교정 — 양수 COUNT 결과를 '정보 없음' 으로 오독한 답변을 기계 조립으로 교체 "
              "(2026-09-02 서버 실측: '퇴직연금으로 살 수 있는 채권 있어?' 에 COUNT 1,929 반환에도 오거절 · "
              "KG 4R X17: 펀드 COUNT 7 에 '확인할 수 없습니다')")
+    result.answer, rows_forced = ensure_rows_answered(result.answer, rows, n)
+    if rows_forced:
+        step("[Answer] 결과 전사 강제 — 1행 이상을 받고도 결과를 하나도 인용하지 않고 거절한 답변을 기계 전사로 교체 "
+             "(10R gold N7 · OFFICIAL-005 실측: 1행을 받고도 '정보가 없습니다')")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

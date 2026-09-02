@@ -332,3 +332,20 @@ def test_r10_manager_template_not_for_pinned_org():
     across = ("SELECT or_co_xtn_itt_cd, COUNT(*) FROM public_funds WHERE sale_yn='판매중' "
               "GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
     assert P.ensure_fund_manager_ranking(across, "펀드가 가장 많은 자산운용사 5곳")[1] is True
+
+
+# ── ③-10 · 0행 근접 후보 · N7 · 행이 있으면 거절 금지 ────────────────────────────
+def test_r10_nearest_candidates_and_rows_answered():
+    """재검 ③-10 — 없는 상품을 물었는데 무관한 상품을 권하는 형태(U12). AND 조합부터 시도한다."""
+    assert P._nearest_fund_names("삼성베스트MMF법인제1호") == ["삼성 베스트 MMF 법인 제1호"]
+    # 오타 회복은 유지 — 축소 하한은 토큰의 2/3(최소 2자)
+    assert any("코어테크" in s for s in P._nearest_fund_names("미래에셋코어택"))
+    assert P._nearest_fund_names("존재하지않는펀드명") == []
+
+    # gold N7 — 1행 이상을 받고도 결과를 하나도 인용하지 않은 거절은 기계 전사로 교체
+    rows = "pd_nm | cu_risk\nTIGER 미국우주테크 | 환율 변동"
+    out, ok = P.ensure_rows_answered("요청하신 정보가 포함되어 있지 않습니다.", rows, 1)
+    assert ok and "TIGER 미국우주테크" in out and "환율 변동" in out
+    # 부분 유보(결과를 인용한 답변)는 불개입 · 0행은 대상 밖
+    assert P.ensure_rows_answered("TIGER 미국우주테크 의 위험요인은 환율 변동입니다. 그 밖은 확인할 수 없습니다.", rows, 1)[1] is False
+    assert P.ensure_rows_answered("정보가 없습니다.", "pd_nm | cu_risk", 0)[1] is False

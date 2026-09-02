@@ -165,9 +165,46 @@ def validate_sql(sql: str) -> str | None:
                 owner = next((o for o, c in _COLUMNS_OF.items() if col in c), None)
                 hint = f" ({owner} 컬럼이다)" if owner else ""
                 return f"{t} 에 없는 컬럼: {col}{hint}"
+    # KG 1R R3 — 구조 검증 일반화: ③ 템플릿 자리표시자 잔재(`<코드>` 를 리터럴로 복사 — KG-012 `'%,<CHN>,%'` 0행 "0개") ·
+    #    비-SQLite 토큰(`TOP n` — KG-028 OperationalError "오류"). 재생성 사유로 돌려준다.
+    m_tpl = re.search(r"<[A-Za-z가-힣_][A-Za-z가-힣_ ]*>", s)
+    if m_tpl:
+        return f"템플릿 자리표시자 {m_tpl.group(0)} 잔재 — 규칙의 <…> 는 실제 값으로 치환해 쓴다"
+    if re.search(r"\bselect\s+(?:distinct\s+)?top\s+\d+", s, re.I):
+        return "SQLite 문법이 아니다(TOP n) — LIMIT n 을 쓴다"
     if not re.search(r"\blimit\s+\d+", s, re.I):
         return "LIMIT 누락"
     return None
+
+
+def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
+    """실행 전 기각 사유 — 문법·테이블·컬럼·모호 컬럼·라우팅 범위·코드 리터럴. None 이면 통과. 1차·재생성 공통(중복 코드 0).
+
+    KG 1R R3 ④ 라우팅 대상 밖 테이블(KG-028: 펀드 질의에 domestic_etfs JOIN) — 교차 질의가 아니고 라우터가 정한 테이블이 있으면
+    그 밖의 마스터 사용은 기각한다(사후 보정이 FROM 으로 tables 를 확정한 뒤라 단일 테이블만 남는다).
+    """
+    err = validate_sql(sql) or forbidden_column_use(sql)
+    if not err:
+        # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
+        unk = guard.unknown_columns(sql, ctx)
+        if unk:
+            err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
+    if not err:
+        # 🔴 JOIN 의 모호 컬럼 — 실행 오류는 재생성 경로가 없어 그대로 "조회 중 오류" 가 나간다
+        amb = guard.ambiguous_columns(sql, ctx)
+        if amb:
+            err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
+                   + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
+    if not err and tables and not cross:
+        outside = sorted({t for t in guard.sql_tables(sql) if t in TABLES} - set(tables))
+        if outside:
+            err = (f"라우팅 대상({', '.join(tables)}) 밖 테이블 사용: {', '.join(outside)} — "
+                   "질문의 상품군 테이블로 다시 쓴다 (교차 질의가 아니다)")
+    if not err:
+        bad = guard.check_code_literals(sql, ctx)
+        if bad:
+            err = "코드 컬럼 리터럴 검증 실패: " + "; ".join(bad[:3]) + " — 코드는 'KG 개체 매핑' 의 값만 쓴다. 매핑이 없으면 지어내지 말고 REFUSE: 로 답한다"
+    return err
 
 
 def ensure_limit(sql: str) -> tuple[str, bool]:
@@ -1430,17 +1467,31 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str |
              if re.search(pat, sql, re.I)]
     scope = f" ({'·'.join(basis)} 기준, 기준일 {gate.DATA_CUTOFF})" if basis else f" (기준일 {gate.DATA_CUTOFF})"
     # 운용사 주어 + 합산 문장 — ground 의 Org 코드 중 **SQL 에 실제로 실린 코드**만 센다(KG 2코드 · SQL 1코드면 합산 아님)
-    subject, used_codes = "조회 조건에 해당하는", []
+    # KG 1R R1 — 주어는 Ground 의 **모든** 기관 개체를 역할(운용/수탁 — 코드 컬럼으로 판정)과 함께 반영한다.
+    #    KG-011: "KB자산운용이 운용하는 공모펀드는 0개" — 수탁 조건(국민은행)이 빠져 거짓 문장(KB 운용은 129/625).
+    parts, used_codes = [], []
     for line in ground_lines:
-        codes = [c for c in _ORG_CODES.findall(line) if c in sql]
         m_lab = re.match(r"'([^']+)'\s*→\s*Org_\w+\s*\((?:Organization,\s*정식명\s+([^)]+)|Organization)", line)
-        if "Organization" in line and codes and m_lab:
-            name = (m_lab.group(2) or m_lab.group(1)).strip()     # S1: 정식명 슬롯이 있으면 주어는 정식명('한국 투자 신탁 운용' → 한국투자신탁운용)
-            last = name[-1]
-            particle = "이" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "가"
-            subject, used_codes = f"{name}{particle} 운용하는", codes
-            break
+        if "Organization" not in line or not m_lab:
+            continue
+        name = (m_lab.group(2) or m_lab.group(1)).strip()     # S1: 정식명 슬롯이 있으면 주어는 정식명('한국 투자 신탁 운용' → 한국투자신탁운용)
+        last = name[-1]
+        particle = "이" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "가"
+        mgr = [c for c in re.findall(r"or_co_xtn_itt_cd='(\d+)'", line) if c in sql]
+        tru = [c for c in re.findall(r"trusc_xtn_itt_cd='(\d+)'", line) if c in sql]
+        if mgr:
+            parts.append(f"{name}{particle} 운용하")
+            used_codes += mgr
+        elif tru:
+            parts.append(f"{name}{particle} 수탁하")
+    subject = ("고 ".join(parts) + "는") if parts else "조회 조건에 해당하는"
     out = f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}."
+    if funds == 0:
+        # 0행 정책(R1): 무엇을 셌는지 조건을 한 줄로 굽는다 — 코드 리터럴은 _sql_precheck 가 실존을 검증했으므로 진짜 0 이다
+        m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+        conds = [guard._humanize_cond(c) for c in guard.split_conjuncts(m_w.group(1))] if m_w else []
+        conds = [c for c in conds if c and not re.search(r"판매|공모|사모", c)]
+        out += "\n(각 조건의 개체·값은 데이터에 실재하며 그 교집합이 0입니다" + (" — 그 밖의 조건: " + " · ".join(conds) if conds else "") + ")"
     if len(used_codes) >= 2:
         out += f"\n운용사 코드 {len(used_codes)}건({'·'.join(used_codes)})을 합산했습니다."
     offshore = _offshore_sibling_note(subject, used_codes, sql)
@@ -3513,18 +3564,7 @@ def answer_question(
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
-    err = validate_sql(sql) or forbidden_column_use(sql)
-    if not err:
-        # ①-b 컬럼 환각(remaining_days 류) — 실행 전 검출해 재생성 기회를 준다 (2026-08-31 paired v2: 실행 실패 8/80)
-        unk = guard.unknown_columns(sql, ctx)
-        if unk:
-            err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
-    if not err:
-        # 🔴 JOIN 의 모호 컬럼 — 실행 오류는 재생성 경로가 없어 그대로 "조회 중 오류" 가 나간다
-        amb = guard.ambiguous_columns(sql, ctx)
-        if amb:
-            err = ("여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): "
-                   + ", ".join(amb[:5]) + " — 테이블 별칭을 붙이고 p.itm_no 처럼 모두 한정한다")
+    err = _sql_precheck(sql, ctx, tables, cross)
     violations = [] if err else guard.check_values(sql, ctx)
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
@@ -3549,13 +3589,7 @@ def answer_question(
             sql = _apply_sql_guards(sql, q, name_token, future, step, ctx)
             result.sql = sql
             step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql)
-            err = validate_sql(sql) or forbidden_column_use(sql)
-            if not err:
-                unk = guard.unknown_columns(sql, ctx)
-                if unk:
-                    err = "스키마에 없는 컬럼: " + _name_owners(unk[:5], ctx)
-                elif guard.ambiguous_columns(sql, ctx):
-                    err = "한정되지 않은 모호 컬럼: " + ", ".join(guard.ambiguous_columns(sql, ctx)[:5])
+            err = _sql_precheck(sql, ctx, tables, cross)
             violations = [] if err else guard.check_values(sql, ctx)
         if err or violations:
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")

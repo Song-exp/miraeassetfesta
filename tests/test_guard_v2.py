@@ -1609,3 +1609,47 @@ def test_country_attr_tags_from_kg(ctx):
     assert not hnf("SELECT itm_nm FROM public_funds WHERE (or_attr_desc LIKE '%주식%' OR itm_nm LIKE '%배당%') LIMIT 30")
     assert hnf("SELECT itm_nm FROM public_funds WHERE itm_nm LIKE '%코어테크%' AND sale_yn='판매중' LIMIT 30")
     assert hnf("SELECT itm_nm FROM public_funds WHERE (REPLACE(itm_nm,' ','') LIKE '%코어%' OR REPLACE(itm_nm,' ','') LIKE '%테크%') LIMIT 30")
+
+
+def test_sql_precheck_generalized(ctx):
+    """KG 1R R3 — 리터럴·구조 검증 일반화: 코드 컬럼 리터럴 실존(KG-003 'A011' · KG-004 80000000 · KG-025 IN('삼성','삼성KODEX')) ·
+    템플릿 잔재(KG-012 <CHN>) · 비-SQLite TOP(KG-028) · 라우팅 대상 밖 테이블(KG-028). 전부 실행 전 기각 → 재생성 사유."""
+    from src.runtime.pipeline import _sql_precheck as pc, validate_sql, answer_question
+
+    k = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = 'A011' AND prvo_pbff_desc = '공모') LIMIT 30"
+    assert "A011" in (pc(k, ctx, ["public_funds"], False) or "") and "없는 코드" in pc(k, ctx, ["public_funds"], False)
+    k4 = "SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = 80000000 AND prvo_pbff_desc = '공모' LIMIT 30"
+    assert "따옴표 없는 숫자" in pc(k4, ctx, ["public_funds"], False)
+    k25 = "SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('삼성', '삼성KODEX') AND prvo_pbff_desc = '공모' LIMIT 30"
+    assert "'삼성'" in pc(k25, ctx, ["public_funds", "domestic_etfs"], False)
+    ok = "SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040010', '00040024') AND sale_yn='판매중' LIMIT 30"
+    assert pc(ok, ctx, ["public_funds"], False) is None
+    assert pc("SELECT COUNT(*) FROM public_funds WHERE trim(trusc_xtn_itt_cd) = '0016022' LIMIT 1", ctx, ["public_funds"], False) is None   # 7자리 raw 도 실재
+    assert "템플릿 자리표시자 <CHN>" in validate_sql("SELECT COUNT(*) FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,<CHN>,%' LIMIT 30")
+    assert "TOP" in validate_sql("SELECT TOP 1 pd_nm FROM domestic_etfs LIMIT 30")
+    k28 = "SELECT constituent, weight_pct FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE domestic_etfs.pd_abrv_nm LIKE '%코어테크%' ORDER BY weight_pct DESC LIMIT 30"
+    assert "라우팅 대상(public_funds) 밖 테이블 사용: domestic_etfs" in pc(k28, ctx, ["public_funds"], False)
+    assert pc(k28, ctx, ["public_funds"], True) is None and pc(k28, ctx, ["domestic_etfs"], False) is None   # 교차·라우팅 일치는 통과
+    # 통합 — KG-004 형(날조 코드)이 "0개" 단언으로 나가지 않는다 (1차 기각 → 재생성 → 재기각 → 유보)
+    class P:
+        def plan_sql(self, q, g):
+            return k4
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "x"
+
+    r = answer_question("T-KG004", "XYZ자산운용이 운용하는 공모펀드는 몇 개야?", planner=P(), ctx=ctx)
+    assert "0개" not in r.answer and "[Guard] SQL 기각" in r.think_trace and "따옴표 없는 숫자" in r.think_trace
+
+
+def test_count_answer_subject_all_roles():
+    """KG 1R R1 (KG-011) — 주어에 Ground 의 모든 기관(운용/수탁)을 역할과 함께 · 0 이면 센 조건을 굽는다."""
+    from src.runtime.pipeline import _count_answer as f
+
+    g = ["'KB자산운용' → Org_00040035 (Organization) → public_funds.or_co_xtn_itt_cd='00040035'",
+         "'국민은행' → Org_trustee_00020004 (Organization) → public_funds.trusc_xtn_itt_cd='00020004'"]
+    sql = ("SELECT COUNT(DISTINCT x) AS 펀드수, COUNT(*) AS 클래스수 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' "
+           "AND TRIM(trusc_xtn_itt_cd) = '00020004' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30")
+    a = f(sql, "펀드수 | 클래스수\n0 | 0", 1, g)
+    assert a.startswith("KB자산운용이 운용하고 국민은행이 수탁하는 공모펀드는 0개(클래스 0개)") and "교집합이 0" in a
+    assert "129" not in a and "역외" not in a

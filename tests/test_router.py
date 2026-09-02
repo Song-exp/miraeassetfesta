@@ -236,3 +236,13 @@ def test_answer_rules_reach_composer(ctx):
 def test_planner_context_has_synonyms(ctx):
     txt = ctx.planner_context([B])
     assert "동의어" in txt and "통안채→통화안정채권" in txt
+
+
+def test_router_typo_펌드(ctx):
+    """2026-09-02 R7 재검 — '공모펌드' 오타가 미특정 → 4테이블로 빠져 답변 규칙 희석·이름 필터 꺼짐.
+    '펌드' 1줄 흡수. 🔴 '펀 드'(띄어쓰기)는 상품 명사 매칭이 원문 기준이라 여전히 미특정 — pipeline 의
+    SQL 사후 라우팅 보정(7-b)이 담당한다는 사실을 여기 못 박아 둔다."""
+    r = route("공모펌드 중 1년 수익률이 가장 높은 3개 알려줘", ctx)
+    assert r.tables == [PF] and r.decided
+    assert route("코어테크 펌드 1년 수익률 알려줘", ctx).tables == [PF]
+    assert not route("공모 펀 드 알려줘", ctx).decided

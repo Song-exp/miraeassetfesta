@@ -383,8 +383,8 @@ def _fund_sort_target(sql: str) -> tuple[str, str] | None:
     return None
 
 
-def ensure_fund_rank_representative(sql: str) -> tuple[str, bool]:
-    """펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감싼다. (보정된 SQL, 보정했는지)
+def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
+    """펀드단위 랭킹의 대표행을 기계 보정한다. (보정된 SQL, 보정했는지)
 
     2026-08-31 밤 실측(FND-015 채점): 펀드단위 GROUP BY 는 했는데 SELECT 가 bare fd_mm6_ern_r 라
     펀드당 대표값이 **임의 클래스 행** — TOP5 값 5건 전부 MAX 클래스가 아니었고 5위는 6위와 동점까지 갔다.
@@ -394,26 +394,77 @@ def ensure_fund_rank_representative(sql: str) -> tuple[str, bool]:
     ② GROUP BY 에 or_co_xtn_itt_cd(펀드단위 키 신호) ③ ORDER BY 첫 키가 랭킹 컬럼(수익률 8종·순자산)
     ④ 그 컬럼이 SELECT 에 bare 로 있다(집계 미포장). DESC 는 MAX, ASC(하위 랭킹)는 MIN.
     별칭 AS <컬럼> 을 붙여 이름·위치 ORDER BY 둘 다 살린다.
+
+    🔴 **GROUP BY 부재 분기** (2026-09-02 R7 재검): 조건 ②가 HCX 준수에 의존해서, 미특정 경로(4테이블
+    49,634자 근거문서)에서 HCX 가 GROUP BY 를 버리자 가드가 빈손 — 클래스 단위 top3 가 한화2.2배 한 펀드의
+    Ce·C4·A 도배(387.66·387.48·386.38, gold 는 NH-Amundi 362.53·삼성KOSPI200 361.3). 정상 경로에서도
+    비결정적으로 재발할 수 있는 구멍(§6-2s 018 잠재)이라 SQL 모양만으로 대표행을 보장한다:
+    GROUP BY 가 없고 · 집계(COUNT/SUM/AVG)도 없고 · 질문이 '클래스' 단위를 명시하지 않으면
+    `GROUP BY <펀드키>` 를 ORDER BY 앞에 주입하고 정렬 컬럼을 MAX/MIN 으로 감싼 뒤 SELECT 끝에
+    `COUNT(*) AS 클래스수` 를 병기한다(끝에 붙이므로 위치 ORDER BY 번호는 안 흔들린다).
+    식별 컬럼(itm_no·itm_nm)이 없으면 함께 붙인다 — 뒤의 근거컬럼 가드가 COUNT 를 보고 건너뛰기 때문.
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
-        return sql, False
-    if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
         return sql, False
     target = _fund_sort_target(sql)
     if not target:
         return sql, False
     col, direction = target
+    agg = "MAX" if direction == "DESC" else "MIN"
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
-    if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+    has_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    tail = sql[frm.start():]
+    if has_group:
+        if not re.search(r"\bgroup\s+by\b[^;]*\bor_co_xtn_itt_cd\b", sql, re.I):
+            return sql, False
+        head, wrapped, in_func = _wrap_sort_col(head, col, agg)
+        if not wrapped:
+            return sql, False
+        if in_func:
+            tail = _wrap_order_by_col(tail, col, agg)
+        return head + tail, True
+    # ── GROUP BY 부재: 펀드키 주입 ──
+    if "클래스" in question or re.search(r"\b(?:count|sum|avg|total)\s*\(", head, re.I):
         return sql, False
+    m_ob = re.search(r"\border\s+by\b", tail, re.I)
+    if not m_ob:
+        return sql, False
+    add = []
+    if "itm_nm" not in head and "itm_no" not in head:
+        add += ["itm_no", "TRIM(itm_nm) AS itm_nm"]
+    head, wrapped, in_func = _wrap_sort_col(head, col, agg)
+    if not wrapped and not re.search(rf"\b{col}\b", head, re.I):
+        add.append(f"{agg}({col}) AS {col}")     # 정렬 컬럼이 SELECT 에 없으면 별칭으로 실어 ORDER BY 이름을 살린다
+    add.append('COUNT(*) AS "클래스수"')
+    head = head.rstrip() + ", " + ", ".join(add) + " "
+    tail = tail[:m_ob.start()].rstrip() + f" GROUP BY {_FUND_KEY_EXPR} " + tail[m_ob.start():]
+    if in_func:
+        tail = _wrap_order_by_col(tail, col, agg)
+    return head + tail, True
+
+
+def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
+    """SELECT 목록의 bare 정렬 컬럼을 agg(col) 로 감싼다. (새 head, 감쌌는지, 함수 인자 위치였는지)
+
+    🔴 2026-09-02 리뷰 ②-5: 정렬 컬럼이 함수 안이면(`ROUND(fd_yr1_ern_r,2)`) 별칭까지 붙여
+    `ROUND(MAX(fd_yr1_ern_r) AS fd_yr1_ern_r,2)` 문법 오류 → "데이터 조회 중 오류" 무응답. 함수 인자 위치면
+    `agg(col)` 만 넣고 별칭은 생략한다 — 위치 ORDER BY 는 그대로 유효, 이름 ORDER BY 는 _wrap_order_by_col 이 맞춘다.
+    """
+    if re.search(rf"(?:max|min|avg|sum|total)\s*\(\s*{col}", head, re.I):
+        return head, False, False
     m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
     if not m:
-        return sql, False
-    agg = "MAX" if direction == "DESC" else "MIN"
+        return head, False, False
+    if re.search(r"\w+\(\s*$", head[:m.start()]):
+        return head[:m.start()] + f"{agg}({col})" + head[m.start() + len(col):], True, True
     alias = m.group(1) or f" AS {col}"
-    fixed_head = head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():]
-    return fixed_head + sql[frm.start():], True
+    return head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():], True, False
+
+
+def _wrap_order_by_col(tail: str, col: str, agg: str) -> str:
+    """ORDER BY 첫 키가 이름으로 정렬 컬럼을 쓰면 agg(col) 로 — 별칭이 없어진 함수 인자 경우의 짝."""
+    return re.sub(rf"(\border\s+by\s+(?:(?!max\(|min\()[^,])*?)\b{col}\b", rf"\1{agg}({col})", tail, count=1, flags=re.I)
 
 
 def ensure_fund_return_error_exclusion(sql: str) -> tuple[str, bool]:
@@ -466,6 +517,10 @@ def ensure_fund_evidence_columns(sql: str) -> tuple[str, bool]:
         add.append("TRIM(itm_nm) AS itm_nm")
     if "zrin_fd_ivst_risk_gcd" in sql and "zrin_fd_ivst_risk_grd_nm" not in sql:
         add.append("zrin_fd_ivst_risk_grd_nm")
+    # 역방향 — 등급명만 조회하면 답이 '높은 위험' 으로 끝나고 등급 숫자를 못 붙인다 (2026-09-02 R6 재검:
+    #    '2등급' 미병기). 이름→코드 한 방향만 있던 것을 대칭으로.
+    if "zrin_fd_ivst_risk_grd_nm" in head and "zrin_fd_ivst_risk_gcd" not in sql:
+        add.append("zrin_fd_ivst_risk_gcd")
     target = _fund_sort_target(sql)
     if target and target[0] in _FUND_RETURN_COLS and "zrin_attr_nms" not in sql:
         add.append("zrin_attr_nms")
@@ -561,6 +616,222 @@ def ensure_spaceless_name_match(sql: str) -> tuple[str, bool]:
     return fixed, fixed != sql
 
 
+# 이름 조회 필터 — **좌변이 itm_nm** 인 LIKE/GLOB 만 (원형 · TRIM(itm_nm) · 공백무시 REPLACE 형).
+# 🔴 2026-09-02 리뷰 ②-1: 종전 `itm_nm … {0,40}자 … LIKE` 40자 창이 SELECT 의 itm_nm 과 WHERE 의 다른 컬럼
+#    LIKE(or_attr_desc·zrin_attr_nms)를 이름 조회로 오인 — "주식형 공모펀드" 목록이 개별 조회 묶기(최단 이름순)로
+#    빠져 역외 1클래스 펀드 30개가 나갔다. `NOT LIKE` 는 제외 필터라 이름 조회가 아니다(NOT 이 끼면 불일치).
+_NAME_FILTER = re.compile(
+    r"(?:REPLACE\(\s*itm_nm\s*,\s*' '\s*,\s*''\s*\)|TRIM\(\s*itm_nm\s*\)|\bitm_nm\b)\s*(?:LIKE|GLOB)\b", re.I)
+
+
+def _has_name_filter(sql: str) -> bool:
+    """WHERE 절(FROM 뒤)에 좌변 itm_nm 의 LIKE/GLOB 이름 조회가 있는가."""
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    return bool(frm) and bool(_NAME_FILTER.search(sql[frm.end():]))
+_LOOKUP_ROW_UNIT = ("클래스", "보수", "수수료")     # 행(클래스) 단위가 정답인 질의 — 033 클래스 열거·020 클래스별 보수
+_SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
+
+
+@lru_cache(maxsize=1)
+def _fund_col_types() -> dict[str, str]:
+    """public_funds 컬럼 → SQL 타입(소문자). 스키마 원천(loader)에서 읽는다 — 하드코딩 아님."""
+    return {c.lower(): (t or "").lower() for c, _, t, *_ in (getattr(_ev_ctx(), "schema", {}) or {}).get("public_funds", ())}
+
+
+def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
+    """이름 검색(개별 조회) 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값을 병기. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R4 재검 — 이름 검색 30행(6펀드 37클래스)을 답변기가 펀드별로 묶지 않고 1클래스만 제시한 것이
+    3회째(020·032 계열). 프롬프트 규칙("펀드별로 묶어라")은 재현이 안 되므로 SELECT 단계에서 묶어 주면
+    답변기는 6행을 복사만 한다. R6 은 LIMIT 1 이라 "클래스 7개" 병기 자체가 불가능했다.
+    발동 조건(전부): ① public_funds 단독(JOIN·UNION·GROUP BY 없음) ② itm_nm LIKE/GLOB 이름 필터 존재
+    ③ ORDER BY 없음(랭킹은 ensure_fund_rank_representative 담당 · 그 밖의 정렬은 모델 의도 존중)
+    ④ SELECT 에 집계·`*` 없음 ⑤ 질문에 '클래스'·'보수'·'수수료' 없음(행 단위가 정답인 질의는 불개입)
+    ⑥ SELECT 항목이 전부 단순 컬럼(TRIM(col)·AS 별칭 허용) — 식이 섞였으면 안전하게 불개입.
+    조치: SELECT 를 `MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS 클래스수` +
+    수치 컬럼은 `MAX(col) AS col_최고, MIN(col) AS col_최저`, 문자·날짜 컬럼은 `MAX(col) AS col` 로 재작성하고
+    `GROUP BY 펀드키`, `ORDER BY MIN(length(공백제거 이름)) ASC`(**가장 짧은 이름 = 본체** — "질문 이름과
+    가장 정확히 일치하는 펀드를 먼저" 를 결정적으로), LIMIT 은 상한으로 푼다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
+        return sql, False
+    if not _has_name_filter(sql) or any(t in question for t in _LOOKUP_ROW_UNIT):
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    if re.search(r"\b(?:count|sum|avg|min|max|total)\s*\(", head, re.I) or "*" in head:
+        return sql, False
+    sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I)
+    types = _fund_col_types()
+    if not types:
+        return sql, False
+    # 판매중클래스수 병기 (2026-09-02 리뷰 ②-7) — 이름 조회에 기본모수를 박으면 판매완료·사모 14,707행 개별 조회가
+    # 0행 오거절이라 주입하지 않는 대신, "클래스 7개 중 판매중 7개" 재료를 0행 위험 없이 싣는다.
+    new = ["MIN(itm_no) AS 대표_itm_no", "MIN(TRIM(itm_nm)) AS itm_nm", 'COUNT(*) AS "클래스수"',
+           "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\""]
+    for it in _split_select_items(sel):
+        m = _SELECT_PLAIN_ITEM.fullmatch(it.strip())
+        if not m:
+            return sql, False
+        col, alias = m.group(1).lower(), m.group(2)
+        if col in ("itm_no", "itm_nm"):
+            continue
+        t = types.get(col)
+        if t is None:
+            return sql, False
+        if col == "fd_nast_suma":
+            # 🔴 순자산은 SUM — 이 DB 의 fd_nast_suma 는 **클래스별 값**이라 펀드 순자산은 합계다 (2026-09-02 리뷰 ②-6 실측:
+            #    코어테크 본체 10클래스 합 2조9,148억 vs 최대 클래스 7,348억 · 삼성MMF법인제1호 4클래스 12.4조/1,051억/…).
+            #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
+            new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
+                    "CAST(SUM(fd_nast_suma)/100000000 AS INTEGER) || '억원' AS \"순자산_억원\""]
+        elif col in _FUND_RETURN_COLS:
+            new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']     # 최고/최저는 수익률 8종에만
+        else:
+            new.append(f"MAX({col}) AS {alias or col}")
+    tail = sql[frm.start():].rstrip()
+    tail = re.sub(r"\blimit\s+\d+\s*$", "", tail, flags=re.I).rstrip()
+    return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_KEY_EXPR} "
+            f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
+
+
+def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
+    """ORDER BY 없는 펀드 목록(태그·유형 필터)을 펀드키로 묶어 순자산순 대표행으로. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R3 재검 — `LIMIT 30` 에 ORDER BY 가 없어 **임의 30행**(재현성 없음)이 나갔고, 같은 펀드(솔로몬 2호)의
+    C2·C5 가 별개 항목으로 나열됐다. 발동 조건(전부): ① public_funds 단독(JOIN·UNION·GROUP BY 없음)
+    ② SELECT 에 itm_no/itm_nm(목록 꼴)이 있고 집계·`*` 없음 ③ ORDER BY 없음(랭킹은 대표행 가드)
+    ④ 이름 필터 없음(개별 조회는 ensure_fund_lookup_grouping) ⑤ 질문에 '클래스' 없음.
+    조치: SELECT 끝에 `COUNT(*) AS 클래스수, MAX(fd_nast_suma) AS fd_nast_suma` + `GROUP BY 펀드키` +
+    `ORDER BY fd_nast_suma DESC`(실측 상위: KB중국본토A주 14클래스 1,453억 · 미래에셋차이나솔로몬1호 · 신한중국의꿈2호).
+    MAX 하나뿐인 집계라 bare 컬럼(itm_no·itm_nm·태그)은 그 MAX 클래스 행을 따라온다(SQLite).
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
+        return sql, False
+    if _has_name_filter(sql) or "클래스" in question:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    if "itm_nm" not in head and "itm_no" not in head:
+        return sql, False
+    if re.search(r"\b(?:count|sum|avg|min|max|total)\s*\(", head, re.I) or "*" in head:
+        return sql, False
+    tail = sql[frm.start():].rstrip()
+    m_lim = re.search(r"\blimit\s+\d+\s*$", tail, re.I)
+    body, lim = (tail[:m_lim.start()].rstrip(), tail[m_lim.start():]) if m_lim else (tail, "")
+    add = 'COUNT(*) AS "클래스수"' + (", MAX(fd_nast_suma) AS fd_nast_suma" if "fd_nast_suma" not in head else "")
+    return (f"{head.rstrip()}, {add} {body} GROUP BY {_FUND_KEY_EXPR} ORDER BY fd_nast_suma DESC {lim}").rstrip(), True
+
+
+# ── 답변 입력 조립 3종 (2026-09-02 R3 재검 — 목록 답변의 총량 병기·내부 코드 숨김·이름 전사 교정) ──
+_HIDE_FROM_ANSWER = {"prfd_attr_cds"}      # 내부 태그 코드(C101·M109…) — 근거컬럼 가드는 명칭(zrin_attr_nms)을 병기하므로 답변 재료가 아니다
+_SIMPLE_FROM_WHERE = re.compile(r"\bfrom\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
+
+
+def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
+    """LIMIT 에 잘린 목록의 전체 규모 — (전체 행수, 펀드수|None, 펀드 단위로 묶인 SQL 인지). 단순 SELECT 가 아니면 None.
+
+    SQLite 재실행 1회·HCX 0회. public_funds 단독이면 펀드키 DISTINCT 도 센다. GROUP BY 는 펀드키 묶기
+    (ensure_fund_list_grouping·lookup_grouping·대표행 가드가 만든 형태)만 허용 — 그때 표시 행은 펀드다.
+    """
+    if re.search(r"\b(?:union|having)\b|\(\s*select\b", sql, re.I):
+        return None
+    grouped = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    if grouped and f"GROUP BY {_FUND_KEY_EXPR}" not in sql:
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    frm = m.group(1).strip()
+    fund_only = _FUND_TBL.search(sql) and not re.search(r"\bjoin\b", sql, re.I)
+    cols = f"COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})" if fund_only else "COUNT(*)"
+    con = connect_readonly()
+    try:
+        row = con.execute(f"SELECT {cols} FROM {frm}").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return int(row[0]), (int(row[1]) if fund_only else None), grouped
+
+
+def _hide_answer_columns(rows: str) -> tuple[str, list[str]]:
+    """답변 입력에서 내부 코드 컬럼을 뺀다 — retrieved_context 는 그대로. (정리된 표, 뺀 컬럼)"""
+    lines = rows.splitlines()
+    if not lines:
+        return rows, []
+    cols = lines[0].split(" | ")
+    drop = [i for i, c in enumerate(cols) if c.strip().lower() in _HIDE_FROM_ANSWER]
+    if not drop or len(drop) == len(cols):
+        return rows, []
+    keep = [i for i in range(len(cols)) if i not in drop]
+    out = []
+    for ln in lines:
+        parts = ln.split(" | ")
+        out.append(" | ".join(parts[i] for i in keep if i < len(parts)))
+    return "\n".join(out), [cols[i].strip() for i in drop]
+
+
+_NAME_COL = re.compile(r"\b(?:itm_nm|itm_abrv_nm|pd_nm|pd_abrv_nm|etf_name)\b", re.I)
+_NAME_TOKEN = re.compile(r"[0-9A-Za-z가-힣]{8,}")
+
+
+def verify_product_names(answer: str, rows: str) -> tuple[str, list[str]]:
+    """답변의 상품명 토큰을 조회 원문 사전과 대조해 근사 전사 오류를 DB 원문으로 되돌린다. (교정된 답변, 교정 목록)
+
+    2026-09-02 R3 재검: "삼성중국본토중소형**FOSS**" — 실제 FOCUS, DB 에 'FOSS' 0행. 자릿수 훼손과 같은 계열
+    (모델은 복사만 하게 하라). 사전 = 결과의 이름 컬럼(itm_nm·pd_nm 등) 값의 공백 제거 8자 이상 연속 토큰.
+    답변의 8자 이상 연속 토큰이 어느 이름의 부분문자열이면 정확 — 불개입. 아니면 difflib 근사(0.85 이상)일 때만
+    사전 토큰으로 치환한다. 4도메인 공통(ETF 종목명에도 그대로 유효). 🔴 줄 삭제는 하지 않는다 — 한국어 서술
+    ('알려드리겠습니다' 8자)도 토큰으로 잡히므로 "어떤 이름과도 안 닮은 줄 제거" 는 문장을 죽인다.
+    """
+    lines = rows.splitlines()
+    if len(lines) < 2:
+        return answer, []
+    cols = lines[0].split(" | ")
+    idx = [i for i, c in enumerate(cols) if _NAME_COL.search(c)]
+    if not idx:
+        return answer, []
+    names = set()
+    for ln in lines[1:]:
+        parts = ln.split(" | ")
+        for i in idx:
+            if i < len(parts) and parts[i].strip():
+                names.add(parts[i].replace(" ", ""))
+    if not names:
+        return answer, []
+    vocab = sorted({t for nm in names for t in _NAME_TOKEN.findall(nm)}, key=len, reverse=True)
+    fixes: list[str] = []
+
+    def _fix(m: re.Match) -> str:
+        tok = m.group(0)
+        if any(tok in nm for nm in names):
+            return tok
+        # 🔴 조사를 떼고 어간만 대조, 치환 시 조사를 되붙인다 — 2026-09-02 리뷰 ②-4 실측: "…신탁3호는 조회되지
+        #    않았습니다" 가 조사 '는' 을 삼킨 채 '…2호' 로 치환돼 부정문의 주어가 뒤바뀌었다(의미 반전).
+        stem = _PARTICLE.sub("", tok)
+        particle = tok[len(stem):]
+        if len(stem) < 8 or any(stem in nm for nm in names):
+            return tok
+        close = difflib.get_close_matches(stem, vocab, n=1, cutoff=0.85)
+        if not close or close[0] == stem:
+            return tok
+        cand = close[0]
+        # 🔴 치환 금지 — 상위/하위 문자열(KODEX200TR ↔ KODEX200 · H/UH · 1호/2호 접미)이거나 숫자열이 다르면
+        #    별개 상품이다(종목명 구조 §3.3). 리뷰 실측: 'KODEX200TR' → 'KODEX200'(유사도 0.95) 다른 상품 치환.
+        if stem in cand or cand in stem or re.findall(r"\d+", stem) != re.findall(r"\d+", cand):
+            return tok
+        # 'TR'·'U' 처럼 글자가 **끼어들거나 빠진** 짝(KODEX200TR / UH)은 중간 삽입이라 위 검사에 안 걸린다 —
+        # 오타형(FOSS→FOCUS)은 replace 만으로 이뤄지므로 insert/delete 가 하나라도 있으면 별개 상품으로 본다.
+        if any(op in ("insert", "delete") for op, *_ in difflib.SequenceMatcher(None, stem, cand).get_opcodes()):
+            return tok
+        fixes.append(f"'{stem}' → '{cand}'")
+        return cand + particle
+
+    out = _NAME_TOKEN.sub(_fix, answer)
+    return (out, fixes) if fixes else (answer, [])
+
+
 def ensure_enum_value_fix(sql: str, ctx) -> tuple[str, bool]:
     """WHERE 리터럴이 실제 enum 값과 접미사·공백만 다르면 실제 값으로 치환. (보정된 SQL, 보정했는지)
 
@@ -609,6 +880,44 @@ def ensure_group_null_label(sql: str) -> tuple[str, bool]:
     if fixed == head:
         return sql, False
     return fixed + sql[frm.start():], True
+
+
+def ensure_fund_distribution_fund_count(sql: str) -> tuple[str, bool]:
+    """분포 집계(라벨 · COUNT(*))에 COUNT(DISTINCT 펀드키) AS 펀드수 를 3번째로 병기. (보정된 SQL, 보정했는지)
+
+    2026-09-02 R1 재검: 분포 답변의 '건' 이 **클래스 행 수**인데 클래스/펀드 구분이 답에 없다(7~9번째 재발).
+    yaml `유형별분포` 규칙("클래스 수와 펀드 수를 함께")이 조립기(2열 전용)에 내려가 있지 않았다.
+    발동 조건: ① public_funds 단독(JOIN·UNION 없음) ② GROUP BY 존재 ③ SELECT 가 정확히 (라벨, COUNT(*)) 2항목.
+    끝에 붙이므로 위치 ORDER BY 번호는 안 흔들린다. 조립기 _distribution_answer 가 3열을 받아 옮긴다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    if not re.search(r"\bgroup\s+by\b", sql, re.I) or "펀드수" in sql:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    head = sql[:frm.start()]
+    items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", head, flags=re.I))
+    if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+        return sql, False
+    if _is_topn_or_entity_axis(sql, items[0]):
+        return sql, False
+    return head.rstrip() + f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수" ' + sql[frm.start():], True
+
+
+# 분포의 축이 아니라 **개체 식별자**인 컬럼 — 이것으로 GROUP BY 한 COUNT 는 운용사·펀드 top-N 이지 분포가 아니다
+_ENTITY_AXIS = re.compile(r"\b(?:or_co_xtn_itt_cd|tt_co_xtn_itt_cd|itm_no|mtco_itm_no|rptt_ksd_itm_no|itm_nm|itm_abrv_nm|\w+_itt_cd)\b", re.I)
+
+
+def _is_topn_or_entity_axis(sql: str, axis_item: str) -> bool:
+    """GROUP BY COUNT 가 분포가 아닌 경우 — ⓐ ORDER BY + 명시 LIMIT k < MAX_ROWS(top-N 꼴) ⓑ 축이 개체 식별 컬럼.
+
+    2026-09-02 리뷰 ②-2: 운용사 top5(`SELECT or_co_xtn_itt_cd, COUNT(*) … GROUP BY 1 ORDER BY 2 DESC LIMIT 5`,
+    JOIN 없는 R2 형)에 3열이 붙고 조립기가 "5개 범주 · 펀드 3,040개 · 복수 범주 1,632건" 조작 통계를 만들었다.
+    """
+    m_lim = re.search(r"\blimit\s+(\d+)", sql, re.I)
+    if re.search(r"\border\s+by\b", sql, re.I) and m_lim and int(m_lim.group(1)) < MAX_ROWS:
+        return True
+    return bool(_ENTITY_AXIS.search(axis_item))
 
 
 _SAFE_Q = re.compile(r"안전|안정적|안정형")
@@ -677,8 +986,32 @@ def ensure_fund_mixed_type(sql: str, question: str) -> tuple[str, bool]:
 
 # 면책 상투구가 든 문장 통째 — 문장 경계는 마침표·물음표·느낌표·줄바꿈 (쉼표는 문장 내부)
 _DISCLAIMER = re.compile(
-    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견))"
+    r"[^.!?\n]*(?:금융\s*기관에\s*문의|해당\s*기관에\s*문의|전문가(?:와의?|의)?\s*(?:상담|조언|의견)"
+    # 2026-09-02 R2 재검 — "추가 정보가 필요하시다면 관련 기관에 문의하시기 바랍니다" 가 '관련 기관' 이라 빠져나갔다
+    r"|(?:관련|해당|금융|각)\s*기관(?:에|으로|을\s*통해)\s*(?:문의|확인|상담)|추가\s*정보가\s*필요"
+    r"|자세한\s*(?:내용|사항)은[^.!?\n]*(?:문의|확인|상담|참고|참조))"
     r"[^.!?\n]*[.!?]?")
+# 전수 집계 결과에 붙는 거짓 유보 — "더 있을 수 있습니다"(5행 전수인데) · "조회된 데이터를 기반으로 한 것이며" · "일부"
+_FALSE_HEDGE = re.compile(
+    r"[^.!?\n]*(?:더\s*많은[^.!?\n]*있을\s*수\s*있|조회된\s*데이터를\s*기반으로\s*한\s*것이|일부(?:입니다|일\s*수|만))"
+    r"[^.!?\n]*[.!?]?")
+
+
+def strip_false_hedge(text: str, sql: str, n: int) -> tuple[str, bool]:
+    """전수 집계(GROUP BY·COUNT/SUM, 행수 < 상한) 답변에서 '더 있을 수 있음' 류 거짓 유보 문장을 걷어낸다.
+
+    2026-09-02 R2 재검: 운용사 top5 (전수 집계 5행) 에 "이 순위는 조회된 데이터를 기반으로 한 것이며, 더 많은
+    펀드를 운용하는 곳이 있을 수 있습니다" — 집계가 전수라 유보가 거짓이다. 목록이 LIMIT 에 잘린 경우(커버리지
+    병기)는 유보가 정당하므로 불개입. 전부 지워지면 원문 유지.
+    """
+    if n >= MAX_ROWS or not re.search(r"\bgroup\s+by\b|\b(?:count|sum)\s*\(", sql, re.I):
+        return text, False
+    out = _FALSE_HEDGE.sub("", text)
+    if out == text:
+        return text, False
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return (out, True) if out else (text, False)
 
 
 def strip_disclaimer(text: str) -> tuple[str, bool]:
@@ -750,7 +1083,13 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
         return None
     sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
     items = _split_select_items(sel)
-    if len(items) != 2 or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+    if len(items) not in (2, 3) or not re.match(r"\s*count\s*\(\s*\*\s*\)", items[1], re.I):
+        return None
+    if _is_topn_or_entity_axis(sql, items[0]):
+        return None                       # 운용사·펀드 top-N 은 분포가 아니다 — HCX 답변기로 (리뷰 ②-2)
+    # 3열 — ensure_fund_distribution_fund_count 가 붙인 COUNT(DISTINCT 펀드키) AS 펀드수 (2026-09-02 R1 재검)
+    with_funds = len(items) == 3
+    if with_funds and not re.match(r"\s*count\s*\(\s*distinct\b", items[2], re.I):
         return None
     body = rows.splitlines()[1:]
     if len(body) != n:
@@ -758,17 +1097,88 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     pairs = []
     for ln in body:
         parts = ln.split(" | ")
-        if len(parts) != 2:
+        if len(parts) != len(items):
             return None
         try:
             cnt = int(float(parts[1]))
+            funds = int(float(parts[2])) if with_funds else None
         except ValueError:
             return None
-        pairs.append((parts[0].strip(), cnt))
-    total = sum(c for _, c in pairs)
-    lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 2026-08-22).", ""]
-    lines += [f"- {lab}: {c:,}건" for lab, c in pairs]
+        pairs.append((parts[0].strip(), cnt, funds))
+    total = sum(c for _, c, _ in pairs)
+    if not with_funds:
+        lines = [f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}건입니다 (기준일 {gate.DATA_CUTOFF}).", ""]
+        lines += [f"- {lab}: {c:,}건" for lab, c, _ in pairs]
+        return "\n".join(lines)
+    # 🔴 유형별 펀드 수의 단순 합(3,222)은 전체 펀드 수(3,040)가 아니다 — 실측 182펀드가 클래스별로 유형이 갈린다
+    #    (176건은 일부 클래스만 평가 미수록·6건은 실제 상이). 전체는 같은 WHERE 로 COUNT(DISTINCT 펀드키) 를
+    #    따로 세고(SQLite 1회), 차이를 문자열로 굽는다 — 모델이 산술하지 않게.
+    fund_sum = sum(f for _, _, f in pairs)
+    if n >= MAX_ROWS:
+        # 절단된 분포 — 전체 DISTINCT·복수 범주 설명은 거짓이 된다(표시 밖 범주가 있다). 상위 n 개만 그대로 옮긴다.
+        lines = [f"조회 결과 상위 {len(pairs)}개 범주(전체 중 일부) · 표시분 클래스 {total:,}개 (기준일 {gate.DATA_CUTOFF}).", ""]
+        lines += [f"- {lab}: 펀드 {f:,}개 (클래스 {c:,}개)" for lab, c, f in pairs]
+        return "\n".join(lines)
+    distinct = None
+    m_fw = _SIMPLE_FROM_WHERE.search(sql)
+    if m_fw:
+        con = connect_readonly()
+        try:
+            distinct = con.execute(f"SELECT COUNT(DISTINCT {_FUND_KEY_EXPR}) FROM {m_fw.group(1).strip()}").fetchone()[0]
+        except sqlite3.Error:
+            distinct = None
+        finally:
+            con.close()
+    head = f"조회 결과 {len(pairs)}개 범주 · 클래스 {total:,}개 · 펀드 {(distinct if distinct is not None else fund_sum):,}개 (기준일 {gate.DATA_CUTOFF})."
+    lines = [head, ""]
+    lines += [f"- {lab}: 펀드 {f:,}개 (클래스 {c:,}개)" for lab, c, f in pairs]
+    if distinct is not None and fund_sum != distinct:
+        lines += ["", f"클래스별 유형이 갈리는 펀드 {abs(fund_sum - distinct):,}건은 복수 범주에 계수되어 범주별 펀드 수의 합({fund_sum:,})은 전체 펀드 수({distinct:,})와 다릅니다."]
     return "\n".join(lines)
+
+
+_ORG_CODES = re.compile(r"or_co_xtn_itt_cd='(\d+)'")
+
+
+def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str]) -> str | None:
+    """`펀드수 | 클래스수` 1행(ensure_fund_distinct_count 결과)의 답변을 기계 조립한다. 아니면 None.
+
+    2026-09-02 R5 재검: 가드가 143 | 541 을 정확히 만들었는데 답변기가 클래스 열을 버렸다("클래스 수를 제외한
+    순수하게 펀드만") — 034 재검은 병기·R5 는 삭제, 비결정. HCX 0회. 모수 표기는 SQL 의 조건에서 읽고,
+    KG 가 한 운용사에 코드를 2건 이상 병합했으면(Org_00040024 = 00040024·00040105) 합산 사실을 한 줄 붙인다.
+    """
+    if n != 1:
+        return None
+    lines = rows.splitlines()
+    if len(lines) != 2 or [c.strip() for c in lines[0].split(" | ")] != ["펀드수", "클래스수"]:
+        return None
+    try:
+        funds, classes = (int(float(v)) for v in lines[1].split(" | "))
+    except ValueError:
+        return None
+    # 🔴 라벨은 SQL 의 prvo_pbff_desc 조건에서 읽는다 — 2026-09-02 리뷰 ②-3: "한국투자신탁운용 사모펀드는 몇 개야?" 에
+    #    SQL 은 ='사모' 인데 답은 "공모펀드는 265개" 로 나갔다. 조건이 없으면 '펀드'(마스터에 사모 행 1,993개가 있다).
+    m_pop = re.search(r"prvo_pbff_desc\s*=\s*'(공모|사모)'", sql, re.I)
+    label = f"{m_pop.group(1)}펀드" if m_pop else "펀드"
+    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"),
+                              ("사모", r"prvo_pbff_desc\s*=\s*'사모'"))
+             if re.search(pat, sql, re.I)]
+    scope = f" ({'·'.join(basis)} 기준, 기준일 {gate.DATA_CUTOFF})" if basis else f" (기준일 {gate.DATA_CUTOFF})"
+    # 운용사 주어 + 합산 문장 — ground 의 Org 코드 중 **SQL 에 실제로 실린 코드**만 센다(KG 2코드 · SQL 1코드면 합산 아님)
+    subject, used_codes = "조회 조건에 해당하는", []
+    for line in ground_lines:
+        codes = [c for c in _ORG_CODES.findall(line) if c in sql]
+        m_lab = re.match(r"'([^']+)'\s*→\s*Org_", line)
+        if "Organization" in line and codes and m_lab:
+            name = m_lab.group(1)
+            last = name[-1]
+            particle = "이" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "가"
+            subject, used_codes = f"{name}{particle} 운용하는", codes
+            break
+    out = f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}."
+    if len(used_codes) >= 2:
+        out += f"\n운용사 코드 {len(used_codes)}건({'·'.join(used_codes)})을 합산했습니다."
+    return out
 
 
 @lru_cache(maxsize=1)
@@ -853,9 +1263,12 @@ def ensure_fund_country_tag(sql: str, question: str) -> tuple[str, bool]:
 
 
 _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
+# 펀드키 = 운용사코드 / zero-pad 모펀드번호. 🔴 `COALESCE(…, itm_no)` 가 필수다 — 2026-09-02 재검 부수 발견:
+#    역외펀드 110행은 mtco_itm_no 가 NULL 이라 키가 NULL 하나로 뭉쳐 COUNT(DISTINCT) 에서 통째로 빠졌다
+#    (기본모수 distinct 2,930 vs gold 키 3,040). 정본은 eval gold_sql 의 키 형태 그대로.
 _FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
-                  "CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
-                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END")
+                  "COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
+                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)")
 
 
 def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
@@ -1783,7 +2196,8 @@ def residual_name_token(question: str, ground_lines: list[str]) -> str | None:
     return None
 
 
-_ITM_NM_LIKE = re.compile(r"\bitm_nm\b[^)]{0,40}?\blike\b", re.I)
+# 2026-09-02 리뷰 ②-1 부수 — 40자 창 대신 좌변 itm_nm 판정(_NAME_FILTER)으로 통일. WHERE 절(FROM 뒤)만 본다.
+_ITM_NM_LIKE = _NAME_FILTER
 
 
 def ensure_fund_name_filter(sql: str, token: str | None) -> tuple[str, bool]:
@@ -1794,7 +2208,7 @@ def ensure_fund_name_filter(sql: str, token: str | None) -> tuple[str, bool]:
     0행이 나오면 그것이 정답이다 — 없는 상품을 물었으면 '없음' 이 맞고(FND-R05 계열),
     조건을 완화해 아무 행이나 집어오는 것이 바로 이 사고였다.
     """
-    if not token or not _FUND_TBL.search(sql) or _ITM_NM_LIKE.search(sql):
+    if not token or not _FUND_TBL.search(sql) or _has_name_filter(sql):
         return sql, False
     sql, _ = _append_exclusions(sql, [f"itm_nm LIKE '%{token}%'"])
     # 🔴 LIMIT 1 도 함께 푼다 — 이름으로 좁힌 개별 조회는 클래스가 여럿이다(코어테크 10클래스).
@@ -2091,9 +2505,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
              "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
-    sql, rank_fixed = ensure_fund_rank_representative(sql)
-    if rank_fixed:
+    had_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    sql, rank_fixed = ensure_fund_rank_representative(sql, q)
+    if rank_fixed and had_group:
         step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
+    elif rank_fixed:
+        step("[Guard] 펀드 대표행 보정 — GROUP BY 펀드키 주입 + MAX/MIN 감싸기 + 클래스수 병기 "
+             "(2026-09-02 R7 실측: 미특정 경로에서 HCX 가 GROUP BY 를 버려 한화2.2배 3클래스 도배 — gold 는 NH-Amundi·삼성KOSPI200)")
     sql, err3_fixed = ensure_fund_return_error_exclusion(sql)
     if err3_fixed:
         step("[Guard] 기점오류 제외 주입 — 18개월 이상 수익률 랭킹에 검증 3클래스 NOT IN 주입 (수익률기점오류_제외 규칙 미반영 실측 — 단기·개별 조회엔 미적용)")
@@ -2121,6 +2539,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "
              "(2026-09-01 FND-038 실측: 라벨이 빈칸이라 답변기가 418행 그룹을 통째로 빠뜨렸다)")
+    sql, fdist_fixed = ensure_fund_distribution_fund_count(sql)
+    if fdist_fixed:
+        step("[Guard] 분포 펀드수 병기 — COUNT(DISTINCT 펀드키) 3열 주입 "
+             "(2026-09-02 R1 재검: '건' 이 클래스 행 수임을 답이 밝히지 못함 — 클래스/펀드 구분 누락 7번째)")
     sql, enum_fixed = ensure_enum_value_fix(sql, ctx)
     if enum_fixed:
         step("[Guard] enum 표기 교정 — 접미사·공백만 다른 실제 값으로 치환 "
@@ -2129,6 +2551,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if space_fixed:
         step("[Guard] 종목명 공백 무시 매칭 — itm_nm LIKE 를 REPLACE(itm_nm,' ','') 비교로 교체 "
              "(2026-08-31 밤 실측: '미래에셋 코어테크' 띄어쓰기로 14행을 통째로 놓쳤다)")
+    sql, lookup_fixed = ensure_fund_lookup_grouping(sql, q)
+    if lookup_fixed:
+        step("[Guard] 개별 조회 펀드 묶기 — 이름 검색 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값 병기 "
+             "(2026-09-02 R4 재검: 6펀드 37클래스를 1클래스로 답함 3회째 · R6 LIMIT 1 이라 클래스수 병기 불가)")
+    sql, flist_fixed = ensure_fund_list_grouping(sql, q)
+    if flist_fixed:
+        step("[Guard] 목록 펀드 묶기 — ORDER BY 없는 펀드 목록을 펀드키 GROUP BY + 순자산순 대표행으로 "
+             "(2026-09-02 R3 재검: LIMIT 30 이 임의 30행 + 같은 펀드 C2·C5 별개 나열)")
     sql, ev_fixed = ensure_fund_evidence_columns(sql)
     if ev_fixed:
         step("[Guard] 펀드 근거컬럼 보강 — SELECT 에 위험등급명·제로인 태그 병기 (등급 방향 서술·극단값 주의 문구의 재료 — FND-019 채점 실측)")
@@ -2307,6 +2737,20 @@ def answer_question(
     sql, table_fixed = normalize_table_names(sql)
     if table_fixed:
         step("[Guard] 테이블명 교정 — 화이트리스트 밖 테이블이 채권 전용 컬럼과 함께 쓰여 domestic_bonds 로 교체 (2026-08-31 저녁 'bonds_master' 환각으로 기각→무응답 실측)")
+    if not tables:
+        # 🔴 SQL 사후 라우팅 보정 (2026-09-02 R7 재검) — 라우터가 못 잡는 표현형(오타·외래어·띄어쓰기)으로 미특정이
+        #    됐어도 HCX 가 FROM 을 하나로 정했으면 그 상품군이다. 미특정 경로에서 남는 우회 지점은 답변 규칙
+        #    (4도메인 12,443자로 희석)과 residual_name_token(tables == ["public_funds"] 조건이라 이름 필터가 꺼짐) —
+        #    둘 다 여기서 되살린다. SQL 가드 자체는 FROM 기준이라 이미 적용되고 있었다.
+        used = {t for t in TABLES if re.search(rf"\b(?:from|join)\s+{t}\b", sql, re.I)}
+        if len(used) == 1:
+            tables = [used.pop()]
+            step(f"[Route] SQL 사후 보정 — FROM {tables[0]} → 그 상품군의 답변 규칙·이름 필터 적용 "
+                 "(2026-09-02 R7 재검: 미특정 경로는 답변 규칙이 4도메인으로 희석되고 상품명 필터 가드가 꺼진다)")
+            if tables == ["public_funds"] and not name_token:
+                name_token = residual_name_token(q, ground_lines)
+                if name_token:
+                    step(f"[Ground] 잔여 상품 고유명 '{name_token}' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (사후 보정 경로)")
     sql, trim_fixed = ensure_trimmed_compare(sql)
     if trim_fixed:
         step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교를 TRIM 비교로 교체 (무TRIM IN 은 16행 vs TRIM 2,031행 실측)")
@@ -2437,12 +2881,33 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = dist
         return result
+    cnt = _count_answer(sql, rows, n, ground_lines)
+    if cnt is not None:
+        step("[Answer] 개수 답변 기계 조립 — 펀드수/클래스수 1행은 HCX 없이 옮긴다 "
+             "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")
+        result.think_trace = "\n".join(trace)
+        result.answer = cnt
+        return result
 
     answer_rules = ctx.answer_context(tables or list(TABLES))
     # 🔴 행 개수를 데이터에 구워 넣는다 — 2026-09-01 FND-033 실측: 답변기가 11행을 나열해 놓고
     #    "총 10개" 라고 셌다. 순자산 자릿수 훼손과 같은 계열 — 모델에게 산술(개수 세기)을 시키지
     #    말고 복사만 하게 한다. retrieved_context(조회 원문)는 건드리지 않고 답변 입력에만 붙인다.
-    rows_for_answer = f"(조회 결과: 총 {n}행)\n{rows}"
+    answer_rows, hidden = _hide_answer_columns(rows)
+    if hidden:
+        step(f"[Answer] 내부 코드 컬럼 숨김 — {', '.join(hidden)} (2026-09-02 R3 재검: 태그 코드 C101·M109·V102 가 답변에 원문 노출)")
+    header = f"(조회 결과: 총 {n}행)"
+    if n >= MAX_ROWS:
+        # 🔴 LIMIT 에 잘린 목록은 전체 규모를 굽는다 — 2026-09-02 R3 재검: 30행 중 5행만 옮기고 "다음과 같습니다" 전칭,
+        #    총량(560행/248펀드) 미고지. SQLite 재실행 1회·HCX 0회 — 모델이 세지 않게 문자열로 준다.
+        cov = _coverage_counts(sql)
+        if cov and (cov[1] if cov[2] else cov[0]) > n:
+            total, funds, grouped = cov
+            scope = f"전체 {total:,}행" + (f" / {funds:,}펀드" if funds is not None else "")
+            unit = "펀드" if grouped else "행"
+            header = f"(조회 결과: {scope} 중 {n}{unit} 표시 — 나머지는 표시되지 않았으므로 전체를 나열한 것처럼 말하지 않는다)"
+            step(f"[Answer] 커버리지 병기 — LIMIT 도달, {scope} 를 답변 입력에 굽는다 (2026-09-02 R3 재검: 30행 중 5행 나열 + 총량 미고지)")
+    rows_for_answer = f"{header}\n{answer_rows}"
     # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
     if _accepts_answer_rules(planner):
         result.answer = planner.compose_answer(q, rows_for_answer, answer_rules)
@@ -2452,6 +2917,14 @@ def answer_question(
     if stripped:
         step("[Guard] 면책 문구 제거 — '금융기관 문의·전문가 상담' 류 문장을 답변에서 걷어냄 "
              "(answer_rules 금지 규칙 미준수 5회 재발 — 2026-09-01 결정층行)")
+    result.answer, hedged = strip_false_hedge(result.answer, sql, n)
+    if hedged:
+        step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
+             "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
+    result.answer, name_fixes = verify_product_names(result.answer, rows)
+    if name_fixes:
+        step(f"[Guard] 상품명 전사 교정 — {' · '.join(name_fixes[:3])} (조회 원문 밖 이름 {len(name_fixes)}건 — "
+             "2026-09-02 R3 재검: '삼성중국본토중소형FOSS' 는 DB 에 0행, 실제 FOCUS)")
     result.answer, topcited_fixed = ensure_top_row_cited(result.answer, sql, rows)
     if topcited_fixed:
         step("[Guard] 목록 상위 행 복원 — 답변이 정렬 결과의 하위 행을 인용하며 상위 행을 건너뛰어 누락 행을 덧붙임 "

@@ -127,7 +127,11 @@ def run_pipeline(question_id: str, question: str):
         try:
             from src.runtime.pipeline import answer_question as run
 
-            return run(question_id, question, planner=get_planner())
+            r = run(question_id, question, planner=get_planner())
+            if attempt == 2:
+                # 재시도 가시화 (2026-09-02 재검 P7-c) — R5 34.8s 같은 이상 지연이 전 파이프라인 재시도인지 trace 로 판별
+                r.think_trace = "0. [Retry] 1차 실행 런타임 오류 — 재실행\n" + (r.think_trace or "")
+            return r
         except Exception:
             log.exception("runtime pipeline error (attempt %d) — %s",
                           attempt, "retrying once" if attempt == 1 else "falling back to stub")

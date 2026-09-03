@@ -243,8 +243,10 @@ def test_full_path_buggy_date_sql_recovers(ctx):
     r = answer_question("T-20", "만기까지 들고 갈 건데, 3년 안에 만기되는 안전한 채권 몇 개만 골라줘",
                         planner=BuggyMaturityPlanner(), ctx=ctx)
     assert "[Guard] 날짜 리터럴 보정" in r.think_trace
-    assert "[Guard] 만기 하한 보정" in r.think_trace
-    assert "(mat_dt >= 20260824 AND mat_dt <= 20290822)" in r.sql   # 상한은 플래너 픽스처(2029-08-22) 그대로, 하한만 판정일 8/24
+    # 🔄 2026-09-03 #51 — '3년 안에' 는 상대 시점 확정표의 창이다. 종전엔 하한만 주입하고 상한은 플래너의 as-of 오기(2029-08-22)를
+    #    그대로 두었지만, 이제 창 가드가 판정일+3년(20290824)으로 통째로 확정한다(규칙 만기윈도우 "3년이면 20290824").
+    assert "[Guard] 상대 시점 창 확정" in r.think_trace and "'3년 안에'" in r.think_trace
+    assert "mat_dt BETWEEN 20260824 AND 20290824" in r.sql and "20290822" not in r.sql
     assert "산금채 1706복10A" not in r.retrieved_context   # 만기일 미수록(mat_dt=0) 행이 더는 새지 않는다
     assert "[Execute] 30행 조회" in r.think_trace
 
@@ -1342,3 +1344,112 @@ def test_risk_ambiguity_clarify(ctx):
     assert f("가장 안전한 채권 뭐야?", ["domestic_bonds"]) is None
     r = answer_question("T-RISK", "가장 위험한 채권 뭐야?", ctx=ctx)
     assert "[Clarify] 되묻기(결정층)" in r.think_trace and "728" not in r.answer and r.retrieved_context == ""
+
+
+# ── 상대 시점 확정표 — 2026-09-03 서버 실측 #51 "내년에 만기가 되는 회사채 중 AA 이상" 오기각 회귀 ──────────
+# 질문 시점(오늘) = 2026-08-24(월) 고정. HCX 가 '내년' 을 BETWEEN 20280824 AND 20290824 로 오계산했고
+# 사후검사가 "SQL 에 2027 이 없다" 를 "만기 질의가 아니다" 로 읽어 기준일 안내로 끝냈다.
+
+def test_resolve_relative_window_table():
+    from src.runtime import gate
+    w = gate.resolve_relative_window
+    assert w("내년에 만기가 되는 회사채 중 신용등급이 AA 이상인 것을 알려줘") == [("내년", 20270101, 20271231)]
+    assert w("오늘 만기인 채권 있어?") == [("오늘", 20260824, 20260824)]
+    assert w("내일 만기 채권") == [("내일", 20260825, 20260825)]
+    assert w("이번 주 만기") == [("이번 주", 20260824, 20260830)]                 # 8/24 월 ~ 8/30 일
+    assert w("이번 달 만기") == [("이번 달", 20260824, 20260831)]
+    assert w("다음 달 만기") == [("다음 달", 20260901, 20260930)]
+    assert w("올해 안에 만기되는 채권") == [("올해", 20260824, 20261231)]
+    assert w("연내 만기") == [("올해", 20260824, 20261231)]
+    assert w("6개월 안에 만기되는 채권") == [("6개월 안에", 20260824, 20270224)]
+    assert w("1년 안에 만기") == [("1년 안에", 20260824, 20270824)]
+    assert w("3년 안에 만기되는 안전한 채권") == [("3년 안에", 20260824, 20290824)]
+    assert w("1년 뒤 만기") == [("1년 뒤", 20270101, 20271231)]                    # 내년과 같은 읽기
+    assert w("3년 뒤에 만기 돌아오는 채권은 몇 종목이야?") == [("3년 뒤", 20290101, 20291231)]
+    assert w("내후년 만기 국고채") == [("내후년", 20280101, 20281231)]
+    assert w("내년 상반기 만기") == [("내년 상반기", 20270101, 20270630)]          # '내년' 으로 또 잡히지 않는다
+    # 기간 표현·상품명·발행사명은 창이 아니다
+    assert w("10년 만기 채권 알려줘") == []
+    assert w("잔존만기 3년 넘는 채권") == []
+    assert w("10년 후순위채") == []
+    assert w("KB내일드림 펀드") == [] and w("교보악사 내일환매 펀드") == [] and w("오늘이엔엠 채권") == []
+    # future_tokens 는 확정표에서 연도를 받는다
+    assert gate.future_tokens("내년에 만기되는 회사채") == ["2027"]
+    assert gate.future_tokens("3년 뒤 만기 채권") == ["2029"]
+    assert gate.future_tokens("올해 안에 만기되는 채권") == []
+
+
+def test_enforce_relative_window():
+    from src.runtime import gate
+    from src.runtime.pipeline import enforce_relative_window
+    q = "내년에 만기가 되는 회사채 중 신용등급이 AA 이상인 것을 알려줘"
+    sql = ("SELECT pd_no, pd_nm, crd_grd, mat_dt, remaining_days FROM domestic_bonds WHERE mat_dt BETWEEN 20280824 AND 20290824 "
+           "AND crd_grd IN ('AAA','AA+','AA0') AND TRIM(std_pd_mcls_nm)='회사채' LIMIT 30")
+    fixed, note = enforce_relative_window(sql, q, gate.resolve_relative_window(q))
+    assert note and "mat_dt BETWEEN 20270101 AND 20271231" in fixed and "20280824" not in fixed
+    assert "crd_grd IN ('AAA','AA+','AA0')" in fixed and "TRIM(std_pd_mcls_nm)='회사채'" in fixed   # 다른 조건은 산다
+    # remaining_days 조건은 걷어낸다(8/21 기준) — ORDER BY 의 remaining_days 는 남는다(mat_dt 와 단조)
+    q2 = "1년 안에 만기되는 채권"
+    fixed2, _ = enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE remaining_days <= 365 AND curr_cd='KRW' ORDER BY remaining_days LIMIT 30",
+                                        q2, gate.resolve_relative_window(q2))
+    assert "remaining_days <= 365" not in fixed2 and "mat_dt BETWEEN 20260824 AND 20270824" in fixed2 and "ORDER BY remaining_days" in fixed2
+    # 만기 조건이 없어도 질문이 '만기' 를 말하면 주입 — '오늘' 은 등호
+    q3 = "오늘 만기인 채권 있어?"
+    fixed3, _ = enforce_relative_window("SELECT pd_nm FROM domestic_bonds ORDER BY applied_yield DESC LIMIT 5", q3, gate.resolve_relative_window(q3))
+    assert "WHERE mat_dt = 20260824" in fixed3
+    # 불개입: '오늘' 이 시점일 뿐인 질의 · 만기 경과 질의 · 이미 같은 창
+    q4 = "오늘 수익률 높은 채권"
+    assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE applied_yield > 5 LIMIT 5", q4, gate.resolve_relative_window(q4))[1] is None
+    q5 = "올해 만기 지난 채권"
+    assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt < 20260824 LIMIT 5", q5, gate.resolve_relative_window(q5))[1] is None
+    assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5", q, gate.resolve_relative_window(q))[1] is None
+
+
+def test_raise_maturity_floor_and_pin_now():
+    from src.runtime.pipeline import raise_maturity_floor, pin_sql_now
+    assert raise_maturity_floor("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20260101 AND 20261231", "올해 만기") == \
+        ("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20260824 AND 20261231", True)
+    assert raise_maturity_floor("SELECT 1 FROM domestic_bonds WHERE mat_dt >= 20250101 AND mat_dt <= 20261231", "x")[0].count("20260824") == 1
+    # 만기 경과 질의 · 상한까지 과거인 창은 불개입
+    assert not raise_maturity_floor("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20250101 AND 20260501", "만기 지난 채권")[1]
+    assert not raise_maturity_floor("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20250101 AND 20260501", "2026년 상반기 만기")[1]
+    fixed, changed = pin_sql_now("SELECT 1 WHERE mat_dt >= strftime('%Y%m%d','now','+1 year') AND d > CURRENT_DATE")
+    assert changed and "'2026-08-24','+1 year'" in fixed and "CURRENT_DATE" not in fixed and "'2026-08-24'" in fixed
+
+
+def test_align_maturity_year_between():
+    from src.runtime.pipeline import align_maturity_year
+    fixed, changed = align_maturity_year("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20280824 AND 20290824 LIMIT 1", ["2027"])
+    assert changed and "mat_dt BETWEEN 20270101 AND 20271231" in fixed
+    assert not align_maturity_year("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 1", ["2027"])[1]
+
+
+class NextYearMiscountPlanner:
+    """2026-09-03 서버 실측 SQL 그대로 — '내년' 을 +2~+3년 창으로 오계산."""
+
+    def plan_sql(self, question, grounding):
+        assert "질문 시점(오늘) = 2026-08-24" in grounding and "mat_dt BETWEEN 20270101 AND 20271231" in grounding
+        return ("SELECT pd_no, pd_nm, crd_grd, mat_dt, remaining_days FROM domestic_bonds WHERE mat_dt BETWEEN 20280824 AND 20290824 "
+                "AND crd_grd IN ('AAA','AA+','AA0') AND TRIM(std_pd_mcls_nm)='회사채' LIMIT 30")
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "ok"
+
+
+def test_full_path_next_year_maturity_not_rejected(ctx):
+    r = answer_question("T-51", "내년에 만기가 되는 회사채 중 신용등급이 AA 이상인 것을 알려줘",
+                        planner=NextYearMiscountPlanner(), ctx=ctx)
+    assert "[Guard] 상대 시점 창 확정" in r.think_trace
+    assert "mat_dt BETWEEN 20270101 AND 20271231" in r.sql and "20280824" not in r.sql
+    assert "시점·전망 질의로 판정" not in r.think_trace and "이후 시점의 정보는 확인할 수 없습니다" not in r.answer
+    assert "[Execute] 30행 조회" in r.think_trace
+    assert "만기 2027-01-01~2027-12-31 · 질문 시점 2026-08-24 기준" in r.answer
+    assert "잔존일수는 데이터 산출일 2026-08-21 기준" in r.answer
+    # 시점·전망 질의는 여전히 기각 — mat_dt 조건이 없는 SQL
+    class Forecast:
+        def plan_sql(self, question, grounding):
+            return "SELECT pd_nm, applied_yield FROM domestic_bonds WHERE applied_yield > 0 ORDER BY applied_yield DESC LIMIT 5"
+        def compose_answer(self, question, rows, answer_rules=""):
+            return "ok"
+    r2 = answer_question("T-51b", "2027년 채권 시장 전망 알려줘", planner=Forecast(), ctx=ctx)
+    assert "시점·전망 질의로 판정" in r2.think_trace and "2026-08-24" in r2.answer

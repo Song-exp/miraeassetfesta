@@ -92,6 +92,48 @@ L.append(f"> `mtco_itm_no` **단독 조인 금지** — 펀드단위 키 기준 
          f"(2개 이상 운용사에 걸친 값 {_span:,}종). 키는 `(or_co_xtn_itt_cd, mtco_itm_no)` 복합키다.")
 L.append("")
 
+L.append("### 국내채권 기본모수 · 등급 · 판정 컬럼")
+L.append("")
+# 🔴 04_도메인_채권.md §A·§B·§E 와 03_구성도(그림 B-1) 가 같은 값을 인용한다 — 템플릿에 1차 수치(결측 41.1%)가 남아 있던 사고(09-03) 재발 방지.
+# 구매가능 정본식 = enums/domestic_bonds.yaml query_rules.구매가능 · 판정 기준일 8/24(리드 결정 09-02)
+BUY = "curr_cd='KRW' AND mat_dt >= 20260824"
+MAT = "mat_dt >= 20260824"
+GRADE_AAm = "TRIM(crd_grd) IN ('AAA','AA+','AA0','AA-')"
+NOGRADE = "(crd_grd IS NULL OR TRIM(crd_grd)='')"
+PERP = "(pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%')"
+b = lambda w: q(f"select count(*) from domestic_bonds where {w}")[0]
+bd = lambda w: q(f"select count(distinct pd_no) from domestic_bonds where {w}")[0]
+n_b = rows("domestic_bonds")
+n_bd = q("select count(distinct pd_no) from domestic_bonds")[0]
+n_dup = q("select count(*) from (select pd_no from domestic_bonds group by pd_no having count(*)>=2)")[0]
+n_nog = b(NOGRADE)
+_mc = dict(con.execute(f"select trim(std_pd_mcls_nm), count(*) from domestic_bonds where {NOGRADE} group by 1").fetchall())
+n_grades = q("select count(distinct trim(crd_grd)) from domestic_bonds where trim(crd_grd)<>''")[0]
+n_r00, n_r16 = b("pd_risk_gcd='00'"), b("pd_risk_gcd='16'")
+n_issuer = q("select count(distinct trim(pd_pbcm)) from domestic_bonds where trim(pd_pbcm)<>''")[0]
+n_disc, n_disc_pos = b("bd_intp_tcd='할인채'"), b("bd_intp_tcd='할인채' AND srfc_irt>0")
+L.append("| 항목 | 값 |")
+L.append("| :-- | --: |")
+L.append(f"| 전체 행 / 종목 (`pd_no` distinct) | {n_b:,} / {n_bd:,} |")
+L.append(f"| 장내·장외 2~4행 중복 종목 | {n_dup:,} |")
+L.append(f"| **구매가능 행 / 종목** (`{BUY}`) | **{b(BUY):,} / {bd(BUY):,}** |")
+L.append(f"| 판정 기준일 경계 — 8/22·8/23 만기 종목 (모수 밖) / 8/24 당일 만기 (모수) | {bd('mat_dt IN (20260822,20260823)'):,} / {bd('mat_dt = 20260824'):,} |")
+L.append(f"| **공식 예시 #1 모수** — 구매가능 AND AA- 이상 (종목) | **{bd(BUY + ' AND ' + GRADE_AAm):,}** |")
+L.append(f"| 신용등급 결측 행 / 비율 | {n_nog:,} / {n_nog/n_b*100:.1f}% |")
+L.append(f"| 신용등급 결측 분해 — 국공채(미부여) / 특수채 / 회사채(미수록) | {_mc.get('국공채',0):,} / {_mc.get('특수채',0):,} / {_mc.get('회사채',0):,} |")
+L.append(f"| 신용등급 표기 종수 (데이터 실재) | {n_grades} |")
+L.append(f"| 위험등급 `'00'`(해당없음) 행 / 6등급 `'16'` 행 | {n_r00:,} / {n_r16:,} ({n_r16/n_b*100:.1f}%) |")
+L.append(f"| 발행사 `pd_pbcm` distinct (TRIM) | {n_issuer:,} |")
+KR_ROW, KRW_ROW = b("pd_ctry_cd='KR'"), b("curr_cd='KRW'")
+L.append(f"| 발행국 KR / 통화 KRW 행 | {KR_ROW:,} / {KRW_ROW:,} |")
+L.append(f"| 할인채 행 (`bd_intp_tcd`) / 그중 `srfc_irt`>0 | {n_disc:,} / {n_disc_pos:,} |")
+L.append(f"| 영구채 행 / 종목 (종목명 신종·영구) | {b(PERP):,} / {bd(PERP):,} |")
+n_r1, n_c0 = bd(MAT + " AND pd_risk_gcd='11'"), bd(MAT + " AND TRIM(crd_grd)='C0'")
+L.append(f"| 되묻기 규모 — 구매가능 1등급 종목 / C0 종목 | {n_r1:,} / {n_c0:,} |")
+L.append("")
+L.append("> 신용등급 결측 41.1%·41.6% 는 **1차(7/11) 데이터** 수치다 — 2차는 위 값. 국공채는 등급 '미부여'(정상), 특수채·회사채 결측은 '미수록' 으로 말한다.")
+L.append("")
+
 L.append("## 2. 외부 수집 (L2)")
 L.append("")
 L.append("| 수집물 | 행 | 커버리지 | 기준일 |")

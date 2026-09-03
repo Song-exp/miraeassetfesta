@@ -545,6 +545,14 @@ def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
     if len(years) != 1:
         return sql, False
     uppers = list(_MAT_UPPER.finditer(sql))
+    if not uppers:
+        # BETWEEN 꼴 — 양 끝 연도가 모두 질문 연도와 다르면 그 해 전체 창으로 (2026-09-03 #51: '내년' 이
+        #    BETWEEN 20280824 AND 20290824 로 나갔는데 이 가드가 `<=` 상한만 봐서 불개입이었다)
+        bts = list(_MAT_BETWEEN.finditer(sql))
+        if len(bts) == 1 and bts[0].group(1)[:4] != years[0] and bts[0].group(2)[:4] != years[0]:
+            s, e = bts[0].span()
+            return sql[:s] + f"mat_dt BETWEEN {years[0]}0101 AND {years[0]}1231" + sql[e:], True
+        return sql, False
     if len(uppers) != 1:
         return sql, False
     lit = uppers[0].group(1)
@@ -552,6 +560,110 @@ def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
         return sql, False
     s, e = uppers[0].span(1)
     return sql[:s] + years[0] + lit[4:] + sql[e:], True
+
+
+_MAT_BETWEEN = re.compile(r"\bmat_dt\s+BETWEEN\s+(\d{8})(?:\.0)?\s+AND\s+(\d{8})(?:\.0)?", re.I)
+_MAT_PRED = re.compile(r"\bmat_dt\b\s*(?:BETWEEN\s+\d{8}(?:\.0)?\s+AND\s+\d{8}(?:\.0)?|(?:>=|<=|<>|!=|=|<|>)\s*\d{8}(?:\.0)?)", re.I)
+_MAT_OR_REMAIN = re.compile(r"\b(?:mat_dt|remaining_days)\b", re.I)
+_WHERE_BODY = re.compile(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
+_SQL_NOW = re.compile(r"'now'|\bCURRENT_DATE\b|\bCURRENT_TIMESTAMP\b|\bCURRENT_TIME\b", re.I)
+
+
+def has_maturity_predicate(sql: str) -> bool:
+    """SQL 에 mat_dt 날짜 조건(BETWEEN / 부등호 / 등호 + YYYYMMDD 리터럴)이 있는가 — 시점·전망 질의와 만기 질의를 가르는 기준."""
+    return bool(_MAT_PRED.search(sql))
+
+
+def pin_sql_now(sql: str) -> tuple[str, bool]:
+    """SQLite 의 '지금'(`'now'`·CURRENT_DATE …)을 질문 시점 2026-08-24 로 고정. (보정된 SQL, 보정했는지)
+
+    서버 실제 시각은 심사일이다 — HCX 가 `date('now')` 를 한 번이라도 쓰면 기준일이 심사 당일로 밀린다(프로브 전 json 에서
+    사용 0건이지만 가드도 0건이었다 — 2026-09-03 #51 재점검). 'now' 만 바꾸므로 `strftime('%Y%m%d','now','+1 year')` 의 수식어는 산다.
+    """
+    def _sub(m: re.Match) -> str:
+        t = m.group(0).upper()
+        if t == "'NOW'" or t == "CURRENT_DATE":
+            return f"'{gate.BUYABLE_CUTOFF}'"
+        return f"'{gate.BUYABLE_CUTOFF} 00:00:00'"
+    new = _SQL_NOW.sub(_sub, sql)
+    return new, new != sql
+
+
+def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, int, int]]) -> tuple[str, str | None]:
+    """질문의 상대 시점('내년'·'올해'·'3년 안에' …)이 확정한 만기 창을 SQL 에 강제한다. (보정된 SQL, 적용 설명 | None)
+
+    🔴 2026-09-03 서버 실측(#51): '내년에 만기가 되는 회사채' 를 HCX 가 `mat_dt BETWEEN 20280824 AND 20290824` 로 냈다.
+       질문 시점(8/24) 도, '내년' 의 뜻도 프롬프트에 없었다. 창은 결정층이 정한다(gate.resolve_relative_window) —
+       여기서는 mat_dt·remaining_days 를 쓴 최상위 조건을 전부 걷어내고 확정 창 하나로 바꾼다.
+    remaining_days 조건은 제거한다 — 8/21(info_base_dt) 기준이라 8/24 를 오늘로 두면 3일 어긋난다.
+    발동(전부): ① domestic_bonds ② 확정 창이 정확히 하나 ③ 만기 경과 질의 아님 ④ SQL 에 mat_dt/remaining_days 조건이 있거나
+    질문이 '만기·상환' 을 말함(그렇지 않은 '오늘 수익률 좋은 채권' 의 '오늘' 은 창이 아니다) ⑤ 걷어낼 조건이 다른 컬럼과 섞여 있지 않음.
+    """
+    if "domestic_bonds" not in sql or not windows or _PAST_MATURITY_Q.search(question):
+        return sql, None
+    if len({(lo, hi) for _, lo, hi in windows}) != 1:
+        return sql, None
+    label, lo, hi = windows[0]
+    want = f"mat_dt = {lo}" if lo == hi else f"mat_dt BETWEEN {lo} AND {hi}"
+    m_w = _WHERE_BODY.search(sql)
+    body = m_w.group(1) if m_w else ""
+    has_pred = bool(_MAT_OR_REMAIN.search(body))
+    if not has_pred and not re.search(r"만기|상환", question):
+        return sql, None
+    fold = "\x01"
+    folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
+    kept: list[str] = []
+    for c in guard.split_conjuncts(folded):
+        c = c.replace(fold, " AND ").strip()
+        if not c:
+            continue
+        if _MAT_OR_REMAIN.search(c):
+            others = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", _SQL_LITERAL.sub("''", c))} - _SQL_WORDS - {"mat_dt", "remaining_days", "domestic_bonds", "between", "cast", "as", "integer", "real"}
+            if others:
+                return sql, None                                    # 다른 컬럼과 섞인 절 — 의도 불명, 불개입
+            continue
+        kept.append(c)
+    if has_pred and re.sub(r"\s+", " ", body).strip() == re.sub(r"\s+", " ", " AND ".join(kept + [want])).strip():
+        return sql, None
+    new_where = " AND ".join(kept + [want])
+    if m_w:
+        new = sql[:m_w.start()] + "WHERE " + new_where + " " + sql[m_w.end():].lstrip()
+    else:
+        tail = re.search(r"\b(?:group\s+by|having|order\s+by|limit)\b", sql, re.I)
+        pos = tail.start() if tail else len(sql.rstrip().rstrip(";"))
+        new = sql[:pos].rstrip() + " WHERE " + new_where + " " + sql[pos:].lstrip()
+    return new, f"'{label}' → {want} (질문 시점 {gate.BUYABLE_CUTOFF} 고정 · 확정표 gate._RELATIVE_WINDOW)"
+
+
+def raise_maturity_floor(sql: str, question: str) -> tuple[str, bool]:
+    """mat_dt 하한이 구매가능 판정일(20260824) 보다 앞이면 판정일로 올린다. (보정된 SQL, 보정했는지)
+
+    '올해 만기'·'2026년에 만기' 를 HCX 가 `BETWEEN 20260101 AND 20261231` 로 쓰면 만기 경과 49행이 섞인다 —
+    ensure_maturity_lower_bound 는 BETWEEN 불개입, ensure_cutoff_inclusive 는 8/20~8/23 리터럴만 봤다(2026-09-03 #51 재점검).
+    만기 경과 질의(_PAST_MATURITY_Q)와 상한까지 과거인 창(전부 경과분을 묻는 것)은 건드리지 않는다.
+    """
+    if _PAST_MATURITY_Q.search(question):
+        return sql, False
+    changed = False
+
+    def _lower(m: re.Match) -> str:
+        nonlocal changed
+        if int(m.group(1)) < BUYABLE_INT:
+            changed = True
+            return f"mat_dt >= {BUYABLE_INT}"
+        return m.group(0)
+
+    def _between(m: re.Match) -> str:
+        nonlocal changed
+        lo, hi = int(m.group(1)), int(m.group(2))
+        if lo < BUYABLE_INT <= hi:
+            changed = True
+            return f"mat_dt BETWEEN {BUYABLE_INT} AND {m.group(2)}"
+        return m.group(0)
+
+    new = re.sub(r"\bmat_dt\s*>=?\s*(\d{8})(?:\.0)?\b", _lower, sql, flags=re.I)
+    new = _MAT_BETWEEN.sub(_between, new)
+    return new, changed
 
 
 _GRADE_SCALE = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
@@ -2444,6 +2556,13 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     cov = _bond_coverage_counts(sql)
     total = cov[1] if cov else None
     basis = f"기준일 {gate.DATA_CUTOFF}"
+    # 만기 창을 머리줄에 굽는다 — 창이 틀리면 사용자가 바로 본다 (2026-09-03 #51: '내년' 이 2028~2029 로 나갔는데 어디에도 안 보였다)
+    mw = _MAT_BETWEEN.search(sql)
+    me = re.search(r"\bmat_dt\s*=\s*(\d{8})", sql, re.I)
+    if mw:
+        basis = f"만기 {_fmt_ymd(mw.group(1))}~{_fmt_ymd(mw.group(2))} · 질문 시점 {gate.DATA_CUTOFF} 기준"
+    elif me:
+        basis = f"만기 {_fmt_ymd(me.group(1))} · 질문 시점 {gate.DATA_CUTOFF} 기준"
     if total and total > n:
         head = (f"조건에 해당하는 채권은 전체 {total:,}종목이며, {axis_txt + ' ' if axis_txt else ''}상위 {n}개는 다음과 같습니다 ({basis})."
                 if axis_txt else f"조건에 해당하는 채권은 전체 {total:,}종목이며, 그중 {n}개는 다음과 같습니다 ({basis}).")
@@ -2484,6 +2603,9 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
                 bits.append(f"{c} {r[c]}")
         out.append(f"{i}. {r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
     tail = []
+    if "remaining_days" in cols and any(r.get("remaining_days") for r in recs):
+        # 컬럼 원값을 그대로 보이되 산출 기준일을 밝힌다 — 재계산하지 않는다(심사 gold 는 제공 컬럼값에서 나올 가능성이 높다 · 2026-09-03 결정)
+        tail.append(f"잔존일수는 데이터 산출일 {gate.SNAPSHOT_DATE} 기준 값입니다(질문 시점 {gate.DATA_CUTOFF} 보다 3일 앞).")
     if warn:
         tail.append("수익률이 높은 채권은 원금을 돌려받지 못할 위험도 높을 수 있습니다. 신용등급·위험등급을 함께 확인하세요.")
     if _RECO_Q.search(question) and "pd_risk_gcd <> '11'" in sql and "bd_ofr_tcd <> '사모'" in sql:
@@ -6071,6 +6193,15 @@ def build_grounding(
     rules = ctx.planner_context(target, question if (question and layered) else None)
     if rules:
         parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다. 일부는 이 질문과 무관할 수 있다)\n" + rules)
+    windows = gate.resolve_relative_window(question) if (question and "domestic_bonds" in target) else []
+    if windows:
+        # 질문 시점을 못 들으면 HCX 가 '내년' 을 제멋대로 센다(2026-09-03 #51: 20280824~20290824). 창은 결정층이 정하고 가드가 강제한다 —
+        # 이 문장은 재생성 횟수를 줄이는 보조다.
+        wins = " · ".join(f"'{l}' = {'mat_dt = ' + str(lo) if lo == hi else f'mat_dt BETWEEN {lo} AND {hi}'}" for l, lo, hi in windows)
+        parts.append(
+            f"# 질문 시점(오늘) = {gate.BUYABLE_CUTOFF}(월) 로 고정. 상대 시점 확정: {wins}\n"
+            "# 이 창을 그대로 쓴다. remaining_days 로 창을 만들지 않는다(잔존일수는 8/21 기준이라 3일 어긋난다). 만기 조건은 mat_dt 정수 리터럴로만."
+        )
     if future:
         # 기준일 이후 연도는 만기일 조건으로만 정당하다 (gate §③ — 사후 검사와 짝)
         parts.append(
@@ -6656,6 +6787,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, incl = ensure_cutoff_inclusive(sql)
     if incl:
         step(f"[Guard] 기준일 경계 교정 — 옛 기준일(8/20~8/23) 만기 하한을 mat_dt >= {BUYABLE_INT} 로 (2026-09-02 리드 결정: 8/22·8/23 만기 14종목은 8/24 에 만기 경과 — 2026-09-01 실측의 '당일 7종목' 도 이제 모수 밖)")
+    sql, floor_fixed = raise_maturity_floor(sql, q)
+    if floor_fixed:
+        step(f"[Guard] 만기 하한 인상 — 판정일 이전 하한(BETWEEN 앞값 포함)을 mat_dt >= {BUYABLE_INT} 로 (만기 경과 49행 혼입 방지 — '올해·2026년 만기' 를 1/1 부터 잡는 SQL · 2026-09-03 #51 재점검)")
     sql, key_fixes = ensure_fund_key_column(sql)
     if key_fixes:
         step(f"[Guard] 펀드 키 컬럼 교정 — {' · '.join(key_fixes)} (7R S′ · 6R W11 실측: KG 가 rptt_ksd_itm_no 를 핀했는데 "
@@ -7084,6 +7218,16 @@ def answer_question(
     sql, trim_fixed = ensure_trimmed_compare(sql)
     if trim_fixed:
         step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교를 TRIM 비교로 교체 (무TRIM IN 은 16행 vs TRIM 2,031행 실측)")
+    sql, pinned = pin_sql_now(sql)
+    if pinned:
+        step(f"[Guard] SQL 의 '지금' 고정 — 'now'·CURRENT_DATE 를 질문 시점 {gate.BUYABLE_CUTOFF} 로 치환 (서버 실제 시각은 심사일이다 — 2026-09-03 #51 재점검)")
+    windows = gate.resolve_relative_window(q) if "domestic_bonds" in sql else []
+    sql, win_note = enforce_relative_window(sql, q, windows)
+    if win_note:
+        step(f"[Guard] 상대 시점 창 확정 — {win_note} (2026-09-03 서버 실측 #51: HCX 가 '내년' 을 20280824~20290824 로 오계산 · "
+             "remaining_days 는 8/21 기준이라 창에 쓰지 않는다)")
+    elif len({(lo, hi) for _, lo, hi in windows}) > 1:
+        step(f"[Guard] 상대 시점 낱말이 서로 다른 창을 가리켜 불개입 — {' · '.join(f'{l}={lo}~{hi}' for l, lo, hi in windows)}")
     if future:
         sql, yr_fixed = align_maturity_year(sql, future)
         if yr_fixed:
@@ -7093,12 +7237,17 @@ def answer_question(
         # ③ cutoff 사후 검사 — 연도가 mat_dt 조건에 안 쓰였으면 시점·전망 질의다 (gate §③)
         # 🔴 날짜 치환·연도 교정 **뒤에** 검사한다 — 교정 전 SQL 로 검사하면 두 자리 연도('28년') 질의가
         #    "SQL 에 2028 이 없다" 며 억울하게 기각된다 (검사 대상과 실행 대상이 같은 SQL 이어야 한다)
-        step(f"[Guard] 기준일 이후 시점 {future} 이(가) SQL 의 mat_dt 조건에 쓰이지 않음 → 만기 질의가 아닌 시점·전망 질의로 판정")
-        result.sql = sql
-        step("[Decision] HCX SQL 은 만들었으나 기준일 이후 근거가 DB 에 없어 종료")
-        result.think_trace = "\n".join(trace)
-        result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
-        return result
+        # 🔴 2026-09-03 #51 — "질문 연도가 SQL 에 없다" 와 "SQL 에 만기 조건이 없다" 는 다른 일이다. mat_dt 날짜 조건이 있으면
+        #    만기 질의다(창이 틀렸다면 위 가드가 고쳤고, 그래도 다르면 실행하고 머리줄에 실제 창을 굽는다). 기각은 조건이 없을 때만.
+        if has_maturity_predicate(sql):
+            step(f"[Guard] 질문 시점 {future} 이(가) SQL 의 만기 창과 다르지만 mat_dt 날짜 조건이 있어 만기 질의로 본다 — 실행하고 실제 창을 답변에 표기")
+        else:
+            step(f"[Guard] 기준일 이후 시점 {future} 이(가) SQL 의 mat_dt 조건에 쓰이지 않음 → 만기 질의가 아닌 시점·전망 질의로 판정")
+            result.sql = sql
+            step("[Decision] HCX SQL 은 만들었으나 기준일 이후 근거가 DB 에 없어 종료")
+            result.think_trace = "\n".join(trace)
+            result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+            return result
 
     sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables, mgmt_found)
     result.sql = sql

@@ -6368,10 +6368,14 @@ def _suggest_similar_issuers(literal: str | None) -> list[str]:
     stem = _ISSUER_SUFFIX.sub("", literal).strip()
     if len(stem) < 2:
         return []
-    # 어간 전체를 품은 발행사(한국전력공사 → 한국전력공사(주))를 먼저, 그다음 같은 어두(앞 2글자)를 종목수 순으로
-    q = ("SELECT TRIM(pd_pbcm), COUNT(DISTINCT pd_no) FROM domestic_bonds "
-         "WHERE TRIM(pd_pbcm) LIKE ? AND TRIM(pd_pbcm) <> ? GROUP BY 1 "
-         "ORDER BY (TRIM(pd_pbcm) LIKE ?) DESC, 2 DESC, 1 LIMIT 4")
+    # 어간 전체를 품은 발행사(한국전력공사 → 한국전력공사(주))를 먼저, 그다음 같은 어두(앞 2글자)를 종목수 순으로.
+    # DB 쪽도 법인 접두를 벗기고 비교한다 — 발행사 1,818 중 431 이 '(주)포스코' 꼴 접두형이라(2026-09-03 실측)
+    # TRIM(pd_pbcm) 그대로 LIKE '포스%' 로는 '(주)포스코' 가 영영 안 잡혔다('포스코건설' → 후보 0).
+    core = ("CASE WHEN substr(TRIM(pd_pbcm),1,3) IN ('(주)','(유)','(사)','(재)') "
+            "THEN substr(TRIM(pd_pbcm),4) ELSE TRIM(pd_pbcm) END")
+    q = (f"SELECT TRIM(pd_pbcm), COUNT(DISTINCT pd_no) FROM domestic_bonds "
+         f"WHERE {core} LIKE ? AND TRIM(pd_pbcm) <> ? GROUP BY 1 "
+         f"ORDER BY ({core} LIKE ?) DESC, 2 DESC, 1 LIMIT 4")
     try:
         with connect_readonly() as con:
             return [f"{name}({cnt:,}종목)" for name, cnt in con.execute(q, (f"{stem[:2]}%", literal, f"%{stem}%"))]

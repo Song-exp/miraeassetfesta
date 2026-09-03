@@ -1219,6 +1219,9 @@ def test_zero_count_answer_and_issuer_clarify(ctx):
     c2 = s("(주)삼성전자")
     assert c2 == s("삼성전자") and c2[0].startswith("삼성카드(주)(") and not any(x.startswith("(주)") for x in c2)
     assert s("주식회사 삼성전자")[0].startswith("삼성카드(주)(")
+    # DB 쪽 접두형 발행사((주)포스코 · (주)우리금융지주)도 어두 후보에 잡혀야 한다 — 종전엔 '포스코건설' 후보 0
+    assert any(x.startswith("(주)포스코(") for x in s("포스코건설"))
+    assert any(x.startswith("(주)우리금융지주(") for x in s("우리금융"))
     vs = guard.check_values("SELECT pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '삼성전자' LIMIT 5", ctx)
     assert _violated_issuer(vs) == "삼성전자" and _violated_issuer([]) is None
 

@@ -124,6 +124,7 @@ L.append(f"| 판정 기준일 경계 — 8/22·8/23 만기 종목 (모수 밖) /
 L.append(f"| **공식 예시 #1 모수** — 구매가능 AND AA- 이상 (종목) | **{bd(BUY + ' AND ' + GRADE_AAm):,}** |")
 L.append(f"| 신용등급 결측 행 / 비율 | {n_nog:,} / {n_nog/n_b*100:.1f}% |")
 L.append(f"| 신용등급 결측 분해 — 국공채(미부여) / 특수채 / 회사채(미수록) | {_mc.get('국공채',0):,} / {_mc.get('특수채',0):,} / {_mc.get('회사채',0):,} |")
+L.append(f"| 신용등급 있는 행 (등급 조건 질의 모수 · yaml `answerable_n`) | {n_b-n_nog:,} |")
 L.append(f"| 신용등급 표기 종수 (데이터 실재) | {n_grades} |")
 L.append(f"| 위험등급 `'00'`(해당없음) 행 / 6등급 `'16'` 행 | {n_r00:,} / {n_r16:,} ({n_r16/n_b*100:.1f}%) |")
 L.append(f"| 발행사 `pd_pbcm` distinct (TRIM) | {n_issuer:,} |")

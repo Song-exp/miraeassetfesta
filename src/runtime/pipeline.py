@@ -4985,6 +4985,22 @@ def ensure_reco_sort(sql: str, question: str) -> tuple[str, bool]:
 
 
 _KTB_Q = re.compile(r"국고채|(?<![가-힣])국채")
+# '국공채 중(가운데·에서·안에) … 국고채' — 국고채가 머리명사인 부분집합 질의. 그 밖에 '국공채' 가 있으면 국공채가 머리명사.
+_GOV_SUBSET_Q = re.compile(r"국공채\s*(?:중|가운데|에서|안에|내에서|내)\s*[^.,?!]*?(?:국고채|(?<![가-힣])국채)")
+
+
+def ktb_head_is_gov(question: str) -> bool:
+    """질문의 머리명사가 국공채(대분류)인가 — 국고채는 포함·병렬 언급일 뿐인가.
+
+    2026-09-03 서버 실측 #52: "국고채를 포함해서 국공채는 전부 몇 종목이야?" → 가드가 '국고채' 낱말만 보고 대분류를
+    국고채 확정식으로 좁혀 295(정답 1,775). "사과를 포함해서 과일이 몇 개야?" 에 사과만 센 꼴이다.
+    '국공채' 가 없으면 False(종전 동작). '국공채 중 국고채만' 처럼 국고채가 부분집합 머리명사면 False.
+    """
+    if "국공채" not in question:
+        return False
+    return not _GOV_SUBSET_Q.search(question)
+
+
 _MCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*=\s*'국공채'", re.I)
 _MCLS_IN = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\([^)]*'국공채'[^)]*\)", re.I)
 _KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
@@ -5013,9 +5029,10 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
     발동 조건: 질문에 '국고채' 또는 단독 '국채'(미국채·한국채권 등 합성어 제외).
     STRIPS 탈출구(리드 결정 08-31 밤): 질문에 스트립·STRIPS·원금이자분리가 등장하면 ③을 건너뛰고
     ②도 bd_knd 단독식으로만 교체 — 'STRIPS 제외' 초정밀 질의에서 가드가 넘겨짚지 않는다.
-    ⚠ 알려진 한계(감수 결정): '국고채를 포함한 국공채 전체 몇 종목' 류 — 질문에 국고채가 언급되면
-       정당한 국공채 대분류 필터도 ②가 국고채로 좁힌다. 뭉개기 오답은 실측(2,840), 이 질의형은 가설이라
-       현행 유지 (docs/review_2026-08-26/채권_프로브10_실측_2026-08-31_밤.md §4-3)."""
+    🔴 머리명사 판별(2026-09-03 서버 실측 #52 — 08-31 §4-3 의 "가설이라 현행 유지" 가 실현됐다):
+       "국고채를 포함해서 국공채는 전부 몇 종목이야?" 에 HCX 는 std_pd_mcls_nm='국공채' 를 **맞게** 썼는데 ②가
+       '국고채' 낱말만 보고 확정식으로 좁혀 295(정답 1,775)를 냈다. 질문에 '국공채' 가 있으면 국공채가 머리명사다 —
+       ②③ 을 보류하고 ①만 남긴다(ktb_head_is_gov). '국공채 중 국고채만' 꼴은 국고채가 머리명사라 그대로 발동한다."""
     if not _KTB_Q.search(question):
         return sql, False
     strips_aware = bool(_STRIPS_Q.search(question))
@@ -5026,6 +5043,8 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
         if lit and lit not in question:
             sql = sql[:m.start()] + sql[m.end():]
             changed = True
+    if ktb_head_is_gov(question):
+        return sql, changed
     if "국고채권" not in sql:
         m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
         if not m:
@@ -6315,7 +6334,9 @@ def _suggest_similar_products(sql: str) -> list[str]:
         return []
 
 _ISSUER_LOOKUP = re.compile(r"TRIM\(\s*(?:\w+\.)?pd_pbcm\s*\)\s*=\s*'([^']+)'|\bpd_pbcm\s*=\s*'([^']+)'", re.I)
-_ISSUER_SUFFIX = re.compile(r"\(?(?:주|유|사|재)\)?$|주식회사|\s+")
+# 2026-09-03 서버 실측: 재생성 SQL 의 리터럴 '(주)삼성전자' — 앞의 (주) 가 안 벗겨져 어두가 '(주' 가 되어
+#   되묻기 후보가 (주)중소기업은행·(주)KB국민카드… 전부 '(주)' 발행사로 나갔다. 앞·뒤 법인 표기를 모두 뗀다.
+_ISSUER_SUFFIX = re.compile(r"^\((?:주|유|사|재)\)|\(?(?:주|유|사|재)\)?$|주식회사|\s+")
 
 
 def _issuer_literal(sql: str) -> str | None:
@@ -6365,6 +6386,54 @@ def _issuer_clarify_text(literal: str | None) -> str:
         return ""
     return (f" 발행사 '{literal}' 의 채권은 기준일 {gate.DATA_CUTOFF} 국내채권 데이터에 없습니다. "
             f"혹시 다음 발행사의 채권을 말씀하신 건가요? — {' / '.join(cand)}")
+
+
+_BOND_COUNT_SUBJECT = re.compile(r"^(.*?[가-힣)])\s*(?:은|는|이|가)\s*(?:전부|총|모두|다|현재|지금)?\s*몇\s*(?:개|종목|건)")
+
+
+def _bond_count_answer(sql: str, rows: str, n: int, question: str) -> str | None:
+    """domestic_bonds 단일 COUNT(1행 1열, 값 > 0)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
+
+    2026-09-03 서버 실측 #52: SQL 이 국고채 295 를 셌는데 HCX 가 질문 문언을 그대로 옮겨 "국고채를 포함한 국공채는 총 295종목"
+    이라 답했다 — 답변기는 SQL 이 무엇을 셌는지 모른다(#37·#39 계열). 주어는 질문의 '~는 몇 종목' 앞 구절에서 읽고,
+    질문이 국고채를 **포함 언급**한 국공채 질의(ktb_head_is_gov)면 같은 WHERE 의 대분류 절을 국고채 확정식으로 바꾼 COUNT 를
+    결정층이 한 번 더 실행해 "그중 국고채 N종목" 을 병기한다(SQL 2회 · 같은 상수 _KTB_FILTER).
+    발동(전부): ① domestic_bonds 단독(JOIN·UNION·서브쿼리·GROUP BY 없음) ② SELECT 가 COUNT 하나 ③ 1행 1열 ④ 값 > 0(0 은 _zero_count_answer).
+    """
+    if n != 1 or "domestic_bonds" not in sql or re.search(r"\b(?:join|union|group\s+by)\b|\(\s*select\b", sql, re.I):
+        return None
+    m_sel = re.match(r"\s*SELECT\s+(.*?)\s+FROM\b", sql, re.I | re.S)
+    if not m_sel or not re.fullmatch(r"COUNT\s*\(\s*(?:DISTINCT\s+)?[\w.*]+\s*\)(?:\s+AS\s+\w+)?", m_sel.group(1).strip(), re.I):
+        return None
+    lines = rows.splitlines()
+    if len(lines) != 2 or " | " in lines[1]:
+        return None
+    try:
+        cnt = int(float(lines[1].strip()))
+    except ValueError:
+        return None
+    if cnt <= 0:
+        return None
+    m_subj = _BOND_COUNT_SUBJECT.search(question)
+    subj = m_subj.group(1).strip() if m_subj and len(m_subj.group(1).strip()) <= 30 else "조건에 해당하는 채권"
+    subj = re.sub(r"^(?:지금|현재)\s*", "", subj) or "조건에 해당하는 채권"
+    last = subj[-1]
+    particle = "은" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "는"
+    unit = "종목" if re.search(r"DISTINCT\s+pd_no", m_sel.group(1), re.I) else "건"
+    out = f"{subj}{particle} 총 {cnt:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF})."
+    if _KTB_Q.search(question) and ktb_head_is_gov(question) and (_MCLS_EQ.search(sql) or _MCLS_IN.search(sql)):
+        m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
+        sub_sql = sql[:m.start()] + _KTB_FILTER + sql[m.end():]
+        con = connect_readonly()
+        try:
+            sub = con.execute(sub_sql).fetchone()
+        except sqlite3.Error:
+            sub = None
+        finally:
+            con.close()
+        if sub and sub[0] is not None:
+            out += f" 그중 국고채(국고채권 + STRIPS)는 {int(sub[0]):,}{unit}이고, 나머지는 지역개발채·도시철도공채·국민주택채·모집지방채 등 지방채·국민주택채입니다. 통안채는 대분류가 특수채라 국공채에 들지 않습니다."
+    return out
 
 
 def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
@@ -6971,6 +7040,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, ktb_fixed = ensure_ktb_kind(sql, q)
     if ktb_fixed:
         step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
+    elif _KTB_Q.search(q) and ktb_head_is_gov(q) and (_MCLS_EQ.search(sql) or _MCLS_IN.search(sql)):
+        step("[Guard] 국고채 종류 교정 보류 — 머리명사가 국공채(국고채는 포함·병렬 언급) · 대분류 필터 유지 "
+             "(2026-09-03 서버 실측 #52: '국고채를 포함해서 국공채는 전부 몇 종목' 을 국고채 295 로 좁힌 오폭)")
     sql, backstop_fixed = ensure_credit_backstop(sql, q)
     if backstop_fixed:
         step("[Guard] 신용보강 층 주입 — 정부보강 질의의 WHERE 에서 빠진 층(C 법정 손실보전 기관 등)·랭킹 제외 조건을 주입 (2026-08-31 저녁 재발 실측: C층 탈락으로 1위 5.859% 누락 + 사모/1등급 14.05% 혼입)")
@@ -7063,7 +7135,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 기본 TOP-N — 개수 없는 랭킹 질의의 LIMIT 을 {DEFAULT_TOPN} 으로 (2026-09-02 서버 실측: '한전 채권 수익률 낮은 순' 30행 전사 22.2초 — 리드 결정: 상위 5 + 전체 종목수 병기)")
     sql, limited = ensure_limit(sql)
     if limited:
-        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+        step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (검사기가 LIMIT 을 요구한다 — 집계 1행에도 붙이며 결과엔 무해)")
     sql, undecl = drop_undeclared_table_or_branches(sql)
     if undecl:
         step(f"[Guard] 미선언 테이블 OR 가지 제거 — {' · '.join(undecl)} (16R gold ③-1 · OFFICIAL-004 실측: "
@@ -7444,6 +7516,14 @@ def answer_question(
              "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")
         result.think_trace = "\n".join(trace)
         result.answer = cnt
+        return result
+    bcnt = _bond_count_answer(sql, rows, n, q)
+    if bcnt is not None:
+        step("[Answer] 채권 종목 수 답변 기계 조립 — 단일 COUNT 1행은 HCX 없이 옮기고, 질문이 국고채를 포함 언급하면 "
+             "국고채 확정식 COUNT 를 결정층이 한 번 더 실행해 병기 (2026-09-03 서버 실측 #52: HCX 가 질문 문언을 옮겨 "
+             "'국고채를 포함한 국공채는 295종목' — 국공채 = 국고채 로 읽히는 사실 왜곡)")
+        result.think_trace = "\n".join(trace)
+        result.answer = bcnt
         return result
     zero = _zero_count_answer(sql, rows, n)
     if zero is not None:

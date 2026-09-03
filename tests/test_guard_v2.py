@@ -1215,6 +1215,10 @@ def test_zero_count_answer_and_issuer_clarify(ctx):
     c = s("한국전력공사")
     assert c and c[0].startswith("한국전력공사(주)(")                                  # 어간 포함 후보 우선
     assert s("삼") == [] and s(None) == []
+    # 2026-09-03 서버 실측: 재생성 리터럴 '(주)삼성전자' 의 앞 (주) 가 어두를 먹어 (주)중소기업은행… 이 후보로 나감
+    c2 = s("(주)삼성전자")
+    assert c2 == s("삼성전자") and c2[0].startswith("삼성카드(주)(") and not any(x.startswith("(주)") for x in c2)
+    assert s("주식회사 삼성전자")[0].startswith("삼성카드(주)(")
     vs = guard.check_values("SELECT pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '삼성전자' LIMIT 5", ctx)
     assert _violated_issuer(vs) == "삼성전자" and _violated_issuer([]) is None
 

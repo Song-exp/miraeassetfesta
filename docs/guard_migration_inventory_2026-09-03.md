@@ -47,7 +47,7 @@
 
 | 가드 | 기존 yaml 규칙 | 부족한 것 | 필요한 확장 | 문항 |
 | :-- | :-- | :-- | :-- | :-- |
-| `ensure_fund_distribution_fund_count` **P0-2b** | `public_funds.유형별분포` | 조건이 "SELECT 가 **정확히** (라벨, `COUNT(*)`) 2항목" — 모양(shape) 조건이라 `has/lacks` 로 못 쓴다 | `sql.select_shape` 축 | R1 재검 (7~9번째 재발) |
+| `ensure_fund_distribution_fund_count` **P0-2b** | `public_funds.유형별분포` | 조건이 "SELECT 가 **정확히** (라벨, `COUNT(*)`) 2항목" — 모양(shape) 조건이라 `has/lacks` 로 못 쓴다 | 🔴 **프리즈 후.** `select_shape` 축을 만들지 않는다 — 사유는 §2-1 | R1 재검 (7~9번째 재발) |
 | `ensure_fund_mixed_type` | `public_funds` 유형 규칙 | "유형 조건이 **정확히 1개**" — 절의 **개수** 조건 | `sql.predicate_count` | FND-023 |
 | `ensure_fund_country_tag` | `public_funds.국가태그` | 액션 2개 — 컬럼 오용 `replace_predicate` + wrap 없는 LIKE 를 정식형으로 **정규화** | `action` 목록에 `normalize_predicate` | FND-026 |
 | `ensure_fund_attr_tag` | `public_funds` 속성태그 규칙 | 액션 2개 — 태그식 `inject_where` + 같은 낱말을 다른 컬럼에 쓴 절 `remove_predicate` | 액션 **배열** 허용 | KG-017 · KG-018 |
@@ -55,6 +55,20 @@
 | `ensure_fund_estb_year` | `public_funds.설명서항목` | 액션 2개 — 날짜 절 전부 `remove_predicate` + `estb_dt` 범위 `inject_where` | 액션 배열 | Z22 · KG-035 · X19 |
 | `ensure_fund_entity_count_ranking` | `public_funds` 개수 랭킹 규칙 (**신설**) | 액션 2개 — `replace_order` + 집계식 `replace_expr` | 액션 배열 | KG-008 · AA16 |
 | `ensure_fund_rank_representative` | `public_funds.대표행` | 방향 의존 — `ORDER BY` 가 DESC 면 `MAX`, ASC 면 `MIN`. 확정식이 SQL 상태에 따라 갈린다 | `sql` 에 `{sort_agg}` 자리표시자 | FND-015 |
+
+### 🔴 P0-2b 는 프리즈 전에 전환하지 않는다 (리드 판정 2026-09-03)
+
+`ensure_fund_distribution_fund_count` 는 **코드 가드로 그대로 둔다.** `select_shape` 축을 만들지 않는 이유:
+
+`select_shape: [label, "COUNT(*)"]` 는 **SQL 의 생김새**를 조건으로 삼는다. 다섯 축(tables/question/
+grounded/sql.has/sql.lacks)이 전부 "무엇이 있는가/없는가" 인 것과 층위가 다르다 — 생김새 조건은
+HCX 가 SELECT 항목을 하나 더 붙이는 것만으로 조용히 빗나가고, 빗나갔다는 사실이 로그에 남지 않는다.
+가드는 같은 판정을 파이썬으로 하되 **빗나가면 그대로 침묵**하므로 위험이 같지만, 최소한
+새 축을 만들어 다른 슬롯까지 그 문법을 쓰게 만들지는 않는다.
+
+바른 해법은 생김새가 아니라 **measure 접지**다 — "이 질의가 세려는 것이 클래스인가 펀드인가" 를
+질문에서 접지해 조건으로 쓰는 것. 그 축은 `09_오답유형_구조해법.md` 의 Measure 축과 같은 것이고,
+프리즈 후에 그쪽과 함께 설계한다. 그때까지 **P0-2b 는 코드 가드가 담당**한다.
 
 **필요한 스키마 확장은 3개다** — ① `action` 을 배열로(5건이 여기 걸린다) ② `sql.select_shape`·`sql.predicate_count` 모양 축 ③ 자리표시자 `{sort_agg}`. ①만 받아도 8개 중 5개가 A 가 된다.
 
@@ -118,9 +132,10 @@ enforce:
 | 수정 | 슬롯 | 가드 | 프리즈 전 |
 | :-- | :-- | :-- | :-: |
 | P0-2a | `펀드단위.enforce` | `ensure_fund_distinct_count` | ✅ 확장 불필요 |
-| P0-2b | `유형별분포.enforce` | `ensure_fund_distribution_fund_count` | `select_shape` 확장 후 |
+| P0-2b | — (슬롯 안 만든다) | `ensure_fund_distribution_fund_count` **코드 유지** | ⬜ 프리즈 후 · measure 접지로 |
 
-→ **프리즈 전 확장 없이 전환 가능한 것은 P0-1 · P0-2a · P0-3 셋.** 절차의 "P0 3개" 와 개수는 같고 내용이 하나 다르다.
+→ **프리즈 전 전환은 P0-1 · P0-2a · P0-3 셋** (리드 확정 2026-09-03).
+절차의 "P0 3개" 와 개수는 같고 내용이 하나 다르다.
 
 ---
 

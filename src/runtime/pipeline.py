@@ -2210,15 +2210,35 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
         if len(parts) != len(cols):
             return None
         recs.append(dict(zip(cols, parts)))
+    # 🔴 14R 재검 ③-7 — **같은 대표번호(rptt) 행은 한 줄로 접고 클래스수를 합산한다.** 실측: V9 22행 중
+    #    `키움러시아익스플로러 1[주식]` 5줄 · S6 `미래에셋인도중소형포커스 1호` 4줄 · R3 `미래에셋차이나그로스 1호` 3줄.
+    #    묶기 축(펀드키)은 리드 판단 대기라 건드리지 않는다 — 접기는 **표시 층**이고, 순자산은 접은 행의 MAX 유지.
+    folded: list[dict] = []
+    by_key: dict[str, dict] = {}
+    for r in recs:
+        key = (r.get("대표번호") or "").strip()
+        if not key or key in _SENTINEL_CELLS:
+            key = "stem:" + _fund_stem(r["itm_nm"])
+        if key in by_key:
+            g = by_key[key]
+            g["클래스수"] = str(int(float(g["클래스수"] or 0)) + int(float(r["클래스수"] or 0)))
+            continue
+        by_key[key] = dict(r)
+        folded.append(by_key[key])
+    shown, recs = len(recs), folded
     cov = _coverage_counts(sql)
     pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
     # 4R ④-3 — 목록의 순자산 축은 대표 클래스(MAX) 기준(개별 조회는 SUM). 리드 판정 전엔 축을 바꾸지 않고 머리줄에 고지만.
     basis = f"기준일 {gate.DATA_CUTOFF}, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위·순자산 = 대표 클래스 기준(MAX)"
-    if cov and cov[1] is not None and cov[1] > n:
-        head = f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개)이며, 순자산 상위 {n}개 펀드는 다음과 같습니다 ({basis})."
+    # 접기로 줄어든 줄 수를 머리줄에 병기한다 — 「전체 N개」는 펀드키 축 그대로 두고 표시 건수만 밝힌다
+    rptt_note = f"(대표번호 기준 {len(recs)}건)" if len(recs) != shown else ""
+    if cov and cov[1] is not None and cov[1] > shown:
+        head = (f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개)이며, "
+                f"순자산 상위 {shown}개 펀드{rptt_note}는 다음과 같습니다 ({basis}).")
     else:
         total = f"(클래스 {cov[0]:,}개)" if cov else ""
-        head = f"조건에 해당하는 {pop}는 전체 {n}개{total}이며, 순자산 순으로 다음과 같습니다 ({basis})."
+        head = (f"조건에 해당하는 {pop}는 전체 {shown}개{total}{rptt_note}이며, "
+                f"순자산 순으로 다음과 같습니다 ({basis}).")
     out = [head, ""]
     for i, r in enumerate(recs, 1):
         eok = r.get("순자산_억원", "")
@@ -2479,7 +2499,10 @@ def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     tail = sql[frm.start():].rstrip()
     m_lim = re.search(r"\blimit\s+\d+\s*$", tail, re.I)
     body, lim = (tail[:m_lim.start()].rstrip(), tail[m_lim.start():]) if m_lim else (tail, "")
-    add = 'COUNT(*) AS "클래스수"' + (", MAX(fd_nast_suma) AS fd_nast_suma" if "fd_nast_suma" not in head else "")
+    # 🔴 14R 재검 ③-7 — 표시 접기의 재료. 묶기 축(펀드키)은 리드 판단 대기라 그대로 두고, 대표번호를 실어
+    #    **표시 층에서만** 같은 펀드를 한 줄로 접는다(개별 조회 조립기가 이미 하는 접기와 같은 기계).
+    add = ('COUNT(*) AS "클래스수", MIN(rptt_ksd_itm_no) AS 대표번호'
+           + (", MAX(fd_nast_suma) AS fd_nast_suma" if "fd_nast_suma" not in head else ""))
     return (f"{head.rstrip()}, {add} {body} GROUP BY {_FUND_KEY_EXPR} ORDER BY fd_nast_suma DESC {lim}").rstrip(), True
 
 

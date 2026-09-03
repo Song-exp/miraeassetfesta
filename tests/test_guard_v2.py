@@ -1484,15 +1484,17 @@ def test_list_answer_assembled(ctx):
 
     r = answer_question("T-R3L", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
     assert P.calls == 0 and "[Answer] 목록 답변 기계 조립" in r.think_trace
-    assert r.answer.startswith("조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드는 다음과 같습니다")
+    # 🔴 14R 재검 ③-7 — 같은 대표번호 행은 한 줄로 접고 접은 건수를 머리줄에 병기한다(30행 → 28건).
+    #    「전체 248개」(펀드키 축)는 리드 판단 대기라 그대로 두고 표시 층만 접는다.
+    assert r.answer.startswith("조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드(대표번호 기준 28건)는 다음과 같습니다")
     body = [ln for ln in r.answer.splitlines() if re.match(r"\d+\. ", ln)]
-    assert len(body) == 30 and body[0].startswith("1. KB중국본토A주증권자투자신탁[주식]: 순자산 1,453억원 · 클래스 14개")
+    assert len(body) == 28 and body[0].startswith("1. KB중국본토A주증권자투자신탁[주식]: 순자산 1,453억원 · 클래스 14개")
     assert "일부" not in r.answer and "있을 수 있" not in r.answer
     # S7 베트남 — 38펀드 · 30줄
     P.sql = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
              "AND (',' || prfd_attr_cds || ',' LIKE '%,VNM,%' OR prfd_attr_cds LIKE '%VNM%') AND sale_yn = '판매중' LIMIT 30")
     r7 = answer_question("T-S7", "베트남에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
-    assert "전체 38개(클래스 119개)" in r7.answer and sum(1 for ln in r7.answer.splitlines() if re.match(r"\d+\. ", ln)) == 30
+    assert "전체 38개(클래스 119개)" in r7.answer and sum(1 for ln in r7.answer.splitlines() if re.match(r"\d+\. ", ln)) == 18
     # 절단 없음(LIMIT 5) → "전체 5개"
     P.sql = _R3_SQL.replace("LIMIT 30", "LIMIT 5")
     r5 = answer_question("T-R3s", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)

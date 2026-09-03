@@ -884,16 +884,26 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
        X8 실측: `FROM public_funds` 문장에 ETF 컬럼을 주입해 바로 뒤 스키마 검사가 자기 출력을 기각했다(자가 오거절).
        테이블이 섞인 문장(UNION·JOIN·다른 FROM)에서는 어느 가지의 WHERE 인지 알 수 없으므로 불개입한다.
     """
-    if not re.search(r"\bfrom\s+domestic_etfs\b", sql, re.I):
+    m_tbl = re.search(r"\b(?:from|join)\s+domestic_etfs\b(?:\s+(?:as\s+)?"
+                      r"(?!(?:left|inner|outer|cross|join|where|group|order|limit|on|union)\b)(\w+))?", sql, re.I)
+    if not m_tbl:
         return sql, False
-    if re.search(r"\bunion\b|\bjoin\b|\bfrom\s+(?!domestic_etfs\b)\w+", sql, re.I):
-        return sql, False
+    # 🔴 16R gold ③-7 (부류 V · `CROSS-002`) — 불개입 조건은 「JOIN·UNION 이 있다」가 아니라
+    #    **「컬럼의 소속 테이블을 특정할 수 없다」** 다. 술어에 테이블 한정자(`domestic_etfs.ref_base_index`·
+    #    별칭 `d.ref_base_index`)가 붙어 있으면 소속이 확정되므로 개입한다. 종전엔 `\bjoin\b` 만 보고 즉시
+    #    반환해 `LIKE '%S&P500%'` 가 0행 → 오거절이었다(실측 국내 순수추종 24건 실재).
+    alias = m_tbl.group(1) or "domestic_etfs"
+    mixed = bool(re.search(r"\bunion\b|\bjoin\b", sql, re.I)
+                 or re.search(r"\bfrom\s+(?!domestic_etfs\b)\w+", sql, re.I))
+    qual = f"{alias}." if mixed else ""
+    qual_rx = re.compile(rf"\b{re.escape(alias)}\s*\.\s*(?:cu_base_index|ref_base_index)\b", re.I)
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m_w:
         return sql, False
+
     def _canon(lit: str) -> str:
-        return (f"{_GUARD_MARK}(REPLACE(ref_base_index,' ','') GLOB '{lit}' "
-                f"OR REPLACE(ref_base_index,' ','') GLOB '{lit}[CTP]R*')")
+        col = f"REPLACE({qual}ref_base_index,' ','')"
+        return f"{_GUARD_MARK}({col} GLOB '{lit}' OR {col} GLOB '{lit}[CTP]R*')"
 
     out, changed = [], False
     for c in _flat_conjuncts(m_w.group(1)):
@@ -905,7 +915,8 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
             # 지수 컬럼을 쓴 **가지**의 비교 리터럴(REPLACE 의 ' '·'' 인자는 제외)을 지수명으로 삼는다
             lits = [x.strip("'").strip("%") for x in _SQL_LITERAL.findall(b) if len(x.strip("'").strip("% ")) >= 2]
             hit = re.sub(r"\s+", "", lits[-1]) if lits else ""
-            if _ETF_INDEX_COL.search(b) and hit and not re.search(r"\bNOT\b", b, re.I) \
+            owned = qual_rx.search(b) if mixed else _ETF_INDEX_COL.search(b)
+            if owned and hit and not re.search(r"\bNOT\b", b, re.I) \
                     and not re.search(r"[*?\[\]]", hit):
                 branches.append(_canon(hit))
                 hit_any = changed = True

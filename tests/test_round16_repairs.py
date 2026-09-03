@@ -252,3 +252,30 @@ def test_brand_codes_from_org_labels():
                            f"AND prvo_pbff_desc='공모'").fetchone() == (28, 59)
     finally:
         con.close()
+
+
+# ── P4-c gold ③-7 부류 V — 지수 확정식은 소속이 확정되면 JOIN 문장에서도 개입 ──
+def test_index_canon_qualified_in_join():
+    """CROSS-002 — `\bjoin\b` 만 보고 즉시 반환해 `LIKE '%S&P500%'` 가 0행 오거절이었다."""
+    from src.runtime import loader
+    loader.load_context()
+    con = P.connect_readonly()
+    try:
+        solo = ("SELECT COUNT(*) FROM domestic_etfs WHERE ref_base_index LIKE '%S&P500%' "
+                "AND pd_sale_yn = 1 LIMIT 30")
+        out, ok = P.ensure_etf_index_canon(solo)
+        assert ok and con.execute(out).fetchone() == (24,)          # 국내 순수추종 24건 — 단일 문장 경로 불변
+        joined = ("SELECT domestic_etfs.pd_nm FROM domestic_etfs JOIN overseas_etfs "
+                  "ON domestic_etfs.ref_base_index = overseas_etfs.cu_base_index "
+                  "WHERE domestic_etfs.ref_base_index LIKE '%S&P500%' "
+                  "AND domestic_etfs.pd_grp_no = 'ETF' LIMIT 30")
+        out2, ok2 = P.ensure_etf_index_canon(joined)
+        assert ok2 and "REPLACE(domestic_etfs.ref_base_index" in out2   # 한정자를 살려 주입한다
+        assert len(con.execute(out2).fetchall()) > 0                    # 0행 오거절 해소
+        assert P.ensure_etf_index_canon(out2)[1] is False               # 멱등
+        # 한정자가 없으면 소속을 특정할 수 없다 → 종전대로 불개입(X8 자가 오거절 방지)
+        bare = ("SELECT pd_abrv_nm FROM domestic_etfs JOIN ext_etf_holdings "
+                "ON ext_etf_holdings.etf_name = pd_nm WHERE ref_base_index LIKE '%S&P500%' LIMIT 30")
+        assert P.ensure_etf_index_canon(bare) == (bare, False)
+    finally:
+        con.close()

@@ -2027,9 +2027,12 @@ def _fund_stem(name: str) -> str:
     """
     n = name.strip()
     m = _STEM_ASSET.match(n)
-    if m:
-        return m.group(1).strip()
-    return _STEM_CLASS_TAIL.sub("", n).strip() or n
+    cut = m.group(1).strip() if m else (_STEM_CLASS_TAIL.sub("", n).strip() or n)
+    # 🔴 14R gold ③-23 — 자르기가 괄호를 열어 둔 채 끝나거나(FND-001 7위 `신한BEST신종법인용MMFGS-2호(`)
+    #    2자 이하로 줄면(10위 `하나`) 자르기를 취소한다. 표시 이름이 이름 구실을 못 한다.
+    if cut.count("(") != cut.count(")") or cut.count("[") != cut.count("]") or len(cut) <= 2:
+        return n
+    return cut
 
 
 def _fund_col_ko(col: str) -> str:
@@ -2232,16 +2235,51 @@ def _rank_filter_labels(sql: str) -> list[str]:
     라벨은 스키마 한글명(loader 원천)에서 가져온다 — 이름 하드코딩 0. 모수·식별자 컬럼은 뺀다(이미 머리줄에 있다)."""
     out: list[str] = []
     types = _fund_col_types()
+    # 🔴 14R gold ③-11 — ⓐ **무따옴표 수치 리터럴**(`zrin_fd_ivst_risk_gcd = 1.0`)도 읽는다. FND-002 실측:
+    #    머리줄이 코드값 `1.0` 을 그대로 써 must_include `매우 높은 위험` 을 놓쳤다.
+    numeric = [(c.lower(), [lit]) for c, lit in _BARE_NUM_EQ.findall(sql)]
     for col, lits in ([(c.lower(), [lit]) for _t, c, lit in guard._EQ.findall(sql)]
-                      + [(c.lower(), guard._LIT.findall(body)) for _t, c, body in guard._IN.findall(sql)]):
+                      + [(c.lower(), guard._LIT.findall(body)) for _t, c, body in guard._IN.findall(sql)]
+                      + numeric):
         if col in _HEAD_SKIP_COLS or types.get(col) is None or not lits:
             continue
-        txt = "·".join(dict.fromkeys(lits))
+        # ⓑ 코드 컬럼에 짝 이름 컬럼이 있으면 **이름 값**으로 라벨을 만든다(DB 실측 1회 — 이름 하드코딩 0)
+        named = [_code_value_label(col, l) or l for l in lits]
+        txt = "·".join(dict.fromkeys(named))
         # 값이 한글이면 그 자체가 라벨이다('매우 낮은 위험'·'주식형') — 코드 값일 때만 컬럼 한글명을 앞에 붙인다
         label = txt if re.search(r"[가-힣]", txt) else f"{_fund_col_ko(col)} {txt}"
         if label not in out:
             out.append(label)
     return out
+
+
+# 무따옴표 수치 등호 — `zrin_fd_ivst_risk_gcd = 1.0` (guard._EQ 는 따옴표 리터럴만 본다)
+_BARE_NUM_EQ = re.compile(r"\b(?:\w+\.)?(\w+)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.\w])")
+# 코드 컬럼 → 짝 이름 컬럼의 접미 규약(스키마 명명 규칙 · 이름 하드코딩 0)
+_CODE_NAME_SUFFIX = (("_gcd", "_grd_nm"), ("_gcd", "_nm"), ("_cd", "_nm"), ("_cds", "_nms"))
+
+
+@lru_cache(maxsize=256)
+def _code_value_label(col: str, lit: str) -> str | None:
+    """코드 컬럼의 리터럴에 대응하는 **짝 이름 컬럼의 값** — DB 실측 1회. 없으면 None."""
+    types = _fund_col_types()
+    for a, b in _CODE_NAME_SUFFIX:
+        if not col.endswith(a):
+            continue
+        sib = col[:-len(a)] + b
+        if types.get(sib) is None:
+            continue
+        con = connect_readonly()
+        try:
+            row = con.execute(f"SELECT {sib} FROM public_funds WHERE {col} = CAST(? AS REAL) "
+                              f"AND {sib} IS NOT NULL LIMIT 1", (lit,)).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            con.close()
+        if row and str(row[0]).strip():
+            return str(row[0]).strip()
+    return None
 
 
 def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:

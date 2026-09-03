@@ -488,3 +488,19 @@ def test_rows_answered_no_raw_dump():
     rows2 = "itm_nm | 대표번호\n테스트펀드 | KR0000000000"
     out, ok = P.ensure_rows_answered(a, rows2, 1)
     assert ok and "테스트펀드" in out and "KR0000000000" not in out
+
+
+# ── gold ③-11 · ③-23 — 머리줄 라벨은 코드가 아니라 이름 · 이름 자르기는 괄호를 열어 두지 않는다 ──
+def test_rank_filter_label_uses_name_column():
+    from src.runtime import loader
+    loader.load_context()
+    sql = ("SELECT itm_no FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+           "AND zrin_fd_ivst_risk_gcd = 1.0 GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    assert P._rank_filter_labels(sql) == ["매우 높은 위험"]      # FND-002 must_include
+
+
+def test_fund_stem_keeps_balanced_name():
+    assert P._fund_stem("신한BEST신종법인용MMFGS-2호(운용) 종류C") == "신한BEST신종법인용MMFGS-2호(운용)"
+    assert P._fund_stem("미래에셋코어테크증권자투자신탁(주식) 종류A") == "미래에셋코어테크증권자투자신탁(주식)"
+    # 2자 이하로 줄면 원문을 쓴다
+    assert len(P._fund_stem("하나 종류C")) > 2

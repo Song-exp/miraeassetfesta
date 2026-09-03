@@ -36,28 +36,49 @@ _FUNDKEY = re.compile(r"or_co_xtn_itt_cd.{0,200}mtco_itm_no", re.S | re.I)
 _REFUSAL = ("확인할 수 없", "확인되지 않", "존재하지 않", "수록되어 있지 않", "제공되지 않", "없습니다")
 
 
-# `10. [Plan] SQL 생성 — 아래 문장을 실행합니다` 다음 줄부터가 실행 SQL 이다.
-_PLAN_SQL = re.compile(r"\[Plan\][^\n]*SQL 생성[^\n]*\n(.*?)(?=\n\d+\. \[|\Z)", re.S)
-_STEP = re.compile(r"\n\d+\. \[")
+# `10. [Plan] SQL 생성 — 아래 문장을 실행합니다` · `[Plan] 재생성 SQL — …` 다음 줄부터가 SQL 이다.
+_PLAN_SQL = re.compile(r"\[Plan\][^\n]*?(?:재생성 )?SQL[^\n]*\n(.*?)(?=\n\d+\. \[|\Z)", re.S)
+# 실행되지 못하고 끝난 경로 — 이 줄이 있으면 그 SQL 은 **실행된 적이 없다**
+_NOT_RUN = re.compile(r"\[Decision\][^\n]*(?:종료|중단)|\[Guard\][^\n]*재생성 후에도 실패")
+_EXECUTED = re.compile(r"\[Execute\]\s*(\d+)행")
 
 
 def extract_sql(trace: str) -> str:
-    """think_trace 에서 **실행된** SQL 을 뽑는다.
+    """think_trace 에서 **마지막으로 계획된** SQL 을 뽑는다.
 
-    🔴 "마지막 SELECT" 로 뽑으면 안 된다 — trace 뒤쪽 산문에 그 낱말이 또 나온다
-       (`[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 …)`). 2026-09-03 자기검증에서
-       실측: 239문항 중 223문항이 그 산문을 SQL 로 뽑아 실행불가로 잡혔다(범위 6.7%).
-       `[Plan] SQL 생성` 줄 **다음**을 읽는 것이 정본이고, 없으면 FROM 이 있는 SELECT 로 폴백한다.
+    🔴 두 번 틀렸다. 둘 다 실측으로 잡았다(2026-09-03):
+      ① "마지막 SELECT" 로 뽑으면 trace 뒤쪽 산문이 잡힌다
+         (`[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 …)`). 239문항 중 223문항이
+         그 산문을 SQL 로 뽑아 실행불가로 잡혔다(범위 6.7%).
+      ② `[Plan] SQL 생성` **첫 블록**만 읽으면 재생성 경로를 통째로 놓친다. 컬럼 검사기가 기각하고
+         `[Plan] 재생성 SQL` 이 고쳐 낸 문장이 실제 실행분인데, 첫 블록(기각된 SQL)을 채점해
+         **성공한 문항을 회귀로 잡았다**(OFFICIAL-001·AA19 — 둘 다 재생성 후 정상 답변).
+    → `[Plan] … SQL` 블록의 **마지막**을 쓴다.
     """
     if not trace:
         return ""
-    m = _PLAN_SQL.search(trace)
-    if m:
-        return m.group(1).strip().rstrip(" ;")
+    ms = list(_PLAN_SQL.finditer(trace))
+    if ms:
+        return ms[-1].group(1).strip().rstrip(" ;")
     cands = [x.group(0).strip() for x in
              re.finditer(r"SELECT\b.*?(?=(?:\n\d+\. \[)|\Z)", trace, re.S | re.I)
              if re.search(r"\bfrom\s+[a-z_]+", x.group(0), re.I)]
     return (cands[-1] if cands else "").rstrip(" ;")
+
+
+def executed(trace: str) -> bool | None:
+    """이 질의가 **실제로 SQL 을 실행했는가.** trace 가 근거다.
+
+    🔴 "내가 그 SQL 을 돌려 보니 행이 나온다" 와 "파이프라인이 그것을 실행했다" 는 다르다 —
+       KG-026 은 SQL 이 맞았는데(807펀드/34ETF) 값 검사기가 IN 목록의 리터럴 하나를 기각해
+       실행 없이 종료했다. 채점이 그 구분을 못 하면 닫힌 문항으로 잘못 센다.
+    """
+    if not trace:
+        return None
+    if _NOT_RUN.search(trace):
+        return False
+    m = _EXECUTED.search(trace)
+    return bool(m) if m else None
 
 
 def rows(con, sql: str):
@@ -71,7 +92,8 @@ def same_rows(a, b) -> bool:
     return {tuple(map(str, r)) for r in a} == {tuple(map(str, r)) for r in b}
 
 
-def four_columns(con, question: str, sql: str, answer: str, gold_sql: str | None) -> dict:
+def four_columns(con, question: str, sql: str, answer: str, gold_sql: str | None,
+                 ran: bool | None = None) -> dict:
     low = (sql or "").lower()
     fund = "public_funds" in low
     counting = any(w in question for w in ("몇 개", "개수", "몇개"))
@@ -88,8 +110,9 @@ def four_columns(con, question: str, sql: str, answer: str, gold_sql: str | None
         "값": val,
         "축": (bool(_FUNDKEY.search(sql or "")) if (fund and counting) else None),
         "단위": (("sale_yn" in low and "prvo_pbff_desc" in low) if (fund and agg) else None),
-        # 범위 — SQL 이 없으면 거절 경로다. 거절 문구가 있으면 정상(불가응답), 없으면 무응답 실패.
-        "범위": (any(m in (answer or "") for m in _REFUSAL) if not sql
+        # 범위 — **파이프라인이 실제로 실행했는가**가 1순위 근거다(trace). 실행 못 했으면
+        # 그것이 정당한 거절인지(불가응답 문구) 무응답 실패인지 답변으로 가른다.
+        "범위": (any(m in (answer or "") for m in _REFUSAL) if ran is False or not sql
                  else (got is not None and len(got) > 0)),
     }
 
@@ -116,9 +139,11 @@ def main() -> int:
 
     out: dict[str, dict] = {}
     for qid, x in now.items():
-        sql = extract_sql(x.get("think_trace") or "")
-        rec = {"q": x["question"], "sql": sql,
-                "cols": four_columns(con, x["question"], sql, x.get("answer") or "", gold.get(qid))}
+        trace = x.get("think_trace") or ""
+        sql = extract_sql(trace)
+        ran = executed(trace)
+        rec = {"q": x["question"], "sql": sql, "ran": ran,
+               "cols": four_columns(con, x["question"], sql, x.get("answer") or "", gold.get(qid), ran)}
         if qid in prev:
             psql = extract_sql(prev[qid].get("think_trace") or "")
             pr, nr = rows(con, psql) if psql else None, rows(con, sql) if sql else None
@@ -134,7 +159,8 @@ def main() -> int:
             else:
                 rec["delta"] = "결과 달라짐"
             rec["prev_cols"] = four_columns(con, x["question"], psql,
-                                            prev[qid].get("answer") or "", gold.get(qid))
+                                            prev[qid].get("answer") or "", gold.get(qid),
+                                            executed(prev[qid].get("think_trace") or ""))
         out[qid] = rec
 
     print(f"=== 4열 채점 — {Path(a.now).name} · {len(out)}문항 ===")

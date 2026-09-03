@@ -1,0 +1,4304 @@
+{
+ "R1": {
+  "q": "공모펀드는 유형별로 몇 개씩 있어?",
+  "sql": "SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*), COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모') GROUP BY zrin_btyp_nm LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "R2": {
+  "q": "펀드를 가장 많이 운용하는 운용사 상위 5개 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "R3": {
+  "q": "중국에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,CHN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "R4": {
+  "q": "미래에셋코어테크 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "R5": {
+  "q": "한국투자신탁운용이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "R6": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "R7": {
+  "q": "공모펌드 중 1년 수익률이 가장 높은 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S1": {
+  "q": "1년 수익률이 가장 높은 공모펌드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S2": {
+  "q": "3년 수익률이 가장 나쁜 공모펀드 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MIN(fd_yr3_ern_r) AS fd_yr3_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MIN(fd_yr3_ern_r) IS NOT NULL AND MIN(fd_yr3_ern_r) < 0 ORDER BY 3 ASC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S3": {
+  "q": "삼성코리아대표 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S4": {
+  "q": "KB차이나 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%KB차이나%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S5": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 3호 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S6": {
+  "q": "인도에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,IND,%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S7": {
+  "q": "베트남에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,VNM,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S8": {
+  "q": "KB자산운용이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S9": {
+  "q": "피델리티자산운용이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080029' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S10": {
+  "q": "공모펀드는 약관 분류별로 몇 개씩 있어?",
+  "sql": "SELECT COALESCE(or_attr_desc,'(미수록)'), COUNT(*), COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모') GROUP BY or_attr_desc LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S11": {
+  "q": "순자산이 가장 큰 운용사 상위 3개 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "S12": {
+  "q": "코어테크 펌드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T1": {
+  "q": "운용 펀드 수가 가장 많은 자산운용사 5곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T2": {
+  "q": "순자산 합계가 가장 큰 자산운용사 3곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T3": {
+  "q": "삼성자산운용이 운용하는 공모펀드 순자산 총액이 얼마야?",
+  "sql": "SELECT SUM(fd_nast_suma), CAST(ROUND((SUM(fd_nast_suma))/100000000.0) AS INTEGER) || '억원' AS \"순자산합계_억원\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00040010') AND prvo_pbff_desc = '공모') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T4": {
+  "q": "인도네시아에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,IDN,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T5": {
+  "q": "일본에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,JPN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T6": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 3호는 클래스가 몇 개야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(han_clas_nm) AS han_clas_nm, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T7": {
+  "q": "삼성코리아대표증권자투자신탁 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최고\", MIN(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표증권자투자신탁%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T8": {
+  "q": "KB차이나그로스 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%KB차이나그로스%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T9": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 1호 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]1호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]1[([]*')) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T10": {
+  "q": "브라질에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,BRA,%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T11": {
+  "q": "피델리티 이름이 들어간 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND REPLACE(itm_nm,' ','') LIKE '%피델리티%' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T12": {
+  "q": "NH-Amundi 1.5배레버리지인덱스 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최고\", MIN(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최저\", MAX(fd_daily_bas_dt) AS fd_daily_bas_dt, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%NH-Amundi1.5배레버리지인덱스%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T13": {
+  "q": "미국에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,USA,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "T14": {
+  "q": "한국투자베트남그로스 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND REPLACE(itm_nm,' ','') LIKE '%한국투자베트남그로스%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V1": {
+  "q": "미래에셋인디아솔로몬증권투자신탁 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋인디아솔로몬증권투자신탁%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V2": {
+  "q": "한화2.2배레버리지인덱스 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE REPLACE(itm_nm,' ','') LIKE '%한화2.2배레버리지인덱스%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V3": {
+  "q": "삼성KOSPI200 2배레버리지 펀드 3년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0 THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최고\", MIN(CASE WHEN fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0 THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE REPLACE(itm_nm,' ','') LIKE '%삼성KOSPI2002%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V4": {
+  "q": "KB중국본토A주증권자투자신탁 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(rptt_ksd_itm_no) IN ('030230002D36') AND zrin_fd_ivst_risk_gcd IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V5": {
+  "q": "순자산이 가장 큰 자산운용사 5곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V6": {
+  "q": "KB자산운용이 운용하는 공모펀드 순자산 합계 얼마야?",
+  "sql": "SELECT SUM(fd_nast_suma), CAST(ROUND((SUM(fd_nast_suma))/100000000.0) AS INTEGER) || '억원' AS \"순자산합계_억원\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00040035') AND prvo_pbff_desc = '공모') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V7": {
+  "q": "ETF 순자산이 가장 큰 운용사 3곳 알려줘",
+  "sql": "SELECT ref_fund_mgmt_co, SUM(du_last_aum) as total_aum, CAST(ROUND((SUM(du_last_aum))/100000000.0) AS INTEGER) || '억원' AS \"total_aum_억원\" FROM domestic_etfs WHERE pd_grp_no = 'ETF' AND pd_sale_yn = 1 GROUP BY 1 ORDER BY 2 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "V8": {
+  "q": "홍콩에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,HKG,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V9": {
+  "q": "러시아에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,RUS,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V10": {
+  "q": "인도에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,IND,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V11": {
+  "q": "삼성 이름이 들어간 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V12": {
+  "q": "미래에셋코어테크 펀드는 클래스가 몇 개야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(mtco_itm_no) AS mtco_itm_no, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V13": {
+  "q": "KB차이나그로스 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나그로스%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V14": {
+  "q": "미국에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,USA,%' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V15": {
+  "q": "NH-Amundi 인도네시아 포커스 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040040' AND REPLACE(itm_nm,' ','') LIKE '%인도네시아포커스%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "V16": {
+  "q": "3년 수익률이 가장 높은 공모펀드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr3_ern_r) AS fd_yr3_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr3_ern_r) IS NOT NULL AND MAX(fd_yr3_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W1": {
+  "q": "삼성차이나본토 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) IN ('00040010', '00080135', '00080134', '00080168', '00040092') AND REPLACE(itm_nm,' ','') LIKE '%차이나본토%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W2": {
+  "q": "미래에셋베트남 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋베트남%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W3": {
+  "q": "피델리티재팬 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최고\", MIN(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE TRIM(or_co_xtn_itt_cd) = '00080029' AND REPLACE(itm_nm,' ','') LIKE '%피델리티재팬%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W4": {
+  "q": "KB브라질증권자투자신탁 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%KB브라질증권자투자신탁%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W5": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 2호는 클래스가 몇 개야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W6": {
+  "q": "미래에셋디스커버리증권투자신탁 4호 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋디스커버리증권투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]4호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]4[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W7": {
+  "q": "NH-Amundi코리아2배레버리지 펀드 3년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r > -100 THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최고\", MIN(CASE WHEN fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r > -100 THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00040040' AND REPLACE(itm_nm,' ','') LIKE '%NH-Amundi코리아2배레버리지%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W8": {
+  "q": "한화 이름이 들어간 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%한화%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W9": {
+  "q": "한국투자베트남그로스증권자투자신탁 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%한국투자베트남그로스증권자투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W10": {
+  "q": "ETF 순자산 합계가 가장 큰 운용사 5곳 알려줘",
+  "sql": "SELECT ref_fund_mgmt_co, SUM(du_last_aum) as total_aum, CAST(ROUND((SUM(du_last_aum))/100000000.0) AS INTEGER) || '억원' AS \"total_aum_억원\" FROM domestic_etfs WHERE pd_grp_no = 'ETF' AND pd_sale_yn = 1 GROUP BY 1 ORDER BY 2 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "W11": {
+  "q": "KB중국본토A주증권자투자신탁 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(rptt_ksd_itm_no) = '030230002D36' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "W12": {
+  "q": "베트남에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,VNM,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-001": {
+  "q": "Mirae Asset이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-002": {
+  "q": "프랭클린템플턴이 운용하는 공모펀드 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040022', '00040007') AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%프랭클린템플턴%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-003": {
+  "q": "메리츠자산운용이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040087' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-004": {
+  "q": "한국 투자 신탁 운용 이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-005": {
+  "q": "이름이 삼성으로 시작하는 공모펀드는 몇 개고, 그중 삼성자산운용이 운용하는 건 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no  WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (REPLACE(itm_nm,' ','') LIKE '삼성%' OR mgmt_co_nm LIKE '%삼성%') /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-006": {
+  "q": "미래에셋코어테크 펀드의 운용사와 수탁사는 어디야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(or_co_xtn_itt_cd) AS 운용사, MAX(trusc_xtn_itt_cd) AS 수탁사로지회사, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-007": {
+  "q": "미래에셋자산운용에 의해 운용되는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-008": {
+  "q": "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘",
+  "sql": "SELECT trim(trusc_xtn_itt_cd) as 수탁회사명, SUM(fd_nast_suma) as 수탁금액, COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND((SUM(fd_nast_suma))/100000000.0) AS INTEGER) || '억원' AS \"수탁금액_억원\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY 1  ORDER BY \"펀드수\" DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-009": {
+  "q": "미래에셋증권이 수탁사인 공모펀드도 있어?",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, trusc_xtn_itt_cd, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(trusc_xtn_itt_cd) = '0016022' AND prvo_pbff_desc = '공모') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-010": {
+  "q": "미래에셋코어테크 펀드의 모펀드는 뭐야?",
+  "sql": "SELECT DISTINCT mother_fund_names_raw FROM public_funds JOIN ext_fund_page ON public_funds.itm_no = ext_fund_page.itm_no WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "KG-011": {
+  "q": "KB자산운용 펀드 중 국민은행이 수탁하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND TRIM(trusc_xtn_itt_cd) = '00020004' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-012": {
+  "q": "해외주식형 중에서 중국주식 유형인 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND ovrs_fd_desc IN ('해외', '국내외혼합') AND zrin_btyp_nm = '해외주식형' AND zrin_ptn_nm = '중국주식' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-013": {
+  "q": "위험등급 7등급인 공모펀드 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "KG-014": {
+  "q": "위험등급 0등급 공모펀드는 몇 개야?",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "KG-015": {
+  "q": "위험등급이 '높은위험'인 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_grd_nm IN ('높은위험', '높은 위험') AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-016": {
+  "q": "채권혼합 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND or_attr_desc = '채권혼합' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-017": {
+  "q": "폐쇄형 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,C104,%' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-018": {
+  "q": "단위형이면서 개방형인 공모펀드도 있어?",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,C102,%' AND ',' || prfd_attr_cds || ',' LIKE '%,C103,%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-019": {
+  "q": "일본에 투자하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,JPN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-020": {
+  "q": "미국에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,USA,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-021": {
+  "q": "대만에 투자하는 공모펀드 있어?",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,TWN,%' OR REPLACE(itm_nm,' ','') LIKE '%대만%') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-022": {
+  "q": "유럽에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE fd_ivst_rgn_desc = '유럽' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-023": {
+  "q": "아시아에 투자하는 공모펀드 중 순자산 큰 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", fd_ivst_rgn_desc, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_ivst_rgn_desc = '아시아' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL AND MAX(fd_nast_suma) > 0 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-024": {
+  "q": "반도체 테마 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/ AND (',' || prfd_attr_cds || ',' LIKE '%,N144,%' OR REPLACE(itm_nm,' ','') LIKE '%반도체%') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-025": {
+  "q": "삼성자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?",
+  "sql": "SELECT '국내 ETF' AS 구분, COUNT(*) AS 개수 FROM domestic_etfs WHERE pd_sale_yn = 1 AND pd_grp_no = 'ETF' AND ref_fund_mgmt_co = 'Samsung Asset Management Co Ltd' UNION ALL SELECT '공모펀드', COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND TRIM(or_co_xtn_itt_cd) = '00040010' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-026": {
+  "q": "KOSPI200을 벤치마크로 쓰는 공모펀드와 KOSPI200을 추종하는 국내 ETF는 각각 몇 개야?",
+  "sql": "SELECT 'KOSPI200을 벤치마크로 쓰는 공모펀드' AS 분류, COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND bmrk_nm IN ('KOSPI200', 'KOSPI200 150%', 'KOSPI200 200%', 'KOSPI200 220%', 'KOSPI200 25% + 종합채권01Y 75%', 'KOSPI200 5% + 종합채권 01Y 95%', 'KOSPI200 50% + 종합채권01Y 50%', 'KOSPI200 70% + 항셍H주 CR 30%', 'KOSPI200 10% + 종합채권 01Y 90%', 'KOSPI200 25% + KIS채권종합01Y 75%', 'KOSPI200 5% + KIS종합채권 01Y 95%', 'KOSPI200 50% + KIS채권종합01Y 50%', 'KOSPI200 10% + KIS종합채권 01Y 90%', 'KOSPI200 50% + NIKKEI225 CR 50%', 'KOSPI200 70% + 항셍H주 CR in KRW 30%', 'KOSPI200 5% + 회사채I-BBB종합 02Y 95%', 'KOSPI200 5% + 회사채BBB(공모무보증)02Y 95%') AND sale_yn = '판매중' UNION ALL SELECT 'KOSPI200을 추종하는 국내 ETF' AS 분류, COUNT(*) AS 개수 FROM domestic_etfs WHERE (REPLACE(ref_base_index,' ','') GLOB 'KOSPI200' OR REPLACE(ref_base_index,' ','') GLOB 'KOSPI200[CTP]R*') AND pd_sale_yn = 1 AND pd_grp_no = 'ETF' LIMIT 30",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-027": {
+  "q": "미래에셋코어테크 펀드 설정 좌수 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "KG-028": {
+  "q": "미래에셋코어테크 펀드가 가장 많이 보유한 종목은 뭐야?",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 1",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-029": {
+  "q": "우리자산운용 펀드 수를 대표예탁원종목번호 기준으로 세면 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT rptt_ksd_itm_no) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040007' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-030": {
+  "q": "미래에셋차이나솔로몬 시리즈는 몇 호까지 있고 각각 클래스가 몇 개야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%' AND mat_dt >= 20260824) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "🔴 회귀(이전 실행 → 지금 실행불가)",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-031": {
+  "q": "피델리티가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (or_co_xtn_itt_cd = '00080029' AND prvo_pbff_desc = '공모' AND (ofsfd_yn = 0 OR ofsfd_yn IS NULL) /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-032": {
+  "q": "2026년 9월 1일 기준으로 순자산이 가장 큰 공모펀드 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "KG-033": {
+  "q": "가장 최근에 설정된 공모펀드 알려줘",
+  "sql": "SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' ORDER BY estb_dt DESC LIMIT 1",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-034": {
+  "q": "미래에셋코어테크 펀드는 운용한 지 얼마나 됐어?",
+  "sql": "SELECT MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN p.sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(e.estb_dt) AS \"최초설정일\", MAX(e.estb_dt) AS \"최근설정일\", MIN(p.rptt_ksd_itm_no) AS 대표번호 FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE prvo_pbff_desc = '공모' AND (TRIM(p.or_co_xtn_itt_cd) = '00080008' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(p.rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) ORDER BY MIN(e.estb_dt) ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "KG-035": {
+  "q": "2026년에 설정된 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE estb_dt >= '20260101' AND estb_dt < '20270101' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X1": {
+  "q": "미래에셋코어테크 펀드가 가장 많이 담은 종목 3개 알려줘",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": false,
+   "범위": true
+  }
+ },
+ "X2": {
+  "q": "KB중국본토A주 펀드가 가장 많이 보유한 종목은 뭐야?",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%KB중국본토A주%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 1",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": false,
+   "범위": true
+  }
+ },
+ "X3": {
+  "q": "미래에셋 코어택 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어텍%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "X4": {
+  "q": "친환경 테마 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND (sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,N119,%' OR ',' || prfd_attr_cds || ',' LIKE '%,N168,%' OR REPLACE(itm_nm,' ','') LIKE '%친환경%')) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X5": {
+  "q": "2차전지 테마 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prfd_attr_cds LIKE '%,N145,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X6": {
+  "q": "개방형이면서 추가형인 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND (sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,C101,%' AND ',' || prfd_attr_cds || ',' LIKE '%,C103,%') LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X7": {
+  "q": "KOSPI200을 추종하는 국내 ETF는 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM domestic_etfs WHERE (REPLACE(ref_base_index,' ','') GLOB 'KOSPI200' OR REPLACE(ref_base_index,' ','') GLOB 'KOSPI200[CTP]R*') AND pd_grp_no = 'ETF' /*M:IDXCANON*/ AND pd_sale_yn = 1 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "X8": {
+  "q": "S&P500을 벤치마크로 쓰는 공모펀드와 S&P500 추종 국내 ETF는 각각 몇 개야?",
+  "sql": "SELECT 'S&P500 공모펀드' AS 구분, COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND REPLACE(bmrk_nm,' ','') LIKE '%S&P500%' AND sale_yn = '판매중' UNION ALL SELECT 'S&P500 추종 국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE /*g*/(REPLACE(ref_base_index,' ','') GLOB 'S&P500' OR REPLACE(ref_base_index,' ','') GLOB 'S&P500[CTP]R*') AND pd_sale_yn = 1 /*M:FUNDUNIT*/ AND pd_grp_no = 'ETF' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X9": {
+  "q": "미래에셋자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?",
+  "sql": "SELECT '공모펀드' AS 구분, COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모')UNION ALL SELECT '국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'Mirae Asset Global Investments Co Ltd' /*M:FUNDUNIT*/ AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X10": {
+  "q": "이름이 KB로 시작하는 공모펀드는 몇 개고 그중 KB자산운용이 운용하는 건 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no  WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (REPLACE(itm_nm,' ','') LIKE 'KB%' OR mgmt_co_nm LIKE 'KB%') /*M:FUNDUNIT*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X11": {
+  "q": "동양자산운용이 운용하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT p.itm_no, p.itm_nm FROM public_funds p JOIN ext_fund_page e ON p.itm_no=e.itm_no WHERE e.mgmt_co_nm LIKE '%동양%' AND p.prvo_pbff_desc = '공모' AND p.sale_yn = '판매중' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": false
+  }
+ },
+ "X12": {
+  "q": "슈로더가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00040013', '00130003') AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X13": {
+  "q": "KB자산운용 펀드의 수탁사 분포 알려줘",
+  "sql": "SELECT COALESCE(zrin_btyp_nm,'(제로인 미수록)') AS asset_class, trusc_xtn_itt_cd, COUNT(*) as class_count FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00040035') GROUP BY 1,2 /*M:BASEPOP*/ LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X14": {
+  "q": "삼성코리아대표 펀드의 수탁사는 어디야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(trusc_xtn_itt_cd) AS trusc_xtn_itt_cd, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X15": {
+  "q": "중국에 투자하는 공모펀드와 국내 ETF는 각각 몇 개야?",
+  "sql": "SELECT '중국에 투자하는 공모펀드', COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND (wu_inv_rgn = '중국' OR ref_geo_focus IN ('China', 'Greater China'))) UNION ALL SELECT '국내 ETF', COUNT(*) FROM domestic_etfs WHERE pd_sale_yn = 1 AND ((wu_inv_rgn = '국내' OR ref_geo_focus = 'Korea') AND pd_grp_no = 'ETF') LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "X16": {
+  "q": "ETF에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%ETF%' /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X17": {
+  "q": "미래에셋차이나솔로몬 2호는 클래스가 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%' AND itm_no LIKE '%2%') /*M:BASEPOP*/ AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X18": {
+  "q": "미래에셋코어테크증권자투자신탁의 모펀드는 뭐야?",
+  "sql": "SELECT DISTINCT mother_fund_names_raw FROM public_funds JOIN ext_fund_page ON public_funds.itm_no = ext_fund_page.itm_no WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "X19": {
+  "q": "2025년에 설정된 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE estb_dt >= '20250101' AND estb_dt < '20260101' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X20": {
+  "q": "가장 최근에 설정된 공모펀드 2개 알려줘",
+  "sql": "SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' ORDER BY estb_dt DESC LIMIT 2",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X21": {
+  "q": "스페인에 투자하는 공모펀드 있어?",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,ESP,%' OR REPLACE(itm_nm,' ','') LIKE '%스페인%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "X22": {
+  "q": "KB자산운용 펀드 중 국민은행이 수탁하는 공모펀드는 몇 개야? 실제 수탁사는 어디야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", trusc_xtn_itt_cd as custodian FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모' AND TRIM(trusc_xtn_itt_cd) = '00020004' /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "X23": {
+  "q": "미래에셋코어테크 펀드 운용역이 누구야?",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "X24": {
+  "q": "미래에셋코어테크 펀드 기준가 추이 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "X25": {
+  "q": "미래에셋코어테크 펀드 기준가 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(bns_bpr) AS \"bns_bpr_최고\", MIN(bns_bpr) AS \"bns_bpr_최저\", MAX(fd_daily_bas_dt) AS fd_daily_bas_dt, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y1": {
+  "q": "공모펌드 중 3년 수익률이 가장 높은 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr3_ern_r) AS fd_yr3_ern_r , fd_daily_bas_dt, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr3_ern_r) IS NOT NULL AND MAX(fd_yr3_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y2": {
+  "q": "공모펌드 중 순자산이 가장 큰 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_nast_suma <> 0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y3": {
+  "q": "1년 수익률이 가장 낮은 공모펀드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MIN(fd_yr1_ern_r) AS fd_yr1_ern_r , fd_daily_bas_dt, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MIN(fd_yr1_ern_r) IS NOT NULL AND MIN(fd_yr1_ern_r) < 0 ORDER BY 3 ASC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y4": {
+  "q": "5년 수익률이 가장 나쁜 공모펀드 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MIN(fd_yr5_ern_r) AS fd_yr5_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MIN(fd_yr5_ern_r) IS NOT NULL AND MIN(fd_yr5_ern_r) < 0 ORDER BY 3 ASC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y5": {
+  "q": "6개월 수익률이 가장 높은 공모펀드 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_mm6_ern_r) AS fd_mm6_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_mm6_ern_r) IS NOT NULL AND MAX(fd_mm6_ern_r) > -100 ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y6": {
+  "q": "펀드 수가 가장 많은 자산운용사 3곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y7": {
+  "q": "주식형 펀드 순자산이 가장 큰 운용사 3곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE zrin_btyp_nm = '주식형' AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y8": {
+  "q": "한화중국본토 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%한화중국본토%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y9": {
+  "q": "키움러시아 펀드 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최고\", MIN(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%키움러시아%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y10": {
+  "q": "유리베트남 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%유리베트남%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y11": {
+  "q": "피델리티차이나 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080029' AND REPLACE(itm_nm,' ','') LIKE '%피델리티차이나%' AND zrin_fd_ivst_risk_grd_nm IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y12": {
+  "q": "미래에셋디스커버리증권투자신탁 2호 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋디스커버리증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y13": {
+  "q": "한국투자베트남증권자투자신탁 1호 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%한국투자베트남증권자투자신탁%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]1호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]1[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y14": {
+  "q": "신한중국의꿈증권자투자신탁제2호 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%신한중국의꿈증권자투자신탁제2호%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y15": {
+  "q": "한국투자미국배당귀족증권자투자신탁 1년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최고\", MIN(fd_yr1_ern_r) AS \"fd_yr1_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND REPLACE(itm_nm,' ','') LIKE '%한국투자미국배당귀족증권자투자신탁%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Y16": {
+  "q": "해외 ETF 순자산이 가장 큰 운용사 3곳 알려줘",
+  "sql": "SELECT TRIM(cu_fund_mgmt_co) AS 운용사, SUM(du_last_aum) AS 총순자산USD, CAST(ROUND((SUM(du_last_aum))/1000000.0) AS INTEGER) || '백만USD' AS \"총순자산USD_백만USD\" FROM overseas_etfs WHERE pd_grp_no = 'ETF' AND cu_fund_mgmt_co IS NOT NULL AND pd_sale_yn = 1 GROUP BY 1 ORDER BY 2 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "Z1": {
+  "q": "미래에셋코어테크 펀드 종류A 기준가 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(bns_bpr) AS \"bns_bpr_최고\", MIN(bns_bpr) AS \"bns_bpr_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류A' AND TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z2": {
+  "q": "KB중국본토A주 펀드 기준가 얼마야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(bns_bpr) AS \"bns_bpr_최고\", MIN(bns_bpr) AS \"bns_bpr_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%KB중국본토A주%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z3": {
+  "q": "미래에셋코어테크 펀드 3년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r > -100 THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최고\", MIN(CASE WHEN fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r > -100 THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z4": {
+  "q": "북미에 투자하는 공모펀드 중 순자산 큰 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", fd_ivst_rgn_desc, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_ivst_rgn_desc = '남미/북미' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL AND MAX(fd_nast_suma) > 0 ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z5": {
+  "q": "글로벌 주식형 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE zrin_btyp_nm = '주식형' AND fd_ivst_rgn_desc IN ('글로벌', '해외주식형') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z6": {
+  "q": "인프라 테마 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ AND (',' || prfd_attr_cds || ',' LIKE '%,N116,%' OR ',' || prfd_attr_cds || ',' LIKE '%,N155,%' OR REPLACE(itm_nm,' ','') LIKE '%인프라%') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z7": {
+  "q": "미래에셋코어테크 펀드가 두 번째로 많이 담은 종목은 뭐야?",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 10",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z8": {
+  "q": "한국투자베트남그로스 펀드가 가장 많이 보유한 종목 5개 알려줘",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%한국투자베트남그로스%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": false,
+   "범위": true
+  }
+ },
+ "Z9": {
+  "q": "미래에셋코어테크 펀드는 언제 설정됐어?",
+  "sql": "SELECT MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN p.sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(e.estb_dt) AS \"최초설정일\", MAX(e.estb_dt) AS \"최근설정일\", MIN(p.rptt_ksd_itm_no) AS 대표번호 FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE prvo_pbff_desc = '공모' AND (TRIM(p.or_co_xtn_itt_cd) = '00080008' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(p.rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) ORDER BY MIN(e.estb_dt) ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z10": {
+  "q": "해외주식형 중에서 인도주식 유형인 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE zrin_ptn_nm = '인도주식' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (asset_class = '해외주식형' AND country = 'IND' AND fund_type = 'public' AND is_for_investing = 'yes' /*M:FUNDUNIT*/) /*M:BASEPOP*/ LIMIT 30",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "🔴 회귀(이전 실행 → 지금 실행불가)",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z11": {
+  "q": "중국주식 유형 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE zrin_ptn_nm = '중국주식' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30 /*M:FUNDUNIT*/ /*M:BASEPOP*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "개선(이전 실행불가 → 지금 실행)",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "Z12": {
+  "q": "이름이 삼성으로 시작하는 판매중 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '삼성%' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z13": {
+  "q": "KB자산운용이 운용하는 공모펀드와 KB자산운용 국내 ETF는 각각 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모')UNION ALL  SELECT COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'KB Asset Ltd' AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 LIMIT 2 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "개선(이전 실행불가 → 지금 실행)",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "Z14": {
+  "q": "삼성자산운용이 운용하는 국내 ETF는 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'Samsung Asset Management Co Ltd' AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "Z15": {
+  "q": "슈로더투자신탁운용이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040013' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z16": {
+  "q": "키움투자자산운용이 운용하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00040013', '00080052') AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z17": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 2호 클래스 몇 개야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z18": {
+  "q": "ETF로 자산배분하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT public_funds.itm_no, public_funds.itm_nm, COUNT(*) AS cnt, public_funds.zrin_btyp_nm, public_funds.fd_nast_suma, public_funds.zrin_fd_ivst_risk_gcd, CAST(ROUND((public_funds.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"fd_nast_suma_억원\" FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' AND public_funds.zrin_btyp_nm IN ('자산배분형', '포트폴리오형') AND REPLACE(public_funds.itm_nm,' ','') LIKE '%ETF%' GROUP BY public_funds.or_co_xtn_itt_cd, COALESCE(public_funds.mtco_itm_no, public_funds.itm_no) ORDER BY public_funds.fd_nast_suma DESC LIMIT 30",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z19": {
+  "q": "나스닥100을 추종하는 국내 ETF는 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM domestic_etfs WHERE (replace(pd_abrv_nm,' ','') LIKE '%NASDAQ100%' OR /*g*/(REPLACE(ref_base_index,' ','') GLOB 'NASDAQ100' OR REPLACE(ref_base_index,' ','') GLOB 'NASDAQ100[CTP]R*')) AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "Z20": {
+  "q": "미래에셋 코어태크 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어태크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "Z21": {
+  "q": "삼성코리아대표 펀드 수탁 코드 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(prfd_attr_cds) AS prfd_attr_cds, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%' AND prfd_attr_cds IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z22": {
+  "q": "2024년에 설정된 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE estb_dt >= '20240101' AND estb_dt < '20250101' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z23": {
+  "q": "미래에셋코어테크 펀드의 수탁사는 어디야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(trusc_xtn_itt_cd) AS trusc_xtn_itt_cd, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND trusc_xtn_itt_cd IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z24": {
+  "q": "호주에 투자하는 공모펀드 있어?",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,AUS,%' OR REPLACE(itm_nm,' ','') LIKE '%호주%') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "Z25": {
+  "q": "프랑스에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,FRA,%' OR REPLACE(itm_nm,' ','') LIKE '%프랑스%') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U1": {
+  "q": "KB차이나 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(CASE WHEN fd_nast_suma IS NOT NULL THEN fd_nast_suma END) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(CASE WHEN fd_nast_suma IS NOT NULL THEN fd_nast_suma END)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE REPLACE(itm_nm,' ','') LIKE '%KB차이나%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U2": {
+  "q": "KB차이나그로스 펀드는 클래스가 몇 개야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(mtco_itm_no) AS mtco_itm_no, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%KB차이나그로스%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U3": {
+  "q": "한화중국본토 펀드는 클래스가 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%한화중국본토%') LIMIT 30 /*M:BASEPOP*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U4": {
+  "q": "KB중국본토A주증권자투자신탁 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(rptt_ksd_itm_no) IN ('030230002D36') AND zrin_fd_ivst_risk_gcd IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U5": {
+  "q": "미래에셋차이나솔로몬증권투자신탁 1호 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬증권투자신탁%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]1호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]1[([]*') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U6": {
+  "q": "채권형 펀드 순자산이 가장 큰 운용사 3곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE zrin_btyp_nm = '채권형' AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U7": {
+  "q": "해외주식형 펀드 수가 가장 많은 자산운용사 3곳 알려줘",
+  "sql": "SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS \"운용사코드\", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS \"운용사명\", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE zrin_btyp_nm = '해외주식형' AND (p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND ovrs_fd_desc IN ('해외','국내외혼합')) GROUP BY 1 ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U8": {
+  "q": "해외 ETF 순자산 합계가 가장 큰 운용사 5곳 알려줘",
+  "sql": "SELECT cu_fund_mgmt_co, SUM(du_last_aum) as total_aum, CAST(ROUND((SUM(du_last_aum))/1000000.0) AS INTEGER) || '백만USD' AS \"total_aum_백만USD\" FROM overseas_etfs WHERE pd_grp_no = 'ETF' AND pd_sale_yn = 1 GROUP BY 1 ORDER BY 2 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "U9": {
+  "q": "해외 ETF 중 순자산이 가장 큰 종목 3개 알려줘",
+  "sql": "SELECT TRIM(pd_nm) AS 상품명, TRIM(pd_abrv_nm) AS 티커, du_last_aum AS 순자산USD, CAST(ROUND((du_last_aum)/1000000.0) AS INTEGER) || '백만USD' AS \"순자산USD_백만USD\" FROM overseas_etfs WHERE pd_grp_no = 'ETF' AND pd_sale_yn = 1 AND du_last_aum IS NOT NULL AND du_last_aum > 0 ORDER BY du_last_aum DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "U10": {
+  "q": "미래에셋베트남 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋베트남%' AND zrin_fd_ivst_risk_gcd IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U11": {
+  "q": "피델리티차이나 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080029' AND REPLACE(itm_nm,' ','') LIKE '%피델리티차이나%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U12": {
+  "q": "삼성베트남대표 펀드 위험등급 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성베트남대표%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "U13": {
+  "q": "순자산이 가장 큰 공모펀드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_nast_suma <> 0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U14": {
+  "q": "1년 수익률이 가장 높은 공모펀드 3개는 클래스가 몇 개씩이야?",
+  "sql": "SELECT or_co_xtn_itt_cd, prvo_pbff_desc, COUNT(*) as class_count, itm_no, TRIM(itm_nm) AS itm_nm, MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING COUNT(*) > 1 AND MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY MAX(fd_yr1_ern_r) DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U15": {
+  "q": "미래에셋코어테크 펀드 순자산 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "U16": {
+  "q": "NH-Amundi 인도네시아 포커스 펀드는 클래스가 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00040040' AND REPLACE(itm_nm,' ','') LIKE '%인도네시아포커스%') LIMIT 30 /*M:BASEPOP*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA1": {
+  "q": "미래에셋코어테크 펀드 종류C 기준가 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(bns_bpr) AS \"bns_bpr_최고\", MIN(bns_bpr) AS \"bns_bpr_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류C' AND TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA2": {
+  "q": "KB중국본토A주 펀드 A클래스 기준가 얼마야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(bns_bpr) AS \"bns_bpr_최고\", MIN(bns_bpr) AS \"bns_bpr_최저\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류A' AND REPLACE(itm_nm,' ','') LIKE '%KB중국본토A주%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "AA3": {
+  "q": "2023년에 설정된 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE estb_dt >= '20230101' AND estb_dt < '20240101' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA4": {
+  "q": "미래에셋코어테크증권자투자신탁은 언제 설정됐어?",
+  "sql": "SELECT MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN p.sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(e.estb_dt) AS \"최초설정일\", MAX(e.estb_dt) AS \"최근설정일\", MIN(p.rptt_ksd_itm_no) AS 대표번호 FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE prvo_pbff_desc = '공모' AND (REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁%' AND TRIM(p.or_co_xtn_itt_cd) = '00080008') GROUP BY COALESCE(NULLIF(TRIM(p.rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) ORDER BY MIN(e.estb_dt) ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA5": {
+  "q": "KB중국본토A주 펀드는 운용한 지 얼마나 됐어?",
+  "sql": "SELECT MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN p.sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(e.estb_dt) AS \"최초설정일\", MAX(e.estb_dt) AS \"최근설정일\", MIN(p.rptt_ksd_itm_no) AS 대표번호 FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE prvo_pbff_desc = '공모' AND (REPLACE(p.itm_nm,' ','') LIKE '%KB중국본토A주%') GROUP BY COALESCE(NULLIF(TRIM(p.rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) ORDER BY MIN(e.estb_dt) ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA6": {
+  "q": "해외주식형 중에서 베트남주식 유형인 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE zrin_ptn_nm = '베트남주식' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (asset_class = '해외주식형' AND fund_type = '공모펀드' AND country = '베트남' AND sale_status = '판매중' /*M:FUNDUNIT*/) /*M:BASEPOP*/ LIMIT 30",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "🔴 회귀(이전 실행 → 지금 실행불가)",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA7": {
+  "q": "일본주식 유형 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND (zrin_btyp_nm IN ('주식형', '해외주식형') OR (zrin_btyp_nm IS NULL AND (TRIM(or_attr_desc) = '주식형' OR (TRIM(or_attr_desc) IN ('재간접', '파생상품') AND REPLACE(itm_nm,' ','') LIKE '%(일본)%')))) AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA8": {
+  "q": "글로벌 지역에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE fd_ivst_rgn_desc IN ('글로벌') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA9": {
+  "q": "ETF에 투자하는 공모펀드 목록 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%ETF%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA10": {
+  "q": "원자재에 투자하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND zrin_btyp_nm = '커머더티형' /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA11": {
+  "q": "부동산 공모펀드 중 순자산 큰 3개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", zrin_btyp_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_btyp_nm IN ('부동산형', '해외부동산형') AND fd_nast_suma <> 0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA12": {
+  "q": "단위형이면서 개방형인 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE prvo_pbff_desc = '공모' AND (sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,C102,%' AND ',' || prfd_attr_cds || ',' LIKE '%,C103,%') LIMIT 5 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA13": {
+  "q": "폐쇄형 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND ',' || prfd_attr_cds || ',' LIKE '%,C104,%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA14": {
+  "q": "우리자산운용이 운용하는 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040007' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA15": {
+  "q": "KB중국본토A주 펀드의 수탁사 코드는 뭐야?",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(trusc_xtn_itt_cd) AS trusc_xtn_itt_cd, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%KB중국본토A주%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA16": {
+  "q": "공모펀드를 가장 많이 수탁하는 수탁사 상위 5개를 펀드 수 기준으로 알려줘",
+  "sql": "SELECT trusc_xtn_itt_cd, SUM(CASE WHEN sale_yn = '판매중' AND prvo_pbff_desc = '공모' THEN 1 ELSE 0 END) AS cnt, COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY trusc_xtn_itt_cd  ORDER BY \"펀드수\" DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA17": {
+  "q": "미래에셋자산운용 펀드 중 신한은행이 수탁하는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND TRIM(trusc_xtn_itt_cd) = '00020088' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA18": {
+  "q": "KB중국본토A주 펀드가 두 번째로 많이 보유한 종목은 뭐야?",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%KB중국본토A주%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 2",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA19": {
+  "q": "미래에셋코어테크 펀드 보유 종목 상위 5개와 비중 알려줘",
+  "sql": "SELECT h.holding_nm AS \"종목명\", h.weight_pct AS \"비중_pct\", h.asset_type AS \"자산유형\", h.bas_dt AS \"기준일\" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE p.or_co_xtn_itt_cd = '00080008' AND p.prvo_pbff_desc = '공모' AND p.sale_yn = '판매중' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA20": {
+  "q": "미래에셋차이나솔로몬 시리즈 3호는 클래스가 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%' AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]3[([]*') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": false,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA21": {
+  "q": "삼성자산운용이 운용하는 판매중 국내 ETF는 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'Samsung Asset Management Co Ltd' AND pd_sale_yn = 1 AND pd_grp_no = 'ETF' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "AA22": {
+  "q": "S&P500을 추종하는 국내 ETF는 몇 개야?",
+  "sql": "SELECT COUNT(*) FROM domestic_etfs WHERE /*g*/(REPLACE(ref_base_index,' ','') GLOB 'S&P500' OR REPLACE(ref_base_index,' ','') GLOB 'S&P500[CTP]R*') AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "AA23": {
+  "q": "슈로더투자신탁운용 공모펀드 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040013' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "AA24": {
+  "q": "미래에셋 코어테크 펀드 종류A 3년 수익률 알려줘",
+  "sql": "SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", MAX(CASE WHEN fd_yr3_ern_r IS NOT NULL THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최고\", MIN(CASE WHEN fd_yr3_ern_r IS NOT NULL THEN fd_yr3_ern_r END) AS \"fd_yr3_ern_r_최저\", MIN(rptt_ksd_itm_no) AS 대표번호, han_clas_nm FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' AND TRIM(han_clas_nm) = '종류 A') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "FND-001": {
+  "q": "위험등급이 가장 안전한 공모펀드 중 순자산 큰 10개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma , zrin_fd_ivst_risk_grd_nm, COUNT(*) AS \"클래스수\", zrin_fd_ivst_risk_gcd, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_gcd = 6 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 10",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-002": {
+  "q": "위험등급 1등급(매우 높은 위험) 공모펀드 중 순자산 큰 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma , fd_daily_bas_dt, COUNT(*) AS \"클래스수\", zrin_fd_ivst_risk_grd_nm, zrin_fd_ivst_risk_gcd, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_gcd = '1.0' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-003": {
+  "q": "1년 수익률이 가장 높은 공모펀드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-004": {
+  "q": "3년 수익률 상위 5개 공모펀드 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr3_ern_r) AS fd_yr3_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr3_ern_r) IS NOT NULL AND MAX(fd_yr3_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-005": {
+  "q": "총보수가 가장 낮은 공모펀드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MIN(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) AS tot_commission_rate, COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) IS NOT NULL AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) <> 0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY 3 ASC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-006": {
+  "q": "MMF를 제외하고 순자산이 가장 큰 공모펀드 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", zrin_ptn_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE zrin_ptn_nm = 'MMF' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') NOT LIKE '%MMF%' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-007": {
+  "q": "MMF 중에서 순자산이 가장 큰 공모펀드 3개 알려줘",
+  "sql": "SELECT DISTINCT itm_no, itm_nm, MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", zrin_ptn_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE zrin_ptn_nm = 'MMF' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 3",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-008": {
+  "q": "채권형 공모펀드 중 1년 수익률 상위 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms, zrin_btyp_nm FROM public_funds  WHERE zrin_btyp_nm = '채권형' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-009": {
+  "q": "주식형 공모펀드 중 순자산 상위 5개 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", zrin_btyp_nm, or_attr_desc, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (zrin_btyp_nm IN ('주식형', '해외주식형') OR (zrin_btyp_nm IS NULL AND (TRIM(or_attr_desc) = '주식형' OR (TRIM(or_attr_desc) IN ('재간접', '파생상품') AND REPLACE(itm_nm,' ','') LIKE '%(주식%)')))) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-010": {
+  "q": "최근 분배 실적이 있는 공모펀드 중 순자산 큰 5개 알려줘",
+  "sql": "SELECT DISTINCT p.itm_no, p.itm_nm, MAX(p.fd_nast_suma) AS fd_nast_suma , p.fd_last_dstb_r, p.fd_last_dstb_actg_bss_dt, COUNT(*) AS \"클래스수\", CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds p WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND p.fd_last_dstb_r IS NOT NULL AND p.fd_last_dstb_r > -100 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-011": {
+  "q": "미래에셋자산운용이 운용하는 공모펀드 중 순자산 큰 5개 알려줘",
+  "sql": "SELECT DISTINCT p.itm_no, p.itm_nm, p.fd_nast_suma, e.mgmt_co_nm, CAST(ROUND((p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"fd_nast_suma_억원\" FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE TRIM(p.or_co_xtn_itt_cd) = '00080008' AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' ORDER BY p.fd_nast_suma DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-012": {
+  "q": "지금 판매중인 공모펀드는 모두 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-013": {
+  "q": "역외 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (ofsfd_yn = 1 AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/) LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-014": {
+  "q": "위험등급 정보가 없는 공모펀드는 몇 개야?",
+  "sql": "SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS \"펀드수\", COUNT(*) AS \"클래스수\" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_gcd IS NULL) LIMIT 30 /*M:FUNDUNIT*/",
+  "ran": true,
+  "cols": {
+   "값": true,
+   "축": true,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": true,
+   "축": true,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-C01": {
+  "q": "규모가 큰 펀드 추천해줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS \"클래스수\", CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL AND MAX(fd_nast_suma) > 0 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-C02": {
+  "q": "삼성 펀드 보수 알려줘",
+  "sql": "SELECT or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r as total_commission_rate, or_co_xtn_itt_cd, itm_nm, COUNT(*) AS \"클래스수\", MAX(fd_nast_suma) AS fd_nast_suma, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040010', '00080135', '00080134', '00080168', '00040092') AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (or_co_rwrd_r IS NOT NULL OR sale_co_rwrd_r IS NOT NULL OR trusc_rwrd_r IS NOT NULL OR ofwk_trus_rwrd_r IS NOT NULL) GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-R01": {
+  "q": "신용등급이 AAA인 공모펀드 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "FND-R02": {
+  "q": "지난 1주일 수익률이 가장 높은 공모펀드 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_mm1_ern_r) AS fd_mm1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds   WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_mm1_ern_r) IS NOT NULL AND MAX(fd_mm1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-R03": {
+  "q": "기준가가 높은 순서로 좋은 펀드 알려줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), fd_daily_bas_dt, fd_nast_suma, fd_price_bas_dt, fd_last_dstb_r, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_price_bas_dt IS NOT NULL AND fd_price_bas_dt > 0 ORDER BY fd_price_bas_dt DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "FND-R04": {
+  "q": "내년에 수익률이 가장 좋을 공모펀드 추천해줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND mat_dt > 20290822 AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-001": {
+  "q": "현재 판매 가능한 원화채권 중 AA- 이상 종목 알려줘",
+  "sql": "SELECT DISTINCT pd_no, pd_nm, crd_grd FROM domestic_bonds WHERE curr_cd = 'KRW' AND TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-') AND mat_dt >= 20260824 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-002": {
+  "q": "국민성장펀드의 구조와 투자전략 동향 등 찾아서 알려줘",
+  "sql": "SELECT DISTINCT public_funds.itm_no, itm_nm, estb_dt, redemption_fee_desc, redemption_prohibited, redemption_pay_rule, total_fee_pct, sale_fee_pct, mgmt_fee_pct, trust_fee_pct, admin_fee_pct, class_desc_ko, mgmt_co_nm, mother_fund_names_raw FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE sale_yn = '판매중' AND (REPLACE(itm_nm,' ','') LIKE '%국민성장펀드%' AND prvo_pbff_desc = '공모') LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": false
+  },
+  "delta": "개선(이전 실행불가 → 지금 실행)",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-003": {
+  "q": "캠브리콘이 편입된 중국 반도체 ETF를 알려줘",
+  "sql": "SELECT DISTINCT d.pd_abrv_nm AS 티커, d.pd_nm AS 상품명, e.weight_pct AS 편입비중 FROM domestic_etfs d JOIN ext_etf_holdings e ON d.pd_itm_no=e.etf_code WHERE e.constituent IN ('Cambricon Technologies Corp Ltd', 'Cambricon Technologies Corporation Limited') AND (d.wu_inv_rgn='중국' OR d.ref_geo_focus='China') AND d.pd_grp_no='ETF' AND d.pd_sale_yn=1 LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-004": {
+  "q": "최근 6개월 동안 우주항공 테마와 연결 이력이 있는 관련 ETF를 정리해줘",
+  "sql": "SELECT DISTINCT pd_abrv_nm, pd_nm FROM domestic_etfs WHERE (replace(pd_nm,' ','') LIKE '%우주항공%' OR /*g*/(REPLACE(ref_base_index,' ','') GLOB 'Aerospace' OR REPLACE(ref_base_index,' ','') GLOB 'Aerospace[CTP]R*')) AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 ORDER BY pd_abrv_nm ASC LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "개선(이전 실행불가 → 지금 실행)",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": false
+  }
+ },
+ "OFFICIAL-005": {
+  "q": "에코프로의 자회사를 편입한 ETF 중 순자산이 큰 상품의 위험요인 알려줘",
+  "sql": "SELECT domestic_etfs.pd_abrv_nm, domestic_etfs.cu_lev_fector, domestic_etfs.pd_risk_nm, domestic_etfs.wu_inv_ast_type, domestic_etfs.pd_nm FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE (ext_etf_holdings.constituent IN ('에코프로', '에코프로머티', '에코프로비엠', '에코프로에이치엔')) AND domestic_etfs.du_last_aum IS NOT NULL AND domestic_etfs.du_last_aum > 0 AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 ORDER BY domestic_etfs.du_last_aum DESC LIMIT 1",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-NA-001": {
+  "q": "신용등급 AAAA인 채권 찾아줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-NA-002": {
+  "q": "Kimi 관련 투자 상품 있어?",
+  "sql": "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE pd_nm LIKE '%김미%' OR pd_abrv_nm LIKE '%김미%' OR pd_eng_nm LIKE '%Kim%' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "OFFICIAL-NA-003": {
+  "q": "KODEX AI로봇 ETF 정보 알려줘",
+  "sql": "SELECT pd_nm, pd_abrv_nm, cu_base_index, ref_fund_mgmt_co, cu_strtegy, pd_lstg_dt, pd_sale_yn, pd_tr_yn, wu_inv_ast_type, wu_inv_rgn, du_clpr, du_vol_1d, du_last_aum, CAST(ROUND(du_last_aum/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM domestic_etfs WHERE TRIM(pd_abrv_nm) = 'KODEX AI로봇' LIMIT 1",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": false
+  }
+ },
+ "CROSS-001": {
+  "q": "삼성전자를 보유한 국내/해외 ETF와 공모펀드를 연 수익률 기준 TOP10 알려줘",
+  "sql": "SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_er_1y FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent IN ('삼성전자', '삼성전자 (Security)', '005930') AND pd_grp_no = 'ETF' AND du_er_1y IS NOT NULL AND du_er_1y > -100 UNION ALL SELECT '공모펀드', it.mtco_itm_nm, fd.fd_yr1_ern_r FROM public_funds it JOIN ext_fund_holdings fd ON fd.grp = it.mtco_itm_no AND fd.or_co = it.or_co_xtn_itt_cd WHERE sale_yn = '판매중' AND (fd.holding_nm IN ('삼성전자', '삼성전자 (Security)', '005930') AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100) ORDER BY 3 DESC LIMIT 10",
+  "ran": false,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "🔴 회귀(이전 실행 → 지금 실행불가)",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ },
+ "CROSS-002": {
+  "q": "S&P500을 추종하는 국내 ETF와 해외 ETF의 총보수를 비교해줘",
+  "sql": "SELECT domestic_etfs.pd_abrv_nm AS Domestic, domestic_etfs.cu_charge_rt AS Domestic_Charge_Rate, overseas_etfs.pd_abrv_nm AS Overseas, overseas_etfs.cu_charge_rt AS Overseas_Charge_Rate FROM domestic_etfs JOIN overseas_etfs ON replace(domestic_etfs.ref_base_index,' ','') LIKE '%S&P500%' AND replace(overseas_etfs.cu_base_index,' ','') LIKE '%S&P500%' WHERE domestic_etfs.pd_grp_no = 'ETF' AND domestic_etfs.pd_sale_yn = 1 AND overseas_etfs.pd_grp_no = 'ETF' ORDER BY Domestic, Overseas LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "결과 달라짐",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": null,
+   "범위": false
+  }
+ },
+ "CROSS-003": {
+  "q": "월배당 국내 ETF와 분배금이 있는 공모펀드 중 순자산 큰 순으로 5개씩 알려줘",
+  "sql": "SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_last_aum FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE pd_dvid_cycl = 'M' AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 AND pd_divd_amt_pshr > 0 ORDER BY 3 DESC LIMIT 5  UNION ALL  SELECT '공모펀드' AS 구분, it.mtco_itm_nm, it.fd_nast_suma FROM public_funds it JOIN ext_fund_holdings fh ON fh.grp = it.mtco_itm_no AND fh.or_co = it.or_co_xtn_itt_cd WHERE it.sale_yn = '판매중' AND it.prvo_pbff_desc = '공모' AND fh.holding_nm LIKE '%월배당%' AND fh.holding_qty > 0 AND it.fd_nast_suma IS NOT NULL AND it.fd_nast_suma <> 0 ORDER BY 3 DESC LIMIT 5",
+  "ran": false,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": false
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": false
+  }
+ },
+ "UNANS-001": {
+  "q": "KODEX AI 로봇 ETF 알려줘",
+  "sql": "SELECT pd_nm, pd_abrv_nm, cu_base_index, ref_fund_mgmt_co, cu_lev_fector, pd_lstg_dt, pd_sale_yn, wu_inv_ast_type, wu_inv_rgn, du_last_aum, CAST(ROUND(du_last_aum/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\" FROM domestic_etfs WHERE pd_nm LIKE '%AI%' AND pd_nm LIKE '%로봇%' AND pd_grp_no = 'ETF' AND REPLACE(pd_nm,' ','') LIKE '%KODEX%' LIMIT 30",
+  "ran": true,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": false
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": false
+  }
+ },
+ "UNANS-002": {
+  "q": "신용등급 AAAA 채권 중 만기 짧은 순으로 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "UNANS-003": {
+  "q": "2026년 10월에 상장 예정인 국내 ETF 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "UNANS-004": {
+  "q": "해외 ETF 중 위험등급 1등급인 상품 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "UNANS-005": {
+  "q": "국내 ETF 중 기타비용이 가장 낮은 상품 3개 알려줘",
+  "sql": "",
+  "ran": false,
+  "cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  },
+  "delta": "둘 다 SQL 없음/실행불가",
+  "prev_cols": {
+   "값": null,
+   "축": null,
+   "단위": null,
+   "범위": true
+  }
+ },
+ "UNANS-006": {
+  "q": "수익률 좋은 펀드 추천해줘",
+  "sql": "SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS \"클래스수\", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5",
+  "ran": true,
+  "cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  },
+  "delta": "동일",
+  "prev_cols": {
+   "값": false,
+   "축": null,
+   "단위": true,
+   "범위": true
+  }
+ }
+}

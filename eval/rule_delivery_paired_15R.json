@@ -1,0 +1,1316 @@
+{
+ "summary": {
+  "n_asked": 41,
+  "n_scored": 7,
+  "n_unscored": 34,
+  "seconds": 1632.7,
+  "per_query_sec": 19.9,
+  "A": {
+   "ok": 0,
+   "rate": 0.0,
+   "wilson95": [
+    0.0,
+    0.354
+   ],
+   "rules_chars_avg": 4330
+  },
+  "B": {
+   "ok": 0,
+   "rate": 0.0,
+   "wilson95": [
+    0.0,
+    0.354
+   ],
+   "rules_chars_avg": 3527
+  },
+  "mcnemar": {
+   "b_A_only": 0,
+   "c_B_only": 0,
+   "exact_p": 1.0
+  },
+  "compliance": {
+   "기본모수": {
+    "A": {
+     "target": 27,
+     "kept": 17
+    },
+    "B": {
+     "target": 27,
+     "kept": 19
+    }
+   },
+   "펀드단위": {
+    "A": {
+     "target": 18,
+     "kept": 0
+    },
+    "B": {
+     "target": 18,
+     "kept": 0
+    }
+   },
+   "대표행": {
+    "A": {
+     "target": 9,
+     "kept": 1
+    },
+    "B": {
+     "target": 9,
+     "kept": 2
+    }
+   },
+   "국가태그": {
+    "A": {
+     "target": 7,
+     "kept": 1
+    },
+    "B": {
+     "target": 7,
+     "kept": 1
+    }
+   },
+   "등급방향": {
+    "A": {
+     "target": 0,
+     "kept": 0
+    },
+    "B": {
+     "target": 0,
+     "kept": 0
+    }
+   }
+  }
+ },
+ "outcome": {
+  "KG-002": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040022', '00040007') AND prvo_pbff_desc = '공모' AND itm_nm LIKE '%프랭클린템플턴%' LIMIT 30",
+    "answer": "프랭클린템플턴이 운용하는 공모펀드는 '**프랭클린템플턴파워리서치증권자투자신탁[주식]클래스C-F**' 와 '**프랭클린템플턴포커스자주식C**' 입니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT p.itm_no, p.itm_nm, e.mgmt_co_nm, e.class_desc_ko, e.redemption_fee_desc, e.redemption_prohibited, e.redemption_pay_rule, e.total_fee_pct, e.sale_fee_pct, e.mgmt_fee_pct, e.trust_fee_pct, e.admin_fee_pct, e.estb_dt FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE TRIM(p.or_co_xtn_itt_cd) IN ('00040022', '00040007') AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND p.itm_nm LIKE '%프랭클린템플턴%' LIMIT 30",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다. (각 조건의 개체·값은 데이터에 실재하며 그 교집합이 0입니다)",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-008": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT trim(trusc_xtn_itt_cd) as 수탁회사명, SUM(fd_nast_suma) as 수탁금액, COUNT(*) as 펀드수 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 2 DESC LIMIT 3",
+    "answer": "공모펀드를 가장 많이 수탁하는 수탁사 상위 3곳은 다음과 같습니다.\n\n1. 한국증권금융(00050004): 118,790,302,236,080원을 수탁하였고, 이는 약 257개의 펀드에 해당합니다.\n2. 국민은행(00020004): 38,358,354,026,142원을 수탁하였으며, 이는 약 1,656개의 펀드에 해당합니다.\n3. 신한은행(00020088): 34,419,309,194,660원을 수탁하였으며, 이는 약 881개의 펀드에 해당합니다.\n\n이 세 곳이 현재 가장 많은 공모펀드를 수탁하고 있는 것으로 나타났습니다.",
+    "rules_chars": 4388,
+    "ctx_chars": 6597,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT trusc_xtn_itt_cd, trusc_organ_nm_ko, COUNT(*) as cnt FROM public_funds WHERE prvo_pbff_desc = '공모' GROUP BY trusc_xtn_itt_cd, trusc_organ_nm_ko ORDER BY 3 DESC LIMIT 3",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3667,
+    "ctx_chars": 6642,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-025": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT '국내 ETF' AS 구분, COUNT(*) AS 개수 FROM domestic_etfs WHERE pd_sale_yn = 1 AND pd_tr_yn = 0 AND pd_grp_no = 'ETF' AND ref_fund_mgmt_co = 'Samsung Asset Management Co Ltd' UNION ALL SELECT '공모펀드', COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND or_co_xtn_itt_cd = '00040010' LIMIT 2",
+    "answer": "삼성자산운용이 운용하는 공모펀드는 850개, 국내 ETF는 240개입니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT '삼성자산운용 공모펀드': COUNT(DISTINCT grp) FROM public_funds WHERE or_co_xtn_itt_cd = '00040010' AND prvo_pbff_desc = '공모' UNION ALL SELECT '국내 ETF': COUNT(*) FROM domestic_etfs ORDER BY 1 DESC LIMIT 2",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-026": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT 'KOSPI200을 벤치마크로 쓰는 공모펀드' AS 구분, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND bmrk_nm LIKE '%KOSPI200%' UNION ALL SELECT 'KOSPI200을 추종하는 국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE pd_grp_no = 'ETF' AND (replace(replace(cu_base_index,'.K',''),'.O','') = 'KOSPI200' OR pd_abrv_nm LIKE '%KOSPI200%') LIMIT 2",
+    "answer": "KOSPI200을 벤치마크로 사용하는 공모펀드는 2888개이고, KOSPI200을 추종하는 국내 ETF는 9개입니다.",
+    "rules_chars": 4297,
+    "ctx_chars": 6506,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT 'KOSPI200을 벤치마크로 쓰는 공모펀드' AS 구분, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND bmrk_nm IN ('KOSPI200', 'KOSPI200 150%', 'KOSPI200 200%', 'KOSPI200 220%', 'KOSPI200 25% + 종합채권01Y 75%', 'KOSPI200 5% + 종합채권 01Y 95%', 'KOSPI200 50% + 종합채권01Y 50%', 'KOSPI200 70% + 항셍H주 CR 30%', 'KOSPI200 10% + 종합채권 01Y 90%', 'KOSPI200 25% + KIS채권종합01Y 75%', 'KOSPI200 5% + KIS종합채권 01Y 95%', 'KOSPI200 50% + KIS채권종합01Y 50%', 'KOSPI200 10% + KIS종합채권 01Y 90%', 'KOSPI200 50% + NIKKEI225 CR 50%', 'KOSPI200 70% + 항셍H주 CR in KRW 30%', 'KOSPI200 5% + 회사채I-BBB종합 02Y 95%', 'KOSPI200 5% + 회사채BBB(공모무보증)02Y 95%', 'KOSPI200 30% + TSE REIT TR 35% + DWGRTT 35%', 'KOSPI200 33.3% + 항셍H주 CR 33.3% + NIKKEI225 CR 33.3%', '멕시코 IPC 22.5% + 인도네시아 JKSE 22.5% + KOSPI200 22.5% + 터키 ISE100 22.5% + Call 10%', 'KOSPI200 12% + MSCI EM(USD) 6% + Rogers International Commodity TR 2% + KIS국공채3Y 80%', 'KOSPI200 24% + MSCI EM(USD) 12% + Rogers International Commodity TR 4% + KIS국공채3Y 60%', 'KOSPI200 36% + MSCI EM(USD) 18% + Rogers International Commodity TR 6% + KIS국공채3Y 40%', 'KOSPI200 48% + MSCI EM(USD) 24% + Rogers International Commodity TR 8% + KIS국공채3Y 20%') UNION ALL SELECT 'KOSPI200을 추종하는 국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE cu_base_index = 'KOSPI200' OR ref_base_index = 'KOSPI200'",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3576,
+    "ctx_chars": 6551,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-031": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE or_co_xtn_itt_cd = '00080029' AND prvo_pbff_desc = '공모' AND ofsfd_yn IN (0,1) LIMIT 30",
+    "answer": "피델리티가 운용하는 공모펀드는 역외펀드를 포함하여 총 296개입니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(DISTINCT COALESCE(CASE WHEN LENGTH(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE SUBSTR('0000000' || mtco_itm_no, -7) END, itm_no)) FROM public_funds WHERE or_co_xtn_itt_cd IN ('00080029') AND prvo_pbff_desc = '공모' AND ofsfd_yn = 1 LIMIT 30",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다 (조회 결과 0건, 기준일 2026-08-24).",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X8": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT 'S&P500 공모펀드', COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND bmrk_nm LIKE '%S&P500%' AND sale_yn = '판매중' UNION ALL SELECT 'S&P500 추종 국내 ETF', COUNT(*) FROM domestic_etfs WHERE ref_base_index LIKE '%S&P500%' AND pd_sale_yn = 1 ORDER BY 1 LIMIT 2",
+    "answer": "S&P500을 벤치마크로 쓰는 공모펀드는 32개이고, S&P500 추종 국내 ETF는 4개입니다.",
+    "rules_chars": 4297,
+    "ctx_chars": 6506,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT 'S&P500 추종 공모펀드' AS 구분, COUNT(*) FROM public_funds WHERE bmrk_nm LIKE '%S&P500%' AND prvo_pbff_desc = '공모' UNION ALL SELECT 'S&P500 추종 국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE ref_base_index LIKE '%S&P500%' OR pd_nm LIKE '%S&P500%' LIMIT 2",
+    "answer": "S&P500을 벤치마크로 쓰는 공모펀드는 43개, S&P500 추종 국내 ETF는 86개입니다.",
+    "rules_chars": 3576,
+    "ctx_chars": 6551,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X9": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT '공모펀드' AS 구분, COUNT(*) AS 개수 FROM public_funds WHERE or_co_xtn_itt_cd = '00080008' AND prvo_pbff_desc = '공모' UNION ALL SELECT '국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'Mirae Asset Global Investments Co Ltd' ORDER BY 1 ASC LIMIT 2",
+    "answer": "미래에셋자산운용이 운용하는 공모펀드는 3,296개이고, 국내 ETF는 235개입니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT '국내 ETF' AS 상품군, COUNT(*) AS 개수 FROM domestic_etfs WHERE pd_sale_yn = 1 AND pd_tr_yn = 0 AND cu_charge_rt > 0 UNION ALL SELECT '공모펀드', COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X11": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN (SELECT or_co_xtn_itt_cd FROM ext_fund_page WHERE mgmt_co_nm LIKE '%동양%' AND LENGTH(mgmt_co_nm) > 2) AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT p.itm_no, p.itm_nm FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.or_co_xtn_itt_cd = '00040007' AND p.prvo_pbff_desc = '공모' AND p.sale_yn = '판매중' LIMIT 30",
+    "answer": "동양자산운용이 운용하는 공모펀드는 다음과 같습니다.\n\n- 우리나라초단기채권증권투자신탁[채권]ClassC-P\n- 우리알리안츠인컴앤그로스증권자투자신탁[주식혼합_재간접형](H)ClassC\n- 우리나라중단기ESG채권증권자투자신탁1호(채권)Class C-F\n- 우리중소형고배당30증권투자신탁1호(채권혼합)Class A\n- 우리차이나본토주식증권자투자신탁UH(주식)Class A\n- 우리템플턴차이나드래곤증권자투자신탁(E)(주식-재간접형)\n- 우리템플턴글로벌증권자투자신탁(E)(주식)\n- 우리템플턴이스턴유럽증권자투자신탁(주식-재간접형)ClassC2\n- 우리프랭클린내츄럴리소스증권자투자신탁(주식-재간접형)ClassA\n- 우리공모주10증권투자신탁[채권혼합]A\n- 우리퇴직연금글로벌이머징40증권자투자신탁[채권혼합]\n- 우리알리안츠유럽배",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X13": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COALESCE(zrin_btyp_nm,'(제로인 미수록)') AS asset_class, trusc_xtn_itt_cd, COUNT(*) as class_count FROM public_funds WHERE or_co_xtn_itt_cd IN ('00040035') GROUP BY 1,2 ORDER BY 1,2 ASC LIMIT 30",
+    "answer": "KB자산운용 펀드의 수탁사 분포는 다음과 같습니다.\n\n- 한국산업은행(00020002): 7개  \n- 중소기업은행(00020003): 2개  \n- 국민은행(00020004): 5개  \n- 농협은행(00020011): 11개  \n- 우리은행(00020020): 8개  \n- 한국스탠다드차타드은행(00020023): 1개  \n- 한국씨티은행(00020027): 50개  \n- 홍콩상하이은행 서울지점(00020054): 10개  \n- 하나은행(00020081): 29개  \n- 신한은행(00020088): 27개  \n- 한국증권금융(00050004): 8개  \n\n또한, 각 자산 클래스별로는 다음과 같이 분포되어 있습니다.\n\n- MMF: 하나은행(1개), 신한은행(4개), 한국증권금융(2개)\n- 기타: 한국스탠다드차타드",
+    "rules_chars": 4574,
+    "ctx_chars": 6783,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END, itm_no) AS 펀드키, trusc_xtn_itt_cd, COUNT(*) AS 클래스수 FROM public_funds WHERE or_co_xtn_itt_cd = '00040035' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY 펀드키, trusc_xtn_itt_cd ORDER BY 클래스수 DESC LIMIT 30",
+    "answer": "KB자산운용 펀드의 수탁사 분포를 다음과 같이 정리했습니다.\n\n- 농협은행(00020011): 4개의 펀드(총 56개 클래스)\n- 신한은행(00020088): 3개의 펀드(총 42개 클래스)\n- 한국씨티은행(00020027): 5개의 펀드(총 70개 클래스)\n- 한국증권금융(00050004): 1개의 펀드(총 11개 클래스)\n- 홍콩상하이은행 서울지점(00020054): 7개의 펀드(총 77개 클래스)\n- 중소기업은행(00020003): 1개의 펀드(총 12개 클래스)\n- 하나은행(00020081): 1개의 펀드(총 9개 클래스)\n- 한국스탠다드차타드은행(00020023): 1개의 펀드(총 9개 클래스)\n- 우리은행(00020020): 1개의 펀드(총 8개 클래스)\n\n이는 전체 30개 펀드를 대상으로 한 분",
+    "rules_chars": 3855,
+    "ctx_chars": 6830,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X15": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT '중국에 투자하는 공모펀드' AS 분류, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND (wu_inv_rgn = '중국' OR ref_geo_focus IN ('China', 'Greater China')) GROUP BY 1 UNION ALL SELECT '국내 ETF' AS 분류, COUNT(*) FROM domestic_etfs WHERE wu_inv_rgn = '국내' OR ref_geo_focus = 'Korea' GROUP BY 1 LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4518,
+    "ctx_chars": 6727,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT '중국에 투자하는 공모펀드' AS 구분, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND (wu_inv_rgn = '중국' OR ref_geo_focus IN ('China', 'Greater China')) UNION ALL SELECT '국내 ETF' AS 구분, COUNT(*) FROM domestic_etfs WHERE wu_inv_rgn = '국내' OR ref_geo_focus = 'Korea' LIMIT 2",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   }
+  },
+  "Z5": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE fd_ivst_rgn_desc IN ('글로벌', '해외주식형') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 4492,
+    "ctx_chars": 6701,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE fd_ivst_rgn_desc = '글로벌' AND zrin_btyp_nm = '주식형' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "조회 결과에 따르면, 글로벌 주식형 공모펀드는 총 18개입니다.",
+    "rules_chars": 3771,
+    "ctx_chars": 6746,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "Z10": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND ovrs_fd_desc IN ('해외', '국내외혼합') AND zrin_btyp_nm = '인도주식형' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 5352,
+    "ctx_chars": 7561,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(DISTINCT or_co_xtn_itt_cd) FROM public_funds WHERE prvo_pbff_desc = '공모' AND zrin_btyp_nm = '해외주식형' AND fd_ivst_rgn_desc = '인도' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 4191,
+    "ctx_chars": 7166,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   }
+  },
+  "Z11": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm IN ('주식형', '해외주식형') AND prvo_pbff_desc = '공모' LIMIT 30",
+    "answer": "중국 주식 유형 공모펀드는 총 5,520개입니다. 이는 제공된 데이터를 기반으로 한 전체 공모 펀드 수를 나타냅니다. 추가적인 정보가 필요하시다면 알려주세요.",
+    "rules_chars": 4942,
+    "ctx_chars": 7151,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(DISTINCT or_co_xtn_itt_cd) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_btyp_nm IN ('주식형', '해외주식형') AND fd_ivst_rgn_desc = '중국' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 3781,
+    "ctx_chars": 6756,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   }
+  },
+  "Z13": {
+   "A": {
+    "ok": false,
+    "sql": "(SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모') UNION ALL (SELECT COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'KB Asset Ltd' AND pd_grp_no = 'ETF') LIMIT 2",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT 'KB 공모펀드': COUNT(*) FROM public_funds WHERE or_co_xtn_itt_cd = '00040035' AND prvo_pbff_desc = '공모' AND sale_yn = 1 UNION ALL SELECT 'KB 국내 ETF': COUNT(*) FROM domestic_etfs WHERE ref_fund_mgmt_co = 'KB Asset Ltd' AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "Z16": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE or_co_xtn_itt_cd = '00080052' AND prvo_pbff_desc = '공모' LIMIT 30",
+    "answer": "키움투자자산운용이 운용하는 공모펀드는 총 454개입니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(DISTINCT COALESCE(CASE WHEN LENGTH(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE SUBSTR('0000000' || mtco_itm_no, -7) END, itm_no)) FROM public_funds WHERE or_co_xtn_itt_cd IN (SELECT printf('%08d', CAST(CAST(C AS INTEGER) AS CHAR(8))) FROM (VALUES('키움'), ('키움투자자산운용')) AS t(C)) AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 1",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "Z18": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT public_funds.itm_no, public_funds.itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND zrin_btyp_nm IN ('주식형','해외주식형') OR (zrin_btyp_nm IS NULL AND (TRIM(or_attr_desc) = '주식형' OR (TRIM(or_attr_desc) IN ('재간접','파생상품') AND public_funds.itm_nm LIKE '%(주식%' ))) LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4082,
+    "ctx_chars": 6291,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE prvo_pbff_desc = '공모' AND zrin_attr_nms LIKE '%자산배분%' AND itm_nm NOT LIKE '%ETF%' LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "Z21": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT prfd_attr_cds FROM public_funds WHERE itm_nm LIKE '%삼성코리아대표%' AND prfd_attr_cds IS NOT NULL LIMIT 30",
+    "answer": "죄송합니다. 하지만 제공해 주신 데이터에서는 삼성코리아대표 펀드의 수탁 코드에 대한 정보를 찾을 수 없습니다.",
+    "rules_chars": 3262,
+    "ctx_chars": 5471,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT prfd_attr_cds FROM public_funds WHERE itm_nm LIKE '%삼성코리아대표%' AND prvo_pbff_desc = '공모' LIMIT 30",
+    "answer": "죄송합니다. 삼성코리아대표 펀드의 수탁 코드에 대한 정보를 제공할 수 없습니다. 이는 제공된 데이터에 수록되어 있지 않은 정보이기 때문입니다.",
+    "rules_chars": 2549,
+    "ctx_chars": 5524,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "AA2": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT bns_bpr FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND itm_nm LIKE '%KB중국본토A주%' AND TRIM(han_clas_nm) = 'A' LIMIT 1",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「A」를 데이터 표기로 식별하지 못했습니다 — 값 사전·개체 매핑에 없는 표기입니다.",
+    "rules_chars": 3698,
+    "ctx_chars": 5907,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT bns_bpr FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND itm_nm LIKE '%KB중국본토A주%' AND TRIM(han_clas_nm) = 'A' LIMIT 1",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「A」를 데이터 표기로 식별하지 못했습니다 — 값 사전·개체 매핑에 없는 표기입니다.",
+    "rules_chars": 2608,
+    "ctx_chars": 5583,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   }
+  },
+  "AA6": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND ovrs_fd_desc IN ('해외', '국내외혼합') AND zrin_btyp_nm = '베트남주식형' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 5352,
+    "ctx_chars": 7561,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(DISTINCT or_co_xtn_itt_cd) FROM public_funds WHERE prvo_pbff_desc = '공모' AND zrin_btyp_nm = '해외주식형' AND fd_ivst_rgn_desc = '베트남' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 4191,
+    "ctx_chars": 7166,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   }
+  },
+  "AA7": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND ((zrin_btyp_nm IN ('일본주식형', '해외일본주식형')) OR (zrin_btyp_nm IS NULL AND (TRIM(or_attr_desc) = '주식형' OR (TRIM(or_attr_desc) IN ('재간접', '파생상품') AND itm_nm LIKE '%(일본)%')))) AND sale_yn = '판매중' LIMIT 30",
+    "answer": "요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다.",
+    "rules_chars": 4942,
+    "ctx_chars": 7151,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(DISTINCT or_co_xtn_itt_cd) FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_btyp_nm IN ('일본주식형','해외일본주식형') OR (zrin_btyp_nm IS NULL AND (trim(or_attr_desc)='주식형' OR (trim(or_attr_desc) IN ('재간접','파생상품') AND itm_nm LIKE '%(주식%'))) LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3781,
+    "ctx_chars": 6756,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": false,
+     "등급방향": null
+    }
+   }
+  },
+  "AA9": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND itm_nm LIKE '%ETF%' LIMIT 30",
+    "answer": "다음은 ETF에 투자하는 공모펀드 목록입니다.\n\n1. 한국투자적격TDF알아서ETF포커스2055증권투자신탁(주식혼합-재간접형)(C-R)\n2. 동양FIRST스타우량ETF\n3. 동부글로벌ETF셀렉트증권투자신탁제1호(주식혼합-재간접형)C-E\n4. 한국투자적격TDF알아서ETF포커스2030증권투자신탁(주식혼합-재간접형)(C-Pe)\n5. 미래에셋ETF로자산배분적격TDF2040증권자투자신탁1호(주식혼합-재간접형)종류C-e\n6. 미래에셋ETF로자산배분적격TDF2045증권자투자신탁(주식혼합-재간접형)종류C-P2\n7. 미래에셋ETF로자산배분적격TDF2035증권자투자신탁(채권혼합-재간접형)종류C\n8. 미래에셋ETF로자산배분적격TDF2035증권자투자신탁(채권혼합-재간접형)종류C-e\n9. KB RISE 미국 고배당 ETF 모아드림 ",
+    "rules_chars": 4082,
+    "ctx_chars": 6291,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND itm_nm LIKE '%ETF%' LIMIT 30",
+    "answer": "다음은 ETF에 투자하는 공모펀드 목록입니다.\n\n1. 한국투자적격TDF알아서ETF포커스2055증권투자신탁(주식혼합-재간접형)(C-R)\n2. 동양FIRST스타우량ETF\n3. 동부글로벌ETF셀렉트증권투자신탁제1호(주식혼합-재간접형)C-E\n4. 한국투자적격TDF알아서ETF포커스2030증권투자신탁(주식혼합-재간접형)(C-Pe)\n5. 미래에셋ETF로자산배분적격TDF2040증권자투자신탁1호(주식혼합-재간접형)종류C-e\n6. 미래에셋ETF로자산배분적격TDF2045증권자투자신탁(주식혼합-재간접형)종류C-P2\n7. 미래에셋ETF로자산배분적격TDF2035증권자투자신탁(채권혼합-재간접형)종류C\n8. 미래에셋ETF로자산배분적격TDF2035증권자투자신탁(채권혼합-재간접형)종류C-e\n9. KB RISE 미국 고배당 ETF 모아드림 ",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "AA24": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT fd_yr3_ern_r FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND itm_nm LIKE '%코어테크%' AND TRIM(han_clas_nm) = '종류 A' AND fd_yr3_ern_r IS NOT NULL LIMIT 1",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「종류 A」를 데이터 표기로 식별하지 못했습니다 — 값 사전·개체 매핑에 없는 표기입니다.",
+    "rules_chars": 3568,
+    "ctx_chars": 5777,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT fd_yr3_ern_r FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND itm_nm LIKE '%코어텍%' AND TRIM(han_clas_nm) = '종류A' AND fd_yr3_ern_r IS NOT NULL LIMIT 1",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「코어텍」를 데이터의 종목명으로 식별하지 못했습니다 (가까운 표기: 미래에셋코어테크증권자투자신탁(주식) · 미래에셋퇴직연금코어밸류증권자투자신탁1호(주식) · 삼성퇴직연금미국코어주식40증권자투자신탁H[채권혼합]).",
+    "rules_chars": 2855,
+    "ctx_chars": 5830,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "FND-C01": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT itm_no, TRIM(itm_nm), fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_nast_suma IS NOT NULL AND fd_nast_suma > 0 ORDER BY 3 DESC LIMIT 5",
+    "answer": "규모가 큰 펀드를 추천해드리겠습니다.\n\n1. 삼성MMF법인제1호 C 클래스 - 순자산: 12,4295,362,520억원\n2. KB법인용MMF I- 1 종류C - 순자산: 9,6267,865,652억원\n3. 우리큰만족법인MMF1호(국공채)ClassC - 순자산: 9,038,954,243,738억원\n4. 우리큰만족신종MMF3호 ClassC - 순자산: 8,049,693,238,181억원\n5. 신영법인용MMF 제4-26호 C-I형 - 순자산: 7,637,05,169,6362억원\n\n위의 펀드들은 모두 규모가 크며 안정적인 수익을 추구하는 MMF(Money Market Fund)입니다. 또한, 시장 상황에 따라 수익률이 변동할 수 있으므로 주기적으로 체크하시는 것을 권장 드립니다.",
+    "rules_chars": 3568,
+    "ctx_chars": 5777,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT or_co_xtn_itt_cd, TRIM(itm_nm), fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_nast_suma IS NOT NULL AND fd_nast_suma > 0 ORDER BY 3 DESC LIMIT 5",
+    "answer": "규모가 큰 펀드를 다음과 같이 추천드립니다.\n\n1. 삼성MMF법인제1호 C 클래스 - 삼성자산운용(순자산: 12,4295,362,520원)\n2. KB법인용MMF I- 1 종류C - KB자산운용(순자산: 9,626,578,65629원)\n3. 우리큰만족법인MMF1호(국공채)ClassC - 우리자산운용(순자산: 9,038,952,435738원)\n4. 우리큰만족신종MMF3호 ClassC - 우리자산운용(순자산: 80,496,925,2381원)\n5. 신영법인용MMF 제4-26호 C-I형 - 신영자산운용(순자산: 76,370,516,36362원)\n\n위의 펀드들은 모두 순자산이 큰 편이므로 안정적인 수익을 기대할 수 있습니다. 또한, 시장 상황에 따라 수익률이 변동될 수 있으므로 주기적으로 점검하는 것이 좋습니다.",
+    "rules_chars": 2855,
+    "ctx_chars": 5830,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "FND-C02": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r AS 총보수, or_co_xtn_itt_cd, itm_nm FROM public_funds WHERE or_co_xtn_itt_cd = '00040010' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (or_co_rwrd_r IS NOT NULL OR sale_co_rwrd_r IS NOT NULL OR trusc_rwrd_r IS NOT NULL OR ofwk_trus_rwrd_r IS NOT NULL) LIMIT 30",
+    "answer": "삼성 자산운용사에서 운영하는 펀드들의 보수는 다음과 같습니다.\n\n- 삼성 중국본토 중소형 포커스 증권자투자신탁 UH(주식) Ce: 14.6‰\n- 삼성 누버거버먼 차이나 증권자투자신탁 H(주식-재간접형) A: 8.8‰\n- 삼성 글로벌 중단기 채권 증권자투자신탁 H[채권-재간접형] _Cpe(퇴직연금): 4.05‰\n- 삼성 미국 투자등급 장기채권 증권자투자신탁 UH[채권] _Cpe(퇴직연금): 7.1‰\n- 삼성 S&P500 미국 채권혼합 증권자투자신탁 UH[채권혼합-재간접형] C4: 11.8‰\n- 삼성 CHINA2.0 본토 증권자투자신탁 제2호 [주식] C1 클래스: 24.1‰\n- 삼성 우량주 장기 증권자투자신탁 [주식] B2: 21.7‰\n- 삼성 CHINA 본토 포커스 증권자투자신탁 1 [주식] Class Cp",
+    "rules_chars": 3262,
+    "ctx_chars": 5471,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT or_co_rwrd_r, sale_co_rwrd_r, trusc_rwrd_r, ofwk_trus_rwrd_r FROM public_funds WHERE or_co_xtn_itt_cd = '00040010' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 LIMIT 1",
+    "answer": "삼성 펀드의 보수는 다음과 같습니다.\n\n- 일반사무관리보수(orbit co rwrd): 9.0 ‰\n- 판매보수(sale co rwrd): 5.0 ‰\n- 신탁업자보수(trust co rwrd): 0.6 ‰\n- 기타비용(ofwk trus rwrd): 0.0 ‰\n\n총 4가지 항목의 합인 총보수는 15.0‰입니다.",
+    "rules_chars": 2549,
+    "ctx_chars": 5524,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "FND-R02": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT itm_no, TRIM(itm_nm), fd_mm1_ern_r FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_mm1_ern_r IS NOT NULL AND fd_mm1_ern_r > -100 AND fd_daily_bas_dt BETWEEN 20260815 AND 20260822 ORDER BY 3 DESC LIMIT 5",
+    "answer": "죄송합니다. 지난 1주일 수익률이 가장 높은 공모펀드에 대한 정보를 제공해 드릴 수 없습니다. 해당 데이터는 수록되어 있지 않습니다. 다른 기간(1·3·6·18개월, 2·3·5년) 수익률 기준이나 기타 정보가 필요하시다면 말씀해 주시기 바랍니다.",
+    "rules_chars": 4388,
+    "ctx_chars": 6597,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT COALESCE(CASE WHEN LENGTH(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END, itm_no) as fund_key, itm_nm, fd_yr1_ern_r, fd_daily_bas_dt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 AND mat_dt > 20260815 ORDER BY 3 DESC LIMIT 1",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3667,
+    "ctx_chars": 6642,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "FND-R03": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT itm_no, TRIM(itm_nm), fd_daily_bas_dt FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_price_bas_dt IS NOT NULL ORDER BY fd_price_bas_dt DESC LIMIT 5",
+    "answer": "죄송합니다. 현재 제공된 데이터에서는 기준가가 높은 순서로 정렬한 정보를 찾을 수 없습니다. 따라서 사용자님의 요청에 대한 답변을 제공해 드릴 수 없습니다.\n\n 추가적인 질문이나 도움이 필요하시면 언제든지 문의해주세요.",
+    "rules_chars": 3568,
+    "ctx_chars": 5777,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT or_co_xtn_itt_cd, itm_nm FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_price_bas_dt IS NOT NULL ORDER BY fd_price_bas_dt DESC LIMIT 30",
+    "answer": "조회 결과 30행입니다 (기준일 2026-08-24).\n- 종목명 우리다같이국공채법인달러MMF1호(USD)ClassC-e\n- 종목명 Plus 신종 법인용 MMF1호 종류C\n- 종목명 미래에셋인디아솔로몬증권투자신탁1호(주식)(C-I)\n- 종목명 삼성중국본토중소형FOCUS증권자투자신탁UH(주식)Ce\n- 종목명 삼성누버거버먼차이나증권자투자신탁H(주식-재간접형)A\n- 종목명 미래에셋인디아인프라섹터증권자투자신탁1호(주식)C4\n- 종목명 미래에셋차이나솔로몬증권투자신탁2호(주식)C2\n- 종목명 미래에셋차이나솔로몬증권투자신탁2호(주식)C5\n- 종목명 미래에셋인도중소형포커스증권자투자신탁(주식)A-e\n- 종목명 미래에셋배당과롱숏증권자투자신탁(주식혼합)C-Pe\n… 외 20행",
+    "rules_chars": 2855,
+    "ctx_chars": 5830,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "OFFICIAL-004": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT pd_abrv_nm, pd_nm FROM domestic_etfs WHERE replace(pd_nm,' ','') LIKE '%우주항공%' OR replace(ref_base_index,' ','') LIKE '%Aerospace%' ORDER BY pd_abrv_nm ASC LIMIT 30",
+    "answer": "(국내 상장 ETF 기준, 기준일 2026-08-24)\n최근 6개월 동안 우주항공 테마와 연결 이력이 있는 관련 ETF는 다음과 같습니다.\n\n1. 하나 1Q 미국우주항공테크증권상장지수투자신탁(주식)\n2. 삼성 KODEX 미국우주항공증권상장지수투자신탁[주식]\n3. 한화 PLUS 우주항공 증권상장지수투자신탁(주식)\n4. 신한 SOL 미국우주항공TOP10증권상장지수투자신탁[주식]\n5. 신한 SOL 우주항공밸류체인증권상장지수투자신탁[주식]\n6. 타임폴리오 TIME 글로벌우주테크&방산액티브증권상장지수투자신탁(주식)\n7. 우리 WON 미국우주항공방산증권상장지수투자신탁(주식)\n\n위와 같이 총 7개의 ETF가 있으며, 해당 ETF들은 모두 우주항공 산업과 관련된 주식을 담고 있습니다.",
+    "rules_chars": 3262,
+    "ctx_chars": 5471,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT pd_abrv_nm, pd_nm FROM domestic_etfs WHERE replace(pd_nm,' ','') LIKE '%우주항공%' OR replace(ref_base_index,' ','') LIKE '%Aerospace%' ORDER BY pd_abrv_nm ASC LIMIT 30",
+    "answer": "(국내 상장 ETF 기준, 기준일 2026-08-24)\n최근 6개월 동안 우주항공 테마와 연결 이력이 있는 관련 ETF는 다음과 같습니다.\n\n1. 하나 1Q 미국우주항공테크증권상장지수투자신탁(주식)\n2. 삼성 KODEX 미국우주항공증권상장지수투자신탁[주식]\n3. 한화 PLUS 우주항공 증권상장지수투자신탁(주식)\n4. 신한 SOL 미국우주항공TOP10증권상장지수투자신탁[주식]\n5. 신한 SOL 우주항공밸류체인증권상장지수투자신탁[주식]\n6. 타임폴리오 TIME 글로벌우주테크&방산액티브증권상장지수투자신탁(주식)\n7. 우리 WON 미국우주항공방산증권상장지수투자신탁(주식)\n\n위와 같이 총 7개의 ETF가 있으며, 해당 ETF들은 모두 우주항공 산업과 관련된 주식을 담고 있습니다.",
+    "rules_chars": 2549,
+    "ctx_chars": 5524,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "OFFICIAL-005": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT domestic_etfs.pd_abrv_nm, domestic_etfs.cu_lev_fector, domestic_etfs.pd_risk_nm, domestic_etfs.pd_nm, domestic_etfs.wu_inv_ast_type, domestic_etfs.du_vlty_1y, domestic_etfs.du_last_aum FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE (ext_etf_holdings.constituent IN ('에코프로', '에코프로머티', '에코프로비엠', '에코프로에이치엔')) AND domestic_etfs.du_last_aum IS NOT NULL ORDER BY domestic_etfs.du_last_aum DESC LIMIT 1",
+    "answer": "조회 결과 1행입니다 (기준일 2026-08-24).\n- 종목명 KODEX 200 · 배수 1.0 · 상품위험등급명 높은위험(2등급) · 종목명 삼성 KODEX200 증권상장지수투자신탁[주식] · 투자자산군 주식 · 최근 252거래일 연환산 변동성(%) 42.82473655 · 최종AUM 25834235404500.0",
+    "rules_chars": 3262,
+    "ctx_chars": 5471,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT domestic_etfs.pd_abrv_nm, domestic_etfs.cu_lev_fector, domestic_etfs.pd_risk_nm, domestic_etfs.pd_nm, domestic_etfs.wu_inv_ast_type, domestic_etfs.du_vlty_1y, domestic_etfs.du_last_aum FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE (ext_etf_holdings.constituent IN ('에코프로', '에코프로머티', '에코프로비엠', '에코프로에이치엔')) AND domestic_etfs.du_last_aum IS NOT NULL ORDER BY domestic_etfs.du_last_aum DESC LIMIT 1",
+    "answer": "조회 결과 1행입니다 (기준일 2026-08-24).\n- 종목명 KODEX 200 · 배수 1.0 · 상품위험등급명 높은위험(2등급) · 종목명 삼성 KODEX200 증권상장지수투자신탁[주식] · 투자자산군 주식 · 최근 252거래일 연환산 변동성(%) 42.82473655 · 최종AUM 25834235404500.0",
+    "rules_chars": 2549,
+    "ctx_chars": 5524,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "CROSS-002": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT domestic_etfs.pd_nm AS Domestic_SNP500_Fund_Name, domestic_etfs.cu_charge_rt AS Domestic_Charge_Rate, overseas_etfs.pd_nm AS Overseas_SNP500_Fund_Name, overseas_etfs.cu_charge_rt AS Overseas_Charge_Rate FROM domestic_etfs JOIN overseas_etfs ON domestic_etfs.ref_base_index = overseas_etfs.ref_base_index WHERE (domestic_etfs.ref_base_index LIKE '%S&P500%' OR domestic_etfs.cu_base_index LIKE '%S&P500%') AND (overseas_etfs.ref_base_index LIKE '%S&P500%' OR overseas_etfs.cu_base_index LIKE '%S&P500%') AND domestic_etfs.cu_charge_rt IS NOT NULL AND overseas_etfs.cu_charge_rt IS NOT NULL",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3646,
+    "ctx_chars": 5855,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT domestic_etfs.ref_base_index AS 국내_SNP500_지수명, domestic_etfs.cu_charge_rt AS 국내_총보수, ext_oversea_etfs.cu_charge_rt AS 해외_총보수 FROM domestic_etfs LEFT JOIN ext_oversea_etfs ON domestic_etfs.ref_base_index = ext_oversea_etfs.ref_base_index WHERE domestic_etfs.pd_grp_no = 'ETF' AND (domestic_etfs.ref_base_index LIKE '%S&P500%' OR domestic_etfs.cu_base_index LIKE '%S&P500%') AND domestic_etfs.cu_charge_rt > 0 AND ext_oversea_etfs.cu_charge_rt > 0 LIMIT 30",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 2933,
+    "ctx_chars": 5908,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "CROSS-003": {
+   "A": {
+    "ok": false,
+    "sql": "(SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_last_aum FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE pd_dvid_cycl = 'M' AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 AND pd_tr_yn = 0 AND pd_divd_amt_pshr > 0 ORDER BY 3 DESC LIMIT 5) UNION ALL (SELECT '공모펀드' AS 구분, itm_nm, fd_nast_suma FROM public_funds JOIN ext_fund_holdings ON ext_fund_holdings.grp = public_funds.mtco_itm_no AND ext_fund_holdings.or_co = public_funds.or_co_xtn_itt_cd WHERE public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' AND ext_fund_holdings.holding_nm = '월배당' AND public_funds.fd_nast_suma IS NOT NULL AND public_funds.fd_nast_suma <> 0 ORDER BY 3 DESC LIMIT 5)",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4664,
+    "ctx_chars": 6873,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "(SELECT '국내 ETF', pd_abrv_nm, du_last_aum FROM domestic_etfs JOIN ext_etf_holdings ON ext_etf_holdings.etf_code = domestic_etfs.pd_itm_no WHERE pd_dvid_cycl = 'M' AND pd_divd_amt_pshr > 0 AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 AND wu_inv_rgn = '국내') UNION ALL (SELECT '공모펀드', it.mtco_itm_no, SUM(f.fd_nast_suma) FROM public_funds it JOIN ext_fund_holdings f ON f.grp = it.mtco_itm_no AND f.or_co = it.or_co_xtn_itt_cd WHERE it.sale_yn = '판매중' AND it.prvo_pbff_desc = '공모' AND f.holding_nm LIKE '%분배금%' GROUP BY it.mtco_itm_no) ORDER BY 3 DESC LIMIT 10",
+    "answer": "데이터 조회 중 오류가 발생해 확인할 수 없습니다.",
+    "rules_chars": 3938,
+    "ctx_chars": 6913,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": true,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "T10": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,BRA,%' LIMIT 30",
+    "answer": "브라질에 투자하는 공모펀드는 다음과 같습니다.\n\n1. 미래에셋브라질러시아업종대표증권자투자신탁1호(주식)C1\n2. 미래에셋브라질하이인컴채권증권자투자신탁[채권]C1\n3. KB브라질증권자투자신탁(주식) A클래스\n4. 미래에셋삼바브라질증권자투자신탁 [주식]Ce\n5. 미래에셋연금브라질업종대표증권자투자신탁1호(주식) 종류C-P2e",
+    "rules_chars": 4518,
+    "ctx_chars": 6727,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": true,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT itm_no, itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,BRA,%' LIMIT 30",
+    "answer": "브라질에 투자하는 공모펀드는 다음과 같습니다.\n\n1. 미래에셋브라질러시아업종대표증권자투자신탁1호(주식)C1\n2. 미래에셋브라질하이인컴채권증권자투자신탁[채권]C1\n3. KB브라질증권자투자신탁(주식) A클래스\n4. 미래에셋삼바브라질증권자투자신탁 [주식]Ce\n5. 미래에셋연금브라질업종대표증권자투자신탁1호(주식) 종류C-P2e\n6. NH-Amundi러-브증권자투자신탁3호(주식)C1\n7. 미래에셋브라질하이인컴채권연금저축증권자투자신탁[채권]Ce\n8. 미래에셋브라질업종대표증권자투자신탁1호(주식) 종류C2\n9. 미래에셋연금브라질업종대표증권자투자신탁1호(주식)종류C-P\n10. 미래에셋브라질하이인컴채권증권자투자신탁[채권]Ae\n\n이는 제공된 데이터를 기반으로 한 것이며, 더 많은 브라질 투자 공모펀드가 있을 수 있습니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": true,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-005": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) as cnt FROM public_funds WHERE prvo_pbff_desc = '공모' AND (sale_yn = '판매중' OR sale_yn = '판매완료') AND (itm_nm LIKE '삼성%' OR mgmt_co_nm LIKE '%삼성%')",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) AS cnt FROM public_funds WHERE prvo_pbff_desc = '공모' AND itm_nm LIKE '삼성%' AND mtco_itm_no IN ( SELECT mtco_itm_no FROM public_funds WHERE or_co_xtn_itt_cd = '00040010' ) LIMIT 30",
+    "answer": "조회 결과 1,031클래스(판매 단위)입니다 (기준일 2026-08-24).",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-016": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND or_attr_desc = '채권혼합' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "채권혼합 공모펀드는 총 933개입니다.",
+    "rules_chars": 4082,
+    "ctx_chars": 6291,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' AND or_attr_desc IN ('채권혼합', '주식혼합') AND sale_yn = '판매중' LIMIT 30",
+    "answer": "채권혼합 공모펀드는 총 1,172개입니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-022": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE fd_ivst_rgn_desc = '유럽' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30",
+    "answer": "유럽에 투자하는 공모펀드는 총 193개입니다.",
+    "rules_chars": 4082,
+    "ctx_chars": 6291,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) FROM public_funds WHERE fd_ivst_rgn_desc = '유럽' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30",
+    "answer": "유럽에 투자하는 공모펀드는 총 193개입니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "KG-033": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' ORDER BY estb_dt DESC LIMIT 1",
+    "answer": "가장 최근에 설정된 공모펀드는 '**KB K-성장과 지배구조 30 목표전환 증권 투자신탁(채권혼합) A**'입니다. 이 펀드는 2026년 6월 12일에 설정되었습니다.",
+    "rules_chars": 4082,
+    "ctx_chars": 6291,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT itm_nm, estb_dt FROM public_funds JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE prvo_pbff_desc = '공모' ORDER BY estb_dt DESC LIMIT 1",
+    "answer": "가장 최근에 설정된 공모펀드는 '**KB K-성장과 지배구조 30 목표전환 증권 투자신탁(채권혼합) A**'입니다. 이 펀드는 2026년 6월 12일에 설정되었습니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X10": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) as cnt FROM public_funds WHERE prvo_pbff_desc = '공모' AND (sale_yn = '판매중' OR sale_yn IS NULL) AND (itm_nm LIKE 'KB%' OR mtco_nm LIKE 'KB%')",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) AS cnt FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (itm_nm LIKE 'KB%' OR or_co_xtn_itt_cd = '00040035') LIMIT 30",
+    "answer": "조회 결과 625클래스(판매 단위)입니다 (기준일 2026-08-24).",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "X22": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT COUNT(*) AS cnt, COALESCE(public_funds.trusc_xtn_itt_cd, '국민은행') AS actual_trustee FROM public_funds WHERE or_co_xtn_itt_cd IN ('00040035') AND prvo_pbff_desc = '공모' AND trusc_xtn_itt_cd = '00020004' LIMIT 30",
+    "answer": "KB자산운용 공모펀드 중 국민은행이 수탁하는 펀드는 5개이며, 실제 수탁사는 국민은행(00020004)입니다.",
+    "rules_chars": 4970,
+    "ctx_chars": 7179,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT COUNT(*), trusc_xtn_itt_cd FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND TRIM(trusc_xtn_itt_cd) = '00020004' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다 (조회 결과 0건, 기준일 2026-08-24).",
+    "rules_chars": 4247,
+    "ctx_chars": 7222,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": false,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "Z20": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT zrin_fd_ivst_risk_grd_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND itm_nm LIKE '%코어태크%' LIMIT 1",
+    "answer": "조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「코어태크」를 데이터의 종목명으로 식별하지 못했습니다.",
+    "rules_chars": 3262,
+    "ctx_chars": 5471,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT zrin_fd_ivst_risk_grd_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 LIMIT 1",
+    "answer": "미래에셋 코어테크 펀드의 위험 등급은 '**높은 위험**'입니다.",
+    "rules_chars": 2549,
+    "ctx_chars": 5524,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "FND-005": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT itm_no, TRIM(itm_nm), SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) as total_commission, fd_daily_bas_dt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) IS NOT NULL AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) <> 0 GROUP BY or_co_xtn_itt_cd, CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END ORDER BY 3 ASC LIMIT 5",
+    "answer": "총 보수가 가장 낮은 공모펀드 5개를 알려드리겠습니다.\n\n1.2.3. 미래에셋국공채전용MMFA1호(국공채)F : 총보수 0.4%\n4. 미래에셋법인전용MMFA-4호(C-P2) : 총보수 0.7%\n5. 삼성베스트 MMF 법인 제1호 : 총보수 0.7%\n\n 또한, 클래스마다 보수가 다를 수 있으므로 가입 시 약관을 꼼꼼히 확인하시는 것이 좋습니다.",
+    "rules_chars": 4082,
+    "ctx_chars": 6291,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": true,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT itm_no, TRIM(itm_nm), SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) as total_commission FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) IS NOT NULL AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) > 0 GROUP BY or_co_xtn_itt_cd, CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END ORDER BY 3 ASC LIMIT 5",
+    "answer": "총보수가 가장 낮은 공모펀드 5개를 알려드리겠습니다.\n\n1.2.3. 미래에셋국공채전용MMFA1호(국공채)F : 총보수 0.4%\n4. 미래에셋법인전용MMFA-4호(C-P2) : 총보수 0.7%\n5. 삼성 베스트 MMF 법인 제1호 : 총보수 0.7%\n\n단, 보수는 천분율(‰)이므로 이를 퍼센트(%)로 변환하려면 10으로 나누어야 합니다. 또한, 클래스마다 보수가 다를 수 있으므로 가입 전에 반드시 확인하시기 바랍니다.",
+    "rules_chars": 3361,
+    "ctx_chars": 6336,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": true,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "OFFICIAL-003": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT DISTINCT d.pd_abrv_nm AS 티커, d.pd_nm AS 상품명, e.weight_pct AS 편입비중 FROM domestic_etfs d JOIN ext_etf_holdings e ON d.pd_itm_no=e.etf_code WHERE e.constituent IN ('Cambricon Technologies Corp Ltd', 'Cambricon Technologies Corporation Limited') AND (d.wu_inv_rgn='중국' OR d.ref_geo_focus='China') AND d.pd_grp_no='ETF' AND d.pd_sale_yn=1 AND d.pd_tr_yn=0",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3698,
+    "ctx_chars": 5907,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT DISTINCT d.pd_abrv_nm AS 티커, d.pd_nm AS 상품명, e.weight_pct AS 편입비중 FROM domestic_etfs d JOIN ext_etf_holdings e ON d.pd_itm_no = e.etf_code WHERE e.constituent IN ('Cambricon Technologies Corp Ltd', 'Cambricon Technologies Corporation Limited') AND (d.wu_inv_rgn = '중국' OR d.ref_geo_focus = 'China') AND d.pd_grp_no = 'ETF' AND d.pd_sale_yn = 1 AND d.pd_tr_yn = 0 ORDER BY e.weight_pct DESC LIMIT 10",
+    "answer": "(국내 상장 ETF 기준, 기준일 2026-08-24)\n캠브리콘이 편입된 중국 반도체 ETF로는 다음 상품들이 있습니다.\n\n1.2.3.4.5.\n이 ETF들은 모두 중국 반도체 기업들에 투자하는 상품들로 구성되어 있으며, 캠브리콘을 포함한 다양한 중국 반도체 관련 기업들을 담고 있습니다.",
+    "rules_chars": 2549,
+    "ctx_chars": 5524,
+    "compliance": {
+     "기본모수": null,
+     "펀드단위": null,
+     "대표행": null,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  },
+  "CROSS-001": {
+   "A": {
+    "ok": false,
+    "sql": "SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_er_1y FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent IN ('삼성전자', '삼성전자 (Security)', '005930') AND pd_grp_no = 'ETF' AND du_er_1y IS NOT NULL AND du_er_1y > -100 UNION ALL SELECT '공모펀드', itm_nm, fd_yr1_ern_r FROM public_funds p JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd WHERE f.holding_nm IN ('삼성전자', '삼성전자 (Security)', '005930') AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 ORDER BY 3 DESC LIMIT 10",
+    "answer": "삼성전자를 보유한 국내 ETF와 공모펀드 연 수익률 기준 TOP 10은 다음과 같습니다.\n\n국내 ETF:\n1. TIGER 200 IT 레버리지: 926.89%\n2. KODEX 반도체 레버리지: 619.63%\n3. TIGER 반도체 TOP10 레버리지: 461.53%\n4. PLUS 글로벌 HBM 반도체: 409.47%\n5. HANARO Fn K-반도체: 386.5%\n6. TIGER 레버리지: 372.41%\n7. ACE 레버리지: 366.04%\n8. KODEX 레버리지: 365.44%\n\n공모펀드:\n1. 마이다스 아시아 리더스 성장주 증권 자투자신탁(H)(주식) Ce 클래스: 1436.24%\n2. 미래에셋 소비성장 연금 증권 전환형 자투자신탁 1호(주식) C-e: 393.91%\n\n위 목록은 연 수익률 기준으로 정",
+    "rules_chars": 4557,
+    "ctx_chars": 6766,
+    "compliance": {
+     "기본모수": false,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   },
+   "B": {
+    "ok": false,
+    "sql": "SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_er_1y FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no WHERE h.constituent IN ('삼성전자', '삼성전자 (Security)', 'Samsung Electronics Co., Ltd.') AND e.pd_grp_no = 'ETF' AND e.pd_sale_yn = 1 AND e.pd_lstg_dt = 99991231 AND e.cu_charge_rt > 0 AND e.cu_lev_fector IS NOT NULL AND e.cu_lev_fector <> 0 AND e.cu_charge_rt IS NOT NULL AND e.cu_charge_rt <> 0 AND e.pd_er_1y IS NOT NULL AND e.pd_er_1y <> 0 AND e.pd_er_1y > -100 ORDER BY e.pd_er_1y DESC LIMIT 10 UNION ALL SELECT '해외 ETF', pd_abrv_nm, du_er_1y FROM overseas_etfs e JOIN ext_ovs_etf_holdings h ON h.etf_ticker = replace(replace(e.pd_itm_no,'.K',''),'.O','') WHERE h.holding_name IN ('삼성전자', 'Samsung Electronics Co., Ltd.') AND e.pd_grp_no = 'ETF' AND e.pd_sale_yn = 1 AND e.pd_lstg_dt = 99991231 AND e.cu_charge_rt > 0 AND e.cu_lev_fector IS NOT NULL AND e.cu_lev_fector <> 0 AND e.cu_charge_rt IS NOT NULL AND e.cu_charge_rt <> 0 AND e.pd_er_1y IS NOT NULL AND e.pd_er_1y <> 0 AND e.pd_er_1y > -100 ORDER BY e.pd_er_1y DESC LIMIT 10 UNION ALL SELECT '공모펀드', p.itm_nm, p.fd_yr1_ern_r FROM public_funds p JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd WHERE f.holding_nm IN ('삼성전자', '삼성전자 (Security)', 'Samsung Electronics Co., Ltd.') AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND p.fd_yr1_ern_r IS NOT NULL AND p.fd_yr1_ern_r <> 0 AND p.fd_yr1_ern_r > -100 ORDER BY 3 DESC LIMIT 10",
+    "answer": "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.",
+    "rules_chars": 3836,
+    "ctx_chars": 6811,
+    "compliance": {
+     "기본모수": true,
+     "펀드단위": null,
+     "대표행": false,
+     "국가태그": null,
+     "등급방향": null
+    }
+   }
+  }
+ }
+}

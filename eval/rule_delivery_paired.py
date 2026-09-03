@@ -138,21 +138,78 @@ def disable_guards():
 
 
 def load_questions(smoke: bool) -> list[dict]:
-    """지시서 §4-3-3 의 문항 셋.
+    """문항 셋 = 15R ❌30 + 🟡11 (리드 제공, 2026-09-03).
 
-    🔴 15R ❌30 은 리포에서 기계로 복원되지 않는다 — eval/verdicts_merged.json 은 13R 까지고
-       docs/answer_quality_by_type_2026-09-03.md 는 30건 중 11건만 ID 로 지명한다.
-       그래서 여기서는 **재현 가능한 대체 셋**을 쓴다: 펀드 gold 20 + 공식 예시 8 +
-       품질 보고서가 ID 로 지명한 15R ❌ 문항 중 gold 에 있는 것. 원 셋을 쓰려면 리드가
-       ❌30 의 qid 목록을 주면 이 함수만 바꾼다.
+    qid 목록: `eval/qids_15R_fail.txt`(30) · `eval/qids_15R_mid.txt`(11).
+    질문 원문은 gold jsonl 에 있으면 거기서(gold_sql 도 함께 온다), 없으면 probe txt 에서 가져온다.
+    🔴 probe 에서 온 문항은 `gold_sql` 이 없다 — `judge` 가 거절형으로 채점하므로 **answer 문항은
+       전부 오답 처리된다.** 그래서 채점 모수를 gold_sql 보유 문항으로 한정하고, 나머지는
+       "SQL 생성 여부"만 기록한다(아래 main 의 scored 참조).
     """
+    want: list[str] = []
+    for f in ("qids_15R_fail.txt", "qids_15R_mid.txt"):
+        want += [l.strip() for l in (ROOT / "eval" / f).read_text(encoding="utf-8").splitlines() if l.strip()]
+
+    gold: dict[str, dict] = {}
+    for p in sorted((ROOT / "eval").glob("questions_*.jsonl")):
+        for line in p.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                gold[d["qid"]] = d
+    probe: dict[str, str] = {}
+    for p in sorted((ROOT / "eval").glob("probe_*.txt")):
+        for line in p.read_text(encoding="utf-8").splitlines():
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) >= 2 and parts[0] not in probe:
+                probe[parts[0]] = parts[1]
+
     qs: list[dict] = []
-    for f in ("questions_public_funds.jsonl", "questions_official_sample.jsonl"):
-        p = ROOT / "eval" / f
-        qs += [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    for qid in want:
+        if qid in gold:
+            qs.append({**gold[qid], "_src": "gold"})
+        elif qid in probe:
+            qs.append({"qid": qid, "question": probe[qid], "expected_behavior": "answer", "_src": "probe"})
     if smoke:
-        qs = [q for q in qs if q["qid"] in ("FND-001", "FND-012")] or qs[:2]
+        qs = qs[:2]
     return qs
+
+
+# ── §4-3-4 규칙별 준수 여부 — "SQL 에 확정식이 나타났는가" ────────────────
+# 🔴 이게 H3 의 **직접 측정**이다. 정답률은 gold_sql 이 있는 문항에만 매길 수 있는데
+#    15R ❌30 은 대부분 probe 유래라 gold 가 없다(41 중 7). 준수 여부는 41 전부에서 잰다.
+#    "규칙이 실렸는데 지켰는가" 를 보는 것이므로 오히려 가설에 더 가까운 자다.
+_FUNDKEY = re.compile(r"or_co_xtn_itt_cd.{0,120}mtco_itm_no", re.S | re.I)
+_COUNTRY_WORDS = ("중국", "미국", "인도", "베트남", "일본", "러시아", "브라질", "홍콩", "독일", "대만", "호주", "스페인")
+_SAFE_WORDS = ("안전", "안정")
+
+
+def rule_compliance(question: str, sql: str) -> dict[str, bool | None]:
+    """규칙 5개 × (적용 대상인가 / 지켰는가). 대상이 아니면 None."""
+    sql = sql or ""
+    low = sql.lower()
+    fund = "public_funds" in low
+    ranking = bool(re.search(r"order\s+by", low)) or bool(re.search(r"count\s*\(|sum\s*\(", low))
+    counting = any(w in question for w in ("몇 개", "개수", "몇개"))
+    out: dict[str, bool | None] = {}
+    # 기본모수 — 펀드 집계·랭킹이면 판매중·공모 두 조건이 다 있어야 한다
+    out["기본모수"] = (("sale_yn" in low and "prvo_pbff_desc" in low)
+                   if (fund and ranking) else None)
+    # 펀드단위 — 펀드 개수 질의면 펀드키(or_co + mtco)가 SQL 에 있어야 한다
+    out["펀드단위"] = (bool(_FUNDKEY.search(sql)) if (fund and counting) else None)
+    # 대표행 — 펀드 랭킹이면 펀드키로 GROUP BY 해야 한다
+    out["대표행"] = ((bool(re.search(r"group\s+by", low)) and bool(_FUNDKEY.search(sql)))
+                  if (fund and re.search(r"order\s+by", low) and not counting) else None)
+    # 국가태그 — 국가어가 있으면 prfd_attr_cds 태그식으로 풀어야 한다(지역 컬럼 아님)
+    has_country = any(w in question for w in _COUNTRY_WORDS)
+    out["국가태그"] = (("prfd_attr_cds" in low and "fd_ivst_rgn_desc" not in low)
+                   if (fund and has_country) else None)
+    # 위험등급 방향 — '안전' 질의면 6등급(낮은 위험)이어야 한다. 1·2 면 뒤집힌 것
+    has_safe = any(w in question for w in _SAFE_WORDS)
+    if fund and has_safe and "zrin_fd_ivst_risk_gcd" in low:
+        out["등급방향"] = not bool(re.search(r"zrin_fd_ivst_risk_gcd\s*=\s*[12](?![0-9])", low))
+    else:
+        out["등급방향"] = None
+    return out
 
 
 def main() -> int:
@@ -185,15 +242,20 @@ def main() -> int:
                 "ok": ok, "sql": r.sql, "answer": (r.answer or "")[:400],
                 "rules_chars": rules_only_size(ctx, q["question"]),
                 "ctx_chars": block_size(ctx, q["question"]),
+                "compliance": rule_compliance(q["question"], r.sql or ""),
             }
             print(f"[{cond}] {q['qid']} {'✅' if ok else '❌'} {q['question'][:44]}")
     dt = time.time() - t0
 
     conds = a.conditions.split(",")
-    n = len(qs)
-    summary = {"n": n, "seconds": round(dt, 1), "per_query_sec": round(dt / max(1, n * len(conds)), 1)}
+    # 🔴 채점 모수는 **gold_sql 이 있는 문항**뿐이다. probe 에서만 온 문항은 정답 기준이 없어
+    #    judge 가 거절형으로 떨어뜨린다 — 그걸 분모에 넣으면 두 조건이 똑같이 깎여 차이가 희석된다.
+    scored = [q["qid"] for q in qs if q.get("gold_sql")]
+    n = len(scored)
+    summary = {"n_asked": len(qs), "n_scored": n, "n_unscored": len(qs) - n,
+               "seconds": round(dt, 1), "per_query_sec": round(dt / max(1, len(qs) * len(conds)), 1)}
     for c in conds:
-        k = sum(1 for v in outcome.values() if (v.get(c) or {}).get("ok"))
+        k = sum(1 for q, v in outcome.items() if q in scored and (v.get(c) or {}).get("ok"))
         lo, hi = wilson(k, n)
         summary[c] = {"ok": k, "rate": round(k / n, 3), "wilson95": [round(lo, 3), round(hi, 3)],
                       "rules_chars_avg": round(sum(sizes[c]) / max(1, len(sizes[c])))}
@@ -201,11 +263,26 @@ def main() -> int:
     if len(conds) == 2:
         A, B = conds
         ok_ = lambda v, m: bool((v.get(m) or {}).get("ok"))
-        b = sum(1 for v in outcome.values() if ok_(v, A) and not ok_(v, B))
-        c_ = sum(1 for v in outcome.values() if ok_(v, B) and not ok_(v, A))
+        b = sum(1 for q, v in outcome.items() if q in scored and ok_(v, A) and not ok_(v, B))
+        c_ = sum(1 for q, v in outcome.items() if q in scored and ok_(v, B) and not ok_(v, A))
         p = mcnemar_exact_p(b, c_)
         summary["mcnemar"] = {"b_A_only": b, "c_B_only": c_, "exact_p": round(p, 4)}
         print(f"McNemar {A}-only {b} · {B}-only {c_} · exact p = {p:.4f}")
+
+    # ── §4-3-4 준수율 표 ──
+    RULES = ("기본모수", "펀드단위", "대표행", "국가태그", "등급방향")
+    print("\n=== §4-3-4 규칙별 준수 (대상 문항 / 지킨 문항) ===")
+    print(f"  {'규칙':10s}" + "".join(f"{c:>16s}" for c in conds))
+    comp: dict = {}
+    for rule in RULES:
+        row = {}
+        for c in conds:
+            vals = [(v.get(c) or {}).get("compliance", {}).get(rule) for v in outcome.values()]
+            tgt = [x for x in vals if x is not None]
+            row[c] = {"target": len(tgt), "kept": sum(1 for x in tgt if x)}
+        comp[rule] = row
+        print(f"  {rule:10s}" + "".join(f"{row[c]['kept']:>7d}/{row[c]['target']:<8d}" for c in conds))
+    summary["compliance"] = comp
 
     Path(a.out).write_text(json.dumps({"summary": summary, "outcome": outcome},
                                       ensure_ascii=False, indent=1), encoding="utf-8")

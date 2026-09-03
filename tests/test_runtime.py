@@ -1524,3 +1524,34 @@ def test_residual_name_token_strips_trailing_product_noun():
         == "삼성코리아대표증권자투자신탁"
     # 머리명사만 있는 질의는 후보가 없다 (되묻기·일반 조회 경로 보존)
     assert residual_name_token("공모펀드는 유형별로 몇 개씩 있어?", []) is None
+
+
+def test_refusal_reason_keeps_tail_and_hides_identifiers():
+    """기각 사유를 사람 말로 앞에 붙이되, 두 가지를 지킨다 (2026-09-03 17R).
+
+    ① 문장 끝 거절 어휘는 그대로 — 환각 방지 판정이 이 어휘를 본다.
+    ② 컬럼명·테이블명 같은 내부 식별자를 사용자 문장에 넣지 않는다(사유는 think_trace 에 있다).
+    """
+    import re as _re
+    from src.runtime.pipeline import refusal_reason_text
+
+    ident = _re.compile(r"[a-z]{2,}_[a-z_]{2,}|domestic_|public_funds|ext_")
+    errs = [
+        "스키마에 없는 컬럼: mat_dt(→ domestic_bonds 컬럼이다. 이 테이블에는 없다)",
+        "라우팅 대상(public_funds + 짝 ext_*) 밖 테이블 사용: domestic_etfs",
+        "여러 테이블에 있는 컬럼을 한정하지 않았다(실행 시 ambiguous 오류): itm_no",
+        "코드 컬럼 리터럴 검증 실패: or_co_xtn_itt_cd",
+        "LIMIT 누락",
+        "아래 2가지를 **한 번에** 고친다 — (1) 스키마에 없는 컬럼: zrin_val (2) LIMIT 누락",
+        None,
+        "부류를 못 가리는 새 사유",
+    ]
+    for e in errs:
+        text = refusal_reason_text(e)
+        assert text.endswith("답변을 제공하지 못했습니다."), text
+        assert not ident.search(text), f"내부 식별자 노출: {text}"
+
+    # 부류를 가린 것은 종전 문구와 달라야 한다(이유가 붙어야 한다)
+    assert refusal_reason_text(errs[0]) != refusal_reason_text(None)
+    # 부류를 못 가리면 종전 문구 그대로
+    assert refusal_reason_text(None).startswith("질의를 안전하게 실행할 수 없어")

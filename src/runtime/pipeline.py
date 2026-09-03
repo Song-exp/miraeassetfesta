@@ -418,6 +418,40 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
         " / ".join(f"({i}) {e}" for i, e in enumerate(errs[:3], 1))
 
 
+# ── 기각 사유 → 사용자 문장 (2026-09-03 17R) ────────────────────────────────
+# 재생성 뒤에도 SQL 이 기각되면 종전엔 "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다." 만
+# 나갔다 — 사용자는 **무엇이 왜 안 되는지 모른다.** 17R 실측에서 이 문구가 5건 → 7건으로 늘었고,
+# Z10·AA6 은 15R 의 "값이 데이터에 없어"(이유 있음) 에서 이 문구(이유 없음)로 퇴행했다.
+#
+# 규칙 셋:
+#   ① 문장 **끝**의 거절 어휘는 건드리지 않는다 — 환각 방지 판정이 이 어휘를 본다.
+#   ② 컬럼명·테이블명 같은 **내부 식별자를 사용자 문장에 넣지 않는다**. 사유는 think_trace 에 이미 있다.
+#   ③ 문항별 분기 금지 — 기각 부류 단위 매핑 하나다.
+_REFUSAL_TAIL = "답변을 제공하지 못했습니다."
+_REFUSAL_REASONS: tuple[tuple[str, str], ...] = (
+    # (err 안에서 찾을 표지, 사용자에게 할 말) — 위에서부터 먼저 맞는 것 하나
+    ("스키마에 없는 컬럼", "질문하신 항목이 이 상품 유형의 데이터에 없어"),
+    ("라우팅 대상", "질문의 상품군 밖 자료를 함께 봐야 하는 조건이라"),
+    ("허용 테이블 밖", "질문의 상품군 밖 자료를 함께 봐야 하는 조건이라"),
+    ("여러 테이블에 있는 컬럼", "같은 이름의 항목이 여러 자료에 있어 어느 쪽인지 정하지 못해"),
+    ("코드 컬럼 리터럴", "질문에 나온 대상을 데이터의 코드로 확정하지 못해"),
+    ("WHERE 절에 윈도우", "요청하신 계산이 조회 조건으로는 표현되지 않아"),
+    ("SQLite 문법이 아니다", "조회문을 규격에 맞게 만들지 못해"),
+    ("다중 문장", "조회문을 규격에 맞게 만들지 못해"),
+    ("SELECT 만 허용", "조회문을 규격에 맞게 만들지 못해"),
+    ("금지 키워드", "조회문을 규격에 맞게 만들지 못해"),
+    ("LIMIT 누락", "조회문을 규격에 맞게 만들지 못해"),
+)
+
+
+def refusal_reason_text(err: str | None) -> str:
+    """기각 사유(내부 문자열) → 사용자 문장. 부류를 못 가리면 종전 문구 그대로."""
+    for needle, human in _REFUSAL_REASONS:
+        if err and needle in err:
+            return f"{human} {_REFUSAL_TAIL}"
+    return f"질의를 안전하게 실행할 수 없어 {_REFUSAL_TAIL}"
+
+
 _TOP_N = re.compile(r"(\bselect\s+)(?:distinct\s+)?top\s+(\d+)\s+", re.I)
 
 
@@ -7472,7 +7506,7 @@ def answer_question(
             step("[Decision] 값이 DB 에 없거나 SQL 이 안전하지 않아 종료 (조건을 완화하지 않는다)")
             result.think_trace = "\n".join(trace)
             result.answer = ("요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다." + _issuer_clarify_text(_violated_issuer(violations))
-                             if violations else "질의를 안전하게 실행할 수 없어 답변을 제공하지 못했습니다.")
+                             if violations else refusal_reason_text(err))
             return result
     step("[Guard] SQL 검사 통과 (SELECT 단일문 · 테이블 화이트리스트 · LIMIT · WHERE 값 사전 대조)")
 

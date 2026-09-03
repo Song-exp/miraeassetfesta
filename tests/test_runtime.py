@@ -1453,3 +1453,57 @@ def test_full_path_next_year_maturity_not_rejected(ctx):
             return "ok"
     r2 = answer_question("T-51b", "2027년 채권 시장 전망 알려줘", planner=Forecast(), ctx=ctx)
     assert "시점·전망 질의로 판정" in r2.think_trace and "2026-08-24" in r2.answer
+
+
+# ── 국고채 가드 머리명사 판별 + 채권 종목 수 기계 조립 — 2026-09-03 서버 실측 #52 회귀 ──────────
+# "국고채를 포함해서 국공채는 전부 몇 종목이야?" → HCX 는 대분류 국공채를 맞게 썼는데 ensure_ktb_kind ②가 '국고채' 낱말만 보고
+# 확정식으로 좁혀 295(정답 1,775). 답변도 "국고채를 포함한 국공채는 295종목" 으로 국공채 = 국고채 단정.
+
+def test_ktb_head_is_gov():
+    from src.runtime.pipeline import ktb_head_is_gov, ensure_ktb_kind
+    assert ktb_head_is_gov("국고채를 포함해서 국공채는 전부 몇 종목이야?")
+    assert ktb_head_is_gov("국공채는 몇 종목이야?")
+    assert ktb_head_is_gov("국고채까지 합쳐서 국공채 전체 알려줘")
+    assert not ktb_head_is_gov("국공채 중 국고채만 몇 종목이야?")
+    assert not ktb_head_is_gov("국공채 가운데 국채는 몇 개야?")
+    assert not ktb_head_is_gov("국고채는 총 몇 종목이야?")
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='국공채'"
+    assert not ensure_ktb_kind(sql, "국고채를 포함해서 국공채는 전부 몇 종목이야?")[1]          # 대분류 유지
+    assert "국고채권" in ensure_ktb_kind(sql, "국공채 중 국고채만 몇 종목이야?")[0]              # 부분집합은 교체
+    assert "국고채권" in ensure_ktb_kind(sql, "국고채는 총 몇 종목이야?")[0]                     # 종전 동작 유지(BND-D-029)
+    # ① 날조 발행사 제거는 머리명사와 무관하게 남는다
+    fixed, changed = ensure_ktb_kind(sql + " AND TRIM(pd_pbcm)='한국은행'", "국고채를 포함해서 국공채는 전부 몇 종목이야?")
+    assert changed and "한국은행" not in fixed and "std_pd_mcls_nm)='국공채'" in fixed
+
+
+class GovCountPlanner:
+    """HCX 가 맞게 쓴 SQL — 가드가 이것을 깨면 안 된다."""
+
+    def plan_sql(self, question, grounding):
+        return "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='국공채'"
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "HCX 산문"
+
+
+def test_full_path_gov_count_including_ktb(ctx):
+    r = answer_question("T-52", "국고채를 포함해서 국공채는 전부 몇 종목이야?", planner=GovCountPlanner(), ctx=ctx)
+    assert "[Guard] 국고채 종류 교정 보류" in r.think_trace and "[Guard] 국고채 종류 교정 —" not in r.think_trace
+    assert "std_pd_mcls_nm)='국공채'" in r.sql and "국고채권" not in r.sql
+    assert "[Answer] 채권 종목 수 답변 기계 조립" in r.think_trace and r.answer != "HCX 산문"
+    assert "1,775종목" in r.answer and "그중 국고채(국고채권 + STRIPS)는 295종목" in r.answer
+    # 부분집합 질의는 종전대로 확정식 교체 → 295
+    r2 = answer_question("T-52b", "국공채 중 국고채만 몇 종목이야?", planner=GovCountPlanner(), ctx=ctx)
+    assert "[Guard] 국고채 종류 교정 —" in r2.think_trace and "295종목" in r2.answer and "1,775" not in r2.answer
+    # 대조군 — 국고채 언급 없는 국공채 집계는 가드 미발동
+    r3 = answer_question("T-52c", "국공채는 몇 종목이야?", planner=GovCountPlanner(), ctx=ctx)
+    assert "국고채 종류 교정" not in r3.think_trace and r3.answer.startswith("국공채는 총 1,775종목입니다")
+
+
+def test_bond_count_answer_shapes():
+    from src.runtime.pipeline import _bond_count_answer
+    sql = "SELECT COUNT(DISTINCT pd_no) AS n FROM domestic_bonds WHERE curr_cd='KRW' AND applied_yield > 5 LIMIT 1"
+    assert _bond_count_answer(sql, "n\n1406", 1, "수익률 5% 넘는 채권은 몇 종목이야?") == "수익률 5% 넘는 채권은 총 1,406종목입니다 (기준일 2026-08-24)."
+    assert _bond_count_answer(sql, "n\n0", 1, "x 몇 종목이야?") is None                       # 0 은 _zero_count_answer 몫
+    assert _bond_count_answer("SELECT COUNT(DISTINCT pd_no) AS n, COUNT(*) AS r FROM domestic_bonds LIMIT 1", "n | r\n33 | 40", 1, "통안채 몇 개 있어?") is None   # 2열은 불개입
+    assert _bond_count_answer("SELECT TRIM(bd_knd), COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY 1 LIMIT 30", "a | b\nx | 1", 1, "종류별 몇 개") is None

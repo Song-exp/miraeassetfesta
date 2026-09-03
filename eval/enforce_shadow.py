@@ -105,37 +105,78 @@ def norm(s: str | None) -> str:
     return " ".join((s or "").split()).lower()
 
 
-def judge_one(qid, question, src, raw, guarded, ctx_slot, con) -> dict:
-    """한 문항의 5분류 판정. raw_sql·guarded 만 있으면 되므로 재판정에 HCX 가 필요 없다."""
+# 🔴 슬롯 ↔ **짝이 되는 코드 가드** 대응. 절차 §3-3 의 판정표는 "가드 × 문항" 이다.
+#    1차 시도에서 슬롯 출력과 `result.sql`(가드 **30개 전체**를 통과한 SQL)을 비교했는데,
+#    이러면 다른 가드가 하나라도 발동할 때마다 무조건 '다름' 이 나온다 — 실제로 8건 중 3건이
+#    ensure_trimmed_compare · 종목명 정규화 · holdings 템플릿 같은 **남의 가드** 때문이었다.
+#    짝 가드만 raw_sql 에 적용해 슬롯과 1:1로 견준다.
+SLOT_GUARD = {
+    "BASEPOP":  lambda sql, q: pipeline.ensure_fund_base_population(sql, q)[0],
+    "FUNDUNIT": lambda sql, q: pipeline.ensure_fund_distinct_count(sql, q)[0],
+    "IDXCANON": lambda sql, q: pipeline.ensure_etf_index_canon(sql)[0],
+}
+
+
+def judge_one(qid, question, src, raw, guarded_all, ctx_slot, con) -> dict:
+    """슬롯 하나 = 판정 하나. raw_sql 만 있으면 되므로 재판정에 HCX 가 필요 없다.
+
+    `guarded_all`(가드 전체 통과분)은 참고로만 남기고 판정에는 쓰지 않는다 — 위 주석 참조.
+    """
     tables = route(question, ctx_slot).tables
     slotted, fired = guard.apply_enforce(raw, question, tables, set(), ctx_slot)
-    slotted_cmp = norm(slotted).split("/*m:")[0].strip()   # 표식 주석은 의미가 아니라 발동 흔적
-    g_fired = norm(guarded) != norm(raw)
-    s_fired = bool(fired)
-    if not g_fired and not s_fired:
-        verdict = "둘 다 미발동"
-    elif g_fired and not s_fired:
-        verdict = "가드만 발동"
-    elif s_fired and not g_fired:
-        verdict = "슬롯만 발동"
-    elif norm(guarded) == slotted_cmp:
-        verdict = "둘 다·동일 SQL"
-    else:
-        same = same_result(con, guarded, slotted) if raw else None
-        verdict = ("둘 다·결과동일" if same else
-                   ("둘 다·SQL 다름" if same is False else "둘 다·판정불가"))
-    print(f"  {qid:16s} {verdict:14s} {question[:40]}")
-    return {"q": question, "src": src, "verdict": verdict, "fired": fired,
-            "raw_sql": raw, "guarded": guarded, "slotted": slotted}
+    rows = []
+    for mark, apply_guard in SLOT_GUARD.items():
+        try:
+            g_only = apply_guard(raw, question)
+        except Exception as e:                      # noqa: BLE001 — 가드가 죽으면 그것도 기록거리다
+            rows.append({"mark": mark, "verdict": "가드 예외", "error": str(e)[:120]})
+            continue
+        g_fired = norm(g_only) != norm(raw)
+        s_fired = mark in fired
+        if not g_fired and not s_fired:
+            v = "둘 다 미발동"
+        elif g_fired and not s_fired:
+            v = "가드만 발동"
+        elif s_fired and not g_fired:
+            v = "슬롯만 발동"
+        else:
+            # 슬롯만 적용한 SQL 을 얻으려면 그 슬롯 하나만 켠 것과 같아야 하는데,
+            # 표식 주석을 떼면 raw 에 그 슬롯 효과만 얹힌 형태다(다른 슬롯은 조건이 달라 대개 미발동).
+            s_only = norm(slotted).split("/*m:")[0].strip()
+            if norm(g_only) == s_only:
+                v = "둘 다·동일 SQL"
+            else:
+                same = same_result(con, g_only, slotted)
+                v = ("둘 다·결과동일" if same else
+                     ("둘 다·SQL 다름" if same is False else "둘 다·판정불가"))
+        rows.append({"mark": mark, "verdict": v, "guard_only": g_only})
+    worst = next((r["verdict"] for r in rows if r["verdict"] == "둘 다·SQL 다름"),
+                 next((r["verdict"] for r in rows if r["verdict"] == "슬롯만 발동"),
+                      next((r["verdict"] for r in rows if r["verdict"].startswith("둘 다")),
+                           rows[0]["verdict"] if rows else "둘 다 미발동")))
+    print(f"  {qid:16s} {worst:14s} {question[:40]}")
+    return {"q": question, "src": src, "verdict": worst, "fired": fired, "per_slot": rows,
+            "raw_sql": raw, "guarded_all": guarded_all, "slotted": slotted}
 
 
 def report(out, turned_on, dt, path, n) -> None:
     from collections import Counter
+    # 슬롯별 판정표 — 절차 §3-3 이 요구한 "가드 × 문항"
+    per = {}
+    for v in out.values():
+        for r in v.get("per_slot") or []:
+            per.setdefault(r["mark"], Counter())[r["verdict"]] += 1
+    print("\n=== 슬롯별 판정 (짝 가드와 1:1) ===")
+    keys = ["둘 다 미발동", "가드만 발동", "슬롯만 발동", "둘 다·동일 SQL",
+            "둘 다·결과동일", "둘 다·SQL 다름", "둘 다·판정불가", "가드 예외"]
+    print(f"  {'슬롯':10s}" + "".join(f"{k[:8]:>10s}" for k in keys))
+    for mark, c in per.items():
+        print(f"  {mark:10s}" + "".join(f"{c.get(k, 0):>10d}" for k in keys))
     tally = Counter(v["verdict"] for v in out.values())
     print("\n=== 판정표 (절차 §3-3) ===")
     for k, cnt in tally.most_common():
         print(f"  {k:16s} {cnt:4d}")
-    hard = tally.get("둘 다·SQL 다름", 0)
+    hard = sum(c.get("둘 다·SQL 다름", 0) for c in per.values())
     print(f"\n🔴 전환 통과 조건 — '둘 다·SQL 다름' = {hard} (0 이어야 단계 3 진행)")
     print(f"슬롯만 발동 {tally.get('슬롯만 발동', 0)}건 = 가드가 못 닿던 자리(이득 후보)")
     Path(path).write_text(json.dumps(

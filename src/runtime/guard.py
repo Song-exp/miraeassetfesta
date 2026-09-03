@@ -586,8 +586,15 @@ def _match_when(spec: dict, sql: str, question: str, tables: list[str], grounded
     """다섯 축 판정 — tables / question / grounded / sql.has / sql.lacks (+ any_of_has).
     축 밖의 키가 있으면 **발동하지 않는다** (validate_enforce 가 로드에서 거르지만 이중 방어)."""
     want = spec.get("tables")
-    if want and not (set(want) & set(tables)):
-        return False
+    if want:
+        # 🔴 라우팅 테이블이 아니라 **이 SQL(가지)의 FROM/JOIN** 으로 판정한다 —
+        #    절차 §2-1 의 "이 테이블이 FROM/JOIN 에 있으면 (UNION 가지 각각 독립 판정)" 그대로.
+        #    2026-09-03 섀도에서 라우팅으로 보다가 public_funds 가 없는 holdings 조인 SQL
+        #    (KG-028·X2·Z7·Z8)에 sale_yn 을 주입해 깨뜨렸다. 라우팅은 "질문이 어디를 향하는가" 고
+        #    슬롯이 고치는 것은 "이 SQL 이 무엇을 읽는가" 라, 둘은 다른 축이다.
+        in_sql = set(sql_tables(sql))
+        if not (set(want) & in_sql):
+            return False
     q = spec.get("question") or {}
     if q.get("any") and not any(str(w) in question for w in q["any"]):
         return False

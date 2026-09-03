@@ -223,3 +223,48 @@ def test_attr_tag_same_column_residual():
         assert con.execute(out).fetchone()[0] == 6      # gold 3펀드 / 6클래스
     finally:
         con.close()
+
+
+# ── P2-e · 재검 ③-3 (부류 AD) — 억원은 SQL 이 구운 열을 조립기가 그대로 쓴다 ─────────────────
+_LK_SQL = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\", "
+           "CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, "
+           "CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\", "
+           "MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND (TRIM(or_co_xtn_itt_cd) = '00040067' AND REPLACE(itm_nm,' ','') LIKE '%테스트%' "
+           "AND (REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2호*' OR REPLACE(itm_nm,' ','') GLOB '*[^0-9.]2[([]*')) "
+           "GROUP BY 1 LIMIT 30")
+_LK_HEAD = "대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | fd_nast_suma | 순자산_억원 | 대표번호"
+
+
+def test_lookup_answer_uses_baked_eok():
+    """절사로 남아 있던 조립기가 SQL 이 구운 ROUND 열을 그대로 옮긴다 (254,000,000원 → 2억 아니라 3억)."""
+    rows = _LK_HEAD + "\nKR1 | 테스트펀드 | 1 | 1 | 254000000 | 3억원 | R1"
+    out = P._lookup_answer(_LK_SQL, rows, 1, "테스트", [])
+    assert out and "순자산 3억원" in out and "2억원" not in out
+
+
+def test_lookup_answer_rounds_when_no_baked_column():
+    """구운 열이 없을 때만 조립기가 굽고, 그때도 ROUND 다."""
+    head = "대표_itm_no | itm_nm | 클래스수 | 판매중클래스수 | fd_nast_suma | 대표번호"
+    rows = head + "\nKR1 | 테스트펀드 | 1 | 1 | 254000000 | R1"
+    out = P._lookup_answer(_LK_SQL, rows, 1, "테스트", [])
+    assert out and "순자산 3억원" in out
+
+
+# ── P4-g · 재검 ③-4 (Y14) — 중첩 OR 때문에 개별 조회 조립기가 꺼지지 않는다 ───────────────────
+def test_lookup_answer_fires_with_nested_or():
+    """호수 경계 가드가 심은 **중첩** OR 이 이름 조회 판정을 꺼뜨리면 안 된다 — 가드가 늘 때마다 재발할 구조였다."""
+    assert P._has_name_filter(_LK_SQL) is True
+    rows = _LK_HEAD + "\nKR5117450025 | 신한중국의꿈증권자투자신탁제2호(H)[주식]종류A | 4 | 4 | 106915036337 | 1,069억원 | 030480108616"
+    out = P._lookup_answer(_LK_SQL, rows, 1, "신한중국의꿈증권자투자신탁제2호", [])
+    assert out and "1,069억원" in out and "클래스 4개" in out and P.gate.DATA_CUTOFF in out
+
+
+def test_has_name_filter_still_rejects_top_level_or():
+    """태그 ∪ 이름 목록(KG-021)은 여전히 이름 조회가 아니다 — 최상위 OR 는 종전대로 걸린다."""
+    from src.runtime import loader
+    loader.load_context()
+    sql = ("SELECT itm_nm FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,TWN,%' "
+           "OR REPLACE(itm_nm,' ','') LIKE '%대만%') AND sale_yn = '판매중' LIMIT 30")
+    assert P._has_name_filter(sql) is False

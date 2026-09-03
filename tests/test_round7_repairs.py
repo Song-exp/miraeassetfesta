@@ -170,10 +170,12 @@ def test_lookup_grouping_shape_invariant(ctx):
         assert frag in a, (frag, a)
     assert "KB차이나그로스" in a                                   # 6R 은 이 펀드를 통째로 누락했다
 
-    # ② T14 — `AVG(fd_nast_suma)` 를 써도 SUM 으로 되굽는다: 4펀드 2,528/766/769/183억 ("212억원" 아님)
+    # ② T14 — `AVG(fd_nast_suma)` 를 써도 SUM 으로 되굽는다: 4펀드 2,528/767/770/184억 ("212억원" 아님)
+    # 🔴 14R 재검 ③-3(부류 AD) — 억원 표기는 전 경로 ROUND 다. 조립기가 절사로 남아 있어 1억씩 어긋났다
+    #    (실측 766.56→767 · 769.54→770 · 183.59→184 · 2528.22→2528). 심사관 T14 gold 가 767 이다.
     _, b = _lookup(_T14, "한국투자베트남그로스 펀드 순자산 알려줘")
     assert b and "212억원" not in b, b
-    for frag in ("2,528억원", "766억원", "769억원", "183억원"):
+    for frag in ("2,528억원", "767억원", "770억원", "184억원"):
         assert frag in b, (frag, b)
 
     # ③ V12 — `GROUP BY itm_no` 는 클래스 단위 키라 항상 교체 대상. 본체 10클래스

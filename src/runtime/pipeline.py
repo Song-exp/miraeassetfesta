@@ -1616,9 +1616,18 @@ def _has_name_filter(sql: str) -> bool:
         #    `(',' || prfd_attr_cds || ',' LIKE '%,TWN,%' OR REPLACE(itm_nm,…) LIKE '%대만%')` 은 연결식이라
         #    컬럼이 LIKE 에 붙어 있지 않아 '이름 조회' 로 오판됐다(태그 ∪ 이름 목록 = 목록 경로여야 한다).
         #    판정은 SQL 낱말 목록이 아니라 **스키마 컬럼 대조**로 한다(하드코딩 0).
-        other = ({w.lower() for w in re.findall(r"[A-Za-z_]\w*", inner)}
+        # 🔴 14R 재검 ③-4 (Y14 실측 · 부류 AA′ 의 진짜 원인) — OR 판정은 **그 그룹의 최상위**여야 한다.
+        #    종전엔 그룹 문자열 전체에서 OR 를 찾아, **중첩 그룹 안**의 OR 에 걸렸다:
+        #      `(or_co = '00040067' AND itm_nm LIKE '%…%' AND (GLOB '*2호*' OR GLOB '*2(*'))`
+        #    호수 경계 가드가 심은 중첩 OR 때문에 이름 조회가 아니라고 판정돼 개별 조회 조립기가 통째로
+        #    꺼졌고(Y14: 클래스수·기준일·'클래스 합계' 축 고지 소멸 + HCX 마크다운 굵게), 가드가 하나 늘 때마다
+        #    재발할 구조였다. 괄호 안쪽부터 지워 최상위만 남긴 뒤 판정한다(validate_sql 의 OR 검사와 같은 기계).
+        top, prev = inner, None
+        while prev != top:
+            prev, top = top, re.sub(r"\([^()]*\)", " ", top)
+        other = ({w.lower() for w in re.findall(r"[A-Za-z_]\w*", top)}
                  & set(_fund_col_types())) - {"itm_nm"}
-        if not (re.search(r"\bOR\b", inner, re.I) and other):
+        if not (re.search(r"\bOR\b", top, re.I) and other):
             return True
     return False
 # 행(클래스) 단위가 정답인 질의 — **값이 클래스마다 갈리는 축**만. 🔴 10R(8R 보류 ③-1): '클래스' 를 뺐다.
@@ -2035,7 +2044,7 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
         if key in groups and has_grade and groups[key]["grade"] != grade:
             key = f"{key}#{r['대표_itm_no']}"
         if key not in groups:
-            groups[key] = {"stem": stem, "n": 0, "m": 0, "grade": grade, "nast": 0, "estb": [],
+            groups[key] = {"stem": stem, "n": 0, "m": 0, "grade": grade, "nast": 0, "eok": None, "estb": [],
                            "ret": {c: [None, None] for c in ret_cols}}
             order.append(key)
         g = groups[key]
@@ -2043,6 +2052,13 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
         g["m"] += int(float(r["판매중클래스수"] or 0))
         if has_nast and r.get("fd_nast_suma"):
             g["nast"] += int(float(r["fd_nast_suma"]))
+        # 🔴 14R 재검 ③-3 (부류 AD) — **금액을 억원으로 굽는 자리는 한 곳뿐이어야 한다.** SQL 이 이미
+        #    `CAST(ROUND(SUM(fd_nast_suma)/1e8) AS INTEGER) || '억원'` 열을 구웠는데 조립기가 원 단위에서
+        #    스스로 **절사** 나눗셈을 해 7문항이 1억씩 어긋났다(U1 1,911→1,912 · W11 3,344→3,345 · U11 2→3).
+        #    구운 열이 있으면 그 값을 그대로 쓴다.
+        raw_eok = (r.get("순자산_억원") or "").replace(",", "")
+        if raw_eok.endswith("억원") and raw_eok[:-2].lstrip("-").isdigit():
+            g["eok"] = (g["eok"] or 0) + int(raw_eok[:-2])
         g["estb"] += [v for c in _ESTB_LOOKUP_COLS for v in (r.get(c, "").strip(),) if re.fullmatch(r"\d{8}", v)]
         for c in ret_cols:
             lo, hi = r.get(f"{c}_최저", ""), r.get(f"{c}_최고", "")
@@ -2089,7 +2105,9 @@ def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
             else:
                 parts.append("위험등급 미수록")
         if has_nast:
-            parts.append(f"순자산 {g['nast'] // 100000000:,}억원 (클래스 합계)")
+            # 구운 열이 없을 때만 조립기가 굽고, 그때도 ROUND(절사 아님 — 재검 ③-3)
+            eok = g["eok"] if g["eok"] is not None else (g["nast"] + 50_000_000) // 100_000_000
+            parts.append(f"순자산 {eok:,}억원 (클래스 합계)")
         if has_estb:
             # 설정일은 **최초 클래스 기준**이다(뒤에 나온 클래스의 설정일은 그 클래스의 것). 기간은 기준일까지로 센다.
             parts.append(f"설정일 {_ymd_dash(min(g['estb']))} ({_since_text(min(g['estb']))})"

@@ -217,3 +217,19 @@ def test_ptn_axis_injected():
     # 리터럴이 다른 절에 없으면 환각 절을 지우지 않는다 — 모수가 넓어지면 안 된다
     keep = "SELECT COUNT(*) FROM public_funds WHERE bogus_col = '없는값' AND sale_yn = '판매중' LIMIT 30"
     assert P.drop_hallucinated_column_conjuncts(keep) == (keep, [])
+
+
+# ── P3-f KG ③-16 — 근거 밖 자체 산술 제거 ────────────────────────────────────
+def test_strip_unsourced_percent():
+    """X1 회귀 — 24.95·15.9·7.96 을 받아 '세 종목 합계 약 48.81%' 를 스스로 계산해 붙였다."""
+    rows = ("종목명 | 비중_pct | 자산유형 | 기준일\n삼성전자 | 24.95 | 주식 | 20260601\n"
+            "SK하이닉스 | 15.9 | 주식 | 20260601\n삼성전기 | 7.96 | 주식 | 20260601")
+    a = ("미래에셋코어테크 펀드가 가장 많이 담은 종목 3개는 다음과 같습니다.\n\n"
+         "1. 삼성전자: 24.95%\n2. SK하이닉스: 15.9%\n3. 삼성전기: 7.96%\n\n"
+         "이 세 종목이 전체 포트폴리오에서 차지하는 비중은 약 48.81%입니다.")
+    out, dropped = P.strip_unsourced_percent(a, rows)
+    assert dropped == ["48.81"] and "48.81" not in out
+    assert "24.95%" in out and "15.9%" in out and "7.96%" in out       # 소수점을 문장 끝으로 오인하지 않는다
+    assert P.strip_unsourced_percent(out, rows) == (out, [])           # 멱등
+    assert P.strip_unsourced_percent("총보수는 0.15%입니다.", "col | x\n0.150 | 1")[1] == []   # 표기 차이는 오탐 아님
+    assert P.strip_unsourced_percent("전부 근거 밖 99.9% 입니다.", "col\nabc")[1] == []        # 전부 지워지면 원문 유지

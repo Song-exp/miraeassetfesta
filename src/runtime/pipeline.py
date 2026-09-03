@@ -3059,6 +3059,39 @@ def strip_unsourced_estb_claim(answer: str, rows: str) -> tuple[str, bool]:
     return ("".join(out).strip() + "\n(설정일은 이번 조회 대상에 포함되지 않아 확인하지 못했습니다.)"), True
 
 
+_PCT_IN_TEXT = re.compile(r"(-?\d[\d,]*(?:\.\d+)?)\s*%")
+_NUM_IN_ROWS = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+
+
+def _num_key(v: str) -> str:
+    """천 단위 구분자·후행 0 을 지운 수치 키 — 표기 차이('24.950' ↔ '24.95')로 오탐하지 않게."""
+    v = v.replace(",", "")
+    return v.rstrip("0").rstrip(".") if "." in v else v
+
+
+def strip_unsourced_percent(answer: str, rows: str) -> tuple[str, list[str]]:
+    """조회 결과에 없는 **백분율 수치**를 담은 문장을 제거한다. (답변, 제거한 값)
+
+    🔴 16R KG ③-16 (`X1` 회귀) — 13R 에 소멸했던 자체 산술이 다시 나왔다: 24.95·15.9·7.96 세 행을 받아
+       "이 세 종목이 전체 포트폴리오에서 차지하는 비중은 **약 48.81%**" 를 스스로 계산해 붙였다.
+       규칙 텍스트에만 있는 금지는 재발한다 — 반환 직전에 기계로 걷는다(`strip_unsourced_estb_claim` 의 짝).
+    기계 조립 경로는 조기 반환이라 여기 오지 않는다(HCX 산문 경로 전용). 전부 지워지면 원문을 유지한다.
+    """
+    have = {_num_key(v) for v in _NUM_IN_ROWS.findall(rows or "")}
+    out, dropped = [], []
+    # 소수점을 문장 끝으로 오인하지 않는 분할 — 마침표 뒤에 공백이 와야 문장이 끝난다('24.95%' 는 한 덩어리)
+    for sent in re.split(r"(?<=[.!?])(?=\s)|(?<=\n)", answer):
+        bad = [v for v in _PCT_IN_TEXT.findall(sent) if _num_key(v) not in have]
+        if bad:
+            dropped += bad
+            continue
+        out.append(sent)
+    txt = "".join(out).strip()
+    if not dropped or not re.search(r"\d", txt):        # 전부 지워지면 원문 — 빈 답변이 더 나쁘다
+        return answer, []
+    return re.sub(r"\n{3,}", "\n\n", txt), dropped
+
+
 _CUTOFF_CLAIM = re.compile(r"[^.!?\n]*(?:기준일|기준\s*시점|(?:을|를)?\s*기준으로\s*한)[^.!?\n]*[.!?]?")
 _DATE_IN_TEXT = re.compile(r"((?:19|20)\d{2})\s*[년\-]\s*(\d{1,2})\s*[월\-]\s*(\d{1,2})\s*일?")
 _FAKE_BASIS = re.compile(
@@ -7247,6 +7280,11 @@ def answer_question(
     if etf_scope:
         step("[Answer] ETF 모수 한정 고지 — 어느 테이블을 봤는지 머리줄에 기계 표기 "
              "(10R 재검 ③-11 · V7·W10 은 6R 에 있던 '국내' 가 7R·9R 엔 없다 — 라운드마다 뒤집히므로 고정한다)")
+    result.answer, pct_dropped = strip_unsourced_percent(result.answer, rows)
+    if pct_dropped:
+        step(f"[Guard] 근거 밖 백분율 제거 — 조회 결과에 없는 값 {', '.join(pct_dropped[:3])}% 를 담은 문장을 걷어냄 "
+             "(16R KG ③-16 · X1 실측: 24.95·15.9·7.96 을 받아 '세 종목 합계 약 48.81%' 를 스스로 계산해 붙였다 — "
+             "13R 에 소멸했다 재발했으므로 규칙 텍스트가 아니라 반환 직전 후처리로 못 박는다)")
     result.answer, estb_stripped = strip_unsourced_estb_claim(result.answer, rows)
     if estb_stripped:
         step("[Guard] 미조회 축 문장 제거 — 조회 결과에 날짜 컬럼이 없는데 설정일·운용 기간을 단정한 문장을 걷어냄 "

@@ -268,3 +268,30 @@ def test_has_name_filter_still_rejects_top_level_or():
     sql = ("SELECT itm_nm FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,TWN,%' "
            "OR REPLACE(itm_nm,' ','') LIKE '%대만%') AND sale_yn = '판매중' LIMIT 30")
     assert P._has_name_filter(sql) is False
+
+
+# ── P3-a · KG ③-5 (AA16 · 보류 해제) — 모수를 흉내 낸 SELECT CASE 는 모수 절로 승격한다 ────────
+def test_base_population_promotes_full_case():
+    import sqlite3
+    sql = ("SELECT trusc_xtn_itt_cd, SUM(CASE WHEN sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "THEN 1 ELSE 0 END) AS cnt, COUNT(DISTINCT " + P._FUND_KEY_EXPR + ") AS \"펀드수\", "
+           "COUNT(*) AS \"클래스수\" FROM public_funds GROUP BY trusc_xtn_itt_cd ORDER BY \"펀드수\" DESC LIMIT 5")
+    out, ok = P.ensure_fund_base_population(
+        sql, "공모펀드를 가장 많이 수탁하는 수탁사 상위 5개를 펀드 수 기준으로 알려줘", post=True)
+    assert ok and "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모'" in out
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        got = [(r[0], r[2]) for r in con.execute(out)]
+    finally:
+        con.close()
+    assert got == [("00020054", 714), ("00020004", 516), ("00020027", 465),
+                   ("00020081", 399), ("00020088", 307)]        # 심사관 실측 gold · 순위도 바로잡힌다
+
+
+def test_base_population_leaves_lookup_case_alone():
+    """개별 조회 묶기가 심는 `판매중클래스수` CASE 는 sale_yn 하나뿐이라 승격 대상이 아니다 —
+    동결선 S5·W5·X18 의 where 가 바뀌면 안 된다."""
+    sql = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\" FROM public_funds "
+           "WHERE prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' GROUP BY 1 LIMIT 30")
+    assert P.ensure_fund_base_population(sql, "코어테크 펀드 클래스수 알려줘", post=True) == (sql, False)

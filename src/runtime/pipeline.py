@@ -655,6 +655,11 @@ def ensure_fund_estb_year(sql: str, question: str) -> tuple[str, bool]:
     return (new, True) if new != sql else (sql, False)
 
 
+_BASE_POP_CASE = re.compile(r"CASE\s+WHEN\b(?:(?!\bEND\b).)*?\bEND\b", re.I | re.S)
+_BASE_POP_SALE = re.compile(r"\bsale_yn\s*=\s*'판매중'")
+_BASE_POP_PUBLIC = re.compile(r"\bprvo_pbff_desc\s*=\s*'공모'")
+
+
 def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> tuple[str, bool]:
     """펀드 랭킹 SQL 에 기본모수(판매중·공모)를 기계 주입. (보정된 SQL, 보정했는지)
 
@@ -703,9 +708,23 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
     #    의존한다**: 묶기 가드가 SELECT 에 싣는 `판매중클래스수` CASE 를 모수 언급으로 읽어 '판매중' 주입을 막고
     #    있다(그 경로는 판매완료 14,707행을 0행 오거절 없이 조회해야 한다). 좁히면 동결선 S5·W5·X18 의 where 가
     #    바뀐다 — 실측으로 확인했고 별도 판단 사안으로 보고한다(12R 보고 ②).
+    # 🔴 14R KG ③-5 (보류 해제 · AA16) — **`SUM(CASE WHEN <기본모수> THEN 1 ELSE 0 END)` 로 모수를 흉내 낸
+    #    SELECT 는 모수 절로 승격한다.** AA16 실측: WHERE 가 아예 없고 SELECT 의 CASE 하나가 모수를 흉내 내
+    #    `GROUP BY trusc_xtn_itt_cd` 가 판매완료·사모까지 세었다 — 정렬축이 오염돼 3위가 1위보다 컸다.
+    #    승격 판정은 **CASE 안에 기본모수 두 조건이 다 있을 때만**이다. 개별 조회 묶기가 심는
+    #    `SUM(CASE WHEN sale_yn='판매중' THEN 1 ELSE 0 END) AS "판매중클래스수"` 는 sale_yn 하나뿐이라
+    #    여기 걸리지 않는다 — 동결선 S5·W5·X18 의 `where` 는 한 글자도 바뀌지 않는다(심사관 실측 확인).
+    scan = sql
+    m_frm = re.search(r"\bfrom\b", sql, re.I)
+    if m_frm:
+        head = sql[:m_frm.start()]
+        for m_case in _BASE_POP_CASE.finditer(head):
+            if _BASE_POP_SALE.search(m_case.group(0)) and _BASE_POP_PUBLIC.search(m_case.group(0)):
+                scan = head[:m_case.start()] + head[m_case.end():] + sql[m_frm.start():]
+                break
     missing = [c for c, pat in (("sale_yn = '판매중'", r"\bsale_yn\b"),
                                 ("prvo_pbff_desc = '공모'", r"\bprvo_pbff_desc\b"))
-               if not re.search(pat, sql, re.I)]
+               if not re.search(pat, scan, re.I)]
     if not missing:
         return sql, replaced
     cond = " AND ".join(missing)

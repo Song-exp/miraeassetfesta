@@ -530,3 +530,10 @@ def test_list_answer_folds_by_rptt():
     assert "전체 248개(클래스 560개)" in r.answer            # 펀드키 축 「전체 N개」는 그대로(리드 판단 대기)
     body = [ln for ln in r.answer.splitlines() if re.match(r"\d+\. ", ln)]
     assert len(body) == 28 and len({ln.split(":")[0] for ln in body}) == 28   # 중복 줄 0
+
+
+# ── gold ③-12 (FND-R02) — 축을 바꿔 답했으면 반드시 밝힌다 ────────────────────────────────
+def test_missing_axis_note():
+    note = P.missing_axis_note("SELECT fd_wk1_ern_r FROM public_funds LIMIT 5")
+    assert note and "1주" in note and "없" in note                 # must_include 두 낱말
+    assert P.missing_axis_note("SELECT fd_mm1_ern_r FROM public_funds LIMIT 5") is None

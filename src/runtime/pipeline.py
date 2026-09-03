@@ -1529,6 +1529,24 @@ def forbidden_column_use(sql: str) -> str | None:
     return None
 
 
+# 🔴 14R gold ③-12 (부류 R′) — **축을 바꿔 답했으면 반드시 밝힌다.** `FND-R02` 실측: 질문이 요구한
+#    `fd_wk1_ern_r`(1주 수익률)이 23,676/23,676 전건 결측이라 SQL 이 기각되고, 재생성이 말없이 1개월로
+#    갈아탄 뒤 답변이 그 사실을 한 글자도 밝히지 않았다(must_include `1주`·`없` 둘 다 미충족).
+#    컬럼 정책 단위 고지문이다 — 문항별 예외가 아니다.
+_MISSING_AXIS_NOTE = {
+    "fd_wk1_ern_r": "요청하신 1주 수익률은 제공된 데이터에 없습니다(전건 미수록). "
+                    "아래는 수록된 다른 기간 축으로 대신 답한 것입니다.",
+}
+
+
+def missing_axis_note(sql: str) -> str | None:
+    """질문이 지목한 축이 전건 결측이라 다른 축으로 답할 때 머리줄에 기계로 적을 고지문 — 없으면 None."""
+    for col, note in _MISSING_AXIS_NOTE.items():
+        if re.search(rf"\b{col}\b", sql, re.I):
+            return note
+    return None
+
+
 @lru_cache(maxsize=1)
 def _ev_ctx():
     """스키마 조회용 컨텍스트 — 가드가 ctx 를 인자로 받지 않으므로 여기서 한 번만 로드한다."""
@@ -6762,6 +6780,7 @@ def answer_question(
 
     err = _sql_precheck(sql, ctx, tables, cross)
     violations = [] if err else guard.check_values(sql, ctx)
+    axis_note = missing_axis_note(sql)      # 14R gold ③-12 — 축을 바꿔 답하면 그 사실을 머리줄에 적는다
     regen_used = False
 
     def _regen(problem: str):
@@ -7034,6 +7053,10 @@ def answer_question(
     if rows_forced:
         step("[Answer] 결과 전사 강제 — 1행 이상을 받고도 결과를 하나도 인용하지 않고 거절한 답변을 기계 전사로 교체 "
              "(10R gold N7 · OFFICIAL-005 실측: 1행을 받고도 '정보가 없습니다')")
+    if axis_note and axis_note not in result.answer:
+        result.answer = axis_note + "\n\n" + result.answer
+        step("[Answer] 축 교체 고지 — 질문이 지목한 축이 전건 결측이라 다른 축으로 답한 사실을 머리줄에 기계로 적었다 "
+             "(14R gold ③-12 · FND-R02 실측: fd_wk1_ern_r 23,676/23,676 결측인데 말없이 1개월로 갈아탔다)")
     step("[Answer] 답변 생성 완료" + (f" — 답변 규칙 {len(answer_rules):,}자 적용 ({', '.join(tables) or '전체'})" if answer_rules else ""))
     result.think_trace = "\n".join(trace)
     return result

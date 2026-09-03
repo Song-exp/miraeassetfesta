@@ -524,3 +524,164 @@ def diagnose_zero_rows(sql: str, con: sqlite3.Connection | None = None) -> ZeroR
     finally:
         if own:
             con.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# enforce 슬롯 적용기 — docs/guard_to_yaml_migration_2026-09-03.md §2-3
+# ══════════════════════════════════════════════════════════════════════════
+# 코드 가드 `ensure_*` 20개는 각각 "발동 조건 + 확정식 + 동작" 이라는 같은 뼈대를 파이썬으로 다시 쓴 것이다.
+# 뼈대가 같으니 데이터(yaml `query_rules.<name>.enforce`)로 쓰고, 적용기 하나가 읽는다.
+#
+# 🔴 이 함수가 가드보다 **먼저** 돌고, 발동하면 SQL 에 `/*M:<mark>*/` 표식을 남긴다.
+#    같은 주제의 코드 가드는 그 표식을 보고 침묵한다(절차 §2-4). 가드 삭제는 두 라운드 뒤(§5).
+# 🔴 UNION 은 가지별로 분해해 **각 가지에 독립 적용**한다 — 코드 가드가 `union` 을 보면 통째로
+#    불개입하던 자리가 교차질의 오답의 원인이었다(절차 §0). 이것이 슬롯의 첫 이득이다.
+
+# 지원 액션 — 여기 없는 값은 loader.validate_enforce 가 로드 시점에 거부한다.
+# 절차 §1 인벤토리(docs/guard_migration_inventory_2026-09-03.md) 판정 A 9개가 쓰는 셋만 먼저 연다.
+# 나머지(add_select·replace_order·remove_predicate)는 그 슬롯을 실제로 켤 때 함께 구현한다 — 쓰지 않는
+# 액션을 미리 만들면 검증할 수 없는 코드가 남는다.
+ENFORCE_ACTIONS = ("inject_where", "replace_expr", "replace_predicate")
+
+# WHERE 를 새로 붙일 자리 — 이 앞에 꽂는다
+_ENF_ANCHOR = re.compile(r"\b(?:group\s+by|order\s+by|limit|having)\b", re.I)
+_ENF_UNION = re.compile(r"\bunion(?:\s+all)?\b", re.I)
+
+
+def _split_union(sql: str) -> list[str]:
+    """최상위 UNION 가지로 나눈다. 괄호 안의 UNION(서브쿼리)은 건드리지 않는다."""
+    parts, depth, last = [], 0, 0
+    for m in re.finditer(r"[()]|\bunion(?:\s+all)?\b", sql, re.I):
+        tok = m.group(0)
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            depth -= 1
+        elif depth == 0:
+            parts.append(sql[last:m.start()])
+            parts.append(m.group(0))          # 구분자도 보존해 그대로 재조립
+            last = m.end()
+    parts.append(sql[last:])
+    return parts
+
+
+def _inject_where(sql: str, cond: str) -> tuple[str, bool]:
+    """WHERE 에 조건을 AND 로 더한다. 기존 조건은 괄호로 감싼다 —
+    'WHERE a OR b' 에 그냥 AND 를 붙이면 (cond AND a) OR b 로 새기 때문이다."""
+    m = re.search(r"\bwhere\b", sql, re.I)
+    if m:
+        e = m.end()
+        tail = sql[e:]
+        stop = _ENF_ANCHOR.search(tail)
+        body, rest = (tail[:stop.start()], tail[stop.start():]) if stop else (tail, "")
+        return f"{sql[:e]} {cond} AND ({body.strip()}) {rest}".rstrip(), True
+    anchor = _ENF_ANCHOR.search(sql)
+    if not anchor:
+        return f"{sql.rstrip().rstrip(';')} WHERE {cond}", True
+    s = anchor.start()
+    return f"{sql[:s]}WHERE {cond} {sql[s:]}", True
+
+
+def _match_when(spec: dict, sql: str, question: str, tables: list[str], grounded: set) -> bool:
+    """다섯 축 판정 — tables / question / grounded / sql.has / sql.lacks (+ any_of_has).
+    축 밖의 키가 있으면 **발동하지 않는다** (validate_enforce 가 로드에서 거르지만 이중 방어)."""
+    want = spec.get("tables")
+    if want and not (set(want) & set(tables)):
+        return False
+    q = spec.get("question") or {}
+    if q.get("any") and not any(str(w) in question for w in q["any"]):
+        return False
+    if q.get("not_any") and any(str(w) in question for w in q["not_any"]):
+        return False
+    g = spec.get("grounded")
+    if g and str(g) not in grounded:
+        return False
+    s = spec.get("sql") or {}
+    low = sql.lower()
+    if any(str(t).lower() not in low for t in s.get("has") or []):
+        return False
+    if any(str(t).lower() in low for t in s.get("lacks") or []):
+        return False
+    aoh = s.get("any_of_has")
+    if aoh and not any(str(t).lower() in low for t in aoh):
+        return False
+    return True
+
+
+def _apply_one(sql: str, enf: dict, subs: dict) -> tuple[str, bool]:
+    """액션 하나를 SQL 한 가지(branch)에 적용. 대상이 정확히 잡힐 때만 손댄다(원자성)."""
+    action = enf.get("action")
+    body = str(enf.get("sql") or "")
+    for k, v in subs.items():
+        body = body.replace("{" + k + "}", str(v))
+    if action == "inject_where":
+        return _inject_where(sql, body)
+    if action == "replace_expr":
+        src = str(enf.get("from") or "")
+        if not src or sql.lower().count(src.lower()) != 1:
+            return sql, False           # 0개면 대상 없음, 2개 이상이면 어느 쪽인지 모른다 → 불개입
+        i = sql.lower().index(src.lower())
+        return sql[:i] + body + sql[i + len(src):], True
+    if action == "replace_predicate":
+        pat = enf.get("from_pattern")
+        if not pat:
+            return sql, False
+        ms = list(re.finditer(str(pat), sql, flags=re.I))
+        if len(ms) != 1:
+            return sql, False                            # 0개면 대상 없음, 2개 이상이면 불개입
+        m = ms[0]
+        # 🔴 캡처 그룹 치환 — 확정식이 **매치한 리터럴에 따라 달라지는** 규칙이 있다
+        #    (ensure_etf_index_canon: 지수명 X → ref_base_index GLOB 'X' OR GLOB 'X[CTP]R*').
+        #    고정 sql 로는 못 쓰고, 그렇다고 코드에 두면 같은 뼈대가 또 파이썬으로 간다.
+        #    `{1}`·`{2}` 로 그룹을 받는다. 공백 제거형은 `{1:nospace}`.
+        rep = body
+        for i, g in enumerate(m.groups(), 1):
+            v = "" if g is None else str(g)
+            rep = rep.replace("{%d:nospace}" % i, re.sub(r"\s+", "", v)).replace("{%d}" % i, v)
+        return sql[:m.start()] + rep + sql[m.end():], True
+    return sql, False
+
+
+def apply_enforce(sql: str, question: str, tables: list[str], grounded, ctx: RuntimeContext
+                  ) -> tuple[str, list[str]]:
+    """yaml `query_rules.<name>.enforce` 선언을 SQL 에 적용한다. (보정된 SQL, 발동한 mark 목록)
+
+    선언 순서대로 1회 통과. UNION 은 가지별 독립 적용 후 재조립.
+    발동하면 `/*M:<mark>*/` 를 SQL 끝에 남긴다 — 코드 가드의 침묵 판정과 체인 끝 사후조건이 이걸 본다.
+    """
+    grounded = set(grounded or ())
+    fired: list[str] = []
+    subs = {"fund_key": _FUND_KEY_SQL}
+    branches = _split_union(sql)
+    for t in tables:
+        for name, rule in ((ctx.enums.get(t) or {}).get("query_rules") or {}).items():
+            if not isinstance(rule, dict):
+                continue
+            enf = rule.get("enforce")
+            # 🔴 키는 `enabled` 다 — `off` 로 쓰면 YAML 1.1 이 그것을 **불리언 키**로 읽어
+            #    딕셔너리에 False 키가 생기고 enf.get("off") 가 영원히 None 이 된다(실측으로 잡음).
+            if not isinstance(enf, dict) or enf.get("enabled", True) is False:
+                continue
+            mark = str(enf.get("mark") or name)
+            if f"M:{mark}" in sql:
+                continue                       # 멱등 — 이미 발동했다
+            hit = False
+            for i, part in enumerate(branches):
+                if _ENF_UNION.fullmatch(part.strip()):
+                    continue                   # 구분자는 건너뛴다
+                if not _match_when(enf.get("when") or {}, part, question, tables, grounded):
+                    continue
+                new, ok = _apply_one(part, enf, subs)
+                if ok:
+                    branches[i], hit = new, True
+            if hit:
+                fired.append(mark)
+                sql = "".join(branches) + f" /*M:{mark}*/"
+                branches = _split_union(sql)
+    return ("".join(branches) if not fired else sql), fired
+
+
+# 펀드단위 키 — enums/public_funds.yaml query_rules.펀드단위 와 **같은 식**이어야 한다.
+# 여기서만 정의하고 슬롯 sql 은 {fund_key} 자리표시자를 쓴다(문항별 리터럴 금지, 절차 §6).
+_FUND_KEY_SQL = ("or_co_xtn_itt_cd || '|' || COALESCE(CASE WHEN length(mtco_itm_no) >= 7 "
+                 "THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END, itm_no)")

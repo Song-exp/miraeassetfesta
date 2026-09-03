@@ -134,6 +134,11 @@ class RuntimeContext:
                         q_cf = question.casefold()
                         if not any(str(w).casefold() in q_cf for w in rule.get("triggers") or []):
                             continue
+                if isinstance(rule, dict) and "text" in rule:
+                    # 🔴 2026-09-03 — dict 규칙은 **text 만** 싣는다. 종전엔 triggers 가 있는 dict 만
+                    #    text 를 꺼내고 나머지 dict 는 통째로 safe_dump 했다. `enforce`(가드 슬롯,
+                    #    docs/guard_to_yaml_migration_2026-09-03.md)를 붙이면 when·action·sql·mark 가
+                    #    전부 프롬프트로 새어 나간다 — 적용기만 읽어야 하는 값이다. 실측으로 확인했다.
                     rule = rule.get("text", "")
                 body = rule if isinstance(rule, str) else yaml.safe_dump(rule, allow_unicode=True, sort_keys=False).strip()
                 out.append(f"- {name}: {body}")
@@ -314,7 +319,68 @@ def load_context() -> RuntimeContext:
     # (ctx 를 못 받는 순수 함수라 모듈 캐시로 준다 — 2026-08-31 'domestic_etfs.weight_pct' 실측)
     from .pipeline import set_column_index
     set_column_index(ctx.schema)
+    validate_enforce(ctx)
     return ctx
+
+
+# ── enforce 슬롯 검증 (V8 성격) — docs/guard_to_yaml_migration_2026-09-03.md §2-2 ──
+# 빌드 게이트 V1~V7 과 같은 태도로 **로드를 거부**한다. 슬롯은 SQL 을 고치므로,
+# 오타 하나가 조용히 "발동 안 함" 으로 끝나면 가드를 뗀 뒤에 오답으로 나타난다.
+_WHEN_AXES = {"tables", "question", "grounded", "sql"}
+_SQL_AXES = {"has", "lacks", "any_of_has"}
+_QUESTION_AXES = {"any", "not_any"}
+_PLACEHOLDER = re.compile(r"\{(\w+)(?::nospace)?\}")
+_KNOWN_PLACEHOLDERS = {"fund_key", "code", "key", "col", "type", "brand", "token"}
+
+
+def validate_enforce(ctx: "RuntimeContext") -> None:
+    from .guard import ENFORCE_ACTIONS
+
+    marks: dict[str, str] = {}
+    errs: list[str] = []
+    for t in TABLES:
+        cols = {c for c, _ko, _ty in (ctx.schema.get(t) or [])}
+        for name, rule in ((ctx.enums.get(t) or {}).get("query_rules") or {}).items():
+            enf = rule.get("enforce") if isinstance(rule, dict) else None
+            if not isinstance(enf, dict) or enf.get("enabled", True) is False:
+                continue
+            where = f"{t}.query_rules.{name}.enforce"
+            action = enf.get("action")
+            if action not in ENFORCE_ACTIONS:
+                errs.append(f"{where}: action '{action}' 은 지원 목록 {ENFORCE_ACTIONS} 밖")
+            if action == "replace_expr" and not enf.get("from"):
+                errs.append(f"{where}: replace_expr 은 from 이 필요하다")
+            if action == "replace_predicate" and not enf.get("from_pattern"):
+                errs.append(f"{where}: replace_predicate 은 from_pattern 이 필요하다")
+            if enf.get("from") and action != "replace_expr":
+                errs.append(f"{where}: from 은 replace_expr 에서만 쓴다")
+            mark = str(enf.get("mark") or "")
+            if not mark:
+                errs.append(f"{where}: mark 가 없다")
+            elif mark in marks:
+                errs.append(f"{where}: mark '{mark}' 가 {marks[mark]} 와 중복")
+            else:
+                marks[mark] = where
+            when = enf.get("when") or {}
+            if set(when) - _WHEN_AXES:
+                errs.append(f"{where}.when: 다섯 축 밖의 키 {sorted(set(when) - _WHEN_AXES)}")
+            if set(when.get("sql") or {}) - _SQL_AXES:
+                errs.append(f"{where}.when.sql: 허용 밖 {sorted(set(when['sql']) - _SQL_AXES)}")
+            if set(when.get("question") or {}) - _QUESTION_AXES:
+                errs.append(f"{where}.when.question: 허용 밖 {sorted(set(when['question']) - _QUESTION_AXES)}")
+            for tb in when.get("tables") or []:
+                if tb not in TABLES:
+                    errs.append(f"{where}.when.tables: '{tb}' 는 마스터 테이블이 아니다")
+            # 확정식의 컬럼이 그 테이블에 실재하는가 — 자리표시자는 검사 대상 밖
+            body = _PLACEHOLDER.sub("", str(enf.get("sql") or ""))
+            for ident in set(re.findall(r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b", body)):
+                if ident not in cols and ident not in ctx.schema:
+                    errs.append(f"{where}.sql: '{ident}' 는 {t} 의 컬럼이 아니다")
+            for ph in set(_PLACEHOLDER.findall(str(enf.get("sql") or ""))):
+                if ph not in _KNOWN_PLACEHOLDERS and not ph.isdigit():
+                    errs.append(f"{where}.sql: 모르는 자리표시자 {{{ph}}}")
+    if errs:
+        raise ValueError("enforce 슬롯 검증 실패 (로드 거부):\n  - " + "\n  - ".join(errs))
 
 
 def _build_value_index(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:

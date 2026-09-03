@@ -807,10 +807,21 @@ normalization:
 
 query_rules:
   종목단위: 행 = itm_no (dedup 불필요 — 2차)
-  펀드단위: >-
-    GROUP BY or_co_xtn_itt_cd,
-             COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no
-                           ELSE substr('0000000' || mtco_itm_no, -7) END, public_funds.itm_no)
+  펀드단위:
+    text: >-
+      GROUP BY or_co_xtn_itt_cd,
+               COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no
+                             ELSE substr('0000000' || mtco_itm_no, -7) END, public_funds.itm_no)
+    enforce:                       # P0-2a · 대응 가드 ensure_fund_distinct_count
+      enabled: false
+      when:
+        tables: [public_funds]
+        question: {any: [몇 개, 개수, 얼마나 많], not_any: [클래스]}
+        sql: {has: ["count(*)"], lacks: ["union", "group by", "펀드수"]}
+      action: replace_expr
+      from: "COUNT(*)"
+      sql: 'COUNT(DISTINCT {fund_key}) AS "펀드수", COUNT(*) AS "클래스수"'
+      mark: FUNDUNIT
   # 🔴 itm_no 는 반드시 한정한다(JOIN 시 별칭을 쓰면 p.itm_no) — 2026-09-02 R2 재검: 비한정 itm_no 를 LEFT JOIN ext_fund_page 에 옮겨 모호 컬럼 기각
   # 펀드단위 근거(사람용 — 프롬프트 비대상): zero-pad 7자 규약 정본은 리드 판정 08-31. 실측 — 기본모수 패딩 병합
   # 전수 대조 충돌 0건 · 짧은 mtco 7,962행 정상(가변 길이). 검증 수치(08-31 재실측): 더미 배제 후 합성키 distinct
@@ -913,7 +924,22 @@ query_rules:
   판매중만: sale_yn = '판매중'
   구매가능: sale_yn = '판매중'          # 🆕 주최 공지 — 상폐/리스팅종료 외 전부 구매가능. 펀드는 판매완료가 그 경계
   공모만: prvo_pbff_desc = '공모'       # 🔴 2차엔 사모 8,960행 — 공모 질의 필수 필터
-  기본모수: "sale_yn = '판매중' AND prvo_pbff_desc = '공모'  # 집계·Top-N 은 이 조건을 반드시 WHERE 에 넣는다. 모수 8,969 를 답변에 밝힐 것"
+  # 🔴 enforce 슬롯 (2026-09-03, docs/guard_to_yaml_migration_2026-09-03.md 단계 1)
+  #    `text` 만 프롬프트에 실린다. `enforce` 는 guard.apply_enforce 만 읽는다.
+  #    지금은 `off: true` — 단계 2 섀도에서 코드 가드와 대조한 뒤 켠다(절차 §3: 가드를 먼저 지우지 않는다).
+  기본모수:
+    text: "sale_yn = '판매중' AND prvo_pbff_desc = '공모'  # 집계·Top-N 은 이 조건을 반드시 WHERE 에 넣는다. 모수 8,969 를 답변에 밝힐 것"
+    enforce:                       # P0-1 · 대응 가드 ensure_fund_base_population
+      enabled: false
+      when:
+        tables: [public_funds]
+        question: {not_any: [사모, 판매완료, 역외, 전체]}
+        sql:
+          lacks: [sale_yn, prvo_pbff_desc]
+          any_of_has: ["order by", "count(", "sum(", "avg("]
+      action: inject_where
+      sql: "sale_yn = '판매중' AND prvo_pbff_desc = '공모'"
+      mark: BASEPOP
   집계_TopN_필수: >-
     🔴 집계·Top-N SQL 은 반드시 WHERE 에 sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND <정렬 컬럼> IS NOT NULL AND <정렬 컬럼> <> 0
     을 포함한다(zero_is_value 컬럼은 0 조건 제외 · 수익률 컬럼이면 수익률정상 추가) — 이 조건이 빠진 집계·Top-N 은 오답이다.

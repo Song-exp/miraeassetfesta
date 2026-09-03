@@ -4705,9 +4705,9 @@ _Q_FUND_COUNT = re.compile(r"펀드[^?]{0,45}(?:몇\s*개|몇개|개수|몇\s*�
 # 펀드키 = 운용사코드 / zero-pad 모펀드번호. 🔴 `COALESCE(…, itm_no)` 가 필수다 — 2026-09-02 재검 부수 발견:
 #    역외펀드 110행은 mtco_itm_no 가 NULL 이라 키가 NULL 하나로 뭉쳐 COUNT(DISTINCT) 에서 통째로 빠졌다
 #    (기본모수 distinct 2,930 vs gold 키 3,040). 정본은 eval gold_sql 의 키 형태 그대로.
-_FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
-                  "COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
-                  "ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)")
+# 🔴 정의는 guard.FUND_KEY_EXPR 한 곳이다 — enforce 슬롯({fund_key})과 코드 가드가 **같은 식**을 써야
+#    섀도에서 둘이 같은 SQL 을 낸다. 2026-09-03 섀도에서 갈라져 있던 것을 합쳤다.
+_FUND_KEY_EXPR = guard.FUND_KEY_EXPR
 # 🔴 10R 재검 ③-B — **개수·열거 축의 정본은 `rptt_ksd_itm_no`** 다. 도메인 정본(public_funds.md §4.1):
 #    rptt = "같은 펀드 여러 클래스의 대표 번호" · mtco = "운용 단위(모펀드) 키". DB 실측으로 확증된다 —
 #    mtco 는 398 rptt 그룹 / 2,686 클래스행(모수의 29%)에서 **클래스 단위로 발급**돼 있어(W5 솔로몬2호

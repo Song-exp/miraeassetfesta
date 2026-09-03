@@ -105,68 +105,82 @@ def norm(s: str | None) -> str:
     return " ".join((s or "").split()).lower()
 
 
+def judge_one(qid, question, src, raw, guarded, ctx_slot, con) -> dict:
+    """한 문항의 5분류 판정. raw_sql·guarded 만 있으면 되므로 재판정에 HCX 가 필요 없다."""
+    tables = route(question, ctx_slot).tables
+    slotted, fired = guard.apply_enforce(raw, question, tables, set(), ctx_slot)
+    slotted_cmp = norm(slotted).split("/*m:")[0].strip()   # 표식 주석은 의미가 아니라 발동 흔적
+    g_fired = norm(guarded) != norm(raw)
+    s_fired = bool(fired)
+    if not g_fired and not s_fired:
+        verdict = "둘 다 미발동"
+    elif g_fired and not s_fired:
+        verdict = "가드만 발동"
+    elif s_fired and not g_fired:
+        verdict = "슬롯만 발동"
+    elif norm(guarded) == slotted_cmp:
+        verdict = "둘 다·동일 SQL"
+    else:
+        same = same_result(con, guarded, slotted) if raw else None
+        verdict = ("둘 다·결과동일" if same else
+                   ("둘 다·SQL 다름" if same is False else "둘 다·판정불가"))
+    print(f"  {qid:16s} {verdict:14s} {question[:40]}")
+    return {"q": question, "src": src, "verdict": verdict, "fired": fired,
+            "raw_sql": raw, "guarded": guarded, "slotted": slotted}
+
+
+def report(out, turned_on, dt, path, n) -> None:
+    from collections import Counter
+    tally = Counter(v["verdict"] for v in out.values())
+    print("\n=== 판정표 (절차 §3-3) ===")
+    for k, cnt in tally.most_common():
+        print(f"  {k:16s} {cnt:4d}")
+    hard = tally.get("둘 다·SQL 다름", 0)
+    print(f"\n🔴 전환 통과 조건 — '둘 다·SQL 다름' = {hard} (0 이어야 단계 3 진행)")
+    print(f"슬롯만 발동 {tally.get('슬롯만 발동', 0)}건 = 가드가 못 닿던 자리(이득 후보)")
+    Path(path).write_text(json.dumps(
+        {"generated": "2026-09-03", "n": n, "seconds": round(dt, 1),
+         "slots_on": turned_on, "tally": dict(tally), "outcome": out},
+        ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"\n소요 {dt:.0f}초 → {path}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--replay", metavar="JSON",
+                    help="저장된 결과의 raw_sql·guarded 로 **슬롯만 다시 적용**해 재판정 (HCX 0회). "
+                         "슬롯 when/sql 을 고친 뒤 같은 문항으로 다시 재는 정상 경로다.")
     ap.add_argument("--out", default=str(ROOT / "eval" / "enforce_shadow_2026-09-03.json"))
     a = ap.parse_args()
+
+    con = connect_readonly()
+    ctx_slot = copy.deepcopy(load_context())        # 슬롯 판정용 사본
+    turned_on = enable_slots(ctx_slot)
+
+    if a.replay:
+        prev = json.loads(Path(a.replay).read_text(encoding="utf-8"))
+        print(f"재판정 — {a.replay} · 문항 {len(prev['outcome'])} · HCX 0회 · 슬롯 {turned_on}")
+        out = {qid: judge_one(qid, v["q"], v.get("src", "?"), v["raw_sql"], v["guarded"],
+                              ctx_slot, con) for qid, v in prev["outcome"].items()}
+        report(out, turned_on, 0.0, a.out, len(out))
+        return 0
 
     from src.hcx.planner import HCXPlanner
 
     qs = load_questions()
     if a.limit:
         qs = qs[: a.limit]
-    con = connect_readonly()
     planner = HCXPlanner()
-
     ctx_live = load_context()                       # 정상 경로 — 슬롯 off, 가드 on
-    ctx_slot = copy.deepcopy(load_context())        # 슬롯 판정용 사본
-    turned_on = enable_slots(ctx_slot)
     print(f"문항 {len(qs)} · 슬롯 {len(turned_on)}개 인메모리 점등: {turned_on}")
 
-    out: dict[str, dict] = {}
-    t0 = time.time()
+    out, t0 = {}, time.time()
     for q in qs:
         r = pipeline.answer_question(q["qid"], q["question"], planner=planner, ctx=ctx_live)
-        raw = r.raw_sql or ""
-        guarded = r.sql or ""
-        tables = route(q["question"], ctx_slot).tables
-        slotted, fired = guard.apply_enforce(raw, q["question"], tables, set(), ctx_slot)
-        # 표식 주석은 비교에서 뺀다 — 의미가 아니라 발동 흔적이다
-        slotted_cmp = norm(slotted).split("/*m:")[0].strip()
-
-        g_fired = norm(guarded) != norm(raw)
-        s_fired = bool(fired)
-        if not g_fired and not s_fired:
-            verdict = "둘 다 미발동"
-        elif g_fired and not s_fired:
-            verdict = "가드만 발동"
-        elif s_fired and not g_fired:
-            verdict = "슬롯만 발동"
-        else:
-            same = same_result(con, guarded, slotted) if raw else None
-            verdict = ("둘 다·동일 SQL" if norm(guarded) == slotted_cmp
-                       else ("둘 다·결과동일" if same else
-                             ("둘 다·SQL 다름" if same is False else "둘 다·판정불가")))
-        out[q["qid"]] = {"q": q["question"], "src": q["_src"], "verdict": verdict,
-                         "fired": fired, "raw_sql": raw, "guarded": guarded, "slotted": slotted}
-        print(f"  {q['qid']:16s} {verdict:14s} {q['question'][:40]}")
-    dt = time.time() - t0
-
-    from collections import Counter
-    tally = Counter(v["verdict"] for v in out.values())
-    print("\n=== 판정표 (절차 §3-3) ===")
-    for k, n in tally.most_common():
-        print(f"  {k:16s} {n:4d}")
-    hard = tally.get("둘 다·SQL 다름", 0)
-    print(f"\n🔴 전환 통과 조건 — '둘 다·SQL 다름' = {hard} (0 이어야 단계 3 진행)")
-    print(f"슬롯만 발동 {tally.get('슬롯만 발동', 0)}건 = 가드가 못 닿던 자리(이득 후보)")
-
-    Path(a.out).write_text(json.dumps(
-        {"generated": "2026-09-03", "n": len(qs), "seconds": round(dt, 1),
-         "slots_on": turned_on, "tally": dict(tally), "outcome": out},
-        ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"\n소요 {dt:.0f}초 → {a.out}")
+        out[q["qid"]] = judge_one(q["qid"], q["question"], q["_src"],
+                                  r.raw_sql or "", r.sql or "", ctx_slot, con)
+    report(out, turned_on, time.time() - t0, a.out, len(qs))
     return 0
 
 

@@ -681,7 +681,14 @@ def apply_enforce(sql: str, question: str, tables: list[str], grounded, ctx: Run
     return ("".join(branches) if not fired else sql), fired
 
 
-# 펀드단위 키 — enums/public_funds.yaml query_rules.펀드단위 와 **같은 식**이어야 한다.
-# 여기서만 정의하고 슬롯 sql 은 {fund_key} 자리표시자를 쓴다(문항별 리터럴 금지, 절차 §6).
-_FUND_KEY_SQL = ("or_co_xtn_itt_cd || '|' || COALESCE(CASE WHEN length(mtco_itm_no) >= 7 "
-                 "THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END, itm_no)")
+# 펀드단위 키 — **정본은 여기 하나다.** pipeline._FUND_KEY_EXPR 도 이것을 쓴다(순환 import 방지:
+# pipeline 이 guard 를 import 하므로 방향이 맞다). 슬롯 sql 은 {fund_key} 자리표시자로 받는다.
+#
+# 🔴 printf('%08d', CAST(... AS INTEGER)) 를 빼면 안 된다 — 운용사 코드가 7·8자 혼재라
+#    정규화 없이는 같은 운용사가 두 키로 갈린다. 섀도(2026-09-03)에서 슬롯이 이걸 빠뜨려
+#    가드와 다른 SQL 을 냈고, 그래서 정의를 한 곳으로 합쳤다.
+#    trim 도 마찬가지 — mtco 에 패딩 공백이 있는 행이 있다.
+FUND_KEY_EXPR = ("printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || "
+                 "COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) "
+                 "ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)")
+_FUND_KEY_SQL = FUND_KEY_EXPR

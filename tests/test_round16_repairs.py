@@ -113,3 +113,55 @@ def test_validate_sql_accepts_parenthesized_union():
     out, notes = P.apply_union_branch_guards(_X9, "미래에셋자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?")
     assert "가지 괄호 제거(SQLite 복합 SELECT 문법)" in notes
     assert P.validate_sql(out) is None                    # 구조 게이트·EXPLAIN 둘 다 통과
+
+
+# ── P3-c KG ③-3·③-4 — KG-008 별칭 충돌 제거 + 조립기 배선 ────────────────────
+_KG008 = ("SELECT trim(trusc_xtn_itt_cd) AS 수탁회사명, COUNT(*) as 펀드수, SUM(fd_nast_suma) AS 수탁금액 "
+          "FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
+          "GROUP BY 1 ORDER BY SUM(fd_nast_suma) DESC LIMIT 3")
+_KG008_Q = "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘"
+
+
+def test_entity_rank_drops_conflicting_alias():
+    """가드가 심는 축과 이름이 겹치는 HCX 항목은 접미로 피하지 말고 지운다 — 결과 열에 동명이 남으면 안 된다."""
+    out, ok = P.ensure_fund_entity_count_ranking(_KG008, _KG008_Q)
+    assert ok and "__g" not in out
+    assert out.count('AS "펀드수"') == 1 and not re.search(r"\bas\s+펀드수\b", out, re.I)
+    assert P.ensure_fund_entity_count_ranking(out, _KG008_Q)[1] is False        # 멱등
+    rows, n = _run(out)
+    assert [c.strip() for c in rows.splitlines()[0].split(" | ")].count("펀드수") == 1
+
+
+def test_entity_rank_answer_wired():
+    """14R 은 이 조립기를 정의만 하고 호출부에 배선하지 않았다 — SQL 행 순서 그대로, 값 축은 펀드수."""
+    out, _ = P.ensure_fund_entity_count_ranking(_KG008, _KG008_Q)
+    rows, n = _run(out)
+    ans = P._entity_count_rank_answer(out, rows, n)
+    assert ans is not None
+    assert "1. 홍콩상하이은행 서울지점(00020054): 펀드 714개(클래스 1,827개)" in ans      # gold 714·516·465
+    assert "2. 국민은행(00020004): 펀드 516개" in ans and "3. 한국씨티은행(00020027): 펀드 465개" in ans
+    import inspect
+    src = inspect.getsource(P.answer_question)
+    assert "_entity_count_rank_answer(" in src                                  # 호출부 배선
+
+
+# ── P3-d KG ③-5 — label_official 형제 코드 IN (등호·IN 양쪽 · 역조회 경로 포함) ──
+def test_org_label_codes_expands_in_predicate():
+    """Z16 — `IN ('00080052')` 단일 원소도 형제 코드로 넓힌다. 브랜드 어간 질의(X12)는 넓히지 않는다."""
+    con = P.connect_readonly()
+    try:
+        z16 = ("SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00080052') "
+               "AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
+        out, ok = P.ensure_org_label_codes(z16, "키움투자자산운용이 운용하는 공모펀드는 몇 개야?")
+        assert ok and "'00040013'" in out and "'00080052'" in out
+        assert P.ensure_org_label_codes(out, "키움투자자산운용이 운용하는 공모펀드는 몇 개야?")[1] is False   # 멱등
+        cnt, _ = P.ensure_fund_distinct_count(out, "키움투자자산운용이 운용하는 공모펀드는 몇 개야?")
+        assert con.execute(cnt).fetchone() == (112, 354)          # gold 112펀드/354클래스
+        # X12 — 질문이 브랜드 어간('슈로더')이라 정본 이름('키움투자자산운용')이 없다 → 불개입
+        x12 = ("SELECT COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040013','00130003') "
+               "AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
+        assert P.ensure_org_label_codes(x12, "슈로더가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?") == (x12, False)
+        cnt12, _ = P.ensure_fund_distinct_count(x12, "슈로더가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?")
+        assert con.execute(cnt12).fetchone() == (28, 59)          # 28펀드/59클래스 불변
+    finally:
+        con.close()

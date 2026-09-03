@@ -372,12 +372,13 @@ def test_label_official_duplicate_codes():
     con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
     try:
         assert con.execute(sql).fetchone() == (97, 308)           # 부족값
-        out, ok = P.ensure_org_label_codes(sql)
-        assert ok and con.execute(out).fetchone() == (112, 354)   # gold
+        # 16R KG ③-5 — 확장은 질문이 그 그룹의 **정본 이름**을 부를 때만 (2인자가 mgmt 튜플 → 질문 문자열로 바뀌었다)
+        out, ok = P.ensure_org_label_codes(sql, "키움투자자산운용이 운용하는 공모펀드는 몇 개야?")
+        assert ok and con.execute(out).fetchone() == (112, 354)   # gold 112펀드/354클래스
     finally:
         con.close()
-    # 역조회 경로의 코드에는 개입하지 않는다 — 정본 이름이 브랜드와 다를 수 있다(구상호)
-    assert P.ensure_org_label_codes(sql, ("키움", "00080052", "키움투자자산운용"))[1] is False
+    # 브랜드 어간 질의에는 개입하지 않는다 — 정본 이름이 브랜드와 다를 수 있다(구상호 '슈로더' → 키움투자자산운용)
+    assert P.ensure_org_label_codes(sql, "슈로더가 운용하는 공모펀드는 몇 개야?")[1] is False
 
 
 def test_offshore_included_when_asked():
@@ -446,7 +447,8 @@ def test_entity_count_alias_unique_and_assembled():
             "FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY 1 "
             "ORDER BY 2 DESC LIMIT 3")
     sql, ok = P.ensure_fund_entity_count_ranking(base, "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘")
-    assert ok and '"펀드수__g"' in sql and 'ORDER BY "펀드수__g" DESC' in sql   # HCX 동명 별칭과 충돌 회피
+    # 16R KG ③-3 — 접미로 피하지 않고 충돌한 HCX 항목을 지운다(결과 열에 동명이 남으면 답변기가 그쪽을 읽는다)
+    assert ok and '"펀드수__g"' not in sql and 'ORDER BY "펀드수" DESC' in sql and sql.count('AS "펀드수"') == 1
     assert P.ensure_fund_entity_count_ranking(sql, "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘")[1] is False
     rows, n = _run(sql)
     out = P._entity_count_rank_answer(sql, rows, n)

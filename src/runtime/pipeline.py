@@ -3663,6 +3663,9 @@ def _brand_or_co_codes(stem: str, offshore: bool) -> tuple[str, ...]:
 
 
 _OR_CO_EQ = re.compile(r"(?:TRIM\(\s*)?(?:\w+\.)?\bor_co_xtn_itt_cd\b\s*\)?\s*=\s*'(\d+)'", re.I)
+# 등호·IN 양쪽 — 형제 코드 합집합 확장(16R KG ③-5)이 쓴다. `NOT IN` 은 부호가 반대라 대상이 아니다.
+_OR_CO_PRED = re.compile(r"(?:TRIM\(\s*)?(?:\w+\.)?\bor_co_xtn_itt_cd\b\s*\)?\s*"
+                         r"(?:=\s*'\d+'|(?<!NOT )IN\s*\(\s*(?:'\d+'\s*,\s*)*'\d+'\s*\))", re.I)
 _OFFSHORE_Q = re.compile(r"역외")
 
 
@@ -3712,29 +3715,43 @@ def _org_label_code_groups() -> dict:
             raw for t, c, raw in ctx.kg_aliases.get(n.node_id, ())
             if t == "public_funds" and c == "or_co_xtn_itt_cd")
     out: dict = {}
-    for codes in by_label.values():
+    for label, codes in by_label.items():
         if len(codes) > 1:
             for c in codes:
-                out[c] = tuple(sorted(codes))
+                out[c] = (label, tuple(sorted(codes)))
     return out
 
 
-def ensure_org_label_codes(sql: str, mgmt: tuple | None = None) -> tuple[str, bool]:
+def ensure_org_label_codes(sql: str, question: str = "") -> tuple[str, bool]:
     """KG 가 확정한 운용사 코드가 **같은 정본 이름의 형제 코드**를 갖고 있으면 `IN` 으로 묶는다. (SQL, 바꿨는지)
 
     🔴 14R KG ③-8 — 운용사 질의는 `kg_node.label_official` 이 같은 모든 `Org_*` 노드의 코드를 함께 조회한다.
-    역조회(`mgmt`)로 얻은 코드에는 개입하지 않는다 — 그 경로는 브랜드 어간 기준이라
-    `ensure_mgmt_code_predicate` 가 이미 다루고, 같은 코드라도 정본 이름이 브랜드와 다를 수 있다
-    (실측: `Org_00040013` 의 정본 이름은 '키움투자자산운용' 이지만 종목명 접두는 '슈로더' 다 — 구상호).
+
+    🔴 16R KG ③-5 — **14R 은 반쪽만 이행됐다.** ⓐ 술어가 `IN ('00080052')` 한 원소 꼴이면 등호 정규식이
+       못 봤고 ⓑ 역조회(`mgmt`)가 잡히면 통째로 조기 반환해 KG 개체 매핑 경로엔 아예 안 붙었다
+       (`Z16` 97펀드/308클래스 — gold 112펀드/354클래스). 두 형태를 함께 보고, 확장은 **합집합**이라
+       역조회가 만든 브랜드 `IN` 을 좁히지 않는다(`mgmt` 인자는 더 이상 불개입 조건이 아니다).
+       형제 코드는 `kg_node` GROUP BY 실측이라 하드코딩이 0이다.
     """
-    if mgmt or not _FUND_TBL.search(sql):
+    if not _FUND_TBL.search(sql):
         return sql, False
     groups = _org_label_code_groups()
 
+    q = (question or "").replace(" ", "")
+
     def _fix(m: re.Match) -> str:
-        g = groups.get(m.group(1))
-        return ("TRIM(or_co_xtn_itt_cd) IN (" + ", ".join(f"'{c}'" for c in g) + ")") if g else m.group(0)
-    out = _OR_CO_EQ.sub(_fix, sql)
+        codes = {c.strip("'") for c in _SQL_LITERAL.findall(m.group(0)) if c.strip("'").isdigit()}
+        wide = set(codes)
+        for c in codes:
+            label, sibs = groups.get(c, ("", ()))
+            # 🔴 질문이 그 그룹의 **정본 이름**을 부른 경우에만 넓힌다. 브랜드 어간 질의(X12 '슈로더')는
+            #    정본 이름('키움투자자산운용')을 부르지 않으므로 형제 코드가 붙지 않는다 — 하드코딩 0.
+            if label and label.replace(" ", "") in q:
+                wide |= set(sibs)
+        if wide == codes:
+            return m.group(0)
+        return "TRIM(or_co_xtn_itt_cd) IN (" + ", ".join(f"'{c}'" for c in sorted(wide)) + ")"
+    out = _OR_CO_PRED.sub(_fix, sql)
     return (out, True) if out != sql else (sql, False)
 
 
@@ -4034,7 +4051,7 @@ def ensure_fund_entity_count_ranking(sql: str, question: str) -> tuple[str, bool
     그 템플릿이 이미 펀드수·클래스수를 싣고 나가므로 여기서는 `"펀드수"` 존재로 걸러진다).
     """
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:union|join)\b", sql, re.I) \
-            or re.search(r'"펀드수(?:__g)?"', sql):          # 멱등 — 접미 유일화판도 이미 심은 것으로 본다
+            or re.search(r'"펀드수"', sql):                   # 멱등
         return sql, False
     if not (_COUNT_RANK_Q.search(question) and _MGR_RANK_Q.search(question)) or _AMOUNT_AXIS_Q.search(question):
         return sql, False
@@ -4051,15 +4068,19 @@ def ensure_fund_entity_count_ranking(sql: str, question: str) -> tuple[str, bool
         return sql, False                               # 펀드 식별 축은 개체 랭킹이 아니다(랭킹 가드 담당)
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()].rstrip()
-    # 🔴 14R KG ③-3 — **가드가 심는 별칭은 기존 별칭과 충돌하면 유일화한다.** KG-008 실측: HCX 가 이미
-    #    `COUNT(*) as 펀드수`(= 클래스수)를 달아 놓아 별칭이 둘이 됐고, `ORDER BY "펀드수"` 가 **먼저 나온
-    #    HCX 열**(클래스수)로 붙어 정렬 축이 통째로 뒤집혔다. 접미를 붙여 우리 열만 가리키게 한다.
-    sfx = "__g" if re.search(r"\bas\s+\"?펀드수\"?", head, re.I) else ""
-    add = (f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수{sfx}", COUNT(*) AS "클래스수{sfx}" ')
-    return head + add + sql[frm.start():m_ord.start()] + f' ORDER BY "펀드수{sfx}" DESC ' + sql[m_ord.end():], True
+    # 🔴 16R KG ③-3 — **별칭 유일화는 충돌한 원 항목을 지우는 것으로 끝낸다.** 14R 은 접미(`__g`)로 피했지만
+    #    HCX 의 `COUNT(*) as 펀드수`(= 클래스수)가 결과에 남아 답변기가 그쪽을 읽었다(KG-008). 형제 `AA16` 은
+    #    별칭 충돌이 없어서 같은 질문을 ✅ 로 답한다 — 축이 하나뿐이면 조립도 안 틀린다. 그러니 충돌 항목을 지운다.
+    m_sel = _SELECT_HEAD.match(head)
+    if m_sel:
+        kept = [it for it in _split_select_items(head[m_sel.end():])
+                if not re.search(r"\bAS\s+\"?(?:펀드수|클래스수)\"?\s*$", it.strip(), re.I)]
+        head = head[:m_sel.end()] + ",".join(kept)
+    add = (f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수" ')
+    return head + add + sql[frm.start():m_ord.start()] + ' ORDER BY "펀드수" DESC ' + sql[m_ord.end():], True
 
 
-_ENTITY_RANK_ALIAS = re.compile(r'AS\s+"(펀드수(?:__g)?)"', re.I)
+_ENTITY_RANK_ALIAS = re.compile(r'AS\s+"(펀드수)"', re.I)
 
 
 def _entity_count_rank_answer(sql: str, rows: str, n: int) -> str | None:
@@ -6665,7 +6686,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 역조회 운용사 코드 술어 확정 — {mgmt_note} "
              "(14R 재검 ③-1 · S3 실측: '삼성' → 00040010 등호가 삼성액티브(00080135) 9클래스를 잘랐다. "
              "역조회는 코드 후보이지 필터가 아니다 — 술어로 쓸지·어떤 형태로 쓸지를 결정층이 못 박는다)")
-    sql, org_codes_fixed = ensure_org_label_codes(sql, mgmt)
+    sql, org_codes_fixed = ensure_org_label_codes(sql, q)
     if org_codes_fixed:
         step("[Guard] 운용사 정본 이름 형제 코드 — 같은 label_official 을 갖는 or_co 코드를 IN 으로 묶었다 "
              "(14R KG ③-8 · Z16 실측: 키움투자자산운용은 00080052·00040013 둘인데 하나만 조회해 97/308 부족값 — gold 112/354)")
@@ -7050,6 +7071,14 @@ def answer_question(
              "(2026-09-02 R2·S11 재검: 면책·유보 문장 계열도 함께 소멸)")
         result.think_trace = "\n".join(trace)
         result.answer = mgr
+        return result
+    ent = _entity_count_rank_answer(sql, rows, n)
+    if ent is not None:
+        step("[Answer] 개체 개수 랭킹 답변 기계 조립 — SQL 행 순서를 그대로 옮긴다, HCX 0회 "
+             "(16R KG ③-4 · KG-008 실측: SQL 이 gold 순서(714·516·465)를 돌려주는데 답변기가 수탁금액 순으로 "
+             "재정렬하고 숫자는 클래스수를 옮겼다. 14R 은 이 조립기를 정의만 하고 호출부에 배선하지 않았다)")
+        result.think_trace = "\n".join(trace)
+        result.answer = ent
         return result
     lk = _lookup_answer(sql, rows, n, name_token, ground_lines)
     if lk is not None:

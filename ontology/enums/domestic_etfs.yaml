@@ -604,7 +604,21 @@ query_rules:
       pd_dvid_pay_cnt AS 연지급횟수, pd_dvid_pay_months AS 지급월 FROM domestic_etfs
       WHERE TRIM(pd_abrv_nm) = '<호칭>'` — 답은 분배수익률(%)·주기(M=매월)·지급월로 하고,
       금액을 물으면 "분배금 액수는 데이터 단위 오염이 확인되어 제공하지 않으며 분배수익률로 안내드립니다".
-  기초지수: "COALESCE(NULLIF(TRIM(ref_base_index),''), NULLIF(TRIM(cu_base_index),''))"   # 🟢 신설 — ref 1순위, cu 보조
+  기초지수:
+    text: "COALESCE(NULLIF(TRIM(ref_base_index),''), NULLIF(TRIM(cu_base_index),''))"   # 🟢 신설 — ref 1순위, cu 보조
+    enforce:                       # P0-3 · 대응 가드 ensure_etf_index_canon
+      # cu_base_index 는 오염 컬럼(ETF 1,235행 중 1,179행 95.5% 공백) — 등호 비교를 ref_base_index
+      # 순수추종식으로 바꾼다. 순수추종 = 지수명 그대로이거나 수익유형 접미(CR·TR·PR)만 붙은 것.
+      # 🔴 가드는 OR 가지·다중 리터럴까지 훑는다. 슬롯은 **단일 등호 비교** 하나만 받는다 —
+      #    복잡한 꼴은 가드가 계속 처리하고, 섀도에서 둘의 담당 범위를 대조한다.
+      enabled: false
+      when:
+        tables: [domestic_etfs]
+        sql: {has: ["cu_base_index"]}
+      action: replace_predicate
+      from_pattern: 'cu_base_index\s*=\s*''([^'']+)'''
+      sql: "(REPLACE(ref_base_index,' ','') GLOB '{1:nospace}' OR REPLACE(ref_base_index,' ','') GLOB '{1:nospace}[CTP]R*')"
+      mark: IDXCANON
   복제방식_모수:
     triggers: [복제, 합성, 실물, 액티브, 패시브, 운용방식, 전략]
     text: pd_grp_no = 'ETF' AND cu_strtegy IN ('실물복제','합성복제','액티브')     # 'C' 422건(ETN) 미분류 제외

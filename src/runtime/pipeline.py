@@ -928,6 +928,53 @@ def ensure_etf_mgmt_canon(sql: str) -> tuple[str, bool]:
     return "".join(out) + sql[at:], True
 
 
+@lru_cache(maxsize=1)
+def _etf_brand_tokens() -> tuple[str, ...]:
+    """국내 ETF 브랜드 접두 — `pd_abrv_nm` 의 첫 공백 앞 토큰 중 5행 이상. **DB 실측**, 이름 하드코딩 0.
+
+    실측 2026-09-03: KODEX 243 · TIGER 237 · RISE 150 · ACE 120 · 메리츠 97 · PLUS 92 … 25종.
+    5행 하한은 해외 ETF 의 티커(대부분 1행)가 브랜드로 오인되는 것을 막는 컷이다.
+    """
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            "SELECT substr(TRIM(pd_abrv_nm), 1, instr(TRIM(pd_abrv_nm) || ' ', ' ') - 1), COUNT(*) "
+            "FROM domestic_etfs WHERE pd_abrv_nm IS NOT NULL GROUP BY 1 HAVING COUNT(*) >= 5").fetchall()
+    except sqlite3.Error:
+        return ()
+    finally:
+        con.close()
+    return tuple(sorted((str(b).strip() for b, _ in rows if len(str(b).strip()) >= 2), key=len, reverse=True))
+
+
+def ensure_etf_brand_token(sql: str, question: str) -> tuple[str, bool]:
+    """질문이 지목한 ETF 브랜드가 최종 SQL 의 이름 술어에서 사라졌으면 되돌려 주입. (SQL, 주입했는지)
+
+    🔴 14R gold ③-1 (부류 Z″ · **감점 축**) — `UNANS-001` 실측: 'KODEX AI 로봇 ETF 알려줘' 의 최종 SQL 이
+       `pd_nm LIKE '%AI%' AND pd_nm LIKE '%로봇%'` 로 **`KODEX` 가 통째로 빠진 채** 실행돼, 「찾을 수 없습니다」라
+       말한 직후 실재 ETF 3종을 운용사·설정일·순자산까지 붙여 나열했다. 11R `OFFICIAL-004` 에서 닫은 부류 Z
+       (사용자 조건 소실 → 그럴듯한 목록)가 상품명 축에서 재발한 것이다.
+    조건이 지워진 채 나온 목록은 답이 아니다 — 되돌려 주입하면 0행이 되고, 0행 경로의 유사 상품 되묻기가 받는다.
+    발동 조건: ① 국내 ETF 단독 조회(UNION 없음) ② SQL 에 이미 이름 축 필터가 있다(이름 질의라는 신호)
+    ③ 질문에 **DB 실측 브랜드 접두가 정확히 하나** 있고 ④ 그 브랜드가 SQL 어디에도 없다.
+    브랜드가 둘 이상이면 비교 질의라 불개입한다(AND 로 이으면 정답 모수가 0이 된다).
+    """
+    if not _ETF_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I) or not _ETF_NAME_FILTER.search(sql):
+        return sql, False
+    from .router import _bound_in
+    squeezed = re.sub(r"\s+", "", question)
+    hits = [b for b in _etf_brand_tokens() if _bound_in(b, question, squeezed)]
+    # 긴 브랜드가 짧은 브랜드를 품는 경우(TIME ⊂ TIMEFOLIO)는 긴 쪽 하나로 본다 — 사전이 길이 내림차순이다
+    hits = [b for i, b in enumerate(hits) if not any(b in h for h in hits[:i])]
+    if len(hits) != 1:
+        return sql, False
+    brand = hits[0]
+    if brand.casefold() in re.sub(r"\s+", "", sql).casefold():
+        return sql, False
+    col = "pd_nm" if re.search(r"\bpd_nm\b", sql, re.I) else "pd_abrv_nm"
+    return _append_exclusions(sql, [f"REPLACE({col},' ','') LIKE '%{brand}%'"])[0], True
+
+
 _FUND_RETURN_COLS = ("fd_mm1_ern_r", "fd_mm3_ern_r", "fd_mm6_ern_r", "fd_mm18_ern_r",
                      "fd_yr1_ern_r", "fd_yr2_ern_r", "fd_yr3_ern_r", "fd_yr5_ern_r")
 # 🔴 10R gold ③-B 5 — 보수 4컬럼도 랭킹 축이다('총보수가 가장 낮은 펀드'). 종전엔 축 목록에 없어
@@ -5440,7 +5487,27 @@ def build_grounding(
 # 3R A-4 — 펀드(itm_nm 등호·공백무시 LIKE)도 같은 되묻기 재료를 낸다. 같은 목적 함수를 둘로 만들지 않는다.
 _NAME_LOOKUP = re.compile(
     r"(?:TRIM\()?(?:\w+\.)?(pd_abrv_nm|pd_nm)\)?\s*=\s*'([^']+)'|REPLACE\((?:\w+\.)?(itm_nm),' ',''\)\s+LIKE\s+'%([^%']+)%'", re.I)
+# 🔴 14R gold ③-2 (부류 Z″) — **정확일치·유사 판정의 비교 키는 공백을 지운 문자열이다.** `UNANS-001` 실측:
+#    'KODEX AI로봇'(공백 없음)은 `pd_abrv_nm =` 등호라 되묻기 경로가 켜졌고, 'KODEX AI 로봇'(공백 하나)은
+#    HCX 가 LIKE 로 쪼개 등호가 없다는 이유로 되묻기가 꺼졌다 — 띄어쓰기 하나로 안전망이 사라졌다.
+#    이름 축 LIKE(원형·공백무시형)도 같은 되묻기 재료로 읽는다. 리터럴은 등장 순서대로 이어 붙인다.
+_ETF_NAME_LIKE_LIT = re.compile(
+    r"(?:REPLACE\(\s*(?:\w+\.)?(?:pd_abrv_nm|pd_nm)\s*,\s*' '\s*,\s*''\s*\)|(?:TRIM\(\s*)?(?:\w+\.)?\b(?:pd_abrv_nm|pd_nm)\b\s*\)?)"
+    r"\s+LIKE\s+'%([^%']+)%'", re.I)
 _TOKEN_SPLIT = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
+
+
+def _lookup_name_literals(sql: str) -> tuple[str, bool]:
+    """개별 상품 조회 리터럴 — (이름 문자열, 펀드인가). 없으면 ('', False).
+
+    등호(`pd_abrv_nm = 'KODEX AI로봇'`)와 이름 LIKE 분해형(`pd_nm LIKE '%AI%' AND … LIKE '%KODEX%'`)을
+    같은 재료로 본다(gold ③-2). 펀드는 종전대로 `REPLACE(itm_nm,' ','') LIKE` 하나만 읽는다.
+    """
+    m = _NAME_LOOKUP.search(sql)
+    if m:
+        return (m.group(2) or m.group(4)), bool(m.group(3))
+    lits = _ETF_NAME_LIKE_LIT.findall(sql)
+    return (" ".join(lits), False) if lits else ("", False)
 
 
 def _suggest_similar_products(sql: str) -> list[str]:
@@ -5450,17 +5517,21 @@ def _suggest_similar_products(sql: str) -> list[str]:
     들어간 상품을 순자산 순으로 최대 4개. 실측(2026-09-01): KODEX 로봇액티브·글로벌로봇(합성)·
     차이나/미국휴머노이드로봇 이 이 방식으로 나온다. LLM 없이 SQLite 재조회 한 번이다.
     """
-    m = _NAME_LOOKUP.search(sql)
-    if not m:
+    name, is_fund = _lookup_name_literals(sql)
+    if not name:
         return []
-    name = m.group(2) or m.group(4)
     toks = _TOKEN_SPLIT.findall(name)
     if len(toks) < 2:
         return []
-    if m.group(3):     # 펀드 — 종목명 stem(자산유형 괄호까지) 을 후보로, 순자산 순
+    if is_fund:        # 펀드 — 종목명 stem(자산유형 괄호까지) 을 후보로, 순자산 순
         table, col, order = "public_funds", "itm_nm", "fd_nast_suma"
     else:
         table, col, order = ("overseas_etfs" if "overseas_etfs" in sql.lower() else "domestic_etfs"), "pd_abrv_nm", "du_last_aum"
+    if not is_fund:
+        # 브랜드(필수 토큰)는 어느 자리에 적혔든 브랜드다 — 실측 브랜드 접두 사전에 있으면 필수 토큰으로 올린다
+        # (LIKE 분해형은 리터럴 순서가 HCX 마음대로다 — 'AI'·'로봇'·'KODEX').
+        brands = {b.casefold() for b in _etf_brand_tokens()}
+        toks.sort(key=lambda t: t.casefold() not in brands)
     first, rest = toks[0], [t for t in toks[1:] if len(t) >= 2]
     if not rest:
         return []
@@ -5982,6 +6053,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     #    날조로 보고 지우거나(OFFICIAL-004: 지수 조건이 사라진 전수 조회 30행 중 이름에 '우주항공' 이 든 1건을
     #    골라 답했다 — gold 48), 확정식이 지우고 대체를 못 넣으면(Z19: 판매중 ETF 전수 1,160) 질문의 의미 조건이
     #    증발한 채 그럴듯한 답이 나간다 — 무응답보다 나쁘다. 되돌려 0행 경로로 정직하게 보내고 트레이스에 남긴다.
+    sql, brand_fixed = ensure_etf_brand_token(sql, q)
+    if brand_fixed:
+        step("[Guard] ETF 브랜드 조건 사후조건 — 질문이 지목한 브랜드가 이름 술어에서 사라져 되돌려 주입 "
+             "(14R gold ③-1 · UNANS-001 실측: 'KODEX AI 로봇' 이 `pd_nm LIKE '%AI%' AND '%로봇%'` 로 나가 "
+             "KODEX 조건 없이 실재 ETF 3종을 나열 — 조건이 지워진 목록은 답이 아니다. 0행이면 유사 상품 되묻기가 받는다)")
     lost = [c for c in injected if c not in sql]
     if lost:
         sql, _ = _append_exclusions(sql, lost)

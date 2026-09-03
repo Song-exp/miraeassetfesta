@@ -62,8 +62,8 @@
 | 할인채 / 영구채 | 이름 파싱 | **689행** (`bd_intp_tcd`) / **266행·237종목** (`신종\|영구`) |
 | `query_rules` / `clarify` / `answer_rules` | 16 / 10 / — | **40 / 다의어 6 + 사람의_선택 4 + 조건부 1 / 20** |
 | ABSENT / gate_constants | — | **4 (AssetClass·Index·Region·CreditGradeHistory) / 1 (curr_cd=KRW, 09-03)** |
-| 평가셋 | 1문항(OFFICIAL-001) | **36문항** + 안전 최상급 프로브 10 + 공식·불가 3 |
-| 채권 전용 가드·조립기 | 0 | **약 35개 함수** (§8-3) |
+| 평가셋 | 1문항(OFFICIAL-001) | **44문항**(09-03 밤 기준 — 37~44 는 상대 시점·국공채 gold 8건, seohyun 재검 대기) + 안전 최상급 프로브 10 + 공식·불가 3 |
+| 채권 전용 가드·조립기 | 0 | **37개 함수** (§8-3, `pipeline.py` def 기준) |
 
 **한 줄로** — 1차에서 종목명을 정규식으로 긁던 것이 2차엔 전용 컬럼으로 왔고(좋아짐), 대신 행이 종목이 아니게 됐다(복합 PK). 8/30~9/3 나흘은 **"규칙은 실렸는데 HCX 가 무시한다"** 는 사고를 하나씩 결정층 가드로 옮긴 기간이다 — 채권 오답 58건 기록이 그 이력이다(§7).
 
@@ -255,12 +255,12 @@
 
 | 자산 | 내용 |
 | :-- | :-- |
-| `eval/questions_domestic_bonds.jsonl` | **36+문항** gold(SQL·행·sample·검증자) — BND-D/A/R/C/U/F 유형, 회귀 문항 25~36 은 실측 오답 원형 |
+| `eval/questions_domestic_bonds.jsonl` | **44문항** gold(SQL·행·sample·검증자) — BND-D/A/R/C/U/F 유형, 25~36 은 8/31~9/2 실측 오답 원형, 37~44 는 9/3 상대 시점(내년·오늘·올해·1년 안·3년 뒤)·국공채 종목 수 3종(다른 세션, 재검 대기) |
 | `eval/questions_top_safety_probe.jsonl` | 안전 최상급 10문항(BND-S) |
 | `eval/questions_official_sample.jsonl` | OFFICIAL-001(AA- 이상, 모수 15,792) · OFFICIAL-NA-001(AAAA) |
 | `eval/probe_bond_recheck.txt` | 재배포 후 서버 재실측 **29문항**(8/31 체크리스트 18 + 9/3 발견 11) — `eval/probe_server.py` 로 실행 |
-| `eval/run_gold_check.py` | 로컬 gold 전건(09-02: 147 통과/실패 0) |
-| `tests/` | 채권 언급 test_runtime 135 · test_guard_v2 44 · test_improvements 16 · test_router 8 (전체 490 passed, 09-03) |
+| `eval/run_gold_check.py` | 로컬 gold 전건 — **09-03 밤: 155문항 통과 155 · 실패 0** (BND-S-005·006 은 '0행이 정답' 이라 ⚠️ 표시만) |
+| `tests/` | 채권 언급 test_runtime 135 · test_guard_v2 44 · test_improvements 16 · test_router 8 (전체 **494 passed**, 09-03 밤) |
 | `scripts/audit_bonds_rules.py` · `audit_bonds_claims.py` · `audit_bonds_questions.py` | yaml 문장의 숫자·조건식 DB 재현(112건) · 문서 주장 재현 · gold 문항 감사 |
 | 서버 실측 기록 | `docs/기술제안서/채권_오답기록_2026-09-03.md` §1 총괄표 58건 · §2 날짜순 |
 

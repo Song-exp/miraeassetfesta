@@ -87,5 +87,5 @@ curl -sG "https://49.50.134.229.nip.io/answer" \
 docker compose up -d --build          # api:8000 + Caddy
 curl -s localhost/health
 PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe eval/probe_server.py eval/probe_gold_2026-09-03_g1.txt -o /tmp/g1.json   # 서버 프로브
-./.venv/Scripts/python.exe eval/run_gold_check.py                                                                           # 로컬 gold 147
+./.venv/Scripts/python.exe eval/run_gold_check.py                                                                           # 로컬 gold 155
 ```

@@ -352,3 +352,43 @@ def test_unknown_columns_per_scope():
     assert "wu_inv_rgn" in guard.unknown_columns(x15, ctx)     # 펀드 가지엔 없는 컬럼이다(X15 실행 오류)
     ok = "SELECT itm_nm, fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' LIMIT 5"
     assert guard.unknown_columns(ok, ctx) == []
+
+
+# ── P4-h · KG ③-8 (Z16) / P3-b · KG ③-7 (X12) — 운용사 코드 집합 ────────────────────────────
+def _count_sql(code: str) -> str:
+    return ("SELECT COUNT(DISTINCT " + P._FUND_KEY_EXPR + ") AS \"펀드수\", COUNT(*) AS \"클래스수\" "
+            "FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) = '" + code + "' "
+            "AND prvo_pbff_desc = '공모') LIMIT 30")
+
+
+def test_label_official_duplicate_codes():
+    """Z16 — 같은 정본 이름의 or_co 코드는 전부 IN (실측 4쌍: 키움투자자산운용 00080052·00040013 등)."""
+    import sqlite3
+    from src.runtime import loader
+    loader.load_context()
+    sql = _count_sql("00080052")
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        assert con.execute(sql).fetchone() == (97, 308)           # 부족값
+        out, ok = P.ensure_org_label_codes(sql)
+        assert ok and con.execute(out).fetchone() == (112, 354)   # gold
+    finally:
+        con.close()
+    # 역조회 경로의 코드에는 개입하지 않는다 — 정본 이름이 브랜드와 다를 수 있다(구상호)
+    assert P.ensure_org_label_codes(sql, ("키움", "00080052", "키움투자자산운용"))[1] is False
+
+
+def test_offshore_included_when_asked():
+    """X12 — '역외펀드까지 포함하면' 이면 역외 법인 코드를 합산한다. 문형이 없으면 종전대로 분리(S9·T11·KG-031)."""
+    import sqlite3
+    sql = _count_sql("00040013")
+    mgmt = ("슈로더", "00040013", "슈로더자산운용")
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        assert con.execute(sql).fetchone() == (15, 46)
+        out, note = P.ensure_mgmt_code_predicate(sql, "슈로더가 운용하는 공모펀드는 역외펀드까지 포함하면 몇 개야?", mgmt)
+        assert note and con.execute(out).fetchone() == (28, 59)   # gold
+        same, note2 = P.ensure_mgmt_code_predicate(sql, "슈로더가 운용하는 공모펀드는 몇 개야?", mgmt)
+        assert note2 is None and con.execute(same).fetchone() == (15, 46)
+    finally:
+        con.close()

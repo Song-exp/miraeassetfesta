@@ -3505,6 +3505,51 @@ def ensure_mgmt_code_predicate(sql: str, question: str, mgmt: tuple | None) -> t
     return _OR_CO_EQ.sub(cond, sql), f"'{mgmt[0]}' 브랜드가 법인 코드 {len(codes)}개에 걸려 등호를 IN 으로 확장"
 
 
+@lru_cache(maxsize=1)
+def _org_label_code_groups() -> dict:
+    """`or_co` 코드 → 같은 `label_official` 을 갖는 코드 전부(2개 이상일 때만). `kg_node` 실측, 하드코딩 0.
+
+    🔴 14R KG ③-8 (Z16) — 한 운용사에 `or_co` 코드가 둘인 경우가 있다(합병·구상호). 실측 4쌍
+       (키움투자자산운용 00080052·00040013 등). 코드 하나만 조회하면 부족값이 나온다 — gold 112펀드/354클래스.
+    """
+    ctx = _ev_ctx()
+    by_label: dict[str, set] = {}
+    for n in ctx.kg_nodes:
+        if n.node_type != "Organization":
+            continue
+        lo = (getattr(n, "label_official", "") or "").strip()
+        if not lo:
+            continue
+        by_label.setdefault(lo, set()).update(
+            raw for t, c, raw in ctx.kg_aliases.get(n.node_id, ())
+            if t == "public_funds" and c == "or_co_xtn_itt_cd")
+    out: dict = {}
+    for codes in by_label.values():
+        if len(codes) > 1:
+            for c in codes:
+                out[c] = tuple(sorted(codes))
+    return out
+
+
+def ensure_org_label_codes(sql: str, mgmt: tuple | None = None) -> tuple[str, bool]:
+    """KG 가 확정한 운용사 코드가 **같은 정본 이름의 형제 코드**를 갖고 있으면 `IN` 으로 묶는다. (SQL, 바꿨는지)
+
+    🔴 14R KG ③-8 — 운용사 질의는 `kg_node.label_official` 이 같은 모든 `Org_*` 노드의 코드를 함께 조회한다.
+    역조회(`mgmt`)로 얻은 코드에는 개입하지 않는다 — 그 경로는 브랜드 어간 기준이라
+    `ensure_mgmt_code_predicate` 가 이미 다루고, 같은 코드라도 정본 이름이 브랜드와 다를 수 있다
+    (실측: `Org_00040013` 의 정본 이름은 '키움투자자산운용' 이지만 종목명 접두는 '슈로더' 다 — 구상호).
+    """
+    if mgmt or not _FUND_TBL.search(sql):
+        return sql, False
+    groups = _org_label_code_groups()
+
+    def _fix(m: re.Match) -> str:
+        g = groups.get(m.group(1))
+        return ("TRIM(or_co_xtn_itt_cd) IN (" + ", ".join(f"'{c}'" for c in g) + ")") if g else m.group(0)
+    out = _OR_CO_EQ.sub(_fix, sql)
+    return (out, True) if out != sql else (sql, False)
+
+
 def mgmt_code_from_question(question: str) -> tuple | None:
     """질문의 운용사 표기 → (어간, 코드, 정본 이름). KG 매핑이 없을 때의 DB 역조회 1회. 못 찾으면 None.
 
@@ -6317,6 +6362,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 역조회 운용사 코드 술어 확정 — {mgmt_note} "
              "(14R 재검 ③-1 · S3 실측: '삼성' → 00040010 등호가 삼성액티브(00080135) 9클래스를 잘랐다. "
              "역조회는 코드 후보이지 필터가 아니다 — 술어로 쓸지·어떤 형태로 쓸지를 결정층이 못 박는다)")
+    sql, org_codes_fixed = ensure_org_label_codes(sql, mgmt)
+    if org_codes_fixed:
+        step("[Guard] 운용사 정본 이름 형제 코드 — 같은 label_official 을 갖는 or_co 코드를 IN 으로 묶었다 "
+             "(14R KG ③-8 · Z16 실측: 키움투자자산운용은 00080052·00040013 둘인데 하나만 조회해 97/308 부족값 — gold 112/354)")
     sql, brand_fixed = ensure_etf_brand_token(sql, q)
     if brand_fixed:
         step("[Guard] ETF 브랜드 조건 사후조건 — 질문이 지목한 브랜드가 이름 술어에서 사라져 되돌려 주입 "

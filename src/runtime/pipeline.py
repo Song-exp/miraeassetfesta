@@ -377,7 +377,7 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
     # 🔴 10R gold N2 — **위반을 전부 모아 한 번에 돌려준다.** 첫 사유에서 return 하면 재생성 1회가 사유 하나만
     #    고치고 다음 가드에 다시 걸려 예산이 소진된다(OFFICIAL-004 실측: 1차 괄호 가드 · 2차 테이블 참조로
     #    서로 다른 두 가드가 재생성 1회를 나눠 쓰고 무응답). 가드를 늘릴수록 이 곱셈이 나빠진다.
-    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql)) if e]
+    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql), forbidden_literal_use(sql)) if e]
     agg = where_window_or_aggregate(sql)
     if agg:
         errs.append(f"WHERE 절에 윈도우·집계 함수 사용({agg}) — 실행 시 misuse 오류. 집계 조건은 HAVING 으로, "
@@ -1670,6 +1670,26 @@ def forbidden_column_use(sql: str) -> str | None:
     return None
 
 
+# 2026-09-03 서버 실측: '달러로 발행된 채권 알려줘' → `curr_cd = '000'` — 값 사전에는 있으나(오염값 1행 실재) 규칙
+#   외화채없음이 '사용 불가' 로 못 박은 리터럴. 값 검사가 통과시키므로 사용 금지 컬럼과 같은 자리에서 기각한다.
+#   어휘 층(yaml gate_constants curr_cd)이 먼저 받고, 이 가드는 어휘를 비켜 간 SQL 의 뒷문이다.
+_FORBIDDEN_LITERALS = [
+    (re.compile(r"curr_cd\s*(?:=|<>|!=)\s*'000'", re.I),
+     "curr_cd='000' 은 통화 미수록 오염값 1행(BAC)이라 조건으로 쓸 수 없다 — 국내채권은 원화(KRW)만 수록, "
+     "달러·외화 채권은 '수록되어 있지 않다' 로 답한다(통화 조건은 curr_cd='KRW' 만)"),
+    (re.compile(r"curr_cd\s*(?:<>|!=)\s*'KRW'", re.I),
+     "curr_cd <> 'KRW' 는 오염값 '000' 1행만 남긴다 — 외화 채권은 수록 없음, 원화 외 통화 조건을 만들지 않는다"),
+]
+
+
+def forbidden_literal_use(sql: str) -> str | None:
+    """사용 금지 리터럴(오염값)을 조건으로 쓴 SQL 의 기각 사유 — 없으면 None."""
+    for pat, why in _FORBIDDEN_LITERALS:
+        if pat.search(sql):
+            return why
+    return None
+
+
 # 🔴 14R gold ③-12 (부류 R′) — **축을 바꿔 답했으면 반드시 밝힌다.** `FND-R02` 실측: 질문이 요구한
 #    `fd_wk1_ern_r`(1주 수익률)이 23,676/23,676 전건 결측이라 SQL 이 기각되고, 재생성이 말없이 1개월로
 #    갈아탄 뒤 답변이 그 사실을 한 글자도 밝히지 않았다(must_include `1주`·`없` 둘 다 미충족).
@@ -2529,7 +2549,18 @@ _BOND_AXIS_KO = {"applied_yield": ("수익률", "높은 순", "낮은 순"), "af
                  "buy_yield": ("매수수익률", "높은 순", "낮은 순"), "mat_dt": ("만기", "긴 순", "짧은 순"),
                  "remaining_days": ("잔존만기", "긴 순", "짧은 순"), "dur": ("듀레이션", "긴 순", "짧은 순"),
                  "eval_price": ("평가가", "높은 순", "낮은 순"), "isu_bal_amt": ("발행잔액", "많은 순", "적은 순")}
-_BOND_HIDE = {"pd_no", "pd_risk_gcd", "curr_cd", "info_base_dt", "info_seq", "pd_exg_mkt"}
+# 2026-09-03 서버 실측: SELECT * 결과를 그대로 옮겨 dirty·ndy_*·코드값(exrt_grte_ern_r_tcd 04)·pd_std_info_update 까지 노출.
+#   사용 금지(dirty·ndy_dirty·avg_annual_tax_yield·buyable_quantity)·익일·내부 컬럼은 숨기고, 범주 컬럼은 한글 라벨로.
+_BOND_HIDE = {"pd_no", "pd_risk_gcd", "curr_cd", "info_base_dt", "info_seq", "pd_exg_mkt",
+              "dirty", "ndy_dirty", "ndy_eval_price", "ndy_applied_yield", "ndy_dur", "ndy_cov", "cov",
+              "avg_annual_tax_yield", "buyable_quantity", "exrt_grte_ern_r", "exrt_grte_ern_r_tcd", "exrt_rpy_r",
+              "pd_std_info_update", "pd_ctry_cd", "bdbns_abl_chnl_tcd", "sale_yield_base_dt", "exg_close_price_base_dt",
+              "pd_abrv_nm", "pd_eng_nm", "pd_abrv_eng_nm", "crd_grd_dt"}
+_BOND_COL_KO = {"bd_knd": "종류", "bd_inrt_tcd": "금리구분", "bd_intp_tcd": "이자지급", "bd_ofr_tcd": "모집",
+                "std_pd_mcls_nm": "대분류", "std_pd_scls_nm": "소분류", "pd_pen_tr_yn": "퇴직연금편입", "isu_dt": "발행일",
+                "bd_tisu_a": "총발행액", "isu_bal_amt": "발행잔액", "eval_price": "평가가", "trade_price": "매매단가",
+                "dur": "듀레이션", "exg_close_price": "장내종가", "exg_close_yield": "장내종가수익률",
+                "bdbns_abl_chnl_nm": "판매채널"}
 _BOND_YIELD_COLS = ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield", "srfc_irt")
 
 
@@ -2565,6 +2596,7 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             return None
         recs.append(dict(zip(cols, parts)))
     ycol = next((c for c in _BOND_YIELD_COLS if c in cols), None)
+    star = bool(re.search(r"\bSELECT\s+(?:DISTINCT\s+)?\*", sql, re.I))
     # 정렬 축 — ORDER BY 첫 키(MAX/MIN 감싼 대표행 형 포함)
     axis_txt = ""
     m = re.search(r"\bORDER\s+BY\s+(?:MAX|MIN)?\(?\s*([A-Za-z_]\w*)\s*\)?(?:\s+(ASC|DESC))?", sql, re.I)
@@ -2614,11 +2646,12 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             bits.append(f"잔존 {r['remaining_days']}")
         if "pd_pbcm" in cols and r.get("pd_pbcm"):
             bits.append(f"발행사 {r['pd_pbcm']}")
-        for c in cols:
+        # SELECT * 는 58컬럼 전부가 오므로 위 핵심 항목만 보이고 나머지는 옮기지 않는다(2026-09-03 BAC 행 실측)
+        for c in ([] if star else cols):
             if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm") or c in _BOND_YIELD_COLS:
                 continue
             if r.get(c):
-                bits.append(f"{c} {r[c]}")
+                bits.append(f"{_BOND_COL_KO.get(c, c)} {r[c]}")
         out.append(f"{i}. {r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
     tail = []
     if "remaining_days" in cols and any(r.get("remaining_days") for r in recs):

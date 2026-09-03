@@ -1226,6 +1226,21 @@ def test_zero_count_answer_and_issuer_clarify(ctx):
     assert _violated_issuer(vs) == "삼성전자" and _violated_issuer([]) is None
 
 
+def test_forbidden_currency_literal_and_star_list():
+    from src.runtime.pipeline import forbidden_literal_use as f, _bond_list_answer as L
+    # 2026-09-03 서버 실측: curr_cd='000' 오염값 조건이 값 검사를 통과해 BAC 1행이 답으로 나감
+    assert f("SELECT * FROM domestic_bonds WHERE curr_cd = '000' LIMIT 30")
+    assert f("SELECT pd_nm FROM domestic_bonds WHERE curr_cd <> 'KRW' LIMIT 30")
+    assert f("SELECT pd_nm FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30") is None
+    # SELECT * 목록은 핵심 항목만 — dirty·코드 컬럼·raw 컬럼명 노출 금지, 명시 컬럼은 한글 라벨
+    rows = "pd_no | pd_nm | crd_grd | applied_yield | dirty | bd_inrt_tcd | exrt_grte_ern_r_tcd\nKR1 | 테스트채권 1 | AAA | 5.074 | 6356.17 | 고정금리 | 04"
+    a = L("SELECT * FROM domestic_bonds WHERE mat_dt >= 20260824 LIMIT 30", rows, 1, "채권 알려줘")
+    assert a and "테스트채권 1" in a and "5.074%" in a and "dirty" not in a and "bd_inrt_tcd" not in a and " 04" not in a
+    rows2 = "pd_nm | bd_inrt_tcd | dirty\n테스트채권 2 | 변동금리 | 9999"
+    a2 = L("SELECT pd_nm, bd_inrt_tcd, dirty FROM domestic_bonds WHERE bd_inrt_tcd = '변동금리' LIMIT 30", rows2, 1, "변동금리 채권 알려줘")
+    assert a2 and "금리구분 변동금리" in a2 and "dirty" not in a2 and "9999" not in a2
+
+
 def test_explicit_limit_hit_and_hedge_exemption():
     from src.runtime.pipeline import _explicit_limit_hit as hit, strip_false_hedge as h
     top5 = ("SELECT pd_nm, MAX(applied_yield) AS applied_yield FROM domestic_bonds WHERE applied_yield > 0 "

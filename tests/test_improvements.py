@@ -76,6 +76,16 @@ def test_gate_rejects_constant_violation_currency(ctx):
     assert g.rejected and "pd_trd_ccy" in g.reason and "USD" in g.answer
 
 
+def test_gate_rejects_constant_violation_bond_currency(ctx):
+    # 2026-09-03 서버 실측: '달러로 발행된 채권' 이 curr_cd='000' 오염값 1행(BAC)을 답으로 냄 → 어휘 층에서 HCX 0회 기각
+    for q in ("달러로 발행된 채권 알려줘", "해외 채권 알려줘", "외화 표시 채권 있어?", "USD 채권 뭐 있어"):
+        g = gate.check(q, ctx, ["domestic_bonds"])
+        assert g.rejected and "curr_cd" in g.reason and "원화" in g.answer, q
+    # DB 어휘와 충돌하는 이름은 안 걸린다
+    for q in ("외국환평형기금채권 알려줘", "해외인프라도시개발채권 수익률", "한국전력 채권 알려줘"):
+        assert not gate.check(q, ctx, ["domestic_bonds"]).rejected, q
+
+
 def test_gate_rejects_constant_violation_exchange(ctx):
     g = gate.check("한국거래소(KRX)에 상장된 해외 ETF를 알려줘", ctx, ["overseas_etfs"])
     assert g.rejected and "pd_mkt_id" in g.reason

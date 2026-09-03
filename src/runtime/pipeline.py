@@ -3413,6 +3413,58 @@ def _mgmt_stem_codes() -> tuple:
     return tuple(sorted(best.items()))
 
 
+@lru_cache(maxsize=None)
+def _brand_or_co_codes(stem: str, offshore: bool) -> tuple[str, ...]:
+    """브랜드 어간으로 **시작하는** 종목명을 가진 운용사 코드 전부 — DB 실측(하드코딩 0).
+
+    🔴 14R 재검 ③-1 — 브랜드 하나가 법인 코드 여럿에 걸린다. 실측 '삼성' 접두 = 00040010(삼성자산운용 850클래스)
+       + 00080135(삼성액티브자산운용 56). 단일 등호가 `삼성코리아대표증권자투자신탁 제1호` 9클래스를 통째로
+       잘랐다(S3 ❌). 같은 라운드 V11 이 스스로 `00040010 207 · 00080135 10 · …` 를 답에 싣고 있었다.
+    역외 종별(0013)은 질문이 역외를 요구할 때만 넣는다 — S9·T11·KG-031 은 역외를 분리 고지하는 것이 gold 다.
+    """
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            "SELECT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)), COUNT(*) FROM public_funds "
+            "WHERE REPLACE(itm_nm,' ','') LIKE ? GROUP BY 1 ORDER BY 2 DESC", (f"{stem}%",)).fetchall()
+    except sqlite3.Error:
+        return ()
+    finally:
+        con.close()
+    return tuple(c for c, _ in rows if offshore or not c.startswith(_OFFSHORE_CLASS))
+
+
+_OR_CO_EQ = re.compile(r"(?:TRIM\(\s*)?(?:\w+\.)?\bor_co_xtn_itt_cd\b\s*\)?\s*=\s*'(\d+)'", re.I)
+_OFFSHORE_Q = re.compile(r"역외")
+
+
+def ensure_mgmt_code_predicate(sql: str, question: str, mgmt: tuple | None) -> tuple[str, str | None]:
+    """역조회로 확정한 운용사 코드를 SQL 술어로 어떻게 쓸지 **결정층이 못 박는다**. (SQL, 사람말 조치 또는 None)
+
+    🔴 14R 재검 ③-1 (부류 AC) — 11R KG ③-13 의 역조회 자체는 옳다(HCX 코드 날조·재생성 3회+ 를 0으로 만들었다).
+       **틀린 것은 단일 등호**다: 브랜드 하나가 법인 코드 여럿에 걸리는데 등호가 정답 행을 자른다.
+    두 갈래:
+      ⓐ 이름 리터럴이 브랜드 어간을 **이미 품으면** 코드 술어는 정보가 0이다 → 제거한다
+         (`itm_nm LIKE '%삼성코리아대표%'` 가 이미 브랜드를 거른다 — S3).
+      ⓑ 이름 리터럴에 브랜드가 없으면(W1 형) 등호가 아니라 **브랜드 어간 역조회 코드 전부의 `IN`** 으로 렌더한다.
+    KG 가 `Organization` 으로 확정한 코드(U11·S9 계열)에는 개입하지 않는다 — 그 코드는 우리가 지어낸 것이 아니다.
+    """
+    if not mgmt or not _FUND_TBL.search(sql) or not _single_select(sql) or not _OR_CO_EQ.search(sql):
+        return sql, None
+    stem = mgmt[0].replace(" ", "")
+    if any(stem in lit.replace(" ", "") for lit in _NAME_LIKE_LIT.findall(sql)):
+        out = _OR_CO_EQ.sub("1=1", sql)
+        out = re.sub(r"\s+AND\s+1=1\b", "", out)
+        out = re.sub(r"\b1=1\s+AND\s+", "", out)
+        return (out, f"이름 리터럴이 '{mgmt[0]}' 을 이미 품어 코드 등호 제거(정보 0 · 다코드 브랜드를 자른다)") \
+            if out != sql else (sql, None)
+    codes = _brand_or_co_codes(stem, bool(_OFFSHORE_Q.search(question)))
+    if len(codes) < 2 or set(_OR_CO_EQ.findall(sql)) <= set(codes) and len(set(_OR_CO_EQ.findall(sql))) == len(codes):
+        return sql, None
+    cond = "TRIM(or_co_xtn_itt_cd) IN (" + ", ".join(f"'{c}'" for c in codes) + ")"
+    return _OR_CO_EQ.sub(cond, sql), f"'{mgmt[0]}' 브랜드가 법인 코드 {len(codes)}개에 걸려 등호를 IN 으로 확장"
+
+
 def mgmt_code_from_question(question: str) -> tuple | None:
     """질문의 운용사 표기 → (어간, 코드, 정본 이름). KG 매핑이 없을 때의 DB 역조회 1회. 못 찾으면 None.
 
@@ -4036,17 +4088,25 @@ def ensure_fund_attr_tag(sql: str, question: str) -> tuple[str, bool]:
     if not hits:
         return sql, False
     orig = sql
+    made: list[str] = []
     for w, codes, name_union in hits:
         parts = [f"',' || prfd_attr_cds || ',' LIKE '%,{c},%'" for c in codes]
         if name_union:
             parts.append(f"REPLACE(itm_nm,' ','') LIKE '%{w}%'")
         canon = parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
+        made.append(canon)
         if canon in sql:
             continue
         m = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
         if m:
             # 같은 낱말·같은 코드를 쓴 타 컬럼/wrap 없는 절은 걷어낸다(KG-024: `prfd_attr_cds LIKE '%,N144,%'` 첫 토큰 14클래스 누락)
-            kept = [c for c in guard.split_conjuncts(m.group(1)) if w not in c and not any(code in c for code in codes)]
+            # 🔴 14R KG ③-2 — **같은 컬럼**의 잔여 술어도 걷는다(11R ③-5 의 나머지 반쪽). KG-017 실측 회귀:
+            #    확정식이 `prfd_attr_cds` 에 C104 를 주입했는데 HCX 가 **같은 컬럼**에 넣은 `'%,폐쇄,%'`(DB 0행)를
+            #    안 걷어 3/6 → 0 이 됐다. 이 가드가 이번 호출에서 만든 canon 은 남긴다(KG-018 직교 축 2회 주입).
+            kept = [c for c in guard.split_conjuncts(m.group(1))
+                    if c.strip() in made
+                    or (w not in c and not any(code in c for code in codes)
+                        and not re.search(r"\bprfd_attr_cds\b", c, re.I))]
             sql = sql[:m.start(1)] + " " + " AND ".join(kept + [canon]) + " " + sql[m.end(1):] if kept else \
                 sql[:m.start(1)] + " " + canon + " " + sql[m.end(1):]
         else:
@@ -5901,7 +5961,8 @@ def ensure_default_topn(sql: str, question: str) -> tuple[str, bool]:
     return f"{body} LIMIT {DEFAULT_TOPN}", True
 
 
-def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None) -> str:
+def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
+                      mgmt: tuple | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
 
     🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
@@ -6137,6 +6198,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     #    날조로 보고 지우거나(OFFICIAL-004: 지수 조건이 사라진 전수 조회 30행 중 이름에 '우주항공' 이 든 1건을
     #    골라 답했다 — gold 48), 확정식이 지우고 대체를 못 넣으면(Z19: 판매중 ETF 전수 1,160) 질문의 의미 조건이
     #    증발한 채 그럴듯한 답이 나간다 — 무응답보다 나쁘다. 되돌려 0행 경로로 정직하게 보내고 트레이스에 남긴다.
+    sql, mgmt_note = ensure_mgmt_code_predicate(sql, q, mgmt)
+    if mgmt_note:
+        step(f"[Guard] 역조회 운용사 코드 술어 확정 — {mgmt_note} "
+             "(14R 재검 ③-1 · S3 실측: '삼성' → 00040010 등호가 삼성액티브(00080135) 9클래스를 잘랐다. "
+             "역조회는 코드 후보이지 필터가 아니다 — 술어로 쓸지·어떤 형태로 쓸지를 결정층이 못 박는다)")
     sql, brand_fixed = ensure_etf_brand_token(sql, q)
     if brand_fixed:
         step("[Guard] ETF 브랜드 조건 사후조건 — 질문이 지목한 브랜드가 이름 술어에서 사라져 되돌려 주입 "
@@ -6187,6 +6253,7 @@ def answer_question(
     # Ground — 기각 여부와 무관하게 매핑 결과는 근거로 남긴다 (교차질의면 _ground 가 ext_* 도 대상에 넣는다 — ㉡·E)
     hits, ground_lines = _ground(q, ctx, tables, cross)
     mgmt_fallback: list[str] = []
+    mgmt_found: tuple | None = None      # 14R 재검 ③-1 — 역조회로 우리가 만든 코드일 때만 술어 확정 가드가 돈다
     if ground_lines:
         step("[Ground] KG 개체 매핑 — " + " / ".join(ground_lines))
     else:
@@ -6199,6 +6266,7 @@ def answer_question(
             found = mgmt_code_from_question(q)
             if found:
                 stem, code, nm = found
+                mgmt_found = found
                 mgmt_fallback = [f"{nm} (Organization) → public_funds.or_co_xtn_itt_cd 의 값: '{code}' "
                                  f"— KG 미매핑이라 ext_fund_page.mgmt_co_nm 역조회로 확정한 코드다. "
                                  f"이 코드를 그대로 쓰고 다른 코드를 지어내지 않는다"]
@@ -6349,7 +6417,7 @@ def answer_question(
         result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
         return result
 
-    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables)
+    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables, mgmt_found)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
@@ -6379,7 +6447,7 @@ def answer_question(
         # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
         #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
         sql2, _ = normalize_date_literals(raw2)
-        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx, tables)
+        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx, tables, mgmt_found)
         result.sql = sql2
         step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql2)
         err2 = _sql_precheck(sql2, ctx, tables, cross)

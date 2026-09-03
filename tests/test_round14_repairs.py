@@ -164,3 +164,62 @@ def test_order_by_position_out_of_range():
     assert P.validate_sql(ok) is None
     # UNION 은 첫 가지로 판정하면 오탐이라 불개입
     assert P._order_by_position_overflow("(SELECT a, b FROM t) UNION ALL (SELECT c, d FROM u) ORDER BY 2") is None
+
+
+# ── P2-d · 재검 ③-1 — 역조회 운용사 코드는 등호로 쓰지 않는다 ──────────────────────────────
+_MGMT = ("삼성", "00040010", "삼성자산운용")
+
+
+def test_mgmt_code_predicate_dropped_when_name_has_brand():
+    """S3: 이름 리터럴이 브랜드를 이미 품으면 코드 등호는 정보가 0이고 정답 행을 자른다."""
+    import sqlite3
+    sql = ("SELECT MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS c FROM public_funds "
+           "WHERE TRIM(or_co_xtn_itt_cd) = '00040010' AND REPLACE(itm_nm,' ','') LIKE '%삼성코리아대표%' "
+           "AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' "
+           "GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), itm_no) LIMIT 30")
+    out, note = P.ensure_mgmt_code_predicate(sql, "삼성코리아대표 펀드 1년 수익률 알려줘", _MGMT)
+    assert note and "or_co_xtn_itt_cd" not in out and "1=1" not in out
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        names = [r[0] for r in con.execute(out)]
+    finally:
+        con.close()
+    assert len(names) == 2                      # gold: 분할매수 1클래스 + 제1호 9클래스
+    assert any("제1호" in n for n in names)
+
+
+def test_mgmt_code_predicate_in_list():
+    """W1 형(이름에 브랜드가 없다): 등호가 아니라 브랜드 어간 역조회 코드 전부의 IN."""
+    sql = ("SELECT itm_nm FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND (TRIM(or_co_xtn_itt_cd) = '00040010' AND REPLACE(itm_nm,' ','') LIKE '%차이나본토%') LIMIT 30")
+    out, note = P.ensure_mgmt_code_predicate(sql, "삼성차이나본토 펀드 위험등급 알려줘", _MGMT)
+    assert note and "IN (" in out and "'00080135'" in out          # 삼성액티브가 들어온다
+
+
+def test_mgmt_code_predicate_skips_kg_mapped():
+    """KG 가 Organization 으로 확정한 코드(U11·S9)에는 개입하지 않는다 — 우리가 지어낸 코드가 아니다."""
+    sql = ("SELECT itm_nm FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080029' "
+           "AND REPLACE(itm_nm,' ','') LIKE '%피델리티차이나%' LIMIT 30")
+    assert P.ensure_mgmt_code_predicate(sql, "피델리티차이나 펀드 순자산 알려줘", None) == (sql, None)
+
+
+def test_brand_or_co_codes_offshore_split():
+    """역외 종별(0013)은 질문이 역외를 요구할 때만 — S9·T11 은 분리 고지가 gold."""
+    assert "00130003" not in P._brand_or_co_codes("슈로더", False)
+    assert "00130003" in P._brand_or_co_codes("슈로더", True)
+
+
+# ── P4-d · KG ③-2 — 확정식은 *같은 컬럼* 잔여 술어도 걷는다 (KG-017) ─────────────────────────
+def test_attr_tag_same_column_residual():
+    import sqlite3
+    from src.runtime import loader
+    loader.load_context()
+    sql = ("SELECT COUNT(*) AS c FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND ',' || prfd_attr_cds || ',' LIKE '%,폐쇄,%' LIMIT 30")
+    out, ok = P.ensure_fund_attr_tag(sql, "폐쇄형 공모펀드는 몇 개야?")
+    assert ok and "'%,폐쇄,%'" not in out and "C104" in out
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        assert con.execute(out).fetchone()[0] == 6      # gold 3펀드 / 6클래스
+    finally:
+        con.close()

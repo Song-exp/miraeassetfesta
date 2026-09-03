@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Callable
 
 from .loader import RuntimeContext
 
@@ -28,6 +29,9 @@ DATA_CUTOFF = "2026-08-24"   # 🔄 리드 결정 2026-09-02: 답변 표기·판
 #    평가·서비스 시점은 8/24(월, 2차 배포일) 이므로 mat_dt < 20260824 는 전부 '만기 경과' 로 제외한다.
 #    8/22·8/23(주말) 만기 14종목은 as-of 기준으론 살아 있지만 8/24 에는 결제 불가 → 모수 밖. 답변의 '기준일' 표기도 8/24(DATA_CUTOFF) — 두 상수는 같은 값이지만 역할(표기 vs 만기 판정)이 달라 분리 유지.
 BUYABLE_CUTOFF = "2026-08-24"
+# 데이터 스냅샷 종가일 — 전 행 info_base_dt=20260821(금). remaining_days·가격·수익률은 이 날 기준으로 산출돼 있다.
+# 답변에서 잔존일수를 보일 때 이 날짜를 병기한다(질문 시점 8/24 와 3일 차이 — 오늘 만기 채권의 잔존일수가 3 으로 적혀 있다).
+SNAPSHOT_DATE = "2026-08-21"
 
 # 교차질의 힌트 — 구성종목 보유 조건은 외부 Holdings 테이블(ext_*)을 함께 본다는 신호.
 # 테이블을 "하나 고르기"가 아니라 "해당하는 전부"로 라우팅한다 (주최 8/24: 교차질의는 한 호출에서 복수 상품군).
@@ -86,9 +90,121 @@ _FUTURE = re.compile(
     # '잔존만기 28년'·'10년 만기 채권' 의 28년·10년은 기간이라 잡으면 안 된다 (2026-08-31 실측: '28년 12월까지' 를 미탐지 → 연도 오기 20291231 을 못 잡음)
     r"|(?<!\d)(2[7-9]|[3-9]\d)\s*년(?=\s*\d{1,2}\s*월|까지|에\s*만기)"
 )
-# 상대 시점 — 기준일 2026-08-24 기준. '올해' 는 미래가 아니다
-_RELATIVE_FUTURE = {"내년": "2027", "내후년": "2028", "후년": "2028"}
+# ── 상대 시점 확정표 — 질문 시점(오늘) D = BUYABLE_CUTOFF(2026-08-24, 월) 고정 ───────────────────
+# 🔴 2026-09-03 서버 실측(오답기록 #51): "내년에 만기가 되는 회사채 중 AA 이상" → HCX 가 '내년' 을
+#    mat_dt BETWEEN 20280824 AND 20290824(+2~+3년) 로 오계산했고, 사후검사가 "SQL 에 2027 이 없다" 를
+#    "만기 질의가 아니다" 로 읽어 오기각. 코드가 아는 상대 시점 낱말이 내년·내후년·후년 셋뿐이었고 그것도
+#    미래 감지용이었다 — 오늘·내일·이번 달·올해·N개월 안에·N년 뒤 는 전부 HCX 재량이었다.
+#    이 표가 유일한 정의다. 프롬프트(build_grounding)·가드(enforce_relative_window)·테스트가 전부 여기서 읽는다.
+#
+# 날짜 판단(리드·채권 담당 결정 2026-09-03, 주최 공지 "26.08.24일 기준, 영업일 08.22 까지 / 해외는 한국시간 23일"):
+#   · 8/21(금) = 데이터 스냅샷 종가일(info_base_dt) — remaining_days·가격·수익률의 산출 기준. 8/22(토)·8/23(일)은 영업일이 아니다.
+#   · 8/24(월) = 주최가 명시한 '기준일' · 배포일 · 첫 결제 가능 영업일 → **질문 시점(오늘)** 은 8/24 로 고정한다.
+#   · 상대 시점 창은 mat_dt 로만 만든다 — remaining_days 는 8/21 기준이라 8/24 를 오늘로 두면 3일 어긋난다
+#     (mat_dt 20260824 → remaining_days 3). 답변의 잔존일수는 컬럼 원값을 보이되 산출 기준일(8/21)을 병기한다(재계산하지 않는다 —
+#     심사 gold 는 제공 데이터의 컬럼값에서 나올 가능성이 높다).
+#   · 'N년 뒤' = (D.year+N)년 전체(내년 = 1년 뒤 = 2027년 전체와 같은 읽기). 'N년 안에·이내' = D ~ D+N년(같은 날짜).
+import datetime as _dt
+
+_TODAY = _dt.date.fromisoformat(BUYABLE_CUTOFF)
+
+
+def _ymd(d: _dt.date) -> int:
+    return d.year * 10000 + d.month * 100 + d.day
+
+
+def _month_end(y: int, m: int) -> _dt.date:
+    return (_dt.date(y + (m == 12), (m % 12) + 1, 1) - _dt.timedelta(days=1))
+
+
+def _add_months(d: _dt.date, n: int) -> _dt.date:
+    y, m = divmod(d.month - 1 + n, 12)
+    y, m = d.year + y, m + 1
+    return _dt.date(y, m, min(d.day, _month_end(y, m).day))
+
+
+def _add_years(d: _dt.date, n: int) -> _dt.date:
+    try:
+        return d.replace(year=d.year + n)
+    except ValueError:                      # 2/29
+        return d.replace(year=d.year + n, day=28)
+
+
+# 낱말 앞에 한글·영숫자가 붙으면 낱말이 아니다 — 'KB내일드림'·'오늘이엔엠'(발행사) 은 상대 시점이 아니다
+_W = r"(?<![가-힣A-Za-z0-9])"
+_RELATIVE_WINDOW: list[tuple[str, str, Callable[[], tuple[int, int]]]] = [
+    # (라벨, 정규식, 창 계산) — 위에서부터 첫 매치가 이긴다(세부 표현 → 일반 표현 순)
+    ("내년 상반기", _W + r"내년\s*상반기", lambda: (_ymd(_dt.date(_TODAY.year + 1, 1, 1)), _ymd(_dt.date(_TODAY.year + 1, 6, 30)))),
+    ("내년 하반기", _W + r"내년\s*하반기", lambda: (_ymd(_dt.date(_TODAY.year + 1, 7, 1)), _ymd(_dt.date(_TODAY.year + 1, 12, 31)))),
+    ("올해 하반기", _W + r"(?:올해|금년|이번\s*해)\s*하반기", lambda: (_ymd(_TODAY), _ymd(_dt.date(_TODAY.year, 12, 31)))),
+    ("내후년", _W + r"(?:내후년|후년)", lambda: (_ymd(_dt.date(_TODAY.year + 2, 1, 1)), _ymd(_dt.date(_TODAY.year + 2, 12, 31)))),
+    ("내년", _W + r"내년", lambda: (_ymd(_dt.date(_TODAY.year + 1, 1, 1)), _ymd(_dt.date(_TODAY.year + 1, 12, 31)))),
+    ("올해", _W + r"(?:올해|금년|연내|올\s*해|이번\s*해|연말\s*까지|올해\s*말)", lambda: (_ymd(_TODAY), _ymd(_dt.date(_TODAY.year, 12, 31)))),
+    # 발행사 '(주)오늘이엔엠' · 펀드명 '교보악사 내일환매'·'내일받는'·'내일드림'·'내일출금' 은 상대 시점이 아니다
+    ("오늘", _W + r"(?:오늘(?!이엔엠)|금일|당일)", lambda: (_ymd(_TODAY), _ymd(_TODAY))),
+    ("내일", _W + r"내일(?!환매|받는|드림|출금)", lambda: (_ymd(_TODAY + _dt.timedelta(days=1)),) * 2),
+    ("모레", _W + r"모레", lambda: (_ymd(_TODAY + _dt.timedelta(days=2)),) * 2),
+    ("이번 주", _W + r"(?:이번\s*주|금주)", lambda: (_ymd(_TODAY), _ymd(_TODAY + _dt.timedelta(days=6 - _TODAY.weekday())))),
+    ("다음 주", _W + r"(?:다음\s*주|차주)", lambda: (_ymd(_TODAY + _dt.timedelta(days=7 - _TODAY.weekday())), _ymd(_TODAY + _dt.timedelta(days=13 - _TODAY.weekday())))),
+    ("이번 달", _W + r"(?:이번\s*달|이달|당월)", lambda: (_ymd(_TODAY), _ymd(_month_end(_TODAY.year, _TODAY.month)))),
+    ("다음 달", _W + r"(?:다음\s*달|다음달|내달|익월)", lambda: _month_window(_add_months(_TODAY, 1))),
+]
+
+
+def _month_window(d: _dt.date) -> tuple[int, int]:
+    return _ymd(d.replace(day=1)), _ymd(_month_end(d.year, d.month))
+# 숫자 상대 시점 — 'N년 뒤·후' = 해당 연도 전체 / 'N개월 뒤·후' = 해당 월 전체 / 'N년·N개월 안에·이내' = D ~ D+N
+_REL_NUM = re.compile(
+    _W + r"(\d{1,2})\s*(년|개월|달)\s*(뒤|후(?!순위)|안에|이내|내에|내로)"
+)
 _MAT_DT_WINDOW = 60      # SQL 에서 mat_dt 와 연도 사이의 허용 거리(글자) — BETWEEN·SUBSTR·CAST 어느 형태든 이 안에 든다
+
+
+def resolve_relative_window(question: str) -> list[tuple[str, int, int]]:
+    """질문의 상대 시점 낱말 → [(낱말, lo, hi)] (mat_dt 정수 창, 양끝 포함). 질문 시점은 BUYABLE_CUTOFF 로 고정.
+
+    '10년 만기'·'잔존 3년' 같은 기간 표현은 창이 아니다(숫자형은 뒤·후·안에·이내 가 붙을 때만).
+    같은 창이 두 번 나오면 하나로 센다. 서로 다른 창이 여럿이면 호출자가 판단한다(가드는 불개입).
+    """
+    out: list[tuple[str, int, int]] = []
+    for label, pat, fn in _RELATIVE_WINDOW:
+        m = re.search(pat, question)
+        if m:
+            lo, hi = fn()
+            if not any(l == lo and h == hi for _, l, h in out):
+                out.append((label, lo, hi))
+            question = question[:m.start()] + " " * (m.end() - m.start()) + question[m.end():]   # '내년 상반기' 가 '내년' 으로 또 잡히지 않게
+    for m in _REL_NUM.finditer(question):
+        n, unit, rel = int(m.group(1)), m.group(2), m.group(3)
+        if n == 0:
+            continue
+        if rel in ("뒤", "후"):
+            if unit == "년":
+                y = _TODAY.year + n
+                lo, hi = _ymd(_dt.date(y, 1, 1)), _ymd(_dt.date(y, 12, 31))
+            else:
+                lo, hi = _month_window(_add_months(_TODAY, n))
+        else:
+            hi_d = _add_years(_TODAY, n) if unit == "년" else _add_months(_TODAY, n)
+            lo, hi = _ymd(_TODAY), _ymd(hi_d)
+        label = m.group(0).strip()
+        if not any(l == lo and h == hi for _, l, h in out):
+            out.append((label, lo, hi))
+    return out
+
+
+def relative_future_years(question: str) -> list[str]:
+    """상대 시점 창 가운데 기준일 다음 해 이후로 시작하는 것의 연도('YYYY') — future_tokens 의 재료."""
+    ys: list[str] = []
+    for _, lo, _hi in resolve_relative_window(question):
+        y = str(lo // 10000)
+        if lo // 10000 > _TODAY.year and y not in ys:
+            ys.append(y)
+    return ys
+
+
+# 호환 — 옛 이름. 값은 확정표에서 파생한다(리터럴 중복 금지)
+_RELATIVE_FUTURE = {"내년": str(_TODAY.year + 1), "내후년": str(_TODAY.year + 2), "후년": str(_TODAY.year + 2)}
 
 
 @dataclass
@@ -114,8 +230,9 @@ def future_tokens(question: str) -> list[str]:
             toks.append(f"20{m.group(4)}")
         else:
             toks.append(f"2026{int(m.group(2) or m.group(3)):02d}")
-    for word, year in _RELATIVE_FUTURE.items():
-        if word in question and year not in toks:
+    # 상대 시점('내년'·'3년 뒤' …)은 확정표에서 연도를 받는다 — 표와 다른 값을 여기 따로 적지 않는다
+    for year in relative_future_years(question):
+        if year not in toks:
             toks.append(year)
     return toks
 

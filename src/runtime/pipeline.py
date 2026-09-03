@@ -4311,9 +4311,14 @@ def _ptn_values() -> tuple:
 
 
 def _ptn_value_in_question(question: str) -> str | None:
-    """질문에 든 제로인 소분류(zrin_ptn_nm) 값 — 가장 긴 것. 없으면 None."""
-    q = question.replace(" ", "")
-    return next((v for v in _ptn_values() if len(v) >= 3 and v.replace(" ", "") in q), None)
+    """질문에 든 제로인 소분류(zrin_ptn_nm) 값 — 가장 긴 것. 없으면 None.
+
+    🔴 16R KG ③-7 (`Z5` 회귀) — **공백을 지우고 대조하면 두 낱말이 붙어 없던 값이 생긴다.** 실측:
+       "글로벌 주식형 공모펀드는 몇 개야?" 를 공백 없이 보면 `글로벌주식`(약관분류 값)이 걸려 자산군 축
+       가드가 통째로 꺼졌고, 그 자리에 HCX 의 반쪽 인용(`= '주식형' OR (… IS NULL AND …)`)이 남아 53/73 이 됐다.
+       약관분류 값은 **질문에 공백 없이 그대로** 나올 때만 그 축으로 읽는다("중국주식 유형"·"인도주식 유형인").
+    """
+    return next((v for v in _ptn_values() if len(v) >= 3 and v in question), None)
 
 
 _BTYP_AXIS_COLS = re.compile(r"\b(?:zrin_btyp_nm|zrin_ptn_nm|zrin_pcd)\b", re.I)
@@ -4332,6 +4337,24 @@ def _btyp_values() -> tuple:
     return tuple(sorted((v for v in vals if len(v) >= 3 and v.endswith("형")), key=len, reverse=True))
 
 
+def _replace_axis_or_inject(sql: str, cond: str, axis_rx: str, lit: str) -> tuple[str, bool]:
+    """확정식 `cond` 를 WHERE 에 심는다 — 같은 값 리터럴을 쓰던 최상위 절이 있으면 **그 자리를 교체**한다.
+
+    HCX 가 없는 컬럼으로 축을 쓴 경우(`asset_class = '중국주식'`)에도 리터럴이 같으므로 교체가 성립한다 —
+    컬럼 이름을 사전과 대조하지 않고도 환각 술어가 사라진다(가드 중복 0).
+    """
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
+        return (f"{sql[:anchor.start()]}WHERE {cond} {sql[anchor.start():]}", True) if anchor else (sql, False)
+    conjs = _flat_conjuncts(m_w.group(1))
+    kept = [c for c in conjs if f"'{lit}'" not in c and not re.search(axis_rx, c, re.I)]
+    if len(kept) == len(conjs):
+        kept = conjs
+    body = " " + " AND ".join([cond] + kept) + " "
+    return sql[:m_w.start(1)] + body + sql[m_w.end(1):], True
+
+
 def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
     """KG 4R G3 / 6R P′ — **질문이 고른 유형 축이 SQL 어디에도 없으면 확정식을 AND 로 주입한다.** (SQL, 주입했는지)
 
@@ -4348,11 +4371,24 @@ def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
     if _has_name_filter(sql) or _has_fund_key_pin(sql):
         return sql, False
     q = question.replace(" ", "")
+    # 🔴 16R KG ③-6 (부류 H · Z11·Z10·AA6·AA7) — **약관분류(`zrin_ptn_nm`)는 유형 축보다 잘게 나눈 별개 축이고,
+    #    질문이 그 값을 지명하면 확정식이 그 축이다.** 13R 의 ✅ 는 운이었다 — 못 박는 확정식이 없어 HCX 가
+    #    매 라운드 새 컬럼을 지어냈고(`Z11` 15R: `asset_class='중국주식'` — 존재하지 않는 컬럼 → 오거절),
+    #    14R 이 이 항을 자산군 `IN` 안건과 묶어 보류한 대가가 ✅ 1건이었다. 두 축은 분리해 집행한다.
     # 질문에 든 유형 값 — 긴 것부터. 긴 값에 포함되는 짧은 값('주식형' ⊂ '해외주식형')은 같은 낱말이다
     picked: list[str] = []
     for v in _btyp_values():
         if v in q and not any(v in p for p in picked):
             picked.append(v)
+    ptn = _ptn_value_in_question(question)
+    if ptn:
+        if re.search(rf"\bzrin_ptn_nm\s*=\s*'{re.escape(ptn)}'", sql, re.I):
+            return sql, False                                    # 멱등
+        # 질문이 부르지 않은 유형 축 절은 함께 걷는다 — AA7 실측: HCX 의 `zrin_btyp_nm LIKE '%일본%'` 가
+        # 남으면 확정식과 교집합이 0 이 된다. 질문이 부른 유형(Z10·AA6 '해외주식형')은 그대로 둔다.
+        stale = None if picked else r"\b(?:zrin_btyp_nm|zrin_pcd)\b"
+        return _replace_axis_or_inject(sql, f"zrin_ptn_nm = '{ptn}'",
+                                       r"\bzrin_ptn_nm\b" + (f"|{stale}" if stale else ""), ptn)
     val = picked[0] if picked else None
     if not val:
         return sql, False
@@ -6439,6 +6475,45 @@ def apply_union_branch_guards(sql: str, q: str) -> tuple[str, list[str]]:
     return "".join(parts), notes
 
 
+# 비교 연산자 앞에 오는 식별자 = 술어의 컬럼 자리 (문자열 리터럴·테이블 한정자 뒤는 제외)
+_PRED_COL = re.compile(r"(?<![.\w'])([A-Za-z_]\w*)\s*(?:[=<>!]|\bLIKE\b|\bGLOB\b|\bIN\b|\bIS\b|\bBETWEEN\b)", re.I)
+
+
+def drop_hallucinated_column_conjuncts(sql: str) -> tuple[str, list[str]]:
+    """스키마에 없는 컬럼을 쓴 최상위 AND 절을, **그 값 리터럴이 다른 절에 이미 걸려 있을 때만** 걷는다.
+
+    🔴 16R KG ③-6 / gold ③-1 — `Z11` 실측: `asset_class='중국주식' AND fund_type='공모'` 두 환각 컬럼이
+       실행 전 검사에 걸리고, 재생성이 **완전히 같은 문장**을 돌려줘 오거절로 끝났다(13R 205펀드/522클래스 회귀).
+       확정식 가드가 `zrin_ptn_nm='중국주식'`·`prvo_pbff_desc='공모'` 를 이미 심었으므로 남은 환각 절은
+       정보가 0 이다 — 지워도 모수가 넓어지지 않는다. **리터럴이 다른 곳에 없으면 지우지 않는다**(모수 확대 금지).
+    """
+    if not _COLUMNS_OF:
+        return sql, []
+    declared = {t.lower() for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", sql, re.I)}
+    known: set = set()
+    for t in declared:
+        known |= _COLUMNS_OF.get(t, set())
+    if not known:
+        return sql, []
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, []
+    conjs = _flat_conjuncts(m_w.group(1))
+    kept, dropped = [], []
+    for c in conjs:
+        cols = {m.group(1).lower() for m in _PRED_COL.finditer(re.sub(r"'(?:[^']|'')*'", "''", c))}
+        bad = sorted(x for x in cols if x not in known and x not in _SQL_WORDS)
+        lits = _SQL_LITERAL.findall(c)
+        others = " AND ".join(x for x in conjs if x is not c)
+        if bad and lits and all(l in others for l in lits):
+            dropped.append(f"{bad[0]} 절")
+            continue
+        kept.append(c)
+    if not dropped:
+        return sql, []
+    return sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):], dropped
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -6706,6 +6781,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    sql, halluc = drop_hallucinated_column_conjuncts(sql)
+    if halluc:
+        step(f"[Guard] 환각 컬럼 술어 제거 — {' · '.join(halluc)} (16R KG ③-6 · gold ③-1: 스키마에 없는 컬럼을 쓴 "
+             "최상위 절은, 그 절의 값 리터럴이 확정식으로 이미 걸려 있을 때만 걷는다. Z11 실측: "
+             "`asset_class='중국주식' AND fund_type='공모'` 두 환각 컬럼이 기각 → 재생성 동일 SQL → 오거절을 냈다)")
     return sql
 
 

@@ -165,3 +165,55 @@ def test_org_label_codes_expands_in_predicate():
         assert con.execute(cnt12).fetchone() == (28, 59)          # 28펀드/59클래스 불변
     finally:
         con.close()
+
+
+# ── P3-e KG ③-6·③-7 부류 H — 약관분류 축 확정 주입 ──────────────────────────
+def test_ptn_axis_no_space_join():
+    """Z5 회귀 — 공백을 지우고 대조하면 「글로벌 주식형」이 약관분류 `글로벌주식` 으로 붙어 자산군 축이 꺼졌다."""
+    assert P._ptn_value_in_question("글로벌 주식형 공모펀드는 몇 개야?") is None
+    assert P._ptn_value_in_question("중국주식 유형 공모펀드는 몇 개야?") == "중국주식"
+    z5 = ("SELECT COUNT(*) FROM public_funds WHERE fd_ivst_rgn_desc IN ('글로벌') "
+          "AND (zrin_btyp_nm = '주식형' OR (zrin_btyp_nm IS NULL AND (TRIM(or_attr_desc) = '주식형'))) "
+          "AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
+    q = "글로벌 주식형 공모펀드는 몇 개야?"
+    out, ok = P.ensure_fund_type_axis(z5, q)
+    assert ok and "zrin_btyp_nm = '주식형'" in out and "or_attr_desc" not in out   # 반쪽 인용 제거
+    cnt, _ = P.ensure_fund_distinct_count(out, q)
+    con = P.connect_readonly()
+    try:
+        assert con.execute(cnt).fetchone() == (10, 18)          # 1순위 판정(정확 일치) 기준 10펀드/18클래스
+    finally:
+        con.close()
+
+
+def test_ptn_axis_injected():
+    """Z11·Z10·AA6·AA7 — 약관분류 값을 지명하면 `zrin_ptn_nm` 확정식이 축이다. 환각 컬럼 절은 함께 사라진다."""
+    from src.runtime import loader
+    loader.load_context()
+    con = P.connect_readonly()
+    try:
+        for q, sql, gold in (
+            ("중국주식 유형 공모펀드는 몇 개야?",
+             "SELECT COUNT(*) FROM public_funds WHERE asset_class = '중국주식' AND fund_type = '공모' LIMIT 30",
+             (205, 522)),
+            ("해외주식형 중에서 인도주식 유형인 공모펀드는 몇 개야?",
+             "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '해외주식형' AND sale_yn='판매중' "
+             "AND prvo_pbff_desc='공모' LIMIT 30", (34, 98)),
+            ("해외주식형 중에서 베트남주식 유형인 공모펀드는 몇 개야?",
+             "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '해외주식형' AND sale_yn='판매중' "
+             "AND prvo_pbff_desc='공모' LIMIT 30", (25, 84)),
+            ("일본주식 유형 공모펀드는 몇 개야?",
+             "SELECT COUNT(*) FROM public_funds WHERE zrin_btyp_nm LIKE '%일본%' AND sale_yn='판매중' "
+             "AND prvo_pbff_desc='공모' LIMIT 30", (37, 91)),
+        ):
+            out, ok = P.ensure_fund_type_axis(sql, q)
+            assert ok and P.ensure_fund_type_axis(out, q)[1] is False, q       # 멱등
+            out, _ = P.ensure_fund_base_population(out, q, post=True)
+            out, _ = P.ensure_fund_distinct_count(out, q)
+            out, _ = P.drop_hallucinated_column_conjuncts(out)
+            assert con.execute(out).fetchone() == gold, q       # (펀드수, 클래스수)
+    finally:
+        con.close()
+    # 리터럴이 다른 절에 없으면 환각 절을 지우지 않는다 — 모수가 넓어지면 안 된다
+    keep = "SELECT COUNT(*) FROM public_funds WHERE bogus_col = '없는값' AND sale_yn = '판매중' LIMIT 30"
+    assert P.drop_hallucinated_column_conjuncts(keep) == (keep, [])

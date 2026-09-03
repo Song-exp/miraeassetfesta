@@ -935,8 +935,8 @@ query_rules:
   #    지금은 `off: true` — 단계 2 섀도에서 코드 가드와 대조한 뒤 켠다(절차 §3: 가드를 먼저 지우지 않는다).
   기본모수:
     text: "sale_yn = '판매중' AND prvo_pbff_desc = '공모'  # 집계·Top-N 은 이 조건을 반드시 WHERE 에 넣는다. 모수 8,969 를 답변에 밝힐 것"
-    enforce:                       # P0-1 · 대응 가드 ensure_fund_base_population
-      enabled: false
+    enforce:                       # P0-1 · 대응 가드 ensure_fund_base_population (침묵 조건 M:BASEPOP)
+      enabled: true                # 2026-09-03 전환 — 섀도 84문항 'SQL 다름' 0 확인 후
       when:
         tables: [public_funds]
         question: {not_any: [사모, 판매완료, 역외, 전체]}

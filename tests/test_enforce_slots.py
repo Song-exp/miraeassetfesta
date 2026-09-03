@@ -55,13 +55,16 @@ def test_shipped_slots_do_not_leak(ctx):
 # ── ② 액션 3종 ────────────────────────────────────────────────────────────
 def test_inject_where_wraps_existing_or(ctx):
     """'WHERE a OR b' 에 그냥 AND 를 붙이면 (cond AND a) OR b 로 샌다 — 괄호로 감싸야 한다."""
+    # 🔴 실제 켜진 슬롯(BASEPOP)과 **겹치지 않는 조건**을 쓴다 — 같은 조건이면 먼저 발동한 쪽에 가려
+    #    이 테스트가 슬롯 순서를 재게 된다. 여기서 재려는 건 괄호 처리다.
     c = _with_slot(ctx, "public_funds", "시험모수", {
-        "when": {"tables": ["public_funds"], "sql": {"lacks": ["prvo_pbff_desc"]}},
-        "action": "inject_where", "sql": "prvo_pbff_desc = '공모'", "mark": "TM1"})
-    sql = "SELECT * FROM public_funds WHERE itm_nm LIKE '%A%' OR itm_nm LIKE '%B%' ORDER BY fd_nast_suma DESC"
+        "when": {"tables": ["public_funds"], "sql": {"lacks": ["curr_cd"]}},
+        "action": "inject_where", "sql": "curr_cd = 'KRW'", "mark": "TM1"})
+    sql = ("SELECT * FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+           "AND (itm_nm LIKE '%A%' OR itm_nm LIKE '%B%') ORDER BY fd_nast_suma DESC")
     out, fired = guard.apply_enforce(sql, "펀드 알려줘", ["public_funds"], set(), c)
-    assert fired == ["TM1"]
-    assert "prvo_pbff_desc = '공모' AND (itm_nm LIKE '%A%' OR itm_nm LIKE '%B%')" in out
+    assert "TM1" in fired
+    assert "curr_cd = 'KRW' AND (sale_yn = '판매중'" in out       # 기존 WHERE 전체를 괄호로 감쌌다
     assert "/*M:TM1*/" in out
 
 
@@ -72,11 +75,11 @@ def test_replace_expr_only_when_unambiguous(ctx):
         "sql": 'COUNT(DISTINCT {fund_key}) AS "펀드수"', "mark": "TM2"})
     one = "SELECT COUNT(*) FROM public_funds"
     out, fired = guard.apply_enforce(one, "몇 개야", ["public_funds"], set(), c)
-    assert fired == ["TM2"] and "펀드수" in out and "or_co_xtn_itt_cd" in out
+    assert "TM2" in fired and "펀드수" in out and "or_co_xtn_itt_cd" in out
 
     two = "SELECT COUNT(*), COUNT(*) FROM public_funds"      # 어느 쪽인지 모른다 → 불개입
     out2, fired2 = guard.apply_enforce(two, "몇 개야", ["public_funds"], set(), c)
-    assert fired2 == [] and out2 == two
+    assert "TM2" not in fired2 and "count(distinct" not in out2.lower()
 
 
 def test_replace_predicate_capture_group(ctx):
@@ -87,7 +90,7 @@ def test_replace_predicate_capture_group(ctx):
         "sql": "ref_base_index GLOB '{1:nospace}'", "mark": "TM3"})
     sql = "SELECT * FROM domestic_etfs WHERE cu_base_index = 'S&P 500'"
     out, fired = guard.apply_enforce(sql, "S&P500 ETF", ["domestic_etfs"], set(), c)
-    assert fired == ["TM3"]
+    assert "TM3" in fired
     assert "ref_base_index GLOB 'S&P500'" in out       # 공백 제거되어 들어갔다
 
 
@@ -96,14 +99,16 @@ def test_union_branches_each_get_the_rule(ctx):
     """코드 가드 ensure_fund_base_population 은 UNION 을 보면 통째로 불개입한다.
     슬롯은 가지마다 판정해 **양쪽에** 넣는다 — 교차질의 모수 누락이 여기서 닫힌다."""
     c = _with_slot(ctx, "public_funds", "시험모수2", {
-        "when": {"tables": ["public_funds"], "sql": {"lacks": ["prvo_pbff_desc"]}},
-        "action": "inject_where", "sql": "prvo_pbff_desc = '공모'", "mark": "TM4"})
-    sql = ("SELECT '주식형' AS k, COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '주식형' "
+        "when": {"tables": ["public_funds"], "sql": {"lacks": ["curr_cd"]}},
+        "action": "inject_where", "sql": "curr_cd = 'KRW'", "mark": "TM4"})
+    sql = ("SELECT '주식형' AS k, COUNT(*) FROM public_funds "
+           "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' AND zrin_btyp_nm = '주식형' "
            "UNION ALL "
-           "SELECT '채권형', COUNT(*) FROM public_funds WHERE zrin_btyp_nm = '채권형'")
+           "SELECT '채권형', COUNT(*) FROM public_funds "
+           "WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' AND zrin_btyp_nm = '채권형'")
     out, fired = guard.apply_enforce(sql, "유형별 몇 개야", ["public_funds"], set(), c)
-    assert fired == ["TM4"]
-    assert out.count("prvo_pbff_desc = '공모'") == 2, "가지 하나에만 들어갔다"
+    assert "TM4" in fired
+    assert out.count("curr_cd = 'KRW'") == 2, "가지 하나에만 들어갔다"
     assert "UNION ALL" in out
 
 
@@ -115,14 +120,26 @@ def test_idempotent(ctx):
     sql = "SELECT * FROM public_funds ORDER BY fd_nast_suma DESC"
     once, _ = guard.apply_enforce(sql, "펀드", ["public_funds"], set(), c)
     twice, fired2 = guard.apply_enforce(once, "펀드", ["public_funds"], set(), c)
-    assert fired2 == [] and twice == once
+    assert fired2 == [] and twice == once     # 표식이 이미 있으면 어떤 슬롯도 다시 안 돈다
 
 
-def test_off_slot_never_fires(ctx):
-    """선언해 둔 P0 슬롯 3개는 지금 전부 off — 섀도 전에는 SQL 을 건드리지 않는다."""
+def test_only_enabled_slots_fire(ctx):
+    """켜진 슬롯만 돈다. 2026-09-03 현재 P0-1(BASEPOP)만 enabled:true 고
+    P0-2a(FUNDUNIT)·P0-3(IDXCANON)은 아직 false 다 — 항목 단위 전환의 실물 확인."""
     sql = "SELECT COUNT(*) FROM public_funds"
-    out, fired = guard.apply_enforce(sql, "공모펀드 몇 개야?", ["public_funds"], set(), ctx)
-    assert fired == [] and out == sql
+    _out, fired = guard.apply_enforce(sql, "공모펀드 몇 개야?", ["public_funds"], set(), ctx)
+    assert "FUNDUNIT" not in fired, "아직 전환하지 않은 슬롯이 발동했다"
+    assert "IDXCANON" not in fired
+
+
+def test_disabled_slot_never_fires(ctx):
+    """enabled:false 슬롯은 조건이 맞아도 SQL 을 건드리지 않는다."""
+    c = _with_slot(ctx, "public_funds", "꺼진슬롯", {
+        "enabled": False, "when": {"tables": ["public_funds"]},
+        "action": "inject_where", "sql": "sale_yn = '판매중'", "mark": "OFFTEST"})
+    sql = "SELECT COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모'"
+    out, fired = guard.apply_enforce(sql, "펀드", ["public_funds"], set(), c)
+    assert "OFFTEST" not in fired and "OFFTEST" not in out
 
 
 # ── ④ 로더 검증 ───────────────────────────────────────────────────────────

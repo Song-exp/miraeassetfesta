@@ -791,7 +791,14 @@ def ensure_fund_base_population(sql: str, question: str, post: bool = False) -> 
       ② ORDER BY 존재 (랭킹·Top-N 꼴)
       ③ SQL 에 sale_yn·prvo_pbff_desc 언급이 전혀 없음 (하나라도 있으면 모델 의도 존중)
       ④ 질문에 모수 확장 토큰(사모·판매완료·역외·전체)이 없음
+
+    🔴 2026-09-03 — enforce 슬롯(`public_funds.기본모수.enforce`, mark BASEPOP)이 먼저 같은 일을 한다.
+       슬롯이 처리했으면 여기서는 **침묵**한다(절차 §2-4). 가드 삭제는 두 라운드 뒤(§5) —
+       슬롯의 `when` 이 이 가드보다 좁아(모수 절 tightening 미포함) 아직 여기가 받는 문항이 있다.
+       섀도 실측: 84문항 중 '가드만 발동' 7건.
     """
+    if "M:BASEPOP" in sql:
+        return sql, False
     if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
         return sql, False
     if re.search(r"\bjoin\b", sql, re.I) and re.search(
@@ -6763,7 +6770,7 @@ def drop_hallucinated_column_conjuncts(sql: str) -> tuple[str, list[str]]:
 
 
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
-                      mgmt: tuple | None = None) -> str:
+                      mgmt: tuple | None = None, fired_out: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
 
     🔴 **재생성 SQL 도 반드시 이 체인을 타야 한다** — 2026-08-31 밤 FND-R09 실측:
@@ -6783,6 +6790,20 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 최상위 OR 재괄호화 — 괄호 없이 섞인 `A AND B OR C` 를 `A AND (B OR C)` 로 보정 "
              "(10R gold N1 · FND-009 실측: 기각당한 문장이 근거문서에 실은 우리 규칙 원문 enums:949 라 "
              "자연어 피드백으로는 1·2차 모두 못 고쳐 무응답)")
+
+    # ── enforce 슬롯 (yaml query_rules.<name>.enforce) — 의미 가드들보다 먼저 ────────────
+    # 절차 docs/guard_to_yaml_migration_2026-09-03.md §2-3. 발동하면 `/*M:<mark>*/` 표식을 남기고
+    # 짝이 되는 코드 가드는 그 표식을 보고 침묵한다(§2-4). 가드 삭제는 두 라운드 뒤(§5).
+    # 🔴 절차는 "체인 맨 앞" 이라 적었지만 **방언 치환·OR 재괄호화 뒤**에 둔다 — 그 둘은 보정이 아니라
+    #    정규화이고, `SELECT TOP n`(비-SQLite) 상태에서 WHERE 를 끼우면 실행조차 안 돼 대조가 불가능하다
+    #    (섀도 X2 실측). 의미를 고치는 가드들보다는 여전히 앞이다.
+    if tables:
+        sql, enf_fired = guard.apply_enforce(sql, q, list(tables), set(), ctx)
+        for mark in enf_fired:
+            step(f"[Guard] enforce 슬롯 {mark} — yaml 선언이 SQL 을 고쳤다 "
+                 "(UNION 은 가지마다 독립 판정 — 코드 가드가 통째로 불개입하던 자리)")
+        if fired_out is not None:
+            fired_out.extend(enf_fired)
     sql, future_dt = strip_future_basis_date(sql)
     if future_dt:
         step(f"[Guard] 기준일 이후 SQL 리터럴 제거 — '{future_dt}' (10R gold N8 · FND-R02 실측: HCX 가 기준일"
@@ -7256,7 +7277,8 @@ def answer_question(
             result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
             return result
 
-    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables, mgmt_found)
+    sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables, mgmt_found,
+                            fired_out=result.enforce_fired)
     result.sql = sql
     # 🔴 SQL 은 자르지 않는다. 잘린 SQL 로는 조건식이 틀렸는지 KG 매핑이 틀렸는지 구분할 수 없고,
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
@@ -7288,7 +7310,8 @@ def answer_question(
         # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도
         #    근거컬럼·대표행 보정이 빠져 답변이 무너진다 (FND-R09 실측: 27행 조회 후 "찾을 수 없음")
         sql2, _ = normalize_date_literals(raw2)
-        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx, tables, mgmt_found)
+        sql2 = _apply_sql_guards(sql2, q, name_token, future, step, ctx, tables, mgmt_found,
+                                 fired_out=result.enforce_fired)
         result.sql = sql2
         step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql2)
         err2 = _sql_precheck(sql2, ctx, tables, cross)

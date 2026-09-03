@@ -58,3 +58,22 @@ def test_list_answer_freeze_v8_v9():
         assert ans and n == rows_n, tag
         body = "\n".join(ans.splitlines()[2:])           # 머리줄의 총 클래스수는 빼고 행만 센다
         assert sum(int(m) for m in re.findall(r"클래스 (\d+)개", body)) == classes, tag
+
+
+# ── P2-b 부류 AF — 기관 이름은 KG 정본으로, 번역은 HCX 에 맡기지 않는다 ──────
+def test_org_name_column_canonicalized():
+    """V7·W10 — 영문 법인명이 HCX 로 넘어가 즉석 번역됐다. 국내는 정본 치환, 해외 영문명은 불변(U8·Y16)."""
+    sql = ("SELECT ref_fund_mgmt_co, SUM(du_last_aum) AS total_aum FROM domestic_etfs "
+           "GROUP BY 1 ORDER BY 2 DESC LIMIT 3")
+    rows = ("ref_fund_mgmt_co | total_aum\n"
+            "Samsung Asset Management Co Ltd | 1.0\n"
+            "Mirae Asset Global Investments Co Ltd | 2.0\n"
+            "KB Asset Ltd | 3.0")
+    out, touched = P.label_code_columns(rows, sql)
+    assert touched == ["ref_fund_mgmt_co"]
+    assert "삼성자산운용" in out and "미래에셋자산운용" in out and "KB자산운용" in out
+    assert "글로벌" not in out and "인베스트먼트" not in out
+    assert P.label_code_columns(out, sql) == (out, [])                # 멱등
+    # 해외 ETF — label_official 이 없고 label_ko 가 영문명 자신이라 원값 그대로다
+    ovs = "cu_fund_mgmt_co | du_last_aum\nBlackRock Fund Advisors | 1.0"
+    assert P.label_code_columns(ovs, "SELECT cu_fund_mgmt_co, du_last_aum FROM overseas_etfs LIMIT 3") == (ovs, [])

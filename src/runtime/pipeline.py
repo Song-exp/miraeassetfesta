@@ -2638,8 +2638,39 @@ def _code_label_map() -> dict:
     return out
 
 
+@lru_cache(maxsize=1)
+def _org_name_map() -> dict:
+    """(이름 컬럼, DB 원값) → 기관 정본 이름. `kg_alias` × `COALESCE(label_official, label_ko, canonical_name)`.
+
+    🔴 16R 재검 ③-2 (부류 AF) — `ref_fund_mgmt_co` 의 **영문 법인명**이 조립기를 거치지 않고 HCX 로 넘어가
+       즉석 번역됐다. 같은 축의 질문 쌍에서 이름이 갈린다: `Mirae Asset Global Investments Co Ltd` 가
+       V7 에선 '미래에셋 글로벌 자산운용', W10 에선 '미래에셋 글로벌 인베스트먼트'(둘 다 DB·KG 어디에도 없다).
+       정본은 '미래에셋자산운용'. 코드 컬럼에 이미 도는 규칙(`_code_label_map`)을 이름 컬럼으로 넓힌 것뿐이다.
+    해외 ETF 는 `label_official` 이 없고 `label_ko` 가 영문명 자신이라 **원값 그대로** 돌아온다 —
+    `BlackRock Fund Advisors`(U8·Y16)는 번역되지 않는다.
+    """
+    ctx = _ev_ctx()
+    by_id = getattr(ctx, "kg_node_by_id", {}) or {}
+    out: dict = {}
+    for nid, aliases in (getattr(ctx, "kg_aliases", {}) or {}).items():
+        node = by_id.get(nid)
+        if not node or getattr(node, "node_type", "") != "Organization":
+            continue
+        name = (getattr(node, "label_official", None) or getattr(node, "label_ko", None)
+                or getattr(node, "canonical_name", None))
+        if not name:
+            continue
+        for _t, col, raw in aliases:
+            if col and not col.lower().endswith("_itt_cd") and str(raw).strip():
+                out.setdefault((col.lower(), str(raw).strip()), name)
+    return out
+
+
 def label_code_columns(rows: str, sql: str, skip: list | None = None) -> tuple[str, list[str]]:
     """KG 4R G4 — 답변 입력의 **기관 코드 컬럼 값**을 기계가 확정 표기한다. (정리된 표, 표기한 컬럼)
+
+    16R 재검 ③-2 — **기관 이름 컬럼**(`ref_fund_mgmt_co`·`cu_fund_mgmt_co` 등 KG 가 `Organization` 별칭으로
+    아는 컬럼)도 같은 자리에서 정본으로 굽는다. 같은 목적의 가드를 옆에 하나 더 만들지 않는다.
 
     컬럼 판정은 **별칭이 아니라 SELECT 항목의 원 컬럼 표현식**으로 한다 — KG-008 실측:
     `trim(trusc_xtn_itt_cd) AS 수탁회사명` 이 이름 열처럼 보여 HCX 가 운용사 이름 3개를 통째로 날조했다.
@@ -2662,10 +2693,17 @@ def label_code_columns(rows: str, sql: str, skip: list | None = None) -> tuple[s
     # 🔴 14R — **집계 항목 안의 코드 컬럼은 코드 열이 아니다.** 가드가 심는 펀드키 식
     #    `COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd …)) || …) AS "펀드수"` 가 코드 열로 오인돼
     #    펀드수 714 가 "코드 714(기관명 미수록)" 로 구워졌다(KG-008 이 두 라운드를 헛돈 원인의 절반).
+    plain = [it for it in items
+             if not re.search(r"\b(?:count|sum|avg|total|group_concat)\s*\(", it, re.I)]
     code_cols = {i: m.group(1).lower() for i, it in enumerate(items)
-                 if not re.search(r"\b(?:count|sum|avg|total|group_concat)\s*\(", it, re.I)
-                 and (m := _CODE_COL_RX.search(it))}
-    if not code_cols:
+                 if it in plain and (m := _CODE_COL_RX.search(it))}
+    org_map = _org_name_map()
+    org_slots = {c for c, _v in org_map}
+    name_cols = {i: m.group(1).lower() for i, it in enumerate(items)
+                 if i not in code_cols and it in plain
+                 and (m := re.search(r"\b(" + "|".join(sorted(org_slots, key=len, reverse=True)) + r")\b", it, re.I))
+                 } if org_slots else {}
+    if not code_cols and not name_cols:
         return rows, []
     mapping = _code_label_map()
     out, touched = [lines[0]], []
@@ -2679,6 +2717,16 @@ def label_code_columns(rows: str, sql: str, skip: list | None = None) -> tuple[s
                 continue
             name = mapping.get((col, v.zfill(8)))
             parts[i] = f"{name}({v})" if name else f"코드 {v}(기관명 미수록)"
+            if cols[i].strip() not in touched:
+                touched.append(cols[i].strip())
+        for i, col in name_cols.items():
+            if i >= len(parts):
+                continue
+            v = parts[i].strip()
+            canon = org_map.get((col, v))
+            if not canon or canon == v:
+                continue                      # KG 매핑이 없으면 DB 원값 그대로 — 번역하지 않는다
+            parts[i] = canon
             if cols[i].strip() not in touched:
                 touched.append(cols[i].strip())
         out.append(" | ".join(parts))
@@ -6985,8 +7033,10 @@ def answer_question(
     label_skip: list = []
     answer_rows, labeled = label_code_columns(rows, sql, label_skip)
     if labeled:
-        step(f"[Answer] 기관 코드 확정 표기 — {', '.join(labeled)} 를 정본 이름(kg_node.label_official) 또는 '코드 X(기관명 미수록)' 로 "
-             "(KG 4R G4 · KG-008 실측: `trim(trusc_xtn_itt_cd) AS 수탁회사명` 별칭에 속아 운용사 이름 3개 날조 · Z23 은 값이 있는데 '미수록' 서술)")
+        step(f"[Answer] 기관 코드·이름 확정 표기 — {', '.join(labeled)} 를 정본 이름(kg_node.label_official→label_ko→canonical_name) "
+             "또는 '코드 X(기관명 미수록)' 로 "
+             "(KG 4R G4 · KG-008 실측: `trim(trusc_xtn_itt_cd) AS 수탁회사명` 별칭에 속아 운용사 이름 3개 날조 · Z23 은 값이 있는데 '미수록' 서술 · "
+             "16R 재검 ③-2 · V7·W10 실측: 영문 법인명을 HCX 가 즉석 번역해 같은 축에서 '미래에셋 글로벌 자산운용' / '미래에셋 글로벌 인베스트먼트' 로 갈렸다)")
     elif label_skip:
         step(f"[Guard] 기관 코드 확정 표기 적용 불가 — {label_skip[0]} (8R 부류 D: 가드가 전제 때문에 스킵되면 트레이스에 남긴다)")
     answer_rows, hidden = _hide_answer_columns(answer_rows, sql)

@@ -46,10 +46,11 @@ def test_think_trace_carries_full_sql(ctx):
     """실행한 SQL 전문이 think_trace 에 남는다 — 잘리면 조건식을 검토할 수 없다."""
     assert len(LONG_SQL) > 120, "잘림을 검출하려면 120자를 넘겨야 한다"
     r = answer_question("T-SQL", "순자산이 큰 국내 ETF 5개", planner=FakePlanner(LONG_SQL), ctx=ctx)
-    # 4R B-4: SELECT 의 du_last_aum 에 억원 열이 병기되고, 8R B-4″-b: WHERE 에 ETF 기본모수가 주입되므로
+    # 4R B-4: SELECT 의 du_last_aum 에 억원 열이 병기되고, 8R B-4″-b: WHERE 에 ETF 기본모수가 주입되고,
+    # 14R gold ③-20: SELECT 의 폐기 컬럼 cu_fund_mgmt_co 가 정본 ref_fund_mgmt_co 로 치환되므로
     # 원문 그대로가 아니다 — 이 테스트가 지키는 것은 **실행한 SQL 전문이 잘리지 않고 trace 에 실리는가** 뿐이다.
     assert r.sql in r.think_trace and len(r.sql) > 120, r.sql
-    assert LONG_SQL.split(" FROM ", 1)[0] in r.sql and r.sql.endswith("ORDER BY du_last_aum DESC LIMIT 5")
+    assert r.sql.startswith("SELECT pd_nm, pd_itm_no,") and r.sql.endswith("ORDER BY du_last_aum DESC LIMIT 5")
     assert "억원" in r.sql
 
 
@@ -57,7 +58,7 @@ def test_think_trace_carries_full_sql(ctx):
 def test_result_exposes_executed_sql(ctx):
     """로그·UI 가 쓸 수 있도록 SQL 이 별도 필드로 나온다."""
     r = answer_question("T-SQL2", "순자산이 큰 국내 ETF 5개", planner=FakePlanner(LONG_SQL), ctx=ctx)
-    assert r.sql.startswith(LONG_SQL.split(" FROM ", 1)[0]) and "억원" in r.sql
+    assert r.sql.startswith("SELECT pd_nm, pd_itm_no,") and "억원" in r.sql
     assert r.sql.endswith("ORDER BY du_last_aum DESC LIMIT 5") and "du_last_aum IS NOT NULL" in r.sql
 
 

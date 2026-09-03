@@ -913,6 +913,15 @@ def ensure_etf_mgmt_canon(sql: str) -> tuple[str, bool]:
     if not re.search(r"\bfrom\s+domestic_etfs\b", sql, re.I) \
             or re.search(r"\bunion\b|\bjoin\b|\bfrom\s+(?!domestic_etfs\b)\w+", sql, re.I):
         return sql, False
+    # 🔴 14R gold ③-20 — **폐기한 컬럼은 SELECT 목록에서도 폐기한다.** UNANS-001 실측: 운용사 절은 없었는데
+    #    SELECT 에 `cu_fund_mgmt_co` 가 실려 답변이 "운용사: KB"·"운용사: 삼성액티브" 로 나갔다
+    #    (정본은 `KB Asset Ltd`·`Samsung Active Asset Management`). 항목 수가 안 바뀌므로 위치 ORDER BY 는 안전하다.
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    sel_fixed = False
+    if frm and "ref_fund_mgmt_co" not in sql[:frm.start()]:
+        head = re.sub(r"\bcu_fund_mgmt_co\b", "ref_fund_mgmt_co", sql[:frm.start()], flags=re.I)
+        if head != sql[:frm.start()]:
+            sql, sel_fixed = head + sql[frm.start():], True
     out, at = [], 0
     for m in _ETF_MGMT_PRED.finditer(sql):
         names = [n for n in (_ref_mgmt_of(l) for l in _SQL_LITERAL.findall(m.group(1)) or [m.group(1)]) if n]
@@ -924,7 +933,7 @@ def ensure_etf_mgmt_canon(sql: str) -> tuple[str, bool]:
         out.append(sql[at:m.start()] + " " + _GUARD_MARK + cond)
         at = m.end()
     if not out:
-        return sql, False
+        return sql, sel_fixed
     return "".join(out) + sql[at:], True
 
 
@@ -2671,7 +2680,17 @@ _DISCLAIMER = re.compile(
     #   X13 꼬리 "**참고용으로만** 활용", OFFICIAL-003 "**유용한 정보를 제공**할 것" 이 매 라운드 재발한다.
     #   근거 없는 권유·주의 환기(서술어가 권장/권고/권유)와 유보형 상투구를 문형으로 걷는다.
     #   데이터에서 나온 주의 문구(수익률 누적 고지 등)는 조립기가 굽는 것이라 이 문형에 걸리지 않는다.
-    r"|(?:권장|권고|권유)(?:합니다|드립니다|하는|할\s*것|하며|하시|됩니다)|참고용(?:으로|만)|유용한\s*정보를\s*제공)"
+    r"|(?:권장|권고|권유)(?:합니다|드립니다|하는|할\s*것|하며|하시|됩니다)|참고용(?:으로|만)|유용한\s*정보를\s*제공"
+    # 🔴 14R gold ③-18 — **산문 경로에 금지 문형 가드가 절반만 걸린다.** 13R 실측 두 건이 같은 꼬리를 달았다:
+    #   `UNANS-001` "…충분히 이해하고 … 신중하게 고려하여 투자 결정을 내리시기 바랍니다"
+    #   `OFFICIAL-004` "…손실이 발생할 수 있으므로 신중하게 결정해야 합니다" / "…수익을 추구합니다"
+    #   어느 것도 조회 결과에서 나온 문장이 아니다(근거 밖 부연 + 투자권유). 문형으로 걷는다.
+    r"|신중(?:하게|히)\s*(?:고려|검토|결정|판단|접근)|투자\s*(?:결정|판단)을\s*(?:내리|하시|해야)"
+    r"|충분히\s*(?:이해|검토|고려|숙지)|손실이\s*발생할\s*수\s*있|수익을\s*추구합니다"
+    # 11R KG ③-18 재발 — 내용 없는 마무리문("위의 정보를 통해 … 확인할 수 있습니다")
+    r"|위(?:의|\s*정보)[^.!?\n]*(?:확인할\s*수\s*있습니다|알\s*수\s*있습니다)"
+    # gold ③-17 — 거절문의 외부 출처 안내("금융기관의 공식 웹사이트나 관련 보고서를 통해 확인하실 수 있습니다")
+    r"|(?:웹\s*사이트|홈페이지|공시|보고서|약관|설명서)[^.!?\n]*(?:통해|에서|를)\s*(?:확인|참고|조회|열람))"
     r"[^.!?\n]*[.!?]?")
 # 전수 집계 결과에 붙는 거짓 유보 — "더 있을 수 있습니다"(5행 전수인데) · "조회된 데이터를 기반으로 한 것이며" · "일부"
 _FALSE_HEDGE = re.compile(
@@ -6198,6 +6217,12 @@ def answer_question(
         # R-5 ② — 플래너가 답변불가 규칙에 걸렸다고 선언. SQL 없이 종료 (실행·답변 생성 호출 없음)
         why = raw_sql.strip()[len(REFUSE_PREFIX):].strip()
         step(f"[Refuse] 답변불가 — 플래너 판정 (근거: 답변불가 규칙 블록) · 사유: {why}")
+        # 🔴 14R gold ③-17·③-18 — **Refuse 경로도 금지 문형 가드를 탄다.** OFFICIAL-002 실측:
+        #    거절 사유에 "금융기관의 공식 웹사이트나 관련 보고서를 통해 확인하실 수 있습니다" 가 그대로 나갔다.
+        #    금지 문형 제거는 경로와 무관하게 답변 반환 직전 한 자리에서 건다.
+        why, refuse_stripped = strip_disclaimer(why)
+        if refuse_stripped:
+            step("[Guard] 면책 문구 제거(Refuse 경로) — 거절문도 같은 문형 가드를 탄다 (14R gold ③-17)")
         step("[Decision] 데이터 범위 밖 — HCX 답변 생성 없이 종료")
         result.think_trace = "\n".join(trace)
         result.answer = f"요청하신 내용은 제공된 데이터(기준일 {gate.DATA_CUTOFF})로 확인할 수 없습니다. {why}"

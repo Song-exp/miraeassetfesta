@@ -4734,7 +4734,13 @@ def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     발동 조건: ① public_funds 단일 테이블(JOIN·GROUP BY 없음) ② SELECT 가 COUNT(*) 단독
     ③ 질문이 '펀드 … 몇 개/개수' 형 ④ 질문에 '클래스' 없음(클래스 수를 물으면 불개입).
     클래스 수는 지우지 않고 병기한다 — 답변기가 두 기준을 함께 말할 재료.
+
+    🔴 2026-09-03 — enforce 슬롯(`public_funds.펀드단위.enforce`, mark FUNDUNIT)이 먼저 같은 일을 한다.
+       슬롯이 처리했으면 침묵한다(절차 §2-4). 가드 삭제는 두 라운드 뒤(§5).
+       섀도 실측: 84문항 중 '둘 다·동일 SQL' 12 · '슬롯만 발동' 5(전부 UNION 가지) · '가드만 발동' 0.
     """
+    if "M:FUNDUNIT" in sql:
+        return sql, False
     if not _FUND_TBL.search(sql) or re.search(r"\b(?:union|group\s+by)\b", sql, re.I):
         return sql, False
     if not _Q_FUND_COUNT.search(question) or "클래스" in question:

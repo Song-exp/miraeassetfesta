@@ -124,12 +124,18 @@ def test_idempotent(ctx):
 
 
 def test_only_enabled_slots_fire(ctx):
-    """켜진 슬롯만 돈다. 2026-09-03 현재 P0-1(BASEPOP)만 enabled:true 고
-    P0-2a(FUNDUNIT)·P0-3(IDXCANON)은 아직 false 다 — 항목 단위 전환의 실물 확인."""
-    sql = "SELECT COUNT(*) FROM public_funds"
-    _out, fired = guard.apply_enforce(sql, "공모펀드 몇 개야?", ["public_funds"], set(), ctx)
-    assert "FUNDUNIT" not in fired, "아직 전환하지 않은 슬롯이 발동했다"
-    assert "IDXCANON" not in fired
+    """**켜진 슬롯만 돈다.** 항목 단위 전환(절차 §4)의 불변식이다 —
+    전환할 때마다 이 테스트를 고치지 않도록 yaml 상태에서 기대값을 읽는다."""
+    disabled = {enf["mark"] for doc in ctx.enums.values()
+                for rule in (doc.get("query_rules") or {}).values()
+                if isinstance(rule, dict) and isinstance(enf := rule.get("enforce"), dict)
+                and enf.get("enabled") is False}
+    for question, sql in (("공모펀드 몇 개야?", "SELECT COUNT(*) FROM public_funds"),
+                          ("순자산 큰 펀드 5개", "SELECT itm_no FROM public_funds ORDER BY fd_nast_suma DESC"),
+                          ("S&P500 추종 ETF", "SELECT * FROM domestic_etfs WHERE cu_base_index = 'S&P 500'")):
+        tables = ["public_funds", "domestic_etfs"]
+        _out, fired = guard.apply_enforce(sql, question, tables, set(), ctx)
+        assert not (disabled & set(fired)), f"아직 전환하지 않은 슬롯이 발동했다: {disabled & set(fired)}"
 
 
 def test_disabled_slot_never_fires(ctx):

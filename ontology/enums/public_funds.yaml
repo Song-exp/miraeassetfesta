@@ -812,15 +812,20 @@ query_rules:
       GROUP BY or_co_xtn_itt_cd,
                COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no
                              ELSE substr('0000000' || mtco_itm_no, -7) END, public_funds.itm_no)
-    enforce:                       # P0-2a · 대응 가드 ensure_fund_distinct_count
-      enabled: false
+    enforce:                       # P0-2a · 대응 가드 ensure_fund_distinct_count (침묵 조건 M:FUNDUNIT)
+      enabled: true                # 2026-09-03 전환 — 섀도 84문항 'SQL 다름' 0 · 동일 SQL 12 확인 후
       when:
         tables: [public_funds]
         question: {any: [몇 개, 개수, 얼마나 많], not_any: [클래스]}
         sql: {has: ["count(*)"], lacks: ["union", "group by", "펀드수"]}
       action: replace_expr
-      from: "COUNT(*)"
+      # 🔴 리터럴 "COUNT(*)" 로는 안 된다 — `COUNT(*) AS 개수` 처럼 별칭이 붙으면 그 별칭이 남아
+      #    `AS "펀드수" AS 개수` 로 문법이 깨진다(2026-09-03 X9·X22 실측). 별칭까지 함께 먹는다.
+      from_pattern: 'COUNT\s*\(\s*\*\s*\)(?:\s+AS\s+(?:"[^"]+"|\w+))?'
       sql: 'COUNT(DISTINCT {fund_key}) AS "펀드수", COUNT(*) AS "클래스수"'
+      # 🔴 UNION 가지 안에서는 열 수를 바꿀 수 없다(양쪽 SELECT 열 수가 어긋나 SQL 이 죽는다).
+      #    축(무엇을 세는가)만 고치고 클래스수 병기는 포기한다 — 축이 오답의 원인이고 병기는 부가다.
+      sql_union: 'COUNT(DISTINCT {fund_key}) AS "펀드수"'
       mark: FUNDUNIT
   # 🔴 itm_no 는 반드시 한정한다(JOIN 시 별칭을 쓰면 p.itm_no) — 2026-09-02 R2 재검: 비한정 itm_no 를 LEFT JOIN ext_fund_page 에 옮겨 모호 컬럼 기각
   # 펀드단위 근거(사람용 — 프롬프트 비대상): zero-pad 7자 규약 정본은 리드 판정 08-31. 실측 — 기본모수 패딩 병합

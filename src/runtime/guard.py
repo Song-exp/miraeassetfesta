@@ -615,20 +615,55 @@ def _match_when(spec: dict, sql: str, question: str, tables: list[str], grounded
     return True
 
 
-def _apply_one(sql: str, enf: dict, subs: dict) -> tuple[str, bool]:
-    """액션 하나를 SQL 한 가지(branch)에 적용. 대상이 정확히 잡힐 때만 손댄다(원자성)."""
+def _top_commas(expr: str) -> int:
+    """괄호 밖 쉼표 수 — SELECT 항목 개수를 세는 데 쓴다."""
+    depth = n = 0
+    for ch in expr:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            n += 1
+    return n
+
+
+def _apply_one(sql: str, enf: dict, subs: dict, in_union: bool = False) -> tuple[str, bool]:
+    """액션 하나를 SQL 한 가지(branch)에 적용. 대상이 정확히 잡힐 때만 손댄다(원자성).
+
+    🔴 UNION 가지 안에서는 **SELECT 항목 수를 바꾸지 않는다.** 2026-09-03 P0-2a paired 실측:
+       `COUNT(*)` → `COUNT(DISTINCT 펀드키) AS "펀드수", COUNT(*) AS "클래스수"` 가 한 가지에만
+       적용돼 양쪽 열 수가 어긋났고 SQL 이 통째로 실행 불가가 됐다(KG-025·X8).
+       코드 가드는 UNION 을 통째로 피해서 겪지 않던 문제다 — 가지별 적용의 대가다.
+       슬롯이 `sql_union`(열 수 보존판)을 선언했으면 그것을 쓰고, 없으면 **불개입**한다.
+    """
     action = enf.get("action")
     body = str(enf.get("sql") or "")
+    if in_union and enf.get("sql_union"):
+        body = str(enf["sql_union"])
     for k, v in subs.items():
         body = body.replace("{" + k + "}", str(v))
     if action == "inject_where":
         return _inject_where(sql, body)
     if action == "replace_expr":
-        src = str(enf.get("from") or "")
-        if not src or sql.lower().count(src.lower()) != 1:
+        # 🔴 `from` 은 리터럴, `from_pattern` 은 정규식이다. 별칭이 따라붙는 표현
+        #    (`COUNT(*) AS 개수` · `COUNT(*) as cnt`)은 리터럴로는 못 잡는다 —
+        #    `COUNT(*)` 만 바꾸면 원래 별칭이 남아 `AS "펀드수" AS 개수` 로 문법이 깨진다.
+        #    2026-09-03 P0-2a paired 실측(X9·X22). 코드 가드는 별칭까지 먹는 정규식을 쓰고 있었다.
+        pat, src = enf.get("from_pattern"), str(enf.get("from") or "")
+        if pat:
+            ms = list(re.finditer(str(pat), sql, flags=re.I))
+            if len(ms) != 1:
+                return sql, False
+            start, end, matched = ms[0].start(), ms[0].end(), ms[0].group(0)
+        elif src and sql.lower().count(src.lower()) == 1:
+            start = sql.lower().index(src.lower())
+            end, matched = start + len(src), src
+        else:
             return sql, False           # 0개면 대상 없음, 2개 이상이면 어느 쪽인지 모른다 → 불개입
-        i = sql.lower().index(src.lower())
-        return sql[:i] + body + sql[i + len(src):], True
+        if in_union and _top_commas(body) != _top_commas(matched):
+            return sql, False           # 열 수가 달라지면 UNION 이 깨진다 — 위 주석 참조
+        return sql[:start] + body + sql[end:], True
     if action == "replace_predicate":
         pat = enf.get("from_pattern")
         if not pat:
@@ -673,12 +708,13 @@ def apply_enforce(sql: str, question: str, tables: list[str], grounded, ctx: Run
             if f"M:{mark}" in sql:
                 continue                       # 멱등 — 이미 발동했다
             hit = False
+            in_union = len(branches) > 1       # 최상위 UNION 이 있는가
             for i, part in enumerate(branches):
                 if _ENF_UNION.fullmatch(part.strip()):
                     continue                   # 구분자는 건너뛴다
                 if not _match_when(enf.get("when") or {}, part, question, tables, grounded):
                     continue
-                new, ok = _apply_one(part, enf, subs)
+                new, ok = _apply_one(part, enf, subs, in_union)
                 if ok:
                     branches[i], hit = new, True
             if hit:

@@ -348,12 +348,14 @@ def validate_enforce(ctx: "RuntimeContext") -> None:
             action = enf.get("action")
             if action not in ENFORCE_ACTIONS:
                 errs.append(f"{where}: action '{action}' 은 지원 목록 {ENFORCE_ACTIONS} 밖")
-            if action == "replace_expr" and not enf.get("from"):
-                errs.append(f"{where}: replace_expr 은 from 이 필요하다")
+            if action == "replace_expr" and not (enf.get("from") or enf.get("from_pattern")):
+                errs.append(f"{where}: replace_expr 은 from(리터럴) 또는 from_pattern(정규식)이 필요하다")
             if action == "replace_predicate" and not enf.get("from_pattern"):
                 errs.append(f"{where}: replace_predicate 은 from_pattern 이 필요하다")
             if enf.get("from") and action != "replace_expr":
                 errs.append(f"{where}: from 은 replace_expr 에서만 쓴다")
+            if enf.get("from") and enf.get("from_pattern"):
+                errs.append(f"{where}: from 과 from_pattern 을 함께 쓰지 않는다")
             mark = str(enf.get("mark") or "")
             if not mark:
                 errs.append(f"{where}: mark 가 없다")
@@ -372,11 +374,11 @@ def validate_enforce(ctx: "RuntimeContext") -> None:
                 if tb not in TABLES:
                     errs.append(f"{where}.when.tables: '{tb}' 는 마스터 테이블이 아니다")
             # 확정식의 컬럼이 그 테이블에 실재하는가 — 자리표시자는 검사 대상 밖
-            body = _PLACEHOLDER.sub("", str(enf.get("sql") or ""))
+            body = _PLACEHOLDER.sub("", str(enf.get("sql") or "") + " " + str(enf.get("sql_union") or ""))
             for ident in set(re.findall(r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b", body)):
                 if ident not in cols and ident not in ctx.schema:
                     errs.append(f"{where}.sql: '{ident}' 는 {t} 의 컬럼이 아니다")
-            for ph in set(_PLACEHOLDER.findall(str(enf.get("sql") or ""))):
+            for ph in set(_PLACEHOLDER.findall(str(enf.get("sql") or "") + str(enf.get("sql_union") or ""))):
                 if ph not in _KNOWN_PLACEHOLDERS and not ph.isdigit():
                     errs.append(f"{where}.sql: 모르는 자리표시자 {{{ph}}}")
     if errs:

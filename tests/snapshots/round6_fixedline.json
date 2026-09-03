@@ -23,7 +23,7 @@
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,CHN,%'",
   "assembler": "목록 답변 기계 조립",
   "rows": 30,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드(대표번호 기준 28"
+  "answer_head": "조건에 해당하는 공모펀드는 전체 248개(클래스 560개)(대표번호 기준 106건)이며, 순자산 상위 30개"
  },
  "R4": {
   "route": "public_funds",
@@ -80,8 +80,8 @@
   ],
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,IND,%'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 30,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 58개(클래스 135개)이며, 순자산 상위 30개 펀드(대표번호 기준 20건"
+  "rows": 23,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 58개(클래스 135개)(대표번호 기준 23건)이며, 순자산 순으로 다음과 "
  },
  "S7": {
   "route": "public_funds",
@@ -90,8 +90,8 @@
   ],
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,VNM,%'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 30,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 38개(클래스 119개)이며, 순자산 상위 30개 펀드(대표번호 기준 18건"
+  "rows": 19,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 38개(클래스 119개)(대표번호 기준 19건)이며, 순자산 순으로 다음과 "
  },
  "S8": {
   "route": "public_funds",
@@ -180,8 +180,8 @@
   ],
   "where": "',' || prfd_attr_cds || ',' LIKE '%,JPN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 30,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 31개(클래스 79개)이며, 순자산 상위 30개 펀드(대표번호 기준 19건)"
+  "rows": 18,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 31개(클래스 79개)(대표번호 기준 18건)이며, 순자산 순으로 다음과 같"
  },
  "T7": {
   "route": "public_funds",
@@ -198,7 +198,7 @@
   ],
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,BRA,%'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 19,
+  "rows": 11,
   "answer_head": "조건에 해당하는 공모펀드는 전체 19개(클래스 42개)(대표번호 기준 11건)이며, 순자산 순으로 다음과 같"
  },
  "T12": {
@@ -219,7 +219,7 @@
   "where": "',' || prfd_attr_cds || ',' LIKE '%,USA,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
   "assembler": "목록 답변 기계 조립",
   "rows": 30,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 98개(클래스 333개)이며, 순자산 상위 30개 펀드(대표번호 기준 28건"
+  "answer_head": "조건에 해당하는 공모펀드는 전체 98개(클래스 333개)(대표번호 기준 55건)이며, 순자산 상위 30개 표"
  },
  "V1": {
   "route": "public_funds",
@@ -266,7 +266,7 @@
   ],
   "where": "',' || prfd_attr_cds || ',' LIKE '%,HKG,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 15,
+  "rows": 14,
   "answer_head": "조건에 해당하는 공모펀드는 전체 15개(클래스 30개)(대표번호 기준 14건)이며, 순자산 순으로 다음과 같"
  },
  "V9": {
@@ -276,8 +276,8 @@
   ],
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND ',' || prfd_attr_cds || ',' LIKE '%,RUS,%'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 22,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 22개(클래스 51개)(대표번호 기준 9건)이며, 순자산 순으로 다음과 같습"
+  "rows": 8,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 22개(클래스 51개)(대표번호 기준 8건)이며, 순자산 순으로 다음과 같습"
  },
  "V10": {
   "route": "public_funds",
@@ -485,8 +485,8 @@
   ],
   "where": "',' || prfd_attr_cds || ',' LIKE '%,JPN,%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모'",
   "assembler": "목록 답변 기계 조립",
-  "rows": 30,
-  "answer_head": "조건에 해당하는 공모펀드는 전체 31개(클래스 79개)이며, 순자산 상위 30개 펀드(대표번호 기준 19건)"
+  "rows": 18,
+  "answer_head": "조건에 해당하는 공모펀드는 전체 31개(클래스 79개)(대표번호 기준 18건)이며, 순자산 순으로 다음과 같"
  },
  "KG-020": {
   "route": "public_funds",

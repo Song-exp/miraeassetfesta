@@ -2214,7 +2214,7 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
     "일부입니다", S6 는 30행을 다 옮기고도 총량 대신 "더 많은 펀드가 있을 수 있습니다". 목록 전사는 분포(FND-038)와 같은
     결론 — LLM 에 맡길 수 없다. 발동: SQL 에 `GROUP BY 펀드키` + `ORDER BY fd_nast_suma DESC`, 헤더에 itm_nm·클래스수·순자산_억원.
     """
-    if n < 1 or f"GROUP BY {_FUND_KEY_EXPR}" not in sql or not re.search(r"\border\s+by\s+fd_nast_suma\s+desc\b", sql, re.I):
+    if n < 1 or f"GROUP BY {_FUND_GROUP_EXPR}" not in sql or not re.search(r"\border\s+by\s+fd_nast_suma\s+desc\b", sql, re.I):
         return None
     lines = rows.splitlines()
     if len(lines) != n + 1:
@@ -2228,34 +2228,23 @@ def _list_answer(sql: str, rows: str, n: int) -> str | None:
         if len(parts) != len(cols):
             return None
         recs.append(dict(zip(cols, parts)))
-    # 🔴 14R 재검 ③-7 — **같은 대표번호(rptt) 행은 한 줄로 접고 클래스수를 합산한다.** 실측: V9 22행 중
-    #    `키움러시아익스플로러 1[주식]` 5줄 · S6 `미래에셋인도중소형포커스 1호` 4줄 · R3 `미래에셋차이나그로스 1호` 3줄.
-    #    묶기 축(펀드키)은 리드 판단 대기라 건드리지 않는다 — 접기는 **표시 층**이고, 순자산은 접은 행의 MAX 유지.
-    folded: list[dict] = []
-    by_key: dict[str, dict] = {}
-    for r in recs:
-        key = (r.get("대표번호") or "").strip()
-        if not key or key in _SENTINEL_CELLS:
-            key = "stem:" + _fund_stem(r["itm_nm"])
-        if key in by_key:
-            g = by_key[key]
-            g["클래스수"] = str(int(float(g["클래스수"] or 0)) + int(float(r["클래스수"] or 0)))
-            continue
-        by_key[key] = dict(r)
-        folded.append(by_key[key])
-    shown, recs = len(recs), folded
+    # 🔴 16R 재검 ③-1 (부류 AE) — 사후 접기 제거. 접기는 SQL 의 `GROUP BY _FUND_GROUP_EXPR` 이 이미 했다.
+    #    사후 접기는 LIMIT 뒤에서 돌아 클래스수를 과소 집계했고, rptt 가 섞인 그룹에서 다른 펀드를 흡수했다(T10).
+    shown = len(recs)
     cov = _coverage_counts(sql)
     pop = "공모펀드" if re.search(r"prvo_pbff_desc\s*=\s*'공모'", sql, re.I) else "펀드"
     # 4R ④-3 — 목록의 순자산 축은 대표 클래스(MAX) 기준(개별 조회는 SUM). 리드 판정 전엔 축을 바꾸지 않고 머리줄에 고지만.
     basis = f"기준일 {gate.DATA_CUTOFF}, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위·순자산 = 대표 클래스 기준(MAX)"
-    # 접기로 줄어든 줄 수를 머리줄에 병기한다 — 「전체 N개」는 펀드키 축 그대로 두고 표시 건수만 밝힌다
-    rptt_note = f"(대표번호 기준 {len(recs)}건)" if len(recs) != shown else ""
-    if cov and cov[1] is not None and cov[1] > shown:
-        head = (f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개)이며, "
-                f"순자산 상위 {shown}개 펀드{rptt_note}는 다음과 같습니다 ({basis}).")
+    # 🔴 16R 재검 ③-1/③-5 — 「전체 N개」는 펀드키 축(6R gold 통과분) 유지, 병기하는 「대표번호 기준 M건」은
+    #    **화면 행 수가 아니라 전체값**(COUNT(DISTINCT rptt))이다. 상위 K 만 보였으면 그 사실을 함께 적는다.
+    rptt_all = cov[2] if cov else None
+    rptt_note = f"(대표번호 기준 {rptt_all:,}건)" if rptt_all is not None and cov[1] != rptt_all else ""
+    if cov and cov[1] is not None and (rptt_all or cov[1]) > shown:
+        head = (f"조건에 해당하는 {pop}는 전체 {cov[1]:,}개(클래스 {cov[0]:,}개){rptt_note}이며, "
+                f"순자산 상위 {shown}개 표시는 다음과 같습니다 ({basis}).")
     else:
         total = f"(클래스 {cov[0]:,}개)" if cov else ""
-        head = (f"조건에 해당하는 {pop}는 전체 {shown}개{total}{rptt_note}이며, "
+        head = (f"조건에 해당하는 {pop}는 전체 {cov[1] if cov and cov[1] is not None else shown:,}개{total}{rptt_note}이며, "
                 f"순자산 순으로 다음과 같습니다 ({basis}).")
     out = [head, ""]
     for i, r in enumerate(recs, 1):
@@ -2504,9 +2493,15 @@ def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     `ORDER BY fd_nast_suma DESC`(실측 상위: KB중국본토A주 14클래스 1,453억 · 미래에셋차이나솔로몬1호 · 신한중국의꿈2호).
     MAX 하나뿐인 집계라 bare 컬럼(itm_no·itm_nm·태그)은 그 MAX 클래스 행을 따라온다(SQLite).
     """
-    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|group\s+by|having|order\s+by)\b", sql, re.I):
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union|having)\b", sql, re.I):
         return sql, False
     if _has_name_filter(sql) or "클래스" in question:
+        return sql, False
+    # 🔴 16R 재검 ③-1 — **주입만이 아니라 이관이다.** 이미 `GROUP BY _FUND_KEY_EXPR` 로 묶인 목록(HCX 가 옛
+    #    형태를 그대로 복사해 오는 경로)도 rptt 축으로 옮긴다. 축이 둘로 갈리면 조립기가 꺼진다.
+    if f"GROUP BY {_FUND_KEY_EXPR}" in sql:
+        return sql.replace(f"GROUP BY {_FUND_KEY_EXPR}", f"GROUP BY {_FUND_GROUP_EXPR}"), True
+    if re.search(r"\b(?:group\s+by|order\s+by)\b", sql, re.I):
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
@@ -2517,11 +2512,14 @@ def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     tail = sql[frm.start():].rstrip()
     m_lim = re.search(r"\blimit\s+\d+\s*$", tail, re.I)
     body, lim = (tail[:m_lim.start()].rstrip(), tail[m_lim.start():]) if m_lim else (tail, "")
-    # 🔴 14R 재검 ③-7 — 표시 접기의 재료. 묶기 축(펀드키)은 리드 판단 대기라 그대로 두고, 대표번호를 실어
-    #    **표시 층에서만** 같은 펀드를 한 줄로 접는다(개별 조회 조립기가 이미 하는 접기와 같은 기계).
-    add = ('COUNT(*) AS "클래스수", MIN(rptt_ksd_itm_no) AS 대표번호'
+    # 🔴 16R 재검 ③-1 (부류 AE) — **접기는 표시 층이 아니라 SQL 층에서 한다.** 14R 의 `MIN(rptt)` 사후 접기는
+    #    ⓐ 한 `_FUND_KEY_EXPR` 그룹 안에 rptt 가 섞여 있으면 대표값 하나로 접어 **다른 펀드를 흡수**했고
+    #      (T10 실측: 미래에셋삼바브라질 13억·5클래스가 mtco 0263021 공유로 하이인컴채권에 흡수돼 사라졌다)
+    #    ⓑ `LIMIT` 이 접기보다 **먼저** 걸려 클래스수가 과소하게 나왔다(R3·S6·S7·T5·T13, S7 은 펀드 통째 누락).
+    #    묶기 축을 랭킹·개별 조회가 12R 에 이미 옮긴 `_FUND_GROUP_EXPR`(rptt) 로 통일하면 LIMIT 이 접기 위에 걸린다.
+    add = ('COUNT(*) AS "클래스수"'
            + (", MAX(fd_nast_suma) AS fd_nast_suma" if "fd_nast_suma" not in head else ""))
-    return (f"{head.rstrip()}, {add} {body} GROUP BY {_FUND_KEY_EXPR} ORDER BY fd_nast_suma DESC {lim}").rstrip(), True
+    return (f"{head.rstrip()}, {add} {body} GROUP BY {_FUND_GROUP_EXPR} ORDER BY fd_nast_suma DESC {lim}").rstrip(), True
 
 
 # ── 답변 입력 조립 3종 (2026-09-02 R3 재검 — 목록 답변의 총량 병기·내부 코드 숨김·이름 전사 교정) ──
@@ -2530,11 +2528,15 @@ _RAW_AMOUNT_COL = re.compile(r"nast_suma|last_aum", re.I)   # 원 단위 금액 
 _SIMPLE_FROM_WHERE = re.compile(r"\bfrom\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
 
 
-def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
-    """LIMIT 에 잘린 목록의 전체 규모 — (전체 행수, 펀드수|None, 펀드 단위로 묶인 SQL 인지). 단순 SELECT 가 아니면 None.
+def _coverage_counts(sql: str) -> tuple[int, int | None, int | None, bool] | None:
+    """LIMIT 에 잘린 목록의 전체 규모 — (전체 행수, 펀드수|None, 대표번호수|None, 펀드 단위로 묶인 SQL 인지).
+    단순 SELECT 가 아니면 None.
 
     SQLite 재실행 1회·HCX 0회. public_funds 단독이면 펀드키 DISTINCT 도 센다. GROUP BY 는 펀드키 묶기
     (ensure_fund_list_grouping·lookup_grouping·대표행 가드가 만든 형태)만 허용 — 그때 표시 행은 펀드다.
+
+    🔴 16R 재검 ③-1 — **대표번호 축 총계를 함께 센다.** 목록이 rptt 로 접힌 뒤 머리줄이 「대표번호 기준 M건」을
+       **화면 행 수**로 적어 총계를 오도했다(중국 28 vs 실측 106 · 미국 28 vs 55 · 인도 19 vs 23).
     """
     if re.search(r"\b(?:union|having)\b|\(\s*select\b", sql, re.I):
         return None
@@ -2546,7 +2548,8 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
         return None
     frm = m.group(1).strip()
     fund_only = _FUND_TBL.search(sql) and not re.search(r"\bjoin\b", sql, re.I)
-    cols = f"COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR})" if fund_only else "COUNT(*)"
+    cols = (f"COUNT(*), COUNT(DISTINCT {_FUND_KEY_EXPR}), COUNT(DISTINCT {_FUND_GROUP_EXPR})"
+            if fund_only else "COUNT(*)")
     con = connect_readonly()
     try:
         row = con.execute(f"SELECT {cols} FROM {frm}").fetchone()
@@ -2554,7 +2557,7 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, bool] | None:
         return None
     finally:
         con.close()
-    return int(row[0]), (int(row[1]) if fund_only else None), grouped
+    return int(row[0]), (int(row[1]) if fund_only else None), (int(row[2]) if fund_only else None), grouped
 
 
 def _explicit_limit_hit(sql: str, n: int) -> bool:
@@ -7001,8 +7004,8 @@ def answer_question(
         # 🔴 LIMIT 에 잘린 목록은 전체 규모를 굽는다 — 2026-09-02 R3 재검: 30행 중 5행만 옮기고 "다음과 같습니다" 전칭,
         #    총량(560행/248펀드) 미고지. SQLite 재실행 1회·HCX 0회 — 모델이 세지 않게 문자열로 준다.
         cov = _coverage_counts(sql)
-        if cov and (cov[1] if cov[2] else cov[0]) > n:
-            total, funds, grouped = cov
+        if cov and (cov[1] if cov[3] else cov[0]) > n:
+            total, funds, _rptt, grouped = cov
             scope = f"전체 {total:,}행" + (f" / {funds:,}펀드" if funds is not None else "")
             unit = "펀드" if grouped else "행"
             header = f"(조회 결과: {scope} 중 {n}{unit} 표시 — 나머지는 표시되지 않았으므로 전체를 나열한 것처럼 말하지 않는다)"

@@ -526,10 +526,11 @@ def test_list_answer_folds_by_rptt():
 
     r = answer_question("T14-LIST", "중국에 투자하는 공모펀드 알려줘", planner=Pl(), ctx=ctx)
     assert Pl.calls == 0                                   # 기계 조립 — HCX 0회
-    assert "대표번호 기준 28건" in r.answer                  # 30행 → 28건(같은 펀드 3줄이 1줄로)
+    # 🔴 16R 재검 ③-1 이 접기를 SQL 층(GROUP BY rptt)으로 옮겼다 — 머리줄의 「대표번호 기준」은 전체값(106)이다
+    assert "대표번호 기준 106건" in r.answer
     assert "전체 248개(클래스 560개)" in r.answer            # 펀드키 축 「전체 N개」는 그대로(리드 판단 대기)
     body = [ln for ln in r.answer.splitlines() if re.match(r"\d+\. ", ln)]
-    assert len(body) == 28 and len({ln.split(":")[0] for ln in body}) == 28   # 중복 줄 0
+    assert len(body) == 30 and len({ln.split(":")[0] for ln in body}) == 30   # 중복 줄 0
 
 
 # ── gold ③-12 (FND-R02) — 축을 바꿔 답했으면 반드시 밝힌다 ────────────────────────────────

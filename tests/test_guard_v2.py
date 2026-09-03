@@ -771,12 +771,12 @@ _R3_ROWS = ("itm_no | itm_nm | prfd_attr_cds\n"
 
 def test_fund_list_grouping():
     """R3 재검 — ORDER BY 없는 LIMIT 30 이 임의 30행(재현성 없음) + 같은 펀드 C2·C5 별개 나열.
-    펀드키 GROUP BY + 순자산순 대표행으로 30개 서로 다른 펀드, 1행 KB중국본토A주(14클래스)."""
+    16R 재검 ③-1 — 묶기 축은 대표번호(rptt) 다: LIMIT 이 접기 위에 걸린다. 1행 KB중국본토A주(14클래스)."""
     from src.runtime.pipeline import ensure_fund_list_grouping as f, ensure_fund_evidence_columns as ev
 
     q = "중국에 투자하는 공모펀드 알려줘"
     s, ok = f(_R3_SQL, q)
-    assert ok and "GROUP BY printf" in s and "ORDER BY fd_nast_suma DESC" in s and '"클래스수"' in s
+    assert ok and "GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no)" in s and "ORDER BY fd_nast_suma DESC" in s         and '"클래스수"' in s
     assert not f(s, q)[1]                                          # 멱등
     s, _ = ev(s)
     assert "순자산_억원" in s                                       # 순자산 정렬 → 억원 병기가 따라온다
@@ -794,10 +794,10 @@ def test_coverage_counts():
     """R3 재검 — LIMIT 도달 목록의 전체 규모(560행/248펀드)를 SQLite 재실행 1회로 센다."""
     from src.runtime.pipeline import _coverage_counts as f, ensure_fund_list_grouping as fl
 
-    assert f(_R3_SQL) == (560, 248, False)
-    assert f(fl(_R3_SQL, "q")[0]) == (560, 248, True)               # 펀드키 GROUP BY 는 허용 — 표시 단위가 펀드
-    total, funds, grouped = f("SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) = '국고채권' LIMIT 30")
-    assert total > 30 and funds is None and not grouped              # 타 도메인은 행수만
+    assert f(_R3_SQL) == (560, 248, 106, False)                      # 16R: 대표번호(rptt) 축 총계를 함께 센다
+    assert f(fl(_R3_SQL, "q")[0]) == (560, 248, 106, True)           # 펀드 묶기 GROUP BY 는 허용 — 표시 단위가 펀드
+    total, funds, rptt, grouped = f("SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) = '국고채권' LIMIT 30")
+    assert total > 30 and funds is None and rptt is None and not grouped   # 타 도메인은 행수만
     assert f("SELECT zrin_btyp_nm, COUNT(*) FROM public_funds GROUP BY 1 LIMIT 30") is None   # 분포 집계는 대상 아님
 
 
@@ -1484,17 +1484,19 @@ def test_list_answer_assembled(ctx):
 
     r = answer_question("T-R3L", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
     assert P.calls == 0 and "[Answer] 목록 답변 기계 조립" in r.think_trace
-    # 🔴 14R 재검 ③-7 — 같은 대표번호 행은 한 줄로 접고 접은 건수를 머리줄에 병기한다(30행 → 28건).
-    #    「전체 248개」(펀드키 축)는 리드 판단 대기라 그대로 두고 표시 층만 접는다.
-    assert r.answer.startswith("조건에 해당하는 공모펀드는 전체 248개(클래스 560개)이며, 순자산 상위 30개 펀드(대표번호 기준 28건)는 다음과 같습니다")
+    # 🔴 16R 재검 ③-1 — 접기는 SQL 층(GROUP BY rptt)이 하고 LIMIT 은 그 위에 걸린다. 머리줄의 「대표번호 기준」은
+    #    화면 행 수가 아니라 **전체값**(중국 106 — 심사관 gold)이고, 「전체 248개」(펀드키 축)는 그대로 둔다.
+    assert r.answer.startswith("조건에 해당하는 공모펀드는 전체 248개(클래스 560개)(대표번호 기준 106건)이며, 순자산 상위 30개 표시는 다음과 같습니다")
     body = [ln for ln in r.answer.splitlines() if re.match(r"\d+\. ", ln)]
-    assert len(body) == 28 and body[0].startswith("1. KB중국본토A주증권자투자신탁[주식]: 순자산 1,453억원 · 클래스 14개")
+    assert len(body) == 30 and body[0].startswith("1. KB중국본토A주증권자투자신탁[주식]: 순자산 1,453억원 · 클래스 14개")
     assert "일부" not in r.answer and "있을 수 있" not in r.answer
-    # S7 베트남 — 38펀드 · 30줄
+    # S7 베트남 — 38펀드 · 대표번호 19건(16R: 14R 사후 접기가 LIMIT 뒤에 돌아 `KB베트남인덱스40` 을 통째로 잘랐다)
     P.sql = ("SELECT DISTINCT itm_no, itm_nm, prfd_attr_cds FROM public_funds WHERE prvo_pbff_desc = '공모' "
              "AND (',' || prfd_attr_cds || ',' LIKE '%,VNM,%' OR prfd_attr_cds LIKE '%VNM%') AND sale_yn = '판매중' LIMIT 30")
     r7 = answer_question("T-S7", "베트남에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
-    assert "전체 38개(클래스 119개)" in r7.answer and sum(1 for ln in r7.answer.splitlines() if re.match(r"\d+\. ", ln)) == 18
+    assert "전체 38개(클래스 119개)(대표번호 기준 19건)" in r7.answer
+    assert sum(1 for ln in r7.answer.splitlines() if re.match(r"\d+\. ", ln)) == 19
+    assert "KB베트남인덱스40" in r7.answer
     # 절단 없음(LIMIT 5) → "전체 5개"
     P.sql = _R3_SQL.replace("LIMIT 30", "LIMIT 5")
     r5 = answer_question("T-R3s", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)

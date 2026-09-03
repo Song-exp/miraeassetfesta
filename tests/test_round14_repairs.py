@@ -462,3 +462,29 @@ def test_label_code_columns_skips_aggregate_items():
     rows = "수탁회사명 | 펀드수\n00020054 | 714"
     out, touched = P.label_code_columns(rows, sql)
     assert touched == ["수탁회사명"] and "| 714" in out and "코드 714" not in out
+
+
+# ── P4-e · KG ③-9 (X22) — 집계 1행의 0 은 '없음' 이다 ────────────────────────────────────────
+def test_zero_count_with_extra_columns():
+    """X22: `COUNT(*) as cnt, COALESCE(trusc_xtn_itt_cd,'정보 없음')` 1행이 표시 열 때문에 HCX 로 넘어가
+    리터럴 '정보 없음' 을 값으로 되읽고 오거절이 됐다. 첫 항목이 집계면 0 은 '없음' 이다."""
+    sql = ("SELECT COUNT(*) as cnt, COALESCE(public_funds.trusc_xtn_itt_cd, '정보 없음') as actual "
+           "FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' "
+           "AND TRIM(trusc_xtn_itt_cd) = '00020004' AND sale_yn = '판매중' LIMIT 1")
+    out = P._zero_count_answer(sql, "cnt | actual\n0 | 정보 없음", 1)
+    assert out and "확인되지 않습니다" in out and "정보 없음" not in out
+    assert P._zero_count_answer(sql, "cnt | actual\n5 | 00020004", 1) is None      # 양수는 불개입
+
+
+# ── KG ③-10 (Z18) — 전사 강제는 원시 행이 아니라 답변 스키마로 ───────────────────────────────
+def test_rows_answered_no_raw_dump():
+    from src.runtime import loader
+    loader.load_context()
+    # 읽을 수 있는 표시 축이 하나도 없으면 전사하지 않는다(원시 덤프보다 거절문이 낫다)
+    rows = "or_co_xtn_itt_cd | itm_no\n00040010 | KR5100000001"
+    a = "요청하신 정보를 확인할 수 없습니다."
+    assert P.ensure_rows_answered(a, rows, 1) == (a, False)
+    # 센티널 값(KR0000000000)은 옮기지 않는다
+    rows2 = "itm_nm | 대표번호\n테스트펀드 | KR0000000000"
+    out, ok = P.ensure_rows_answered(a, rows2, 1)
+    assert ok and "테스트펀드" in out and "KR0000000000" not in out

@@ -3052,6 +3052,10 @@ def _answer_col_label(header: str) -> str:
     return col
 
 
+# 플레이스홀더 값 — 답변에 옮기면 사용자에게 코드가 노출된다(KG ③-10 · Z18 `대표번호 KR0000000000`)
+_SENTINEL_CELLS = frozenset({"KR0000000000", "None", "NULL", ""})
+
+
 def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
     """조회 결과가 있는데 결과를 **하나도 인용하지 않고** 거절한 답변을 기계 전사로 교체. (답변, 교체했는지)
 
@@ -3071,10 +3075,15 @@ def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
     #    라벨은 스키마 한글명(loader 원천)이고, 식별자·내부코드 컬럼은 뺀다(`_EVIDENCE_SKIP` 과 같은 기준).
     labels = [_answer_col_label(c) for c in cols]
     keep = [i for i, c in enumerate(cols) if labels[i]]
+    # 🔴 14R KG ③-10 (Z18 부작용 수리) — **전사 강제는 원시 행이 아니라 답변 스키마로 내보낸다.**
+    #    종전엔 읽을 수 있는 라벨이 하나도 없으면 SQL 헤더를 그대로 썼다(`keep = 전체 · labels = cols`) —
+    #    Z18 실측: `종목명 ㅊ`·`대표번호 KR0000000000`·`운용속성구분코드 설명` 이 사용자 화면에 나갔다.
+    #    표시 축이 없으면 전사하지 않는다(거절문을 그대로 둔다 — 원시 덤프보다 낫다).
     if not keep:
-        keep, labels = list(range(len(cols))), cols
+        return answer, False
     out = [f"조회 결과 {n}행입니다 (기준일 {gate.DATA_CUTOFF})."]
-    out += ["- " + " · ".join(f"{labels[i]} {r[i]}" for i in keep if i < len(r) and r[i]) for r in body[:10]]
+    out += ["- " + " · ".join(f"{labels[i]} {r[i]}" for i in keep
+                              if i < len(r) and r[i] and r[i] not in _SENTINEL_CELLS) for r in body[:10]]
     if n > 10:
         out.append(f"… 외 {n - 10}행")
     return "\n".join(out), True
@@ -5941,7 +5950,12 @@ def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
     if not frm:
         return None
     head = re.sub(r"^\s*SELECT\s+", "", sql[:frm.start()], flags=re.I)
-    if not re.match(r"\s*(?:COUNT|SUM)\s*\(", head, re.I) or "," in head.split("AS")[0]:
+    # 🔴 14R KG ③-9 (X22) — **집계 1행의 개수 축이 0 이면 '0개' 로 답한다.** 종전엔 SELECT 에 표시 열이
+    #    하나라도 더 있으면 불개입이라, `COUNT(*) as cnt, COALESCE(trusc_xtn_itt_cd,'정보 없음')` 1행이
+    #    HCX 로 넘어가 리터럴 '정보 없음' 을 값으로 되읽고 "정보가 없습니다" 오거절이 됐다.
+    #    판정은 **첫 SELECT 항목이 집계인가**로 한다 — 첫 열이 0 이면 어떤 표시 열이 붙어도 '없음' 은 참이다.
+    items = _split_select_items(head)
+    if not items or not re.match(r"\s*(?:COUNT|SUM)\s*\(", items[0], re.I):
         return None
     body = rows.splitlines()[1:]
     if len(body) != 1:

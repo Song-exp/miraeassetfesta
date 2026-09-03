@@ -6051,6 +6051,19 @@ def _standalone_name_token(question: str) -> str | None:
         for g in sorted(set(_GENERIC_NAME_TOKEN) | set(PRODUCT), key=len, reverse=True):
             rest = rest.replace(g, "")
         if len(rest) >= 2 and cand not in _GENERIC_NAME_TOKEN and cand not in PRODUCT:
+            # 🔴 17R OFFICIAL-002 (공식 예시) — 상품 명사가 **꼬리에 붙은** 호칭이면 그것까지 이름으로 썼다:
+            #    "국민성장펀드의 구조와…" → `LIKE '%국민성장펀드%'` → 0행.
+            #    실제 이름은 `미래에셋국민참여형국민성장혼합자산투자신탁…` 이라 '펀드' 라는 글자가 없다.
+            #    사람은 "○○펀드" 라고 부르지만 DB 이름엔 그 말이 없는 경우가 흔하다.
+            #    🔴 그렇다고 꼬리 명사를 늘 떼면 안 된다 — '삼성코리아대표증권자투자신탁' 은 '투자신탁' 이
+            #    이름의 일부다. 그래서 **DB 에 실재하는 형태를 고른다**(위 결합형 분기와 같은 규칙).
+            if not _name_chunk_exists(cand):
+                for p in sorted(PRODUCT, key=len, reverse=True):
+                    if cand.endswith(p) and len(cand) - len(p) >= 2:
+                        trimmed = cand[: -len(p)]
+                        if _name_chunk_exists(trimmed):
+                            return trimmed
+                        break
             return cand
     return None
 

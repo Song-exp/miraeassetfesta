@@ -1507,3 +1507,20 @@ def test_bond_count_answer_shapes():
     assert _bond_count_answer(sql, "n\n0", 1, "x 몇 종목이야?") is None                       # 0 은 _zero_count_answer 몫
     assert _bond_count_answer("SELECT COUNT(DISTINCT pd_no) AS n, COUNT(*) AS r FROM domestic_bonds LIMIT 1", "n | r\n33 | 40", 1, "통안채 몇 개 있어?") is None   # 2열은 불개입
     assert _bond_count_answer("SELECT TRIM(bd_knd), COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY 1 LIMIT 30", "a | b\nx | 1", 1, "종류별 몇 개") is None
+
+
+def test_residual_name_token_strips_trailing_product_noun():
+    """상품 명사가 꼬리에 붙은 호칭이면 떼되, 이름의 일부면 남긴다 (2026-09-03 17R OFFICIAL-002).
+
+    "국민성장펀드" 는 사람의 호칭이고 DB 이름엔 '펀드' 라는 글자가 없다
+    (미래에셋국민참여형국민성장혼합자산투자신탁…) — 그대로 LIKE 하면 0행이다.
+    반대로 '삼성코리아대표증권자투자신탁' 은 '투자신탁' 이 이름의 일부라 떼면 안 된다.
+    판정 근거는 사전이 아니라 **DB 실재 여부**다.
+    """
+    from src.runtime.pipeline import residual_name_token
+
+    assert residual_name_token("국민성장펀드의 구조와 투자전략 동향 등 찾아서 알려줘", []) == "국민성장"
+    assert residual_name_token("삼성코리아대표증권자투자신탁의 수탁사는 어디야?", []) \
+        == "삼성코리아대표증권자투자신탁"
+    # 머리명사만 있는 질의는 후보가 없다 (되묻기·일반 조회 경로 보존)
+    assert residual_name_token("공모펀드는 유형별로 몇 개씩 있어?", []) is None

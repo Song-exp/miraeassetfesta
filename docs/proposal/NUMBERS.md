@@ -117,12 +117,12 @@
 ## 4. 평가셋
 
 - `questions_cross_and_unanswerable.jsonl`: 9문항 (사람 검증 8)
-- `questions_domestic_bonds.jsonl`: 41문항 (사람 검증 41)
+- `questions_domestic_bonds.jsonl`: 44문항 (사람 검증 44)
 - `questions_domestic_etfs.jsonl`: 36문항 (사람 검증 31)
 - `questions_official_sample.jsonl`: 8문항 (사람 검증 6)
 - `questions_overseas_etfs.jsonl`: 28문항 (사람 검증 27)
 - `questions_public_funds.jsonl`: 20문항 (사람 검증 0)
 - `questions_top_safety_probe.jsonl`: 10문항 (사람 검증 10)
 
-**합계 152문항 · 사람 검증 123건**
+**합계 155문항 · 사람 검증 126건**
 

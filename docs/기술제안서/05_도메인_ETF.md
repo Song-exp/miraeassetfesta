@@ -101,7 +101,7 @@ flowchart LR
 
 기존 2-4(위험등급 0~6)는 채권 절과 겹치므로 한 줄로 줄이고 채권 B.2-2 를 참조한다.
 
-**추가 소재 (본문 또는 부록):** 원천 지역 오분류 43건 → `지역질의_합집합` `(wu_inv_rgn='미국' OR ref_geo_focus='United States of America')`, 상품명 LIKE 금지('미국달러선물' 9종은 환율상품) · 섹터 질의는 `pd_sect_cd` 금지, `ref_base_index`·상품명·holdings 3축 우회 · 해외 `ISIN 조인 금지`(63종이 2상품에 걸림 — 리드 2.3.3 이 인용) · 티커 `ZZZZ` vs 실재 `ZZZ.O` — 완전 일치만.
+**추가 소재 (본문 또는 부록):** 구성종목 조인 질의에 지역 필터 중첩 금지 — 캠브리콘 재검증(9/3)에서 `wu_inv_rgn='중국'` 중첩이 16→9건, 잘린 7건 중 5건이 rgn 오분류된 진짜 중국 상품(`7a3632a`) · 원천 지역 오분류 43건 → `지역질의_합집합` `(wu_inv_rgn='미국' OR ref_geo_focus='United States of America')`, 상품명 LIKE 금지('미국달러선물' 9종은 환율상품) · 섹터 질의는 `pd_sect_cd` 금지, `ref_base_index`·상품명·holdings 3축 우회 · 해외 `ISIN 조인 금지`(63종이 2상품에 걸림 — 리드 2.3.3 이 인용) · 티커 `ZZZZ` vs 실재 `ZZZ.O` — 완전 일치만.
 
 ### B.3 한계 (3줄)
 

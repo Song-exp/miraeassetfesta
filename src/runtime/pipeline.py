@@ -222,7 +222,37 @@ def validate_sql(sql: str) -> str | None:
             errs.append(f"SQL 문법 오류(실행 전 파싱): {e}")
     except sqlite3.Error:
         pass                     # 파서 밖 오류(연결 등)로 정상 SQL 을 막지 않는다
+    # 🔴 14R gold ③-5 (부류 AC) — **위치 `ORDER BY` 는 SELECT 열 수와 대조한다.** EXPLAIN 은 이걸 못 잡는다.
+    #    OFFICIAL-005 실측: 재생성이 SELECT 를 6→5열로 줄이면서 `ORDER BY 6` 을 그대로 둬
+    #    `1st ORDER BY term out of range` 로 죽었고, 사용자에겐 "데이터 조회 중 오류" 가 나갔다.
+    over = _order_by_position_overflow(s)
+    if over:
+        errs.append(f"위치 ORDER BY 가 SELECT 열 수를 넘는다({over}) — "
+                    "ORDER BY 는 위치 번호가 아니라 컬럼명·별칭으로 쓴다")
     return " / ".join(errs) if errs else None
+
+
+_ORDER_BY_TERMS = re.compile(r"\border\s+by\b(.*?)(?=\blimit\b|$)", re.I | re.S)
+
+
+def _order_by_position_overflow(sql: str) -> str | None:
+    """위치 `ORDER BY n` 의 n 이 그 SELECT 의 항목 수를 넘으면 사람말 사유, 아니면 None.
+
+    단일 SELECT 만 본다 — UNION 은 가지마다 항목 수가 같아야 하므로 첫 가지로 판정하면 오탐이 난다.
+    """
+    if not _single_select(sql):
+        return None
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    m_sel = _SELECT_HEAD.match(sql)
+    m_ob = _ORDER_BY_TERMS.search(sql)
+    if not (frm and m_sel and m_ob) or m_ob.start() < frm.start():
+        return None
+    n_items = len(_split_select_items(sql[m_sel.end():frm.start()]))
+    for term in m_ob.group(1).split(","):
+        pos = term.strip().split()[0] if term.strip() else ""
+        if pos.isdigit() and not (1 <= int(pos) <= n_items):
+            return f"ORDER BY {pos} · SELECT 항목 {n_items}개"
+    return None
 
 
 _WHERE_AGG = re.compile(r"\bOVER\s*\(|\b(?:SUM|COUNT|AVG|MIN|MAX|TOTAL|GROUP_CONCAT|ROW_NUMBER|RANK|DENSE_RANK)\s*\(", re.I)
@@ -1187,12 +1217,35 @@ def _reagg_class_axis(text: str, col: str, agg: str) -> tuple[str, bool]:
     return (text[:m.start(1)] + agg + text[m.end(1):], True) if m else (text, False)
 
 
-def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
-    """SELECT 목록의 bare 정렬 컬럼을 agg(col) 로 감싼다. (새 head, 감쌌는지, 함수 인자 위치였는지)
+_SELECT_HEAD = re.compile(r"\s*select\s+(?:distinct\s+)?", re.I)
+_ITEM_ALIAS = re.compile(r"(?is)^(.*?)\s+AS\s+(\"[^\"]+\"|\w+)\s*$")
 
-    🔴 2026-09-02 리뷰 ②-5: 정렬 컬럼이 함수 안이면(`ROUND(fd_yr1_ern_r,2)`) 별칭까지 붙여
-    `ROUND(MAX(fd_yr1_ern_r) AS fd_yr1_ern_r,2)` 문법 오류 → "데이터 조회 중 오류" 무응답. 함수 인자 위치면
-    `agg(col)` 만 넣고 별칭은 생략한다 — 위치 ORDER BY 는 그대로 유효, 이름 ORDER BY 는 _wrap_order_by_col 이 맞춘다.
+
+def _single_select(sql: str) -> bool:
+    """SELECT 목록을 문자열로 편집해도 되는 문장인가 — 단일 SELECT 인가.
+
+    🔴 14R gold ③-4 (부류 AC) — `CROSS-003` 실측: 억원 병기 가드가 `(SELECT '국내 ETF') UNION ALL (SELECT …)`
+       의 **선두 여는 괄호**를 못 읽어 SELECT 항목 분해가 통째로 실패했고, `CAST(ROUND(((SELECT '국내 ETF')
+       /100000000.0) …) AS "구분, pd_abrv_nm, du_last_aum_억원"` 을 주입해 문장을 부쉈다.
+       12R 이 UNION 괄호를 살린 이상 UNION SQL 이 가드 체인에 계속 들어온다 — 판정을 공통 헬퍼로 못 박는다.
+    판정: ⓐ 공백을 지운 첫 토큰이 `SELECT` ⓑ `UNION`·`EXCEPT`·`INTERSECT` 가 없다.
+    """
+    return bool(re.match(r"\s*select\b", sql, re.I)) and not re.search(r"\b(?:union|except|intersect)\b", sql, re.I)
+
+
+def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
+    """SELECT 목록에서 정렬 축이 실린 **항목 하나**를 agg 로 감싼다. (새 head, 감쌌는지, ORDER BY 이름도 감싸야 하는지)
+
+    🔴 14R gold ③-3 (부류 AC) — 종전엔 SELECT 목록을 문자열로 보고 정렬 컬럼의 **첫 등장만** 감쌌다.
+       13R 실측 무응답 2건이 전부 여기서 났다:
+         `FND-005` `or_co_rwrd_r + sale_co_rwrd_r + … AS tot_commission_rate`
+                   → `MIN(or_co_rwrd_r) AS or_co_rwrd_r + sale_co_rwrd_r …` (near "+": syntax error)
+         `FND-010` `p.fd_nast_suma` → `p.MAX(fd_nast_suma) AS fd_nast_suma`  (near "(": syntax error)
+       규칙: SELECT 를 **항목 단위**로 분해해
+         ⓐ 항목 전체가 그 컬럼(테이블 별칭 포함)이면 `agg(<항목>) AS <원별칭|컬럼>`
+         ⓑ 항목이 산술식·함수식이면 **항목 전체**를 감싼다 `agg(<식>) AS <원별칭|컬럼>`
+         ⓒ 감쌀 수 없으면(서브쿼리·괄호 불균형·단일 SELECT 아님) 보정을 포기하고 원 head 를 돌려준다.
+       절대 부분 치환하지 않는다.
     """
     # 🔴 11R gold ③-12 (부류 W) — **클래스 축 집계는 SUM 이 아니라 MAX/MIN 이다.** 종전엔 이미 집계 안에 있으면
     #    통과시켜, `SUM(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)` 가 클래스 11개짜리
@@ -1203,13 +1256,23 @@ def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
         return swapped, True, False
     if re.search(rf"(?:max|min|avg|sum|total)\s*\((?:[^()]|\([^()]*\))*\b{col}\b", head, re.I):
         return head, False, False
-    m = re.search(rf"\b{col}\b(\s+as\s+\w+)?", head, re.I)
-    if not m:
+    m_sel = _SELECT_HEAD.match(head)
+    if not m_sel:
         return head, False, False
-    if re.search(r"\w+\(\s*$", head[:m.start()]):
-        return head[:m.start()] + f"{agg}({col})" + head[m.start() + len(col):], True, True
-    alias = m.group(1) or f" AS {col}"
-    return head[:m.start()] + f"{agg}({col}){alias}" + head[m.end():], True, False
+    items = _split_select_items(head[m_sel.end():])
+    for i, item in enumerate(items):
+        if not re.search(rf"\b{col}\b", item, re.I) or _DISPLAY_UNIT.search(item):
+            continue          # 표시 열(억원·백만USD)은 값 축이 아니다 — 감싸면 문자열을 집계하게 된다
+        core = item.strip()
+        m_as = _ITEM_ALIAS.match(core)
+        expr, alias = (m_as.group(1).strip(), m_as.group(2)) if m_as else (core, None)
+        # ⓒ 감쌀 수 없는 형태 — 서브쿼리·괄호 불균형이면 손대지 않는다
+        if re.search(r"\(\s*select\b", expr, re.I) or expr.count("(") != expr.count(")"):
+            return head, False, False
+        items[i] = f" {agg}({expr}) AS {alias or col} "
+        # 별칭이 컬럼명과 다르면 이름 ORDER BY 는 여전히 원 컬럼을 가리킨다 — 호출자가 그쪽도 감싼다
+        return head[:m_sel.end()] + ",".join(items), True, bool(alias) and alias.strip('"').lower() != col.lower()
+    return head, False, False
 
 
 def _wrap_order_by_col(tail: str, col: str, agg: str) -> str:
@@ -1353,7 +1416,9 @@ def ensure_amount_eok_columns(sql: str) -> tuple[str, bool]:
     이름: 컬럼 그대로면 '순자산_<단위>', SUM 무별칭이면 '순자산합계_<단위>', 별칭이면 '<별칭>_<단위>'.
     이미 같은 컬럼의 표시 열이 있으면 불개입."""
     m_tbl = re.search(r"\bfrom\s+(public_funds|domestic_etfs|overseas_etfs)\b", sql, re.I)
-    if not m_tbl:
+    # 🔴 14R gold ③-4 (부류 AC) — SELECT 목록을 문자열로 편집하는 가드는 **단일 SELECT 에서만** 발동한다.
+    #    CROSS-003 실측: UNION 문장의 선두 `(` 때문에 항목 분해가 실패해 이 가드가 SQL 을 부쉈다.
+    if not m_tbl or not _single_select(sql):
         return sql, False
     if m_tbl.group(1).lower() == "overseas_etfs":
         cur = _overseas_currency()
@@ -4671,7 +4736,7 @@ def ensure_risk_name_column(sql: str) -> tuple[str, bool]:
     인용하라는 규칙(위험등급방향)을 SELECT 단계에서 결정적으로 보장한다. COUNT(pd_risk_gcd) 처럼
     함수 인자인 경우·이미 pd_risk_nm 이 있는 경우는 불개입.
     """
-    if "pd_risk_nm" in sql:
+    if "pd_risk_nm" in sql or not _single_select(sql):     # 14R gold ③-4 — SELECT 편집은 단일 SELECT 에서만
         return sql, False
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm:
@@ -4696,7 +4761,7 @@ def ensure_grade_select_column(sql: str) -> tuple[str, bool]:
     필터에 쓴 판단 근거는 접시에 올려야 인용할 수 있다.
     불개입: 집계 SELECT(COUNT·AVG…)·GROUP BY — 컬럼 주입이 집계 형태를 깬다.
     crd_grd_dt 는 \\b 경계로 매치되지 않는다(등급일사용금지 규칙과 무관하게 별개 컬럼)."""
-    if "domestic_bonds" not in sql:
+    if "domestic_bonds" not in sql or not _single_select(sql):   # 14R gold ③-4
         return sql, False
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm:
@@ -6304,7 +6369,9 @@ def answer_question(
         regen_used = True
         feedback = (grounding + "\n\n# 이전 SQL 의 문제 — 아래를 고쳐 다시 SQL 한 문장만 낸다\n"
                     f"- 이전 SQL: {sql}\n- 문제: {problem}\n"
-                    "- 값은 'KG 개체 매핑'·'범주형 컬럼의 실제 값' 목록의 표기 그대로만 쓴다. 없는 값이면 그 조건을 빼지 말고 REFUSE: 로 답한다.")
+                    "- 값은 'KG 개체 매핑'·'범주형 컬럼의 실제 값' 목록의 표기 그대로만 쓴다. 없는 값이면 그 조건을 빼지 말고 REFUSE: 로 답한다.\n"
+                    # 🔴 14R gold ③-5 — OFFICIAL-005 실측: 재생성이 SELECT 열을 줄이고 `ORDER BY 6` 을 그대로 둬 실행 오류.
+                    "- ORDER BY 는 **위치 번호가 아니라 컬럼명·별칭**으로 쓴다(열 수가 바뀌어도 안 깨진다).")
         step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
         raw2 = planner.plan_sql(q, feedback)
         if raw2.strip().upper().startswith(REFUSE_PREFIX):

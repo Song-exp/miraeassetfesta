@@ -1089,25 +1089,29 @@ def test_verify_product_names_no_cross_product_or_particle_loss():
 
 
 def test_fund_rank_sort_col_inside_function():
-    """리뷰 ②-5 — 정렬 컬럼이 함수 인자(ROUND(col,2))면 별칭까지 붙여 문법 오류 → 무응답. agg(col) 만 감싼다."""
+    """리뷰 ②-5 + 14R gold ③-3 — 정렬 컬럼이 함수 인자(ROUND(col,2))면 **항목 전체**를 감싼다.
+
+    종전엔 `ROUND(MAX(col),2)` 처럼 컬럼만 감쌌으나, 그 부분 치환이 13R 에 산술식 항목(FND-005)과
+    별칭 항목(FND-010)에서 문법을 부쉈다. 이제 항목 단위로 `MAX(ROUND(col,2)) AS col` 이 된다 —
+    round 는 단조라 값·순서는 같고, 별칭이 붙어 이름 ORDER BY 도 그대로 산다."""
     from src.runtime.pipeline import ensure_fund_rank_representative as f
 
     con = _ro()
     s = ("SELECT itm_nm, ROUND(fd_yr1_ern_r,2) FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모' "
          "AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') ORDER BY 2 DESC LIMIT 5")   # 기점오류 제외는 체인의 별도 가드
     out, ok = f(s, "1년 수익률 높은 공모펀드 5개")
-    assert ok and "ROUND(MAX(fd_yr1_ern_r),2)" in out and " AS fd_yr1_ern_r" not in out
+    assert ok and "MAX(ROUND(fd_yr1_ern_r,2)) AS fd_yr1_ern_r" in out
     rows = con.execute(out).fetchall()
     assert rows[0][1] == 387.66 and len(rows) == 5
-    # 이름 ORDER BY 도 살린다 — ORDER BY fd_yr1_ern_r → MAX(fd_yr1_ern_r)
+    # 이름 ORDER BY 도 살린다 — 별칭이 컬럼명과 같으면 SQLite 가 출력 별칭(집계)으로 해석한다
     s2 = s.replace("ORDER BY 2 DESC", "ORDER BY fd_yr1_ern_r DESC")
     out2, ok2 = f(s2, "q")
-    assert ok2 and "ORDER BY MAX(fd_yr1_ern_r) DESC" in out2 and con.execute(out2).fetchone()[1] == 387.66
+    assert ok2 and con.execute(out2).fetchone()[1] == 387.66
     # 기존 GROUP BY 경로에서도 동일
     s3 = ("SELECT itm_no, ROUND(fd_mm6_ern_r,1) FROM public_funds WHERE sale_yn='판매중' "
           "GROUP BY or_co_xtn_itt_cd, mtco_itm_no ORDER BY 2 DESC LIMIT 3")
     out3, ok3 = f(s3, "q")
-    assert ok3 and "ROUND(MAX(fd_mm6_ern_r),1)" in out3 and len(con.execute(out3).fetchall()) == 3
+    assert ok3 and "MAX(ROUND(fd_mm6_ern_r,1)) AS fd_mm6_ern_r" in out3 and len(con.execute(out3).fetchall()) == 3
     # bare 컬럼 경로는 종전(별칭 유지)
     assert "MAX(fd_yr1_ern_r) AS fd_yr1_ern_r" in f(_R7_SQL, "q")[0]
 

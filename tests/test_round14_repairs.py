@@ -90,3 +90,77 @@ def test_etf_mgmt_canon_select_list():
     # 항목 수 불변 — 위치 ORDER BY 가 깨지지 않는다
     assert len(P._split_select_items(out[out.upper().find("SELECT") + 6:out.upper().find(" FROM")])) == 4
     assert P.ensure_etf_mgmt_canon(out)[1] is False
+
+
+# ── P2-a · gold ③-3 (부류 AC) — 정렬축 감싸기는 SELECT 항목 단위로 ──────────────────────────
+def test_wrap_sort_col_expression_item():
+    """FND-005: 산술식 항목은 **항목 전체**를 감싼다 — 첫 토큰만 감싸면 문법이 깨진다."""
+    head = ("SELECT itm_no, TRIM(itm_nm), or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r "
+            "+ ofwk_trus_rwrd_r AS tot_commission_rate ")
+    out, wrapped, in_func = P._wrap_sort_col(head, "or_co_rwrd_r", "MIN")
+    assert wrapped
+    assert "MIN(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) AS tot_commission_rate" in out
+    assert "AS or_co_rwrd_r +" not in out          # 13R 파손 형태가 아니다
+    assert in_func is True                          # 별칭이 컬럼명과 달라 ORDER BY 이름도 감싸야 한다
+
+
+def test_wrap_sort_col_table_alias():
+    """FND-010: `p.fd_nast_suma` 를 `p.MAX(...)` 로 부수지 않는다."""
+    head = "SELECT DISTINCT p.itm_no, p.itm_nm, p.fd_nast_suma, p.fd_last_dstb_r "
+    out, wrapped, _ = P._wrap_sort_col(head, "fd_nast_suma", "MAX")
+    assert wrapped and "MAX(p.fd_nast_suma) AS fd_nast_suma" in out and "p.MAX(" not in out
+
+
+def test_wrap_sort_col_gives_up_on_unwrappable():
+    # 선두 괄호(UNION 가지) — 분해가 성립하지 않으면 원 head 그대로
+    head = "(SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_last_aum "
+    assert P._wrap_sort_col(head, "du_last_aum", "MAX") == (head, False, False)
+    # 서브쿼리 항목은 손대지 않는다
+    head2 = "SELECT itm_no, (SELECT MAX(fd_nast_suma) FROM public_funds) AS fd_nast_suma "
+    assert P._wrap_sort_col(head2, "fd_nast_suma", "MAX")[1] is False
+
+
+def test_fund_rank_representative_produces_valid_sql():
+    """13R 무응답 2건의 SQL 이 이제 파싱된다 — 가드가 만든 문법 오류는 우리 잘못이다."""
+    import sqlite3
+    for sql in (
+        "SELECT itm_no, TRIM(itm_nm), or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r "
+        "AS tot_commission_rate FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
+        "GROUP BY or_co_xtn_itt_cd ORDER BY 3 ASC LIMIT 5",
+        "SELECT DISTINCT p.itm_no, p.itm_nm, p.fd_nast_suma, p.fd_last_dstb_r FROM public_funds p "
+        "WHERE p.sale_yn = '판매중' GROUP BY or_co_xtn_itt_cd ORDER BY 3 DESC LIMIT 5",
+    ):
+        out, _ = P.ensure_fund_rank_representative(sql, "총보수가 가장 낮은 공모펀드 5개")
+        con = sqlite3.connect(str(P.db_path()) if hasattr(P, "db_path") else "data/financial_products.db")
+        try:
+            con.execute("EXPLAIN " + out)       # 문법 오류면 여기서 터진다
+        finally:
+            con.close()
+
+
+# ── P2-b · gold ③-4 — SELECT 편집 가드는 단일 SELECT 에서만 ────────────────────────────────
+def test_single_select_helper():
+    assert P._single_select("SELECT a FROM t LIMIT 1")
+    assert not P._single_select("(SELECT a FROM t) UNION ALL (SELECT b FROM u)")
+    assert not P._single_select("SELECT a FROM t UNION SELECT b FROM u")
+
+
+def test_amount_eok_skips_union():
+    """CROSS-003: 억원 병기 가드가 UNION 문장을 부수지 않는다."""
+    sql = ("(SELECT '국내 ETF' AS 구분, pd_abrv_nm, du_last_aum FROM domestic_etfs "
+           "WHERE pd_sale_yn = 1 ORDER BY 3 DESC LIMIT 5) UNION ALL "
+           "(SELECT '공모펀드', itm_nm, fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' "
+           "ORDER BY 3 DESC LIMIT 5)")
+    assert P.ensure_amount_eok_columns(sql) == (sql, False)
+
+
+# ── P2-c · gold ③-5 — 위치 ORDER BY 는 SELECT 열 수와 대조한다 ──────────────────────────────
+def test_order_by_position_out_of_range():
+    bad = ("SELECT pd_abrv_nm, cu_lev_fector, pd_risk_nm, wu_inv_ast_type, pd_nm FROM domestic_etfs "
+           "WHERE pd_sale_yn = 1 ORDER BY 6 DESC LIMIT 1")
+    why = P.validate_sql(bad)
+    assert why and "위치 ORDER BY" in why
+    ok = bad.replace("ORDER BY 6", "ORDER BY 5")
+    assert P.validate_sql(ok) is None
+    # UNION 은 첫 가지로 판정하면 오탐이라 불개입
+    assert P._order_by_position_overflow("(SELECT a, b FROM t) UNION ALL (SELECT c, d FROM u) ORDER BY 2") is None

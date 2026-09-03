@@ -611,7 +611,7 @@ query_rules:
       # 순수추종식으로 바꾼다. 순수추종 = 지수명 그대로이거나 수익유형 접미(CR·TR·PR)만 붙은 것.
       # 🔴 가드는 OR 가지·다중 리터럴까지 훑는다. 슬롯은 **단일 등호 비교** 하나만 받는다 —
       #    복잡한 꼴은 가드가 계속 처리하고, 섀도에서 둘의 담당 범위를 대조한다.
-      enabled: false
+      enabled: true                # 2026-09-03 전환 — 섀도 84문항 'SQL 다름' 0 (침묵 조건 M:IDXCANON)
       when:
         tables: [domestic_etfs]
         sql: {has: ["cu_base_index"]}

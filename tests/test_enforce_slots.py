@@ -84,14 +84,16 @@ def test_replace_expr_only_when_unambiguous(ctx):
 
 def test_replace_predicate_capture_group(ctx):
     """확정식이 매치한 리터럴에 따라 달라지는 규칙 — {1}·{1:nospace} 로 받는다."""
-    c = _with_slot(ctx, "domestic_etfs", "시험지수", {
-        "when": {"tables": ["domestic_etfs"], "sql": {"has": ["cu_base_index"]}},
-        "action": "replace_predicate", "from_pattern": r"cu_base_index\s*=\s*'([^']+)'",
-        "sql": "ref_base_index GLOB '{1:nospace}'", "mark": "TM3"})
-    sql = "SELECT * FROM domestic_etfs WHERE cu_base_index = 'S&P 500'"
-    out, fired = guard.apply_enforce(sql, "S&P500 ETF", ["domestic_etfs"], set(), c)
+    # 🔴 실제 켜진 슬롯(IDXCANON)이 cu_base_index 를 가져가므로 **다른 컬럼**을 노린다 —
+    #    같은 대상이면 먼저 발동한 쪽에 가려 이 테스트가 슬롯 순서를 재게 된다.
+    c = _with_slot(ctx, "domestic_etfs", "시험지역", {
+        "when": {"tables": ["domestic_etfs"], "sql": {"has": ["wu_inv_rgn"]}},
+        "action": "replace_predicate", "from_pattern": r"wu_inv_rgn\s*=\s*'([^']+)'",
+        "sql": "wu_inv_rgn GLOB '{1:nospace}'", "mark": "TM3"})
+    sql = "SELECT * FROM domestic_etfs WHERE wu_inv_rgn = '북 미'"
+    out, fired = guard.apply_enforce(sql, "북미 ETF", ["domestic_etfs"], set(), c)
     assert "TM3" in fired
-    assert "ref_base_index GLOB 'S&P500'" in out       # 공백 제거되어 들어갔다
+    assert "wu_inv_rgn GLOB '북미'" in out             # 공백 제거되어 들어갔다
 
 
 # ── ③ UNION 가지 독립 적용 — 슬롯의 존재 이유 ─────────────────────────────

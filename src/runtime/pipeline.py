@@ -1009,6 +1009,11 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
        X8 실측: `FROM public_funds` 문장에 ETF 컬럼을 주입해 바로 뒤 스키마 검사가 자기 출력을 기각했다(자가 오거절).
        테이블이 섞인 문장(UNION·JOIN·다른 FROM)에서는 어느 가지의 WHERE 인지 알 수 없으므로 불개입한다.
     """
+    # 절차 §2-4 — enforce 슬롯(domestic_etfs.기초지수.enforce, mark IDXCANON)이 먼저 처리했으면 침묵.
+    # 🔴 슬롯은 **단일 등호 비교** 하나만 받는다. OR 가지·다중 리터럴·부정(NOT)이 섞인 꼴은
+    #    여기 아래 로직이 계속 담당한다 — 섀도 실측 '가드만 발동' 1건이 그 자리다.
+    if "M:IDXCANON" in sql:
+        return sql, False
     m_tbl = re.search(r"\b(?:from|join)\s+domestic_etfs\b(?:\s+(?:as\s+)?"
                       r"(?!(?:left|inner|outer|cross|join|where|group|order|limit|on|union)\b)(\w+))?", sql, re.I)
     if not m_tbl:

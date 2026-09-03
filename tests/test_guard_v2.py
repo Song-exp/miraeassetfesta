@@ -1241,6 +1241,15 @@ def test_forbidden_currency_literal_and_star_list():
     assert a2 and "금리구분 변동금리" in a2 and "dirty" not in a2 and "9999" not in a2
 
 
+def test_bond_list_perpetual_call_note():
+    from src.runtime.pipeline import _bond_list_answer as L
+    rows = "pd_nm | mat_dt | remaining_days\nDGB금융지주 조건부자본증권(상) 5(신종-영구-5콜) | 20260915.0 | 25일(약 0.1년)"
+    a = L("SELECT pd_nm, mat_dt, remaining_days FROM domestic_bonds WHERE pd_nm LIKE '%신종%' AND mat_dt >= 20260824 ORDER BY mat_dt LIMIT 1", rows, 1, "신종자본증권 중 만기가 가장 짧은 것")
+    assert a and "만기 2026-09-15" in a and "만기일 = 콜 개시일" in a
+    rows2 = "pd_nm | mat_dt\n한국전력공사채권1184 | 20520421.0"
+    assert "콜 개시일" not in L("SELECT pd_nm, mat_dt FROM domestic_bonds ORDER BY mat_dt DESC LIMIT 1", rows2, 1, "한전 채권 만기 가장 긴")
+
+
 def test_explicit_limit_hit_and_hedge_exemption():
     from src.runtime.pipeline import _explicit_limit_hit as hit, strip_false_hedge as h
     top5 = ("SELECT pd_nm, MAX(applied_yield) AS applied_yield FROM domestic_bonds WHERE applied_yield > 0 "

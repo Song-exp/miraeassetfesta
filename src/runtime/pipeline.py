@@ -2642,6 +2642,10 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             warn = True
         if "mat_dt" in cols and r.get("mat_dt"):
             bits.append(f"만기 {_fmt_ymd(r['mat_dt'])}")
+            # 영구채(신종자본증권)의 mat_dt 는 1차 콜행사개시일 — answer_rules 의 '만기일 = 콜 개시일' 병기를 조립기가 보장한다
+            # (2026-09-03 서버 실측: '신종자본증권 중 만기 가장 짧은' 답에 이 단서가 빠짐 — '구조' 열이 SELECT 에 없을 때의 사각)
+            if re.search(r"신종|영구", r.get("pd_nm", "")):
+                bits.append("만기일 = 콜 개시일(영구채)")
         if "remaining_days" in cols and r.get("remaining_days"):
             bits.append(f"잔존 {r['remaining_days']}")
         if "pd_pbcm" in cols and r.get("pd_pbcm"):

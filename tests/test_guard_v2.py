@@ -2333,3 +2333,30 @@ def test_bond_list_answer_assembled(ctx):
     from src.runtime.pipeline import _bond_list_answer as f
     assert f("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds LIMIT 30", "COUNT(DISTINCT pd_no)\n5", 1, "몇 개야") is None
     assert f("SELECT itm_nm FROM public_funds LIMIT 5", "itm_nm\nA", 1, "펀드") is None
+
+
+def test_nearest_enum_value_collapses_internal_whitespace():
+    """내부 공백만 다른 실제 값을 찾아낸다 (2026-09-03 17R · KG-026).
+
+    DB 값 'KOSPI200 5% +  회사채I-BBB종합 02Y  95%' 는 '+' 뒤와 '95%' 앞이 두 칸인데
+    HCX 는 한 칸으로 썼다. 값은 48행 실재하는데 검사기가 기각하고 재생성도 같은 문장을 내
+    축·모수가 맞은 문장이 통째로 죽었다.
+    """
+    from src.runtime.loader import load_context
+    from src.runtime import guard as g
+
+    ctx = load_context()
+    lit = "KOSPI200 5% + 회사채I-BBB종합 02Y 95%"
+    near = g.nearest_enum_value(ctx.value_index, "public_funds", "bmrk_nm", lit)
+    assert near and near != lit and near.replace(" ", "") == lit.replace(" ", "")
+
+
+def test_nearest_enum_value_still_refuses_ambiguous():
+    """유일 후보가 아니면 손대지 않는다 — 의미가 갈리는 치환은 값 검사에 맡긴다."""
+    from src.runtime.loader import load_context
+    from src.runtime import guard as g
+
+    ctx = load_context()
+    # 실재하지 않고 후보도 유일하지 않은 값들
+    assert g.nearest_enum_value(ctx.value_index, "public_funds", "zrin_btyp_nm", "인도주식형") is None
+    assert g.nearest_enum_value(ctx.value_index, "public_funds", "bmrk_nm", "KOSPI 200") is None

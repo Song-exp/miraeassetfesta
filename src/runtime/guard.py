@@ -223,6 +223,15 @@ def nearest_enum_value(index: dict, table: str, column: str, literal: str) -> st
     if not cands:                       # 반대 방향 — 사람이 짧게 부르고 실제 값에 접미사가 붙은 경우
         cands = {v for v in raw
                  if any(_norm(v).strip() == base + s for s in _SUFFIX_NOISE if s.strip())}
+    if not cands:
+        # 🔴 **내부 공백**만 다른 경우 (2026-09-03 17R · KG-026 실측).
+        #    DB 값 `'KOSPI200 5% +  회사채I-BBB종합 02Y  95%'` 는 `+` 뒤와 `95%` 앞이 **두 칸**인데
+        #    HCX 는 한 칸으로 썼다. 값은 48행 실재하는데 검사기가 기각하고 재생성도 같은 문장을 내
+        #    문장 전체가 죽었다(축·모수는 이미 맞았는데 이 한 겹에서 끝났다).
+        #    이 함수의 계약이 원래 "접미사·**공백**만 다르면" 이므로 그 공백을 내부까지 넓힌다.
+        #    유일 후보일 때만 돌려주는 규칙은 그대로 — 의미가 갈리는 치환은 여전히 일어나지 않는다.
+        squash = re.sub(r"\s+", " ", base)
+        cands = {v for v in raw if re.sub(r"\s+", " ", _norm(v).strip()) == squash}
     return next(iter(cands)) if len(cands) == 1 else None
 
 

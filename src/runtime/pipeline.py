@@ -3674,6 +3674,30 @@ def _mgmt_stem_codes() -> tuple:
     return tuple(sorted(best.items()))
 
 
+@lru_cache(maxsize=1)
+def _org_names_by_code() -> dict:
+    """`or_co` 코드 → 그 `Org_*` 노드의 이름 슬롯 전부(공백 제거). `kg_node` 실측 — 하드코딩 0.
+
+    세 슬롯을 **모두** 본다. `COALESCE` 로 하나만 보면 구상호 브랜드를 잃는다 —
+    실측 `Org_00040013` 은 `label_official='키움투자자산운용'` · `label_ko='키움슈로더'` 라
+    정본만 보면 '슈로더' 질의(X12)가 이 코드를 못 찾는다.
+    """
+    ctx = _ev_ctx()
+    by_id = getattr(ctx, "kg_node_by_id", {}) or {}
+    out: dict = {}
+    for nid, aliases in (getattr(ctx, "kg_aliases", {}) or {}).items():
+        node = by_id.get(nid)
+        if not node or getattr(node, "node_type", "") != "Organization":
+            continue
+        slots = tuple(s.replace(" ", "") for s in
+                      (getattr(node, "label_official", None), getattr(node, "label_ko", None),
+                       getattr(node, "canonical_name", None)) if s)
+        for _t, col, raw in aliases:
+            if col and col.lower() == "or_co_xtn_itt_cd" and str(raw).strip():
+                out.setdefault(str(raw).strip().zfill(8), slots)
+    return out
+
+
 @lru_cache(maxsize=None)
 def _brand_or_co_codes(stem: str, offshore: bool) -> tuple[str, ...]:
     """브랜드 어간으로 **시작하는** 종목명을 가진 운용사 코드 전부 — DB 실측(하드코딩 0).
@@ -3692,7 +3716,15 @@ def _brand_or_co_codes(stem: str, offshore: bool) -> tuple[str, ...]:
         return ()
     finally:
         con.close()
-    return tuple(c for c, _ in rows if offshore or not c.startswith(_OFFSHORE_CLASS))
+    cand = tuple(c for c, _ in rows if offshore or not c.startswith(_OFFSHORE_CLASS))
+    # 🔴 16R gold ③-3 (`FND-C02`) — **코드 후보는 운용사 라벨로 만든다. 상품명으로 코드를 유도하지 않는다.**
+    #    실측: '삼성' 접두 상품명 3건을 가진 `00080032` 의 정본 이름은 **현대인베스트먼트자산운용** 이고 그 3건은
+    #    전부 기본모수 밖인데도 IN 에 들어와 모수를 207펀드/850클래스 → 226/926 으로 오염시켰다(목록 3위가
+    #    현대인베스트먼트 펀드). 라벨로 걸러진 후보가 하나라도 있으면 그것만 쓰고, 하나도 없을 때만
+    #    상품명 후보로 되돌아간다 — 구상호 브랜드('슈로더' → 정본 '키움투자자산운용')를 잃지 않기 위해서다.
+    names = _org_names_by_code()
+    by_label = tuple(c for c in cand if any(stem in n for n in names.get(c, ())))
+    return by_label or cand
 
 
 _OR_CO_EQ = re.compile(r"(?:TRIM\(\s*)?(?:\w+\.)?\bor_co_xtn_itt_cd\b\s*\)?\s*=\s*'(\d+)'", re.I)

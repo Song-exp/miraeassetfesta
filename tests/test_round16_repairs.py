@@ -233,3 +233,22 @@ def test_strip_unsourced_percent():
     assert P.strip_unsourced_percent(out, rows) == (out, [])           # 멱등
     assert P.strip_unsourced_percent("총보수는 0.15%입니다.", "col | x\n0.150 | 1")[1] == []   # 표기 차이는 오탐 아님
     assert P.strip_unsourced_percent("전부 근거 밖 99.9% 입니다.", "col\nabc")[1] == []        # 전부 지워지면 원문 유지
+
+
+# ── P4-b gold ③-3 — 브랜드 역조회는 운용사 라벨로 ─────────────────────────────
+def test_brand_codes_from_org_labels():
+    """FND-C02 — '삼성' 접두 상품명 3건을 가진 00080032 의 정본 이름은 현대인베스트먼트자산운용이다."""
+    from src.runtime import loader
+    loader.load_context()
+    assert "00080032" not in P._brand_or_co_codes("삼성", False)
+    assert set(P._brand_or_co_codes("삼성", False)) >= {"00040010", "00080135"}
+    # 구상호 브랜드는 잃지 않는다 — Org_00040013 은 label_official='키움투자자산운용' · label_ko='키움슈로더'
+    assert P._brand_or_co_codes("슈로더", True) == ("00040013", "00130003")     # X12 28펀드/59클래스
+    con = P.connect_readonly()
+    try:
+        lst = ", ".join(f"'{c}'" for c in P._brand_or_co_codes("슈로더", True))
+        assert con.execute(f"SELECT COUNT(DISTINCT {P._FUND_KEY_EXPR}), COUNT(*) FROM public_funds "
+                           f"WHERE TRIM(or_co_xtn_itt_cd) IN ({lst}) AND sale_yn='판매중' "
+                           f"AND prvo_pbff_desc='공모'").fetchone() == (28, 59)
+    finally:
+        con.close()

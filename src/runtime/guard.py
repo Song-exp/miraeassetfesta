@@ -75,22 +75,30 @@ def unknown_columns(sql: str, ctx: RuntimeContext) -> list[str]:
     문자열 리터럴·AS 별칭·테이블명·내장함수는 제외. schema_exclude 로 숨긴 컬럼(fd_wk1_ern_r 등)도
     걸린다 — 정책상 참조 금지이므로 의도된 동작."""
     body = _SQL_STR.sub("''", sql)
-    used = sql_tables(body)
-    if not used:
+    if not sql_tables(body):
         return []
     schema = getattr(ctx, "schema", {}) or {}
-    known = {c.lower() for t in used for c, _, _ in (schema.get(t) or [])}
-    if not known:
-        return []
+    # 별칭은 문장 전역에서 모은다 — 바깥 ORDER BY 가 안쪽 별칭을 부를 수 있다
     aliases = {a.lower() for a in _AS_ALIAS.findall(body)}
-    known |= set(TABLES) | set(EXT_TABLES) | _SQL_FUNCS | aliases
     out, seen = [], set()
-    for tok in _SNAKE.findall(body):
-        t = tok.lower()
-        if t in known or t in seen:
+    # 🔴 14R KG ③-11 — **컬럼 존재 검사도 그 컬럼이 등장한 스코프의 `FROM` 기준**이다(11R ③-2 잔여).
+    #    종전엔 문장 전체 테이블의 합집합으로 판정해, UNION 의 `public_funds` 가지에 있는 `wu_inv_rgn`(ETF 컬럼)이
+    #    "다른 가지에 있으니 존재한다" 로 통과했고 실행 시 OperationalError → "데이터 조회 중 오류" 가 나갔다(X15).
+    #    `sql_scopes` 가 이미 UNION 가지·괄호 서브쿼리를 갈라 준다(가드 중복 0).
+    for scope in sql_scopes(body):
+        used = sql_tables(scope)
+        if not used:
             continue
-        seen.add(t)
-        out.append(tok)
+        known = {c.lower() for t in used for c, _, _ in (schema.get(t) or [])}
+        if not known:
+            continue
+        known |= set(TABLES) | set(EXT_TABLES) | _SQL_FUNCS | aliases
+        for tok in _SNAKE.findall(scope):
+            t = tok.lower()
+            if t in known or t in seen:
+                continue
+            seen.add(t)
+            out.append(tok)
     return out
 
 

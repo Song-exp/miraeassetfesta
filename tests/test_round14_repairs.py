@@ -295,3 +295,60 @@ def test_base_population_leaves_lookup_case_alone():
            "SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS \"판매중클래스수\" FROM public_funds "
            "WHERE prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%' GROUP BY 1 LIMIT 30")
     assert P.ensure_fund_base_population(sql, "코어테크 펀드 클래스수 알려줘", post=True) == (sql, False)
+
+
+# ── P4-a · KG ③-1 — 가드 체인을 UNION 가지 단위로 ─────────────────────────────────────────
+def test_union_branch_guards():
+    import sqlite3
+    from src.runtime import loader
+    loader.load_context()
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        # X8 — 펀드 절은 공백 무시 벤치마크, ETF 절은 지수 정본 축 + 기본모수
+        x8 = ("SELECT 'A' AS 구분, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' "
+              "AND bmrk_nm LIKE '%S&P500%' AND sale_yn = '판매중' "
+              "UNION ALL SELECT 'B' AS 구분, COUNT(*) FROM domestic_etfs "
+              "WHERE ref_base_index LIKE '%S&P500%' AND pd_sale_yn = 1 LIMIT 30")
+        s, _ = P.ensure_spaceless_name_match(x8)
+        s, notes = P.apply_union_branch_guards(s, "S&P500을 벤치마크로 쓰는 공모펀드와 S&P500 추종 국내 ETF는 각각 몇 개야?")
+        assert notes and [r[1] for r in con.execute(s)] == [188, 24]      # gold 클래스 188 · ETF 24
+
+        # KG-026 — 오염 컬럼 cu_base_index 가 정본 축으로 교체돼 거짓 부재(0)가 사라진다
+        kg26 = ("SELECT 'A' AS 분류, COUNT(*) FROM public_funds WHERE bmrk_nm IN ('KOSPI200') "
+                "AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' "
+                "UNION ALL SELECT 'B', COUNT(*) FROM domestic_etfs WHERE cu_base_index = 'KOSPI200' "
+                "AND pd_sale_yn = 1 AND pd_tr_yn = 0 LIMIT 30")
+        out, notes26 = P.apply_union_branch_guards(kg26, "KOSPI200을 추종하는 국내 ETF는 몇 개야?")
+        assert notes26 and [r[1] for r in con.execute(out)][1] == 34      # gold ETF 34
+
+        # X9 — 펀드 가지에 기본모수가 붙는다(3,296 → 2,066 = gold 클래스)
+        x9 = ("SELECT 'A' AS 구분, COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' "
+              "AND prvo_pbff_desc = '공모' UNION ALL SELECT 'B', COUNT(*) FROM domestic_etfs "
+              "WHERE ref_fund_mgmt_co = 'Mirae Asset Global Investments Co Ltd' LIMIT 30")
+        out9, _ = P.apply_union_branch_guards(x9, "미래에셋자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?")
+        assert [r[1] for r in con.execute(out9)] == [2066, 230]
+    finally:
+        con.close()
+    # 단일 SELECT 는 분해 대상이 아니다
+    single = "SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' LIMIT 1"
+    assert P.apply_union_branch_guards(single, "몇 개야") == (single, [])
+
+
+def test_spaceless_bmrk_nm():
+    """X8 — 벤치마크 이름도 표기 공백이 제각각이다('S&P500' vs 'S&P 500'). 등호는 확장하지 않는다."""
+    out, ok = P.ensure_spaceless_name_match("SELECT 1 FROM public_funds WHERE bmrk_nm LIKE '%S&P500%'")
+    assert ok and "REPLACE(bmrk_nm,' ','')" in out
+    eq = "SELECT 1 FROM public_funds WHERE bmrk_nm = 'KOSPI200'"
+    assert P.ensure_spaceless_name_match(eq) == (eq, False)
+
+
+# ── P4-a 짝 · KG ③-11 — 컬럼 존재 검사도 가지별 FROM 기준 ────────────────────────────────
+def test_unknown_columns_per_scope():
+    from src.runtime import guard, loader
+    ctx = loader.load_context()
+    x15 = ("SELECT 'A' AS 분류, COUNT(*) FROM public_funds WHERE prvo_pbff_desc = '공모' "
+           "AND wu_inv_rgn = '중국' GROUP BY 1 "
+           "UNION ALL SELECT 'B', COUNT(*) FROM domestic_etfs WHERE wu_inv_rgn = '국내' GROUP BY 1 LIMIT 30")
+    assert "wu_inv_rgn" in guard.unknown_columns(x15, ctx)     # 펀드 가지엔 없는 컬럼이다(X15 실행 오류)
+    ok = "SELECT itm_nm, fd_nast_suma FROM public_funds WHERE sale_yn = '판매중' LIMIT 5"
+    assert guard.unknown_columns(ok, ctx) == []

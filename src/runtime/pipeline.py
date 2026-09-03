@@ -1535,7 +1535,10 @@ _FUND_EXT_HINTS = re.compile(
 
 
 # 한정자(p.itm_nm)는 REPLACE 안으로 — 2026-09-02 KG-002 실측: `p.REPLACE(itm_nm,…)` OperationalError → "오류" 무응답
-_NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?((?:\b\w+\.)?)\b(itm_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
+# 🔴 14R KG ③(X8) — 벤치마크 이름도 표기 공백이 제각각이다: `bmrk_nm LIKE '%S&P500%'` 는 32클래스만 잡고
+#    `'S&P 500'` 표기를 통째로 놓친다(공백 무시 188클래스 / 펀드 57 = gold). 이름 축과 같은 병이라 같은 가드가 받는다.
+#    등호(`_NAME_EQ`)는 확장하지 않는다 — KG 가 bmrk_nm 을 정확일치로 매핑하므로 LIKE 로 넓히면 정본이 흐려진다.
+_NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?((?:\b\w+\.)?)\b(itm_nm|bmrk_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
 
 
 def ensure_spaceless_name_match(sql: str, token: str | None = None) -> tuple[str, bool]:
@@ -5998,6 +6001,75 @@ def ensure_default_topn(sql: str, question: str) -> tuple[str, bool]:
     return f"{body} LIMIT {DEFAULT_TOPN}", True
 
 
+_UNION_OP = re.compile(r"\b(UNION\s+ALL|UNION|EXCEPT|INTERSECT)\b", re.I)
+
+
+def _split_union(sql: str) -> list[str] | None:
+    """최상위 UNION/EXCEPT/INTERSECT 로 문장을 조각낸다 — [가지, 연결자, 가지, …]. 아니면 None.
+
+    괄호 안(서브쿼리·괄호 친 가지)과 문자열 리터럴 안의 연결자는 건드리지 않는다.
+    """
+    masked = _SQL_LITERAL.sub(lambda m: "'" + "\x01" * (len(m.group(0)) - 2) + "'", sql)
+    depth, cuts = 0, []
+    for i, ch in enumerate(masked):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0:
+            m = _UNION_OP.match(masked, i)
+            if m and (not cuts or i >= cuts[-1][1]):
+                cuts.append((i, m.end()))
+    if not cuts:
+        return None
+    out, at = [], 0
+    for s, e in cuts:
+        out += [sql[at:s], sql[s:e]]
+        at = e
+    return out + [sql[at:]]
+
+
+# 가지마다 그 가지의 FROM 기준으로 1회씩 거는 확정식 — 컬럼 정본화 · 기본모수 · 펀드단위 집계 교체
+def _branch_guards(branch: str, q: str) -> tuple[str, list[str]]:
+    notes = []
+    for fn, label in ((lambda s: ensure_etf_index_canon(s), "ETF 기초지수 정본 축"),
+                      (lambda s: ensure_etf_mgmt_canon(s), "ETF 운용사 정본 축"),
+                      (lambda s: ensure_etf_base_population(s, q), "ETF 기본모수"),
+                      (lambda s: ensure_fund_base_population(s, q, post=True), "펀드 기본모수"),
+                      (lambda s: ensure_fund_distinct_count(s, q), "펀드단위 집계 교체")):
+        branch, done = fn(branch)
+        if done:
+            notes.append(label)
+    return branch, notes
+
+
+def apply_union_branch_guards(sql: str, q: str) -> tuple[str, list[str]]:
+    """교차질의(UNION) 문장의 **가지마다** 확정식을 1회씩 건다. (SQL, 조치 목록)
+
+    🔴 14R KG ③-1 (최대 효과 · 6문항) — 단일 상품군에서 닫힌 확정식 4종이 UNION 문장엔 **하나도 안 붙는다.**
+       모든 확정식 가드가 진입에서 `union` 을 보면 불개입하기 때문이다(그 방어 자체는 옳다 — 어느 가지의
+       WHERE 인지 알 수 없는 혼합 문장에 주입하면 스키마 검사가 기각한다). 처방은 불개입이 아니라 **분해**다:
+       가지를 떼어 내면 각 가지는 단일 SELECT 이고 자기 FROM 이 하나뿐이라 기존 가드가 그대로 성립한다.
+    닫히는 문항: X8 · X9 · KG-025 · KG-026 · Z13 보조 · X15 보조.
+    """
+    parts = _split_union(sql)
+    if not parts:
+        return sql, []
+    notes: list[str] = []
+    for i in range(0, len(parts), 2):
+        raw = parts[i]
+        m_par = re.match(r"(\s*\(\s*)(.*?)(\s*\)\s*)$", raw, re.S)      # 괄호 친 가지는 벗겨서 넘긴다
+        inner = m_par.group(2) if m_par else raw
+        if not _single_select(inner):
+            continue
+        fixed, done = _branch_guards(inner, q)
+        if not done:
+            continue
+        parts[i] = (m_par.group(1) + fixed + m_par.group(3)) if m_par else fixed
+        notes += [f"가지{i // 2 + 1}: {d}" for d in done]
+    return ("".join(parts), notes) if notes else (sql, [])
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -6235,6 +6307,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     #    날조로 보고 지우거나(OFFICIAL-004: 지수 조건이 사라진 전수 조회 30행 중 이름에 '우주항공' 이 든 1건을
     #    골라 답했다 — gold 48), 확정식이 지우고 대체를 못 넣으면(Z19: 판매중 ETF 전수 1,160) 질문의 의미 조건이
     #    증발한 채 그럴듯한 답이 나간다 — 무응답보다 나쁘다. 되돌려 0행 경로로 정직하게 보내고 트레이스에 남긴다.
+    sql, union_notes = apply_union_branch_guards(sql, q)
+    if union_notes:
+        step(f"[Guard] 교차질의 가지별 확정식 — {' · '.join(union_notes)} "
+             "(14R KG ③-1: 단일 상품군에서 닫힌 확정식 4종이 UNION 문장엔 하나도 안 붙었다 — "
+             "가지를 떼면 각 가지는 단일 SELECT 이고 FROM 이 하나뿐이라 기존 가드가 그대로 성립한다)")
     sql, mgmt_note = ensure_mgmt_code_predicate(sql, q, mgmt)
     if mgmt_note:
         step(f"[Guard] 역조회 운용사 코드 술어 확정 — {mgmt_note} "

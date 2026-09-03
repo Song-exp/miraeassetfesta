@@ -2577,7 +2577,12 @@ def label_code_columns(rows: str, sql: str, skip: list | None = None) -> tuple[s
         if skip is not None and _CODE_COL_RX.search(" , ".join(items)):
             skip.append(f"SELECT 항목 {len(items)}개 ≠ 결과 열 {len(cols)}개 — 선행 가드가 열을 바꿨다")
         return rows, []
-    code_cols = {i: m.group(1).lower() for i, it in enumerate(items) if (m := _CODE_COL_RX.search(it))}
+    # 🔴 14R — **집계 항목 안의 코드 컬럼은 코드 열이 아니다.** 가드가 심는 펀드키 식
+    #    `COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd …)) || …) AS "펀드수"` 가 코드 열로 오인돼
+    #    펀드수 714 가 "코드 714(기관명 미수록)" 로 구워졌다(KG-008 이 두 라운드를 헛돈 원인의 절반).
+    code_cols = {i: m.group(1).lower() for i, it in enumerate(items)
+                 if not re.search(r"\b(?:count|sum|avg|total|group_concat)\s*\(", it, re.I)
+                 and (m := _CODE_COL_RX.search(it))}
     if not code_cols:
         return rows, []
     mapping = _code_label_map()
@@ -3889,7 +3894,8 @@ def ensure_fund_entity_count_ranking(sql: str, question: str) -> tuple[str, bool
     운용사 축(`or_co_xtn_itt_cd`)은 `ensure_fund_manager_ranking` 템플릿이 먼저 처리한다(가드 중복 0 —
     그 템플릿이 이미 펀드수·클래스수를 싣고 나가므로 여기서는 `"펀드수"` 존재로 걸러진다).
     """
-    if not _FUND_TBL.search(sql) or re.search(r"\b(?:union|join)\b", sql, re.I) or '"펀드수"' in sql:
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:union|join)\b", sql, re.I) \
+            or re.search(r'"펀드수(?:__g)?"', sql):          # 멱등 — 접미 유일화판도 이미 심은 것으로 본다
         return sql, False
     if not (_COUNT_RANK_Q.search(question) and _MGR_RANK_Q.search(question)) or _AMOUNT_AXIS_Q.search(question):
         return sql, False
@@ -3906,8 +3912,57 @@ def ensure_fund_entity_count_ranking(sql: str, question: str) -> tuple[str, bool
         return sql, False                               # 펀드 식별 축은 개체 랭킹이 아니다(랭킹 가드 담당)
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()].rstrip()
-    add = f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수" '
-    return head + add + sql[frm.start():m_ord.start()] + ' ORDER BY "펀드수" DESC ' + sql[m_ord.end():], True
+    # 🔴 14R KG ③-3 — **가드가 심는 별칭은 기존 별칭과 충돌하면 유일화한다.** KG-008 실측: HCX 가 이미
+    #    `COUNT(*) as 펀드수`(= 클래스수)를 달아 놓아 별칭이 둘이 됐고, `ORDER BY "펀드수"` 가 **먼저 나온
+    #    HCX 열**(클래스수)로 붙어 정렬 축이 통째로 뒤집혔다. 접미를 붙여 우리 열만 가리키게 한다.
+    sfx = "__g" if re.search(r"\bas\s+\"?펀드수\"?", head, re.I) else ""
+    add = (f', COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수{sfx}", COUNT(*) AS "클래스수{sfx}" ')
+    return head + add + sql[frm.start():m_ord.start()] + f' ORDER BY "펀드수{sfx}" DESC ' + sql[m_ord.end():], True
+
+
+_ENTITY_RANK_ALIAS = re.compile(r'AS\s+"(펀드수(?:__g)?)"', re.I)
+
+
+def _entity_count_rank_answer(sql: str, rows: str, n: int) -> str | None:
+    """개체(수탁사·판매사) 개수 랭킹 답변을 기계 조립한다 — **SQL 행 순서를 그대로** 옮긴다. 아니면 None.
+
+    🔴 14R KG ③-4 — `KG-008` 실측: SQL 이 gold 순서(714·516·465)를 돌려주는데 답변기가 `수탁금액` 순으로
+       재정렬하고 숫자는 클래스수를 옮겼다. 랭킹 질의는 예외 없이 기계 조립 경로로 보낸다.
+       값 축은 **가드가 심은 별칭만** 인정하고, 동명 컬럼이 둘이면 조립하지 않는다(KG ③-3).
+    """
+    m = _ENTITY_RANK_ALIAS.search(sql)
+    grp = _GROUP_AXIS.search(sql)
+    if n < 1 or not _FUND_TBL.search(sql) or not m or not grp:
+        return None
+    fund_col = m.group(1)
+    cls_col = fund_col.replace("펀드수", "클래스수")
+    lines = rows.splitlines()
+    if len(lines) != n + 1:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if cols.count(fund_col) != 1 or cls_col not in cols:
+        return None                       # 동명 컬럼이 둘이면 값 축을 확정할 수 없다
+    fi, ci = cols.index(fund_col), cols.index(cls_col)
+    ei = next((i for i in range(len(cols)) if i not in (fi, ci)), None)
+    if ei is None:
+        return None
+    labeled, _ = label_code_columns(rows, sql)      # 코드는 정본 이름(코드) 으로 굽는다
+    body = labeled.splitlines()[1:] if len(labeled.splitlines()) == n + 1 else lines[1:]
+    basis = [w for w, pat in (("판매중", r"sale_yn\s*=\s*'판매중'"), ("공모", r"prvo_pbff_desc\s*=\s*'공모'"))
+             if re.search(pat, sql, re.I)]
+    scope = ("·".join(basis) + " 기준, " if basis else "") + \
+            f"펀드 = 운용사 종목번호 기준·클래스 = 판매 단위, 기준일 {gate.DATA_CUTOFF}"
+    out = [f"조회 결과 펀드 수 상위 {n}개입니다 ({scope}).", ""]
+    for i, ln in enumerate(body, 1):
+        parts = [p.strip() for p in ln.split(" | ")]
+        if len(parts) != len(cols):
+            return None
+        try:
+            f_, c_ = int(float(parts[fi].replace(",", ""))), int(float(parts[ci].replace(",", "")))
+        except ValueError:
+            return None
+        out.append(f"{i}. {parts[ei] or '(이름 미수록)'}: 펀드 {f_:,}개(클래스 {c_:,}개)")
+    return "\n".join(out)
 
 
 def _manager_rank_answer(sql: str, rows: str, n: int) -> str | None:

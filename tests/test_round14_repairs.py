@@ -422,3 +422,43 @@ def test_lookup_grouping_untouched_without_value_predicate():
            "AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
     out, ok = P.ensure_fund_lookup_grouping(sql, "미래에셋베트남 펀드 위험등급 알려줘")
     assert ok and "CASE WHEN zrin_fd_ivst_risk_gcd" not in out
+
+
+# ── P4-c · KG ③-3·④ (KG-008) — 가드 별칭 유일화 + 랭킹은 기계 조립 ────────────────────────
+def _run(sql):
+    import sqlite3
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        cur = con.execute(sql)
+        cols = [d[0] for d in cur.description]
+        rows = cur.fetchall()
+    finally:
+        con.close()
+    return " | ".join(cols) + "\n" + "\n".join(" | ".join(str(v) for v in r) for r in rows), len(rows)
+
+
+def test_entity_count_alias_unique_and_assembled():
+    from src.runtime import loader
+    loader.load_context()
+    base = ("SELECT trim(trusc_xtn_itt_cd) as 수탁회사명, SUM(fd_nast_suma) as 수탁금액, COUNT(*) as 펀드수 "
+            "FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY 1 "
+            "ORDER BY 2 DESC LIMIT 3")
+    sql, ok = P.ensure_fund_entity_count_ranking(base, "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘")
+    assert ok and '"펀드수__g"' in sql and 'ORDER BY "펀드수__g" DESC' in sql   # HCX 동명 별칭과 충돌 회피
+    assert P.ensure_fund_entity_count_ranking(sql, "공모펀드를 가장 많이 수탁하는 수탁사 상위 3개 알려줘")[1] is False
+    rows, n = _run(sql)
+    out = P._entity_count_rank_answer(sql, rows, n)
+    assert out and out.splitlines()[2].startswith("1. 홍콩상하이은행(00020054): 펀드 714개") or "714" in out
+    assert "714" in out and "516" in out and "465" in out               # gold · SQL 행 순서 그대로
+    assert out.index("714") < out.index("516") < out.index("465")
+
+
+def test_label_code_columns_skips_aggregate_items():
+    """가드가 심은 펀드키 식(COUNT(DISTINCT printf(... or_co_xtn_itt_cd ...)))은 코드 열이 아니다."""
+    from src.runtime import loader
+    loader.load_context()
+    sql = ('SELECT trim(trusc_xtn_itt_cd) AS 수탁회사명, COUNT(DISTINCT ' + P._FUND_KEY_EXPR + ') AS "펀드수" '
+           "FROM public_funds WHERE sale_yn = '판매중' GROUP BY 1 LIMIT 1")
+    rows = "수탁회사명 | 펀드수\n00020054 | 714"
+    out, touched = P.label_code_columns(rows, sql)
+    assert touched == ["수탁회사명"] and "| 714" in out and "코드 714" not in out

@@ -311,7 +311,8 @@ def test_union_branch_guards():
               "WHERE ref_base_index LIKE '%S&P500%' AND pd_sale_yn = 1 LIMIT 30")
         s, _ = P.ensure_spaceless_name_match(x8)
         s, notes = P.apply_union_branch_guards(s, "S&P500을 벤치마크로 쓰는 공모펀드와 S&P500 추종 국내 ETF는 각각 몇 개야?")
-        assert notes and [r[1] for r in con.execute(s)] == [188, 24]      # gold 클래스 188 · ETF 24
+        # 16R KG ③-1 — 펀드 가지도 펀드단위 집계로 교체된다: 펀드 57 / 클래스 188 · ETF 24
+        assert notes and [tuple(r)[1:] for r in con.execute(s)] == [(57, 188), (24, None)]
 
         # KG-026 — 오염 컬럼 cu_base_index 가 정본 축으로 교체돼 거짓 부재(0)가 사라진다
         kg26 = ("SELECT 'A' AS 분류, COUNT(*) FROM public_funds WHERE bmrk_nm IN ('KOSPI200') "
@@ -319,14 +320,15 @@ def test_union_branch_guards():
                 "UNION ALL SELECT 'B', COUNT(*) FROM domestic_etfs WHERE cu_base_index = 'KOSPI200' "
                 "AND pd_sale_yn = 1 AND pd_tr_yn = 0 LIMIT 30")
         out, notes26 = P.apply_union_branch_guards(kg26, "KOSPI200을 추종하는 국내 ETF는 몇 개야?")
-        assert notes26 and [r[1] for r in con.execute(out)][1] == 34      # gold ETF 34
+        assert notes26 and [r[1] for r in con.execute(out)][1] == 34      # gold ETF 34 (펀드 가지는 질문 문언상 불개입)
 
         # X9 — 펀드 가지에 기본모수가 붙는다(3,296 → 2,066 = gold 클래스)
         x9 = ("SELECT 'A' AS 구분, COUNT(*) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' "
               "AND prvo_pbff_desc = '공모' UNION ALL SELECT 'B', COUNT(*) FROM domestic_etfs "
               "WHERE ref_fund_mgmt_co = 'Mirae Asset Global Investments Co Ltd' LIMIT 30")
         out9, _ = P.apply_union_branch_guards(x9, "미래에셋자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?")
-        assert [r[1] for r in con.execute(out9)] == [2066, 230]
+        # 16R: 펀드 823 / 클래스 2,066 · ETF 230
+        assert [tuple(r)[1:] for r in con.execute(out9)] == [(823, 2066), (230, None)]
     finally:
         con.close()
     # 단일 SELECT 는 분해 대상이 아니다

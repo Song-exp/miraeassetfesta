@@ -3,6 +3,9 @@
 각 테스트는 그 항목이 되돌아가면 실패한다. 값은 전부 DB 실측(하드코딩된 기대값은 gold 실측치).
 """
 import re
+import sqlite3
+
+import pytest
 
 from src.runtime import pipeline as P
 from tests.test_guard_v2 import _R3_SQL
@@ -77,3 +80,36 @@ def test_org_name_column_canonicalized():
     # 해외 ETF — label_official 이 없고 label_ko 가 영문명 자신이라 원값 그대로다
     ovs = "cu_fund_mgmt_co | du_last_aum\nBlackRock Fund Advisors | 1.0"
     assert P.label_code_columns(ovs, "SELECT cu_fund_mgmt_co, du_last_aum FROM overseas_etfs LIMIT 3") == (ovs, [])
+
+
+# ── P3-a/P3-b KG ③-1·③-2 — 교차질의 가지 ─────────────────────────────────────
+_X9 = ("(SELECT '공모펀드' AS 구분, COUNT(*) FROM public_funds WHERE or_co_xtn_itt_cd = '00080008' "
+       "AND sale_yn = '판매중' AND prvo_pbff_desc = '공모') UNION ALL "
+       "(SELECT '국내ETF', COUNT(*) FROM domestic_etfs "
+       "WHERE ref_fund_mgmt_co = 'Mirae Asset Global Investments Co Ltd') LIMIT 30")
+
+
+def test_distinct_count_labeled_union_branch():
+    """X8·X9 — 라벨 리터럴이 앞에 오는 SELECT 항목에서도 `COUNT(*)` 를 찾아 펀드단위 집계로 교체한다."""
+    q = "미래에셋자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?"
+    out, notes = P.apply_union_branch_guards(_X9, q)
+    assert any("펀드단위 집계 교체" in nt for nt in notes)
+    con = P.connect_readonly()
+    try:
+        assert [tuple(r)[1:] for r in con.execute(out)] == [(823, 2066), (230, None)]   # 823펀드/2,066클래스
+    finally:
+        con.close()
+    # 단일 SELECT 개수 문항은 한 글자도 안 바뀐다(멱등 · 형태 불변)
+    solo = ("SELECT COUNT(*) FROM public_funds WHERE sale_yn = '판매중' "
+            "AND prvo_pbff_desc = '공모' LIMIT 30")
+    fixed, ok = P.ensure_fund_distinct_count(solo, "공모펀드는 몇 개야?")
+    assert ok and '"펀드수"' in fixed and P.ensure_fund_distinct_count(fixed, "공모펀드는 몇 개야?") == (fixed, False)
+
+
+def test_validate_sql_accepts_parenthesized_union():
+    """Z13·CROSS-003 — 괄호 친 UNION 가지는 SQLite 문법이 아니다. 정규화해서 실행 가능한 한 문장으로 만든다."""
+    with pytest.raises(sqlite3.OperationalError):
+        P.connect_readonly().execute(_X9)                 # 원문은 SQLite 가 거부한다 — near "(" syntax error
+    out, notes = P.apply_union_branch_guards(_X9, "미래에셋자산운용이 운용하는 공모펀드와 국내 ETF는 각각 몇 개야?")
+    assert "가지 괄호 제거(SQLite 복합 SELECT 문법)" in notes
+    assert P.validate_sql(out) is None                    # 구조 게이트·EXPLAIN 둘 다 통과

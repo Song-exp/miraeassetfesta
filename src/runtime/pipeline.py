@@ -4437,7 +4437,10 @@ def ensure_fund_attr_tag(sql: str, question: str) -> tuple[str, bool]:
     return sql, sql != orig
 
 
-_Q_FUND_COUNT = re.compile(r"펀드[^?]{0,20}(?:몇\s*개|몇개|개수|몇\s*종)")
+# 🔴 16R KG ③-1 — 창(窓)을 20 → 45 자로 넓힌다. 교차질의는 「공모펀드와 <ETF 수식어> 국내 ETF는 각각 몇 개야?」라
+#    펀드와 '몇 개' 사이에 ETF 수식어가 끼어 20자를 넘는다(X8 24자·KG-026 31자 — 두 문항이 이 창 하나 때문에
+#    펀드단위 집계 교체를 한 번도 못 받았다). 펀드 가지가 아닌 SQL 은 `_FUND_TBL`·`COUNT(*)` 항목 조건이 막는다.
+_Q_FUND_COUNT = re.compile(r"펀드[^?]{0,45}(?:몇\s*개|몇개|개수|몇\s*종)")
 # 펀드키 = 운용사코드 / zero-pad 모펀드번호. 🔴 `COALESCE(…, itm_no)` 가 필수다 — 2026-09-02 재검 부수 발견:
 #    역외펀드 110행은 mtco_itm_no 가 NULL 이라 키가 NULL 하나로 뭉쳐 COUNT(DISTINCT) 에서 통째로 빠졌다
 #    (기본모수 distinct 2,930 vs gold 키 3,040). 정본은 eval gold_sql 의 키 형태 그대로.
@@ -4472,8 +4475,18 @@ def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
     joined = {t for t in guard.sql_tables(sql) if t != "public_funds"}
     if joined and not joined <= {e for e, m in _EXT_PAIR.items() if m == "public_funds"}:
         return sql, False
-    m = re.match(r"(\s*SELECT\s+)COUNT\(\s*\*\s*\)(?:\s+AS\s+\w+)?(\s+FROM\b)", sql, re.I)
-    if not m:
+    # 🔴 16R KG ③-1 — **교체는 SELECT 항목 단위다.** 종전엔 `SELECT` 바로 뒤에 `COUNT(*)` 가 오는 문장만 잡아
+    #    교차질의 가지(`SELECT '공모펀드' AS 구분, COUNT(*) …`)가 **라벨 리터럴에 막혀 한 번도 발화하지 않았다**
+    #    (X8·X9·KG-025·KG-026 이 전부 클래스수를 '펀드' 로 답했다). 위치·앞선 라벨·별칭과 무관하게 찾는다.
+    #    새 분해기를 만들지 않고 `_wrap_sort_col` 이 쓰는 `_split_select_items` 를 그대로 재사용한다.
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    m_sel = _SELECT_HEAD.match(sql)
+    if not frm or not m_sel or '"펀드수"' in sql:          # 멱등
+        return sql, False
+    items = _split_select_items(sql[m_sel.end():frm.start()])
+    idx = next((i for i, it in enumerate(items)
+                if re.fullmatch(r"\s*COUNT\s*\(\s*\*\s*\)(?:\s+AS\s+(?:\"[^\"]+\"|\w+))?\s*", it, re.I)), None)
+    if idx is None:
         return sql, False
     qual = ""
     if joined:
@@ -4481,8 +4494,8 @@ def ensure_fund_distinct_count(sql: str, question: str) -> tuple[str, bool]:
         qual = ((mm.group(2) or mm.group(1)) + ".") if mm else "public_funds."
     key = (_FUND_KEY_EXPR.replace("or_co_xtn_itt_cd", qual + "or_co_xtn_itt_cd")
            .replace("mtco_itm_no", qual + "mtco_itm_no").replace(", itm_no)", f", {qual}itm_no)"))
-    head = (f'COUNT(DISTINCT {key}) AS "펀드수", COUNT(*) AS "클래스수"')
-    return sql[:m.end(1)] + head + sql[m.start(2):], True
+    items[idx] = f' COUNT(DISTINCT {key}) AS "펀드수", COUNT(*) AS "클래스수" '
+    return sql[:m_sel.end()] + ",".join(items) + sql[frm.start():], True
 
 
 def ensure_fund_series_boundary(sql: str, question: str) -> tuple[str, bool]:
@@ -6331,31 +6344,78 @@ def _branch_guards(branch: str, q: str) -> tuple[str, list[str]]:
     return branch, notes
 
 
+def _unwrap_branch_parens(branch: str) -> tuple[str | None, str]:
+    """UNION 가지를 감싼 여분의 괄호를 벗긴다 — (내부, 괄호 뒤 꼬리) 또는 (None, '').
+
+    꼬리는 마지막 가지의 `ORDER BY …`·`LIMIT n` 처럼 괄호 **밖**에 남는 부분이다.
+    """
+    s = branch.lstrip()
+    lead = branch[:len(branch) - len(s)]
+    if not s.startswith("("):
+        return None, ""
+    depth = 0
+    for i, ch in enumerate(s):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return lead + s[1:i], s[i + 1:]
+    return None, ""
+
+
 def apply_union_branch_guards(sql: str, q: str) -> tuple[str, list[str]]:
-    """교차질의(UNION) 문장의 **가지마다** 확정식을 1회씩 건다. (SQL, 조치 목록)
+    """교차질의(UNION) 문장을 SQLite 문법으로 정규화하고 **가지마다** 확정식을 1회씩 건다. (SQL, 조치 목록)
 
     🔴 14R KG ③-1 (최대 효과 · 6문항) — 단일 상품군에서 닫힌 확정식 4종이 UNION 문장엔 **하나도 안 붙는다.**
        모든 확정식 가드가 진입에서 `union` 을 보면 불개입하기 때문이다(그 방어 자체는 옳다 — 어느 가지의
        WHERE 인지 알 수 없는 혼합 문장에 주입하면 스키마 검사가 기각한다). 처방은 불개입이 아니라 **분해**다:
        가지를 떼어 내면 각 가지는 단일 SELECT 이고 자기 FROM 이 하나뿐이라 기존 가드가 그대로 성립한다.
-    닫히는 문항: X8 · X9 · KG-025 · KG-026 · Z13 보조 · X15 보조.
+
+    🔴 16R KG ③-2 (`Z13`·gold ③-2 `CROSS-003`) — **괄호 친 UNION 가지는 SQLite 문법이 아니다.**
+       실측: `sqlite3` 3.50.4 에서 `(SELECT 1) UNION ALL (SELECT 2)` 는 `near "(": syntax error` 다.
+       그래서 처방을 「구조 게이트가 선두 괄호를 허용한다」로 두면 게이트만 통과하고 EXPLAIN 에서 다시
+       죽는다(사용자에겐 '오류가 발생해' 로 나간다 — 오거절보다 나쁜 표면). 뿌리 수리는 **정규화**다:
+       최상위 가지를 감싼 여분의 괄호를 벗겨 유효한 복합 SELECT 한 문장으로 만든다.
+    닫히는 문항: X8 · X9 · KG-025 · KG-026 · Z13 · CROSS-003 · X15 보조.
     """
     parts = _split_union(sql)
     if not parts:
         return sql, []
     notes: list[str] = []
+    unwrapped = False
     for i in range(0, len(parts), 2):
-        raw = parts[i]
-        m_par = re.match(r"(\s*\(\s*)(.*?)(\s*\)\s*)$", raw, re.S)      # 괄호 친 가지는 벗겨서 넘긴다
-        inner = m_par.group(2) if m_par else raw
-        if not _single_select(inner):
+        inner, tail = _unwrap_branch_parens(parts[i])
+        if inner is not None and _single_select(inner):
+            parts[i] = " " + inner + " " + tail            # SQLite 문법 정규화 — 여분의 괄호 제거
+            unwrapped = True
+        if not _single_select(parts[i]):
             continue
-        fixed, done = _branch_guards(inner, q)
-        if not done:
-            continue
-        parts[i] = (m_par.group(1) + fixed + m_par.group(3)) if m_par else fixed
-        notes += [f"가지{i // 2 + 1}: {d}" for d in done]
-    return ("".join(parts), notes) if notes else (sql, [])
+        fixed, done = _branch_guards(parts[i], q)
+        if done:
+            parts[i] = fixed
+            notes += [f"가지{i // 2 + 1}: {d}" for d in done]
+    if unwrapped:
+        notes.insert(0, "가지 괄호 제거(SQLite 복합 SELECT 문법)")
+    if not notes:
+        return sql, []
+    # 🔴 16R KG ③-1 부수 — 확정식이 한 가지의 열을 늘리면(`COUNT(*)` → 펀드수+클래스수) UNION 열 수가 어긋나
+    #    실행이 통째로 죽는다. 짧은 가지를 NULL 로 채워 열 수를 맞춘다 — ETF 가지엔 클래스 축이 없으므로
+    #    NULL 이 의미상으로도 옳다(별칭은 SQLite 규칙상 첫 가지의 것을 쓴다).
+    widths = []
+    for i in range(0, len(parts), 2):
+        m_sel = _SELECT_HEAD.match(parts[i])
+        f_ = re.search(r"\bfrom\b", parts[i], re.I)
+        widths.append(len(_split_select_items(parts[i][m_sel.end():f_.start()])) if (m_sel and f_) else None)
+    if None not in widths and len(set(widths)) > 1:
+        wide = max(widths)
+        for j, w in enumerate(widths):
+            if w == wide:
+                continue
+            i, f_ = j * 2, re.search(r"\bfrom\b", parts[j * 2], re.I)
+            parts[i] = parts[i][:f_.start()].rstrip() + ", NULL" * (wide - w) + " " + parts[i][f_.start():]
+        notes.append(f"UNION 열 수 정렬({wide}열)")
+    return "".join(parts), notes
 
 
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,

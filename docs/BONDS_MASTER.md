@@ -1,347 +1,216 @@
-# 📘 국내채권 작업 전체 — 한 문서로 보기 (v3 · 2026-09-03 갱신 / 초판 08-26 · 08-27 쉬운 말 · 08-30 2차 DB)
+# 📘 국내채권 작업 기록 — 08-10 첫 EDA 부터 09-03 까지 무엇을 했는가 (v4 · 2026-09-03)
 
-> **이 문서가 하는 일** — 국내채권(`domestic_bonds`) 작업을 08-10 첫 EDA 부터 09-03 까지 **무엇을 만들었고, 무엇이 바뀌었고, 지금 무엇이 정본(최종)인지** 한 장으로 잇는 **지도**다. 자세한 내용은 각 문서로 링크한다. **새로운 사실은 여기에 쓰지 않는다** — 여기는 지도이고, 사실은 원래 문서에 있다.
+> **이 문서의 용도** — 채권 담당(서현)이 `domestic_bonds` 도메인에서 한 작업을 **단계 순서대로** 정리한 기록이다. 한 단계마다 ① 무엇을 했나 ② 무엇을 발견했나 ③ 무엇을 결정했나 ④ 무엇을 만들었나(파일·커밋) 를 적는다. 근거 문서는 링크로만 가리키고, 수치는 2026-09-03 밤 DB·yaml·테스트로 재검증한 값이다.
+> 초판(08-26)·v2(08-30)·v3(09-03 낮) 는 "읽는 사람을 위한 지도" 였고, v4 는 **작업 정리서**로 다시 썼다.
 >
-> **급하면 §8 과 §10 부터 읽어라.** §8 은 "결국 어느 파일·어느 함수가 최종인가"(코드·산출물 인벤토리), §10 은 "결국 뭐가 확정됐고, 뭐는 되묻고, 뭐는 답을 못 하나"(행동 기준 결론)다.
->
-> ⚠️ **데이터가 두 판이다 — 가장 먼저 알아야 할 것.** 1차: 기준일 2026-07-11 · 42,394행 × 40컬럼 / **2차: 기준일 2026-08-22 · 21,882행 × 58컬럼**. 주최가 1차를 폐기했고 08-25 부터 `main`·로컬 DB·yaml 전부 2차다. 08-26 이전 문서의 숫자는 1차일 수 있다 — §0·§3 참고. **판정·답변 표기 기준일은 2026-08-24**(리드 결정 09-02; 주최 as-of 8/22 는 데이터 설명에만, 스냅샷 산출일은 8/21).
->
-> 🔴 v3 에서 바뀐 것: §2 타임라인 08-27~09-03 · §5 규칙 40종 · §6 2차 재검증 완료 표시 · §7 문서 지도에 9월 문서 · **§8 신설(최종 코드·산출물 인벤토리)** · §10 결론 갱신 · §11 남은 일.
+> 작업의 한 줄 요약: **데이터를 읽고(EDA) → 뜻을 정하고(도메인 의미) → 판정과 규칙을 yaml 에 적고 → 그 yaml 에서 온톨로지(ttl)와 값 사전(KG)을 뽑고 → 규칙이 무시되는 자리를 코드 가드로 옮기고 → 서버로 실측해 오답 58건을 잡아 고쳤다.** 저장소 첫 커밋(08-03)부터 32일 동안 채권 yaml 하나만 53회 고쳤다.
 
 ---
 
-## 용어 먼저 — 이 문서에 자주 나오는 말
-
-| 용어 | 뜻 (이 문서에서 쓰는 의미) |
-| :-- | :-- |
-| **EDA** | 탐색적 데이터 분석. 데이터를 처음 받아서 "뭐가 들어 있고, 어디가 이상한가"를 훑는 작업 |
-| **yaml** (`ontology/enums/domestic_bonds.yaml`) | 우리가 내린 판정·규칙을 적어 둔 **정본 파일**. 챗봇이 쿼리를 만들 때 이 파일의 규칙을 따르고, 빌드가 여기서 ttl·KG 를 만든다 |
-| **3층** | 온톨로지가 런타임에 존재하는 세 형태 — ① 값 사전(KG 4테이블) ② 규칙 문서(yaml → 프롬프트) ③ 게이트·가드(생성 전 기각 · 생성 후 검사·교정). `docs/기술제안서/08_설계철학.md` |
-| **가드(guard)** | HCX 가 만든 SQL 을 실행 전에 기계로 고치거나 기각하는 함수. 규칙을 "실었는데 무시된" 사고가 반복될 때 결정층으로 승격한 것 |
-| **PK (기본키)** | 한 행을 유일하게 구분하는 열쇠. 2차는 네 컬럼(`pd_no + pd_exg_mkt + info_base_dt + info_seq`)을 합쳐야 한 행 — 그래서 `COUNT(*)` 는 종목 수가 아니다 |
-| **LOT** | 2차에서 "당사가 파는 조건 한 묶음". 같은 종목이라도 시장·기준일·판매순번이 다르면 다른 LOT(=다른 행) |
-| **듀레이션** | 금리가 움직일 때 채권 가격이 얼마나 흔들리는지의 척도(년). 길수록 금리에 민감 · **잔존만기** 기준일부터 만기까지 남은 기간 |
-| **위장결측 · 센티넬** | 값이 있어 보이지만 "없음"을 뜻하는 값(`0`·`99`·복사값). 센티넬은 그중 특정 숫자로 표시한 것 |
-| **특수구조** | 콜·풋·전환·후순위·영구 같은 조건이 붙은 채권. 08-30 부터 추천에서 **빼지 않고 표시**한다(`구조표시`) |
-| **콜·풋·CB·EB·BW·FRN·코코본드·AT1·분리채권** | 발행사 조기상환권 · 투자자 조기매도권 · 전환사채 · 교환사채 · 신주인수권부사채 · 변동금리채 · 조건부자본증권 · 그중 최후순위 신종자본증권(영구채) · 국고채 원리금 분리(STRIPS) |
-| **유동화(ABS·MBS)** | 대출·매출채권을 묶어 만든 채권. 발행자가 SPC 라 이름으로 위험을 판단하면 안 됨 |
-| **역질문 (`clarify`)** | 질문이 여러 뜻으로 읽힐 때 되묻는 것. 주최 8/25 확인: **되묻기도 유효 답변**. Single-turn 이라 되묻기가 곧 최종 응답 |
-| **결정층** | 프롬프트 규칙만으로 재현이 안 되는 되묻기·교정을 코드가 HCX 호출 전/후에 강제하는 자리(`risk_ambiguity_clarify`·`expand_grade_comparison` 등) |
-| **코드북** | "이 값은 이 뜻" 대조표. 채권의 핵심은 `credit_grade_scale.csv`(신용등급 서열, 한국기업평가) |
-| **정본** | 숫자가 서로 다를 때 믿는 출처. 제안서 수치는 `docs/proposal/NUMBERS.md`(생성기) 하나 |
-
----
-
-## 0. 정본 우선순위 — 숫자가 서로 다르면 이 순서로 믿는다
-
-| 순위 | 무엇 | 어디 | 판 |
-| :-: | :-- | :-- | :-- |
-| 1 | **라이브 DB 실측** | `data/financial_products.db` (v2_20260824 · 로컬 = 배포본 = 주최 원본, 08-30 해시 대조) | 2차 |
-| 2 | **제안서 수치 생성기** | `scripts/gen_proposal_numbers.py` → [`proposal/NUMBERS.md`](proposal/NUMBERS.md) §1 "국내채권 기본모수·등급·판정 컬럼"(09-03 편입) | 2차 |
-| 3 | **2차 yaml** (판정·규칙 정본) | `ontology/enums/domestic_bonds.yaml` — 숫자 주장은 `scripts/audit_bonds_rules.py` 가 DB 로 재현(112건 중 110 일치, 불일치 2 = 동의어 BW 건) | 2차 |
-| 4 | 2차 재검증 문서 | [`review_2026-08-26/채권_전수조사_2026-08-30.md`](review_2026-08-26/채권_전수조사_2026-08-30.md) · [`review_2026-09-02/온톨로지_yaml_전수재검증_2026-09-02.md`](review_2026-09-02/온톨로지_yaml_전수재검증_2026-09-02.md) · [`DATA_V2_2026-08-24_impact.md`](DATA_V2_2026-08-24_impact.md) | 2차 |
-| 5 | 1차 yaml · 구조도 · EDA 노트 · 검토 답글 | 커밋 `420f1cf` yaml · `domain/domestic_bonds_graph.md` · `eda/domestic_bonds_notes.md` · `review_reply_bonds_2026-08-21.md` · `additional_bonds.md` | 1차 |
-| 6 | 도메인 가이드 | `domain/domestic_bonds.md` | 개념 설명이라 판과 무관 |
-
-> 낡은 숫자를 발견하면 그 문서를 고치지 말고 "→ 정본 X" 표시만 남긴다. 09-02 전수 재검증(`f0fe676`)이 yaml·문서의 1차 잔재 200여 곳을 2차로 정정했고, 09-03 에 제안서 템플릿의 1차 수치(결측 41.1%)를 다시 잡았다 — 같은 실수가 반복되므로 **숫자는 NUMBERS 생성기에서만 가져온다.**
-
----
-
-## 1. 지금 상태 — 한눈에 (1차 vs 2차, 2026-09-03 실측)
-
-| | 1차 (7/11) | **2차 (8/22 · 판정일 8/24)** |
-| :-- | --: | --: |
-| 행 수 | 42,394 (행 = 종목) | **21,882** (행 = 종목 × 시장 × 기준일 × 판매LOT) |
-| 종목 수 (`pd_no` distinct) | 42,394 | **20,497** (1,078종목이 2~4행) |
-| 컬럼 수 | 40 (대문자) | **58** (소문자) |
-| 장내 / 장외 | 24,749 / 17,645 | 17,746 / **4,136** |
-| 구매가능 (`curr_cd='KRW' AND mat_dt >= 20260824`) | 매수가능 254 | **21,814행 / 20,431종목** (`buyable_quantity` 는 주최 공지로 무효 · 당사 판매조건은 634 LOT) |
-| 신용등급 결측 | 41.1% | **4,020행 / 18.4%** = 국공채 2,840(미부여) + 특수채 254 + 회사채 926(미수록) · 표기 15종 |
-| 위험등급 | 0~6 정수 | `'11'~'16'` + `'00'`(해당없음 19행) · 6등급 8,929행(40.8%) · 범위 **0~6** 선언 |
-| 발행사 (`pd_pbcm` TRIM distinct) | 8,018 | **1,818** (KG Organization 노드 1,817) |
-| 할인채 / 영구채 | 이름 파싱 | **689행** (`bd_intp_tcd`) / **266행·237종목** (`신종\|영구`) |
-| `query_rules` / `clarify` / `answer_rules` | 16 / 10 / — | **40 / 다의어 6 + 사람의_선택 4 + 조건부 1 / 20** |
-| ABSENT / gate_constants | — | **4 (AssetClass·Index·Region·CreditGradeHistory) / 1 (curr_cd=KRW, 09-03)** |
-| 평가셋 | 1문항(OFFICIAL-001) | **44문항**(09-03 밤 기준 — 37~44 는 상대 시점·국공채 gold 8건, seohyun 재검 대기) + 안전 최상급 프로브 10 + 공식·불가 3 |
-| 채권 전용 가드·조립기 | 0 | **37개 함수** (§8-3, `pipeline.py` def 기준) |
-
-**한 줄로** — 1차에서 종목명을 정규식으로 긁던 것이 2차엔 전용 컬럼으로 왔고(좋아짐), 대신 행이 종목이 아니게 됐다(복합 PK). 8/30~9/3 나흘은 **"규칙은 실렸는데 HCX 가 무시한다"** 는 사고를 하나씩 결정층 가드로 옮긴 기간이다 — 채권 오답 58건 기록이 그 이력이다(§7).
-
----
-
-## 2. 타임라인 — 무엇을 언제 했나
-
-| 날짜 | 커밋 | 무엇을 했나 | 산출물 |
-| :-- | :-- | :-- | :-- |
-| 08-10 | `3db171a` | **첫 EDA** — 도메인 가이드 + EDA 노트 초안 | `domain/domestic_bonds.md` · `eda/domestic_bonds_notes.md` |
-| 08-12 | `37ee6aa` | 심화 — 듀레이션 값 충돌 · 분류 계층 교차 · 채권 상태 4분할 | 노트 §D.1·§D.13 |
-| 08-13 | `6ca28c3` | **구조도** + 40컬럼 실제 예시 | `domain/domestic_bonds_graph.md` · `_sample.md` |
-| 08-16~17 | — | 할인채 수수께끼 · 위장결측 · 사각지대 · **역질문 설계 §I** | 노트 |
-| 08-18 | `74a4b87` `7a8bd8c` | **yaml 신설** + 판정 감사 | `enums/domestic_bonds.yaml` · `eda/domestic_bonds_audit_2026-08-18.md` |
-| 08-20 | `bbfdf1e` | 외부 코드북 수집(담보·업종·**등급 서열**·세금·용어·발행기관) | `data/external/lookups/` |
-| 08-21 | `12d27ef`~`fd22b19` | 검토 B1~B9 전건 — 기준일·영구채·듀레이션0=콜·유동화·역질문 기본값 | `review_reply_bonds_2026-08-21.md` |
-| 08-22~23 | `afb4c53` | 추가 검토 — 규칙 실행성(8종 중 3종만 SQL)·외부 대조·자체 재검증 260항목 | `additional_bonds.md` |
-| 08-24~25 | `3a19130` `b36bf0f` `e773737` | **2차 데이터 전환** — yaml 전면 재작성 · 재검증 8건 | `DATA_V2_2026-08-24_impact.md` · `review_recheck_2026-08-25.md` |
-| 08-25 | — | **KG 노드화** — CreditGrade 표준표 21노드·2밴드(`shared/credit_grade.yaml`) · RiskGrade alias `'11'~'16'` | `ontology/shared/*.yaml` |
-| 08-26~27 | `fbfd457` | 담보·업종 외부 대조 · 위험등급 방향 확정 · **검토 17건 판정 기입**(대표행 병기·외화채없음·공모사모판정·듀레이션정상) · 이 문서 초판 | `review_2026-08-26/채권_검토기록_2026-08-27.md` |
-| 08-29 | 회의 | 수익률 728% 유동화 후순위 → **고위험제외**(1등급·C0·사모) + 6% 주의 문구 결정 | `meeting_2026-08-29.md` |
-| 08-30 | `ad3449d` `cdf09f6` `faa8bb2` `3bd381f` `3552356` | **전수조사 🔴6·🟡7·🟢10** — NULL-안전 고위험제외 · 게이트 사후검사 · 특수구조제외→구조표시 · 위험등급방향·등급서열 · Ground fallback 제거 · `router.route()` · clarify·answer_rules 프롬프트 경로 · 규칙 압축 · **평가셋 24문항** · 토큰 상한 1536 | `채권_전수조사_2026-08-30.md` · `채권_규칙_원문_2026-08-30.md` · `채권_재점검_2026-08-30_밤.md` · `eval/questions_domestic_bonds.jsonl` |
-| 08-31 | `619da1e` `fbc7e4d` `a4a2486` `5dff69b` `617160d` `760ed52` `37685c5` `638ed5c` `07727a5` `d6e1da6` `82359a6` `cd1898a` `28e6a18` `654c2c3` | **서버 실측 시작** — 날짜 산술폭탄 3겹 · 신용보강 지시문→가드 · 두 자리 연도 · 등급서열 IN 확장 · 국고채 확정식(STRIPS 리드 결정) · 최상급 안전 16 단독 · 종류 통칭 3종 · ESG (사)=사회적채권 확정 · 만기 정렬·싸다 되묻기·통화 값 사전 · 프로브10 후속 5건 · 0행 사유 자연어 · **`eda/domestic_bonds` 브랜치 main 병합** | `채권_프로브15_2026-08-30.md` · `채권_프로브10_실측_2026-08-31_밤.md` |
-| 09-01 | `f91fff4` `ff54440` | 약점 프로브 — 날조 위험필터 제거 · 종류필터 WHERE 한정 · 추천 정렬 · **개수 질문 집계 강제** · 규칙 원문 `>` 오류 정정(`>=`) | `약점프로브_2026-09-01.md` · `재실측_체크리스트_2026-09-01.md` |
-| 09-02 | `898dd56` `fc7fbe7` `f1e61d6` `03d0d98` `41d383f` `62807a7` `09853ed` `b780b78` `dbcab26` `c83986a` `07b2ef6` `05e1962` `f0fe676` | 3·4차 프로브(등급별집계·종류비교·필터컬럼표시·존재질문·금리유형·분포 조립) · **ABSENT 전수화·위험등급 `range_by_table`(KG 1R)** · 한전·삼성전자 실측 7건(값검사 TRIM 사각·대표행·만기제외·발행사 되묻기) · 조사 라우팅·구조 용어 · **채권 목록 기계 조립(HCX 0회)** · 기본 TOP-5 · **'가장 위험한' 결정층 되묻기** · **판정일 8/24**(리드) · 온톨로지·yaml 전수 재검증(1차 잔재 200곳) | `review_2026-09-02/*` · `kg_structure_probe_round*` |
-| 09-03 오전 | `560e47a` `2de1e1c` | **제안서 채권 원고 1차**(04 §A~§F) · 회신 · **오답기록 50건** · 04장 흐름도 취합 · 05장 기대효과 · 부록 D API 명세 · NUMBERS 채권 절 편입 · 재실측 프로브 파일 | `docs/기술제안서/04_도메인_채권.md` · `채권_회신` · `채권_오답기록` · `10_흐름도_취합` · `11_기대효과_확장성` · `docs/API_SPEC.md` |
-| 09-03 오후 | `ac4835d` `c8aa2b8` `1e6f279` `c899b15` `bf5908d` `b4d0d74` 외 | 사용자 직접 서버 실측 8문항 → **상대 시점 확정표**(내년·N년 뒤) · 발행사 되묻기 접두 `(주)` 2건 · **`curr_cd` 상수 게이트**(달러 채권 BAC 노출) + 오염 리터럴 기각 + 조립기 SELECT * 정리 · 무이자질의·영구채필터 규칙 · 영구채 콜 개시일 자동 병기 · 채권 종목 수 기계 조립 · 국고채 머리명사 판별 · 오답기록 #51~58 | `채권_오답기록` §2-7~2-13 · `채권_회신` §3 (형 결정 9건) |
-
----
-
-## 3. 데이터 두 판 — 무엇이 어떻게 달라졌나
-
-출처: [`DATA_V2_2026-08-24_impact.md`](DATA_V2_2026-08-24_impact.md) §2.1.
-
-| 항목 | 1차 → 2차 | 우리 작업에 미친 영향 |
-| :-- | :-- | :-- |
-| 행 | 42,394 → 21,882 | 사라진 25,429행 중 67.5%가 만기 지난 것 |
-| PK | `PD_NO` 하나 → 네 컬럼 | 🔴 `COUNT(*)` ≠ 종목 수 → 규칙 `대표행` + 가드 `ensure_bond_representative`·`ensure_distinct_count` |
-| 새 컬럼 19개 | `bd_intp_tcd`(이표/복리/할인/단리) · `bd_inrt_tcd`(고정/변동/고정+변동) · `bd_ofr_tcd`(공모/사모) · `pd_risk_nm` · `trade_price` · `exg_close_*` … | 🟢 종목명 정규식 4종(사모·FRN·할인채·듀레이션0) 폐기 → 컬럼 직접 |
-| 삭제 | `pd_evco_crd_grd`(평가사별 등급) | 🟢 `등급병합` 문제 소멸 |
-| 신용등급 | 결측 41.1% → 18.4% · 표기 20 → 15종 | 서열은 여전히 데이터에 없음 → **코드북 + KG rank** |
-| `crd_grd_dt` | "등급 미변경 시 과거 일자 유지" 스키마 코멘트 | 신선도 판단 금지 → 규칙 `등급일사용금지` |
-| 패딩 | 여전히 있음(`bd_knd`·`pd_pbcm` 고정폭) | `TRIM` 규칙 + 가드 `ensure_trimmed_compare` + 값 검사기 TRIM 인식(09-02) |
-| `buyable_quantity` | 주최 공지로 무효 | 구매가능 = `curr_cd='KRW' AND mat_dt >= 20260824` (판정일 8/24, 리드 09-02) |
-| 기준일 셋 | — | 스냅샷 산출일 8/21(`info_base_dt`, remaining_days 기준) · 주최 as-of 8/22 · **질문 시점·판정·표기 8/24** — 규칙 `기준일` 이 셋을 구분 |
-
-> 1차 엑셀은 `1.금융상품/_v1_20260711/` · 1차 DB 는 `data/financial_products.v1_20260711.db`. 두 판을 섞어 세지 않는다.
-
----
-
-## 4. 우리가 만든 분류 체계 — 채권을 어떤 기준으로 가르는가
-
-### 4-① 발행 주체 3층 (원본 컬럼) — 🔴 깔끔한 트리가 아니다
-
-`std_pd_mcls_nm` 대분류 3종(회사채 12,865 · 특수채 6,177 · 국공채 2,840) → `std_pd_scls_nm` 소분류 13종 → `bd_knd` 채권종류 32종. 소분류 `일반사채`(회사채 12,133 / 특수채 614)·`특수은행채`(특수채 1,322 / 회사채 2)가 두 대분류에 걸쳐 **하위→상위 역추적 금지**. 통안채 33행은 대분류 **특수채**(09-02 정정 — 국공채 필터로는 0행). 분리채권(STRIPS) 209행은 `bd_knd` 결측 21 포함 — 종목명이 유일한 식별 수단이고, 국고채 확정식은 STRIPS 를 포함한다(리드 결정 08-31, `07727a5`).
-
-### 4-② 특수구조 플래그 11종 (`name_encoding.special_structure_flags`, 종목명 정규식) — 2차 실측
-
-콜 2,678 · 풋 529 · CB 389 · 후순위 530 · **영구 266행/237종목** · EB 137 · 분리채권 209(전부 할인채) · BW 32 · 코코 266(설명용 — 판정은 컬럼 신호: 은행 3종 + 위험등급 1~3 = 278행) · 물가연동 6 · PB 0. FRN·사모는 컬럼(`bd_inrt_tcd` 변동 830 + 고정+변동 148 · `bd_ofr_tcd` 사모 2,007)으로 대체. **ESG 라벨** `(녹)356·(사)1,984·(지)159` — `(사)` 는 사모가 아니라 사회적채권(팀 결정 08-31). 원칙: 겹치는 플래그라 카테고리가 아니라 **표시**(`구조표시` CASE 열)이며 추천에서 빼지 않는다 — 빼는 것은 `고위험제외`(1등급·C0·사모)뿐.
-
-### 4-③ 구매가능·판매행·고위험제외 (2차)
-
-- **구매가능** = `curr_cd='KRW' AND mat_dt >= 20260824` — 21,814행/20,431종목. 8/22·8/23 만기 14종목은 모수 밖, 8/24 당일 만기 20종목은 모수(`>=`). 가드 `ensure_cutoff_inclusive`·`raise_maturity_floor` 가 옛 리터럴을 교정.
-- **판매행** = `buy_yield IS NOT NULL` 634 LOT(전부 장외) — "지금 파는" 질의 축. "살 수 있는" 과 다르다(약점프로브 #11 판정 정정).
-- **고위험제외**(추천·랭킹만) = `pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd),'') <> 'C0' AND bd_ofr_tcd <> '사모'` — ❌ `NOT(a OR b)` 는 무등급 국공채 2,840행이 NULL 로 사라진다(08-30 사고). 가드 `_rank_exclusions` 가 주입(만기 경과 제외 포함, 09-02).
-
-### 4-④ 축 (`axis_derivation`) — 확정 3 · 미확정 4
-
-| 축 | 상태 | 규칙 |
-| :-- | :-: | :-- |
-| couponType · offeringType · riskGrade | ✅ | `bd_intp_tcd` · `bd_ofr_tcd` · `pd_risk_gcd` 직접 (RiskGrade_0 = `'00'`) |
-| issuerType · maturityClass · collateralType · issuerCategory | 🟡 `pending_workshop` | 대분류 단독+ISIN 접두 / 경계 미정 / 코드북 2차 재검수 전 / 키워드 오탐 62% — **프리즈 전 미착수, 제안서 한계 절에 명시** |
-
-### 4-⑤ 코드북 — 채권이 쓰는 것
-
-| 파일 | 역할 | 상태 |
-| :-- | :-- | :-- |
-| `data/external/lookups/credit_grade_scale.csv` | **신용등급 서열** — 한국기업평가 21행 · 표준등급 20(AAA~D) · DB 표기 `AA0`=AA · `C0`=C | ✅ `shared/credit_grade.yaml` 노드 21(등급 19 + 밴드 2)의 원천 · 게이트 표준표(`_load_std_grades`) |
-| `collateral_type_map.csv` · `issuer_industry_map.csv`/`top200.csv` | 담보축·업종축 | 🟡 1차 기준 — 2차 재검수 전(§4-④) |
-| `bond_issuer_background.md` | 발행기관 법정 손실보전 | ✅ 규칙 `신용보강` 6층의 근거 |
-| `bond_tax_rules.md` · `bond_glossary.md` · `ktb_individual_structure.md` · `zeroin_methodology.md` | 세금·용어·개인투자용국채·위험등급 체계 | 배경 지식 |
-| `ontology/shared/organization_issuer_auto.yaml` | 발행사 1,818 → Organization 노드 1,817 (자동 생성) | ✅ |
-
-### 4-⑥ 등급 · 위험등급 — 이름이 비슷하지만 **다른 축**
-
-- **신용등급** `crd_grd`(부도위험, AAA~C0 15종) — `AA0`→AA 정규화 · 국공채는 미부여가 정상 · "AA- 이상" 은 KG rank 서열로 `IN` 4종(규칙 `등급서열` + 가드 `expand_grade_comparison`) · 게이트 4분기(`not_grade`/`unknown`(AAAA)/`no_data`(BB+)/`ok`) 는 목록이 아니라 표준표 **형태** `^([A-D])\1{0,3}[+\-0]?$` 규칙.
-- **위험등급** `pd_risk_gcd`(금리위험 포함, `'11'`=1등급 매우높은위험 … `'16'`=6등급 매우낮은위험, `'00'` 해당없음 19행) — **숫자가 클수록 안전**. 범위 **0~6** 은 `shared/risk_grade.yaml range_by_table` 한 선언에서 ttl 제약과 게이트 문구가 생성(09-02, 펀드·ETF 는 1~6).
-- 둘은 다른 축 — 1등급 1,441행 중 AAA 1행, 921행 무등급 · C0 103종목은 전부 1등급(부분집합).
-- **"위험한 채권"** 은 세 축(투자위험등급/신용등급/금리위험, ②③ 정반대)이라 축 단서 없으면 **결정층 되묻기**(`risk_ambiguity_clarify`, 리드 09-02). 🟡 사각: 회사채·공모 같은 종류 낱말이 단서로 잡혀 되묻지 않음(오답기록 §2-8, 형 결정 대기).
-
-### 4-⑦ 결측 7유형 · 4-⑧ 역질문 — 초판 그대로 유효
-
-빈칸 판정 순서 ⑦정상값(`srfc_irt=0`)→⑤⑥센티넬·복사→④복구가능→①②③(구조적 없음·상태·미계산). 역질문은 3단 기준(데이터로 결정 / 기본값+명시 / 되묻기) — 현행 `clarify` 다의어 6(수익률·위험·등급·만기·싸다·가격) + 사람의_선택 4 + 조건부 1. **08-30 결정: 무응답 기본값은 복원하지 않고 되묻기로**(Single-turn). '싸다'·'위험' 은 결정층 가드로 승격.
-
----
-
-## 5. 규칙 현황판 — `query_rules` 40종 (2026-09-03 · yaml 파서 기준)
-
-> 1차 16 → 2차 20(08-25) → 26(08-30) → 38(09-02) → **40**(09-03). 규칙은 SQL 생성기 프롬프트에 실리고, 그중 "실렸는데 무시된" 것은 가드로 승격됐다(→ 열).
-
-| 묶음 | 규칙 | 승격된 가드(§8-3) |
-| :-- | :-- | :-- |
-| 행·모수 | 대표행 · 판매행 · 구매가능 · 개수질문 · 존재질문 · 추천개수정렬 · 고위험제외 · 기준일 · 만기윈도우 · 날짜표기 | `ensure_bond_representative` · `ensure_distinct_count` · `ensure_count_query` · `ensure_positive_count_answered` · `_zero_count_answer` · `_bond_count_answer` · `ensure_default_topn` · `_rank_exclusions` · `normalize_date_literals` · `ensure_maturity_lower_bound` · `ensure_cutoff_inclusive` · `raise_maturity_floor` · `align_maturity_year` · `enforce_relative_window` |
-| 등급 | 등급서열 · 등급정규화 · 위험등급방향 · 수익최상급조회 · 필터컬럼표시 · 등급별집계 · 등급일사용금지 · 장외등급해석 | `expand_grade_comparison` · `ensure_top_safety` · `strip_fabricated_risk_filter` · `ensure_grade_select_column` · `ensure_risk_name_column` · `_distribution_answer` |
-| 종류·구조 | 종류필터 · 종류비교 · 발행사조회 · 신용보강 · 구조표시 · ESG라벨 · 금리유형 · 공모사모판정 · 유동화위험금지 · **영구채필터**(09-03) | `ensure_kind_filter` · `ensure_ktb_kind`(+ `ktb_head_is_gov`) · `ensure_credit_backstop` · `_suggest_similar_issuers`·`_issuer_clarify_text` · 조립기 콜 개시일 병기 |
-| 값·컬럼 | 문자열비교 · 영값배제 · 수익률정상 · 듀레이션정상 · 익일값 · 이자유형분리 · 장내종가 · 과세수익률금지 · 더티금지 · 시장집계금지 · 외화채없음 · **무이자질의**(09-03) | `ensure_trimmed_compare` · `forbidden_column_use` · `forbidden_literal_use`(`curr_cd='000'`) · `ensure_maturity_sort` · `ensure_reco_sort` · `ensure_bond_evidence_columns` · `_bond_list_answer` |
-
-그 밖의 yaml 절: `synonyms` 47(통칭·약칭·구조 용어·**무이표·무이자·제로쿠폰**) · `answer_rules` 20(말하는 법 — 국공채 미부여 · 기준일 8/24 · 순서대로 전사 · 조건부 주의 문구 …) · `clarify` 11 · `name_encoding` 4묶음 · `normalization`(trim 13컬럼·grade_suffix·zero_as_missing) · `gate_constants` 1(`curr_cd`) · `absent_properties` 1(`hasCreditGradeHistory`) · `axis_derivation` 3+4 · `workshop` 2. 규칙 원문(압축 전 이력)은 [`채권_규칙_원문_2026-08-30.md`](review_2026-08-26/채권_규칙_원문_2026-08-30.md).
-
----
-
-## 6. 08-26 발견의 2차 재검증 — ✅ 09-02 완료
-
-초판 §6 의 🟡 묶음(지역개발채 오분류·키워드 오탐·무보증 건수·파킹·0등급·듀레이션 45일·`is_callable`)은 **09-02 온톨로지·yaml 전수 재검증**(`f0fe676` · `05e1962`)에서 2차 DB 로 다시 돌렸다 — 분류 모순 1건(통안채 = 특수채)·수치 drift 4건 정정, 여전채 어휘 신설. 남은 🟡 는 담보·업종 코드북(§4-④ pending) 하나이고 프리즈 전 범위 밖으로 확정했다. 위험등급 런타임 미반영(F-2-10)은 08-30 규칙 + 08-31 가드로 닫혔고, 규칙 실행성(F-2-3)은 09-02 "규칙 전달 감사"(리드, `3ad9189`·`67534e6`)로 측정됐다 — 실렸어도 무시되는 유형은 **결정층 가드**로, 그 목록이 §5 의 → 열이다.
-
----
-
-## 7. 문서 지도 — 무엇을 보려면 어디로
-
-| 알고 싶은 것 | 문서 | 판 |
-| :-- | :-- | :-: |
-| 채권이 뭔지 · 컬럼 뜻 | [`domain/domestic_bonds.md`](domain/domestic_bonds.md) | 개념 |
-| 58컬럼 사전(결측·단위·규칙 자동 생성) | [`핵심문서모음/12_데이터사전_data_dictionary/bonds.md`](핵심문서모음/12_데이터사전_data_dictionary/bonds.md) (`gen_data_dictionary.py`) | **2차** |
-| 온톨로지 규칙 12종(지칭·결측·grain·모수·파생·배타·단위·금지·부재·계층·기준일)에서 채권 항목 | [`ontology_rules/`](ontology_rules/README.md) 01~12 | **2차** |
-| 판정·규칙 정본 | `ontology/enums/domestic_bonds.yaml` (§5) | **2차** |
-| 1차 구조도·EDA·검토 답글·추가 검토 | `domain/domestic_bonds_graph.md` · `eda/domestic_bonds_notes.md` · `review_reply_bonds_2026-08-21.md` · `additional_bonds.md` | 1차 |
-| 2차 전환·재검증 | `DATA_V2_2026-08-24_impact.md` · `review_recheck_2026-08-25.md` · `review_yaml_pending_2026-08-25.md` | 2차 |
-| 검토 17건 판정 · 전수조사 · 재점검 · 규칙 원문 | [`review_2026-08-26/`](review_2026-08-26/) 채권_검토기록_08-27 · 채권_전수조사_08-30 · 채권_재점검_08-30_밤 · 채권_규칙_원문_08-30 | 2차 |
-| 서버 실측 프로브·수리 | 채권_프로브15_08-30 · 채권_프로브10_실측_08-31_밤 · 약점프로브_09-01 · 재실측_체크리스트_09-01 · [`review_2026-09-02/한전_삼성전자_실측_수정계획`](review_2026-09-02/한전_삼성전자_실측_수정계획_2026-09-02.md) | 2차 |
-| **오답 58건 전수(질문→오답→원인→수정→상태)** | [`기술제안서/채권_오답기록_2026-09-03.md`](기술제안서/채권_오답기록_2026-09-03.md) | 2차 |
-| **제안서 채권 원고** (§A 데이터 · §B 결함→선언 5+1 · §C 흐름도 · §D 현업 · §E 부록 · §F 재현 SQL) | [`기술제안서/04_도메인_채권.md`](기술제안서/04_도메인_채권.md) · 회신 [`채권_회신_2026-09-03.md`](기술제안서/채권_회신_2026-09-03.md) | 2차 |
-| 제안서 횡단 장(채권 담당) — 04장 흐름도 취합 · 05장 기대효과 · 부록 D API | `기술제안서/10_흐름도_취합.md` · `11_기대효과_확장성.md` · [`API_SPEC.md`](API_SPEC.md) | 2차 |
-| 설계 철학 · 오답 유형 구조해법 | `기술제안서/08_설계철학.md` · `09_오답유형_구조해법.md` | — |
-| 수치 단일 출처 | [`proposal/NUMBERS.md`](proposal/NUMBERS.md) §1 국내채권 | **2차** |
-| 온톨로지 확장·KG 구조 검증 | `kg_structure_probe_design_2026-09-02.md` · `kg_structure_probe_round1~9` (KG35: 기준선 ✅5 → 9R ✅24) | 2차 |
-
-### 낡은 숫자 주의 — 문서에 남아 있지만 이제는 틀린 것
-
-| 숫자 | 상태 | 지금 맞는 값 |
-| --: | :-- | :-- |
-| 41.1% / 41.6% 신용등급 결측 | ⚫ 1차 | **18.4%** (4,020/21,882) |
-| 25 / 38 / 39 `query_rules` | ⚫ 구본·오기 | **40** (yaml.safe_load 기준) |
-| 15,806 OFFICIAL-001 모수 | ⚫ 8/22 판정 | **15,792** (8/24 판정) |
-| `mat_dt >= 20260822` 구매가능 21,828 | ⚫ 8/22 | **`>= 20260824` 21,814행 / 20,431종목** |
-| 3,036 유동화 · 187 코코 · 450 영구채 · 254 매수가능 · 16,349 시장 | ⚫ | 4,045 · 266(컬럼 판정 278) · 266행/237종목 · 634 LOT · 20,497 |
-
----
-
-## 8. 최종 코드·산출물 인벤토리 — "결국 어느 파일이 정본인가" (2026-09-03)
-
-### 8-1. 선언 — 사람이 쓰는 원천 (여기만 고친다)
-
-| 파일 | 줄 | 무엇 |
-| :-- | --: | :-- |
-| `ontology/enums/domestic_bonds.yaml` | 931 | **채권 판정·규칙 정본** — row_grain · columns 58(missing_reason none 22 · not_applicable 16 · missing 14 · mixed 6 / kg_entity Organization·Currency·RiskGrade / unit percent 14·krw 9…) · name_encoding · normalization · query_rules 40 · synonyms 47 · answer_rules 20 · clarify 11 · axis_derivation · gate_constants · absent_properties |
-| `ontology/enums/domestic_bonds.auto.yaml` | 1,562 | 기계 사실(결측률·distinct·값 목록) — 생성물, 손대지 않음 |
-| `ontology/enums/domestic_bonds.vocab.yaml` + `*.values.txt` | 209 + 6 | 값 사전(커버리지 ≥98% 컬럼) — `gen_value_vocab.py` 생성 |
-| `ontology/shared/credit_grade.yaml` | 162 | CreditGrade 노드 21 = 등급 19(rank 1~19) + 밴드 2(`skos:broader`) · `crd_grd` alias 15 |
-| `ontology/shared/risk_grade.yaml` | 89 | RiskGrade 7(0~6) · **`range_by_table`** 채권 0~6 · alias `'11'~'16'`·`'00'` |
-| `ontology/shared/organization_issuer_auto.yaml` | 18,188 | 발행사 Organization 1,817 노드(자동) |
-| `ontology/shared/currency.yaml` | 76 | Currency 8 · 채권 alias KRW 1 |
-| `data/external/lookups/credit_grade_scale.csv` | 21행 | 등급 서열 코드북(출처·기준일 컬럼 필수) — KG rank 와 게이트 표준표의 원천 |
-
-### 8-2. 생성물 — 빌드가 만든다 (손으로 고치지 않는다)
-
-| 산출물 | 생성기 | 내용 |
-| :-- | :-- | :-- |
-| `ontology/bond_kr.ttl` (36줄) · `common.ttl` 채권분 | `scripts/build_ontology.py` (검증 V1~V7) | `fp:DomesticBond` · `couponRate`·`duration` 주석 · **ABSENT 4** · `riskGradeValue_DomesticBond` 0~6 제약 |
-| KG 4테이블 (`kg_node`·`kg_alias`·`kg_edge`·`kg_closure`) 채권분 | 〃 | alias CreditGrade 15 · RiskGrade 7 · Currency 1 · Organization 1,818(노드 1,817) · closure CG 밴드→등급 19 |
-| `docs/proposal/NUMBERS.md` §1 국내채권 | `scripts/gen_proposal_numbers.py` | 행·종목·구매가능·공식예시 모수·결측·등급·발행사·할인채·영구채·되묻기 규모 |
-| `docs/핵심문서모음/12_데이터사전…/bonds.md` | `scripts/gen_data_dictionary.py` | 58컬럼 사전 |
-| `docs/ontology_rules/01~12.md` | `scripts/gen_ontology_rules_doc.py` | 규칙 12종 문서(채권 항목 포함) |
-| `data/financial_products.db` | `scripts/build_db.py` (엑셀 → SQLite) | 마스터 4 + ext + KG + schema_metadata |
-
-### 8-3. 런타임 — 채권이 지나는 층과 함수 (`src/runtime/`)
-
-| 층 | 파일 · 함수 | 역할 |
-| :-- | :-- | :-- |
-| Route | `router.py` `route()` — 머리명사 + DB 값 + `synonyms`(조사 허용 `_bound_in`) | "채권·국고채·여전채·무이표…" → `domestic_bonds` |
-| Ground | `pipeline._ground` (타 테이블 alias fallback 제거) · `loader._build_value_index` 전 값 | `AA-`→`CG_AAm` · `한전`→발행사 등호 |
-| Gate (3층, HCX 0회) | `gate.py` `check()` — ABSENT(`absent_properties`·`absent_in`) · `classify_grade_token` 4분기(`_GRADE_SHAPE`) · `gate_constants`(`curr_cd`) · `range_by_table` 위험등급 · `future_tokens`/`sql_uses_as_maturity` 사후검사 · **`resolve_relative_window` 확정표**(09-03) · 상수 `DATA_CUTOFF=BUYABLE_CUTOFF=2026-08-24`, `SNAPSHOT_DATE=2026-08-21` | 존재하지 않는 등급·외화 채권·7등급·등급 이력 즉답 |
-| 결정층 되묻기 | `pipeline.price_ambiguity_clarify`(싸다) · `risk_ambiguity_clarify`(위험 세 축, 축별 규모 DB 실측) | HCX 전 되묻기 |
-| Plan | `build_grounding` — KG 매핑 + 규칙 2층 + clarify + `_refusal` + 스키마 (채권 약 22,400자) · `planner.SQL_CONFIG.max_tokens 1536` | HCX SQL 생성 |
-| Guard (생성 후 교정) | §5 → 열의 함수들 + `validate_sql` · `guard.check_values`(값 사전 대조, TRIM/COALESCE 인식) · `forbidden_column_use`/`forbidden_literal_use` · `ensure_trimmed_compare` · `normalize_table_names` | 규칙을 무시한 SQL 을 기계로 되돌림. 재생성 1회 |
-| Execute | SQLite 읽기 전용 | — |
-| 조립 (HCX 0회) | `_bond_list_answer`(목록 — 머리줄 전체 N종목·정렬축·기준일, 콜 개시일 병기, SELECT * 핵심 항목만) · `_bond_count_answer`(단일 COUNT) · `_zero_count_answer`(0집계 + 발행사 되묻기 `_suggest_similar_issuers`) · `_distribution_answer`(분포) · `ensure_top_row_cited`·`ensure_positive_count_answered`(HCX 답 교정) · `_cell`(잔존일수 `N일(약 X년)`, 날짜 정수) | 답변 문장을 규칙으로 |
-
-### 8-4. 검증·평가 자산
-
-| 자산 | 내용 |
-| :-- | :-- |
-| `eval/questions_domestic_bonds.jsonl` | **44문항** gold(SQL·행·sample·검증자) — BND-D/A/R/C/U/F 유형, 25~36 은 8/31~9/2 실측 오답 원형, 37~44 는 9/3 상대 시점(내년·오늘·올해·1년 안·3년 뒤)·국공채 종목 수 3종(다른 세션, 재검 대기) |
-| `eval/questions_top_safety_probe.jsonl` | 안전 최상급 10문항(BND-S) |
-| `eval/questions_official_sample.jsonl` | OFFICIAL-001(AA- 이상, 모수 15,792) · OFFICIAL-NA-001(AAAA) |
-| `eval/probe_bond_recheck.txt` | 재배포 후 서버 재실측 **29문항**(8/31 체크리스트 18 + 9/3 발견 11) — `eval/probe_server.py` 로 실행 |
-| `eval/run_gold_check.py` | 로컬 gold 전건 — **09-03 밤: 155문항 통과 155 · 실패 0** (BND-S-005·006 은 '0행이 정답' 이라 ⚠️ 표시만) |
-| `tests/` | 채권 언급 test_runtime 135 · test_guard_v2 44 · test_improvements 16 · test_router 8 (전체 **494 passed**, 09-03 밤) |
-| `scripts/audit_bonds_rules.py` · `audit_bonds_claims.py` · `audit_bonds_questions.py` | yaml 문장의 숫자·조건식 DB 재현(112건) · 문서 주장 재현 · gold 문항 감사 |
-| 서버 실측 기록 | `docs/기술제안서/채권_오답기록_2026-09-03.md` §1 총괄표 58건 · §2 날짜순 |
-
-### 8-5. 배포 — 고친 것이 서버에 가는 길
-
-`git push`(main) → 서버 `git pull`. `enums/*.yaml` 만이면 `bash deploy/deploy.sh --yaml-only`(5초) · `shared/*.yaml` 이면 `build_ontology.py` → `--db-only` · **코드(`src/`)면 `--code-only`**. 09-03 오후 수정은 yaml+코드라 코드 재배포가 필요하다(`DEPLOY.md` §0).
-
----
-
-## 9. 2차 DB — ✅ 로컬 = 배포본 = 주최 원본
-
-`data/financial_products.db`(v2_20260824, 채권 21,882행). 08-30 에 주최 2차 엑셀로 별도 빌드해 행 단위 해시 대조 — 4테이블 53,375행 + schema_metadata 280행 전부 동일. `1.금융상품/`·`data/` 는 `.gitignore` 라 git 이 관리하지 않는다(드라이브 공유).
-
----
-
-## 10. 결론 — 결국 뭐가 확정됐고, 뭐는 되물어야 하고, 뭐는 답을 못 하나 (2026-09-03)
-
-> 초판 §10 의 항목은 유지하고 8/30 이후 확정·변경만 표시한다(🔄 변경 · 🆕 신규). 근거 건수는 전부 2차·판정일 8/24.
-
-### 10-A. ✅ 확정 — 그냥 답하면 되는 것
-
-| 항목 | 확정 내용 | 근거 |
-| :-- | :-- | :-- |
-| 🔄 기준일 | 답변 표기·구매가능 판정 **2026-08-24** · 스냅샷 산출일 8/21(잔존일수는 이 날 기준, 병기) · as-of 8/22 는 데이터 설명에만 | 리드 09-02 · 규칙 `기준일`·`구매가능` · `gate.DATA_CUTOFF` |
-| 🆕 상대 시점 | 오늘 = 8/24 고정 · 내년·N년 뒤 = 그 해 전체 · N년 안에 = D+N년 — 확정표가 SQL 창을 교체 | `gate._RELATIVE_WINDOW` · `enforce_relative_window` · 규칙 `만기윈도우` (오답기록 #51·#53) |
-| 행 ≠ 종목 | 종목 수 = `COUNT(DISTINCT pd_no)` / 목록은 `GROUP BY pd_no` · 속성이 다른 8종목은 병기 | 규칙 `대표행` · 가드 |
-| 🔄 구매가능·판매행 | `curr_cd='KRW' AND mat_dt >= 20260824` 20,431종목 / 판매조건 634 LOT | 규칙 `구매가능`·`판매행` |
-| 신용등급 서열·정규화 | "AA- 이상" = `IN('AAA','AA+','AA0','AA-')` · `AA`→`AA0` · 국공채 미부여 / 회사채·특수채 미수록 · 등급일로 신선도 판단 금지 | KG rank · 규칙 `등급서열`·`등급정규화` · 가드 |
-| 위험등급 방향·범위 | 숫자 클수록 안전 · 범위 0~6(`'00'` 19행은 값) · "가장 안전" = `'16'` 단독(6등급 없는 종류는 `IN('15','16')` 폴백) | `range_by_table` · 규칙 `위험등급방향` · `ensure_top_safety` |
-| 🔄 고위험제외·구조표시 | 추천·랭킹만 1등급·C0·사모 제외(NULL-안전) + 만기 경과 제외 · 특수구조는 빼지 않고 표시 · 6% 초과·2·3등급이면 주의 문구 · 기본 TOP-5 + 전체 종목 수 병기 | 규칙 `고위험제외`·`구조표시`·`추천개수정렬` · `_rank_exclusions`·`ensure_default_topn` |
-| 🆕 영구채 | `신종\|영구` 266행/237종목 · `mat_dt` = 콜 개시일 → 답변에 "만기일 = 콜 개시일" 자동 병기 | 규칙 `영구채필터` · 조립기 (오답기록 #57) |
-| 🆕 외화·달러 채권 | 원화만 수록 — 어휘 게이트 HCX 0회 · `curr_cd='000'` 오염값 1행(BAC)은 조건·답변에 쓰지 않음 | `gate_constants curr_cd` · `forbidden_literal_use` (오답기록 #55) |
-| 🆕 무이자·무이표 | 할인채 686종목(발행 할인) 기본 + 표면금리 0 577종목(주식연계 488) 병기 · 이유는 서술 금지 | 규칙 `무이자질의` (오답기록 #56) |
-| 🆕 발행사 | KG 별칭 등호(한전 → 한국전력공사(주) 386종목; LIKE 는 대한전선 오포함) · 없는 발행사(삼성전자 0)는 같은 어두 발행사 되묻기(삼성카드 323…) — 앞뒤 `(주)` 벗겨 비교 | 규칙 `발행사조회` · `_suggest_similar_issuers` (#43·#54) |
-| 🆕 종류 통칭 | 국고채 = 국고채권 + STRIPS 결측(295) · 은행채 2종 · 지방채 3종 · 여전채 3종 · 회사채 = 대분류 · 통안채 = 특수채 · 종류 비교는 CASE 단일 쿼리 | 규칙 `종류필터`·`종류비교` · `ensure_ktb_kind` |
-| 🆕 목록·집계 답변 | 채권 목록·단일 COUNT·0집계·분포는 **기계 조립**(HCX 0회) — 정렬 순서 그대로, 모수·기준일 머리줄, 조건부 주의 문구 | `_bond_list_answer`·`_bond_count_answer`·`_zero_count_answer`·`_distribution_answer` |
-| 유동화·더티·익일·시장집계·장외등급·표면금리 정렬·장내종가·세금·문자열 TRIM | 초판 §10-A 그대로 | 규칙 `유동화위험금지`·`더티금지`·`익일값`·`시장집계금지`·`장외등급해석`·`이자유형분리`·`장내종가`·`과세수익률금지`·`문자열비교` |
-| ESG 라벨 | `(녹)(사)(지)` 는 녹색·사회적·지속가능 채권 표기 — `(사)` ≠ 사모 | 팀 결정 08-31 · 규칙 `ESG라벨`·`공모사모판정` |
-
-### 10-B. ❓ 되묻기 — 사용자에게 물어봐야 답이 정해지는 것
-
-**원칙**(08-30 결정): 무응답 기본값은 쓰지 않고 되묻는다 — Single-turn 이라 되묻기가 곧 최종 응답이고 유효 답변으로 채점된다. 되묻기 전 모수가 0이면 "없다 + 이유"로 답한다(발행사 0건 → 유사 발행사 제시).
-
-| 항목 | 갈리는 축 | 층 | 상태 |
-| :-- | :-- | :-- | :-- |
-| **위험** ("가장 위험한 채권") | ① 투자위험등급 1등급 1,394 / ② 신용등급 C0 103(①의 부분집합) / ③ 금리위험(국공채 장기물) | **결정층** `risk_ambiguity_clarify` — 축 단서 있으면 되묻지 않음 | ✅ 서버 실측 0.3초 · 🟡 사각: 회사채·공모 단서, '위험도' 접사(형 결정) |
-| **싸다·저렴** | 가격 낮음 / 수익률 높음 | **결정층** `price_ambiguity_clarify` | 🔧 서버 재실측 대기(BR-P03) |
-| 수익률 · 등급 · 만기 · 가격 | 표면/민평/매수/세후 · 신용/위험 · 만기일/잔존/듀레이션 · 평가단가/매매단가/장내종가 | 2층 `clarify.다의어` (프롬프트 → HCX `CLARIFY:`) | 🟡 HCX 재현 비결정 — gold BND-C-016·017 실측 대기 |
-| 보유기간 · 안전의 정의 · 투자기간 · 답변모수 | 사람의 선택 | 2층 `clarify.사람의_선택` | 〃 |
-| 존재하지 않는 상품명 | 정확일치 0 → 유사 후보 4 | `[Suggest]` (KODEX AI로봇 → KODEX 로봇액티브 …) | ✅ |
-
-### 10-C. ⛔ 답 못 하는 것
-
-**10-C-1. 🟡 우리가 더 하면 풀리는 것 (프리즈 전 후보 · 형 결정 9건은 `채권_회신` §3)**
-
-| 무엇 | 왜 막혀 있나 | 풀리는 조건 |
-| :-- | :-- | :-- |
-| 서버 재실측 공백 | 오답 58건 중 서버에서 정답 재확인 9건 · 나머지는 로컬 수정·gold 통과 | 재배포(yaml+code) 후 `probe_bond_recheck.txt` 29문항 |
-| '위험' 되묻기 사각 2 · 값 검사 컬럼 자동 교정 가드 · `SELECT *` SQL 층 치환 · 값 사전 "사용 금지 값" 표식 · `_GRADE_SCALE` 코드 상수 → KG rank | 코드(리드 판단) | 회신 §3 |
-| 담보·업종·만기구간 축 | 코드북 1차 기준 · 경계 미정 | 프리즈 전 범위 밖 — 제안서 한계 절 |
-| 신용등급 결측 18.4% | 외부 원천 없음 | 보완 불가 — "미부여/미수록" 으로 답하는 것이 정답 |
-
-**10-C-2. 🔴 데이터로는 영영 못 푸는 것** — "제공 데이터로는 확인할 수 없습니다 + 이유 + 대안" (초판 표 그대로): AT1 여부 미확정 2건 · 지방채 상환구조 11건 · 카드·할부 듀레이션 45일 331건 · `mat_dt=0` 5행 · 위험등급 `'00'` 19행의 정의 · `ndy_*` 복사 이유 · `bd_knd` 결측 152·발행사 결측 149 · 이름에 표기 없는 특수구조 · 담보 확신 B(관행 추정) · **등급 이력·발행사 재무·투자전략 동향**(ABSENT).
-
-### 10-D. 한 장 요약
+## 0. 전체 흐름 한 장
 
 ```
-질문이 들어오면
- ├─ Route → Ground(값 접지) → Gate: 부재·표준표 밖 등급·상수 컬럼(외화)·범위 밖 등급 → HCX 0회 즉답
- ├─ 결정층 되묻기: '위험'·'싸다' 축 단서 없음 → 세 축/두 축 제시하고 되묻기
- ├─ Plan(HCX SQL) → Guard 30여 종이 규칙 위반을 기계로 교정/기각(재생성 1회)
- ├─ Execute → 조립: 목록·COUNT·0집계·분포는 HCX 0회, 서술형만 HCX
- └─ 10-C-2 → "확인할 수 없습니다" + 이유 + 대안 (되묻지 않는다 — 사용자도 모르는 정보)
+08-10  ① EDA            42,394행×40컬럼(1차) 을 읽음 — 행 단위·결측·함정 D.1~D.16
+08-13  ② 도메인 의미     컬럼 40개의 뜻 · 채권 상태 4분할 · 구조도(노드·엣지)
+08-18  ③ yaml 판정       enums/domestic_bonds.yaml 신설 — 컬럼 판정 + 규칙 16종 + 역질문 10종
+08-20  ④ 코드북          등급 서열·담보·업종·세금·발행기관 외부 수집
+08-25  ⑤ 2차 전환        21,882행×58컬럼 — yaml 전면 재작성 · KG 노드화(CreditGrade 21·RiskGrade 7)
+08-26~30 ⑥ 검토·전수조사  판정 17건 · 🔴6·🟡7·🟢10 · 규칙 26종 · 평가셋 24문항 · 라우터 신설
+08-31~09-02 ⑦ 서버 실측·가드  규칙 → 결정층 가드 30여 종 · 기계 조립 · KG 확장(ABSENT·range_by_table)
+09-03  ⑧ 정리·제안서     원고 04 · 오답기록 58건 · 회신 · 흐름도·기대효과·API 명세 · 이 문서
 ```
+
+| 단계 | 기간 | 산출물 핵심 | 지금 상태 |
+| :-- | :-- | :-- | :-- |
+| ① EDA | 08-10~17 | `eda/domestic_bonds_notes.md`(1,726줄) | 1차 기준 — 사실은 2차로 재검증됨 |
+| ② 도메인 의미 | 08-10~13 | `domain/domestic_bonds.md` · `_graph.md` · `_sample.md` | 개념은 유효, 수치는 1차 |
+| ③ yaml 판정·규칙 | 08-18~ | `ontology/enums/domestic_bonds.yaml` 931줄 | **정본** — 규칙 40 · 동의어 47 · 답변 규칙 20 · 역질문 11 |
+| ④ 코드북 | 08-20 | `data/external/lookups/` 9종 | 등급 서열표만 런타임 사용, 담보·업종은 보류 |
+| ⑤ 온톨로지·KG | 08-25~09-02 | `shared/credit_grade.yaml`·`risk_grade.yaml` → `bond_kr.ttl` 36줄 · KG alias 1,841 | **생성물** — yaml 이 원천 |
+| ⑥ 검토·전수조사 | 08-26~30 | `review_2026-08-26/` 6종 · 평가셋 | 완료 |
+| ⑦ 실측·가드 | 08-31~09-03 | `pipeline.py` 채권 함수 37 · `gate.py` · 테스트 494 | 로컬 완료 · 서버 재실측 29문항 대기 |
+| ⑧ 정리·제안서 | 09-03 | `기술제안서/04·10·11·채권_오답기록·채권_회신` · `API_SPEC.md` | 1차 완료 · 형 결정 9건 대기 |
 
 ---
 
-## 11. 남은 일 (2026-09-03 밤 기준)
+## ① EDA — 데이터가 무엇인지 읽었다 (08-10 ~ 08-17 · 1차 데이터)
 
-1. **재배포**(코드+yaml) → `eval/probe_bond_recheck.txt` 29문항 서버 실측 → 오답기록 §5 갱신 · 제안서 04 §B·§C 서버 원문 교체
-2. 회신 §3 형 결정 9건 회수 — 특히 '위험' 되묻기 사각(정규식 2줄) · 컬럼 자동 교정 가드 · `SELECT *` 치환
-3. gold 승격 3건(BND-D-037 "3년 뒤" 2,611 · BND-U-038 "달러" reject · 무이자 채권) — 다른 세션과 jsonl 충돌 주의(pull 먼저)
-4. 제안서 — 04 흐름도 4개 취합 `▶`(형 판단 2건) · 05 §D 펀드 한 문장 · API 명세 URL 확인 · 9/5 PDF 조판 · 루트 README 여부
-5. 이 문서는 지도다 — 새 사실이 생기면 오답기록·yaml 에 쓰고 여기엔 링크만 더한다.
+**한 것**: `domestic_bonds` 42,394행×40컬럼을 컬럼 하나씩 실측(분포·결측·값 목록)하고, 이상한 곳을 "함정" D.1~D.16 으로 번호 매겨 적었다. 모든 숫자에 재현 SQL 을 붙였다.
+
+**발견한 것** (뒤에 규칙이 된 것만)
+- 행 하나가 종목 하나였으나 시장·상태가 섞여 있어 채권을 **상태 4분할**(매수 가능 / 거래 중지 / 만기 소멸 / 만기 모름)로 나눠야 했다 → 2차의 `구매가능` 규칙의 뿌리.
+- 표면금리 `srfc_irt=0` 이 결측이 아니라 **할인채·전환사채의 정상값**이다(D.15) → `영값배제` 의 예외, 09-03 `무이자질의` 규칙.
+- 빈칸이 다 같은 빈칸이 아니다 — **결측 7유형**(구조적 없음 / 상태 / 미계산 / 복구 가능 / 센티넬 `0·99·99991231` / 다른 컬럼 복사 / 정상값) → yaml `missing_reason` 4종(none·not_applicable·missing·mixed)과 `missing_semantics` 의 원형.
+- 신용등급 41.6% 결측은 대부분 국공채 → "등급 없음 = 정상" 판정.
+- 듀레이션 0 은 영구채(만기=콜 개시일)·`99` 는 센티넬 → `듀레이션정상` 규칙.
+- 종목명이 구조화 정보다 — `(콜)(풋)(후)(신종)` 등 특수구조 11종을 정규식 플래그로 뽑았다 → `name_encoding.special_structure_flags`.
+- 질문이 여러 뜻으로 갈리는 자리 10종(수익률·위험·등급·만기·싸다…)을 **역질문 설계 §I** 로 정리 → `clarify`.
+
+**산출물**: `docs/eda/domestic_bonds_notes.md`(§A 구조·§B 결측 지도·§C 분포·§D 함정·§I 역질문·§J 실행 계획) · 커밋 `3db171a`(08-10) `37ee6aa`(08-12).
+
+---
+
+## ② 도메인 의미 정리 — 컬럼이 채권 세계에서 무슨 뜻인지 정했다 (08-10 ~ 08-13)
+
+**한 것**: 채권의 4대 요소(발행자·액면·표면금리·만기), 이자 지급 3방식, 가격과 수익률의 관계, 신용등급 vs 위험등급, 만기와 듀레이션을 정리하고 **컬럼 40개 전수에 도메인 의미**를 붙였다. 그 위에 구조도(어느 컬럼이 어느 개체·관계가 되는가)를 그렸다.
+
+**정한 것**
+- **신용등급(부도위험) ≠ 위험등급(금리위험 포함)** — 두 축이다. 1등급(최고위험)인데 AAA 인 채권이 있는 이유.
+- 발행주체 3층(대분류→소분류→채권종류)은 **트리가 아니다** — 소분류 `일반사채`·`특수은행채`가 두 대분류에 걸침 → "하위→상위 역추적 금지".
+- 유동화(ABS·MBS)는 발행자가 SPC 라 **발행사명으로 위험을 판단하면 안 된다** → `유동화위험금지`.
+- 채권이 도메인상 답할 수 없는 것(등급 이력·발행사 재무·이표 지급일·전략 동향)을 따로 적었다 → 09-02 ABSENT 선언의 뿌리.
+
+**산출물**: `docs/domain/domestic_bonds.md`(1,654줄) · `domestic_bonds_graph.md`(830줄, 노드·엣지·결측 지도·도메인 법칙 6) · `domestic_bonds_sample.md` · 커밋 `6ca28c3`(08-13).
+
+---
+
+## ③ yaml — 판정과 규칙을 한 파일에 적었다 (08-18 신설 → 09-03 까지 53회 개정)
+
+**한 것**: "기계적 사실은 `.auto.yaml` 에, **사람의 판단만** `domestic_bonds.yaml` 에" 원칙으로 파일을 나누고, 컬럼마다 `missing_reason`·`missing_semantics`·`answer_policy`·`trap`·`unit`·`kg_entity` 를, 파일 끝에 `query_rules`·`synonyms`·`answer_rules`·`clarify`·`axis_derivation` 을 적었다. 처음 적은 수치는 감사 스크립트로 DB 재현율을 확인했다(08-18).
+
+**발견·결정** (검토 B1~B9, 08-20~21 · 추가 검토, 08-22~23)
+- 규칙 8종 중 실제 SQL 로 실행되는 건 3종뿐이었다(나머지는 산문) → "규칙은 조건식으로 적는다" 원칙. 뒤에 09-02 리드의 규칙 전달 감사로 다시 측정됨.
+- 기준일 확정 · 영구채 471(→ 2차 266) · 듀레이션 0 = 콜 · 역질문 10종에 무응답 기본값(B9).
+- 담보축·업종축 코드북 대조에서 확정 오류 3건(지역개발채 1,266 오분류 등) → 코드북은 2차 재검수 전까지 **보류** 판정.
+
+**2차 전환(08-24~25)** — 1차가 폐기되고 21,882행×58컬럼이 왔다. 컬럼명 소문자화·19컬럼 신규·PK 복합화. yaml 을 전면 재작성하되 1차 판정 중 데이터로 무효화된 항목은 각 항목에 "1차:" 로 남겨 왜 바뀌었는지 추적되게 했다. 종목명 정규식 4종(사모·FRN·할인채·듀레이션0)을 버리고 전용 컬럼(`bd_ofr_tcd`·`bd_inrt_tcd`·`bd_intp_tcd`)을 읽는다.
+
+**검토 17건 판정 기입(08-27)** — 자동검사 A·B·C 를 DB 로 재현해 ✅8·⚠️2·❌7. 런타임이 실제로 바뀐 것 4개: `외화채없음`(BAC 외국채 1행 배제 · `curr_cd='KRW'` 기본), `대표행`(장내·장외 값이 다른 8종목은 **병기**, 장내 우선 철회), `공모사모판정`(`(사)` ≠ 사모), `듀레이션정상`(`ndy_dur`·`remaining_days>0`). 이 과정에서 내 오판정 5건("외부 데이터 안 쓴다"·"장내 우선"·"C0 만 빼면 된다"·"(사) 절반 공모"·"yaml 410줄 부정확")을 스스로 뒤집어 기록했다 — `review_2026-08-26/채권_검토기록_2026-08-27.md` §8.
+
+**전수조사(08-30)** — 🔴6·🟡7·🟢10. 가장 큰 것 셋: ⓐ 전날 만든 `고위험제외` 조건식 `NOT(a OR b)` 가 등급 NULL 국공채 2,840행을 통째로 떨어뜨림(내 실수) → COALESCE + AND 로 ⓑ "위험등급 낮은 채권"·"AA- 이상" 을 플래너가 풀 수 없음(방향·서열이 규칙에 없었다) → `위험등급방향`·`등급서열` 신설 ⓒ 특수구조를 빼던 규칙이 국고채 분리채권 209(전부 6등급)를 부당 제외 → `구조표시`(빼지 않고 표시). 규칙 26개를 9,105→5,622자로 압축하고 원문 이력은 별도 보존.
+
+**지금 yaml 의 규모(09-03 파서 기준)**: columns 58(none 22·not_applicable 16·missing 14·mixed 6) · `query_rules` **40** · `synonyms` 47 · `answer_rules` 20 · `clarify` 11(다의어 6·사람의_선택 4·조건부 1) · `name_encoding` 플래그 11 + ESG 3 · `axis_derivation` 확정 3·보류 4 · `gate_constants` 1 · `absent_properties` 1. 숫자 주장 112건은 `scripts/audit_bonds_rules.py` 가 DB 로 재현(110 일치, 2건은 동의어 BW 건).
+
+**산출물**: `ontology/enums/domestic_bonds.yaml`(931줄) · `.auto.yaml`(1,562줄) · 커밋 `74a4b87` `7a8bd8c`(08-18) · `3a19130` `b36bf0f` `e773737`(2차 전환) · `fbfd457`(17건) · `cdf09f6` `3bd381f`(전수조사) 외 · 문서 `review_2026-08-26/채권_전수조사_2026-08-30.md`·`채권_규칙_원문_2026-08-30.md`.
+
+---
+
+## ④ 코드북 — 마스터에 없는 지식을 밖에서 가져왔다 (08-20)
+
+채권은 4개 상품군 중 유일하게 **외부 수집 데이터(구성종목·설명서)가 없다.** 대신 마스터에 없는 지식을 코드북으로 들여왔다.
+
+| 파일 | 왜 필요했나 | 지금 쓰임 |
+| :-- | :-- | :-- |
+| `credit_grade_scale.csv` (한국기업평가 21행 · 표준등급 20 · DB 표기 `AA0`=AA · `C0`=C) | "AA- 이상" 이 어느 등급인지, 투자/투기 경계가 어디인지 **데이터 어디에도 없다** | ✅ `shared/credit_grade.yaml` 노드 21(등급 19 + 밴드 2) 과 게이트 표준표의 원천 |
+| `bond_issuer_background.md` | 발행기관의 법정 손실보전 여부 | ✅ `신용보강` 6층 규칙의 근거 |
+| `collateral_type_map.csv` · `issuer_industry_map.csv` | 담보축·업종축 | 🟡 1차 기준 오류 3건 규명 후 보류 — 프리즈 전 범위 밖 |
+| `bond_tax_rules.md` · `bond_glossary.md` · `ktb_individual_structure.md` · `zeroin_methodology.md` | 세금·용어·개인투자용국채·위험등급 체계 | 배경 지식 (개인투자용국채는 2차에서 소멸) |
+
+원칙: 코드북에는 출처·기준일 컬럼을 두고(빌드 검증 V4), 값을 고치지 않고 **옆에 붙인다.** 커밋 `bbfdf1e`.
+
+---
+
+## ⑤ 온톨로지·KG — yaml 에서 ttl 과 값 사전을 뽑았다 (08-25 노드화 → 09-02 확장)
+
+**한 것**: 공유 개체(`ontology/shared/*.yaml`)에 채권이 닿는 것을 선언하고, `build_ontology.py` 가 그 선언에서 `bond_kr.ttl` 과 KG 4테이블을 만들게 했다. 손으로 쓴 ttl·KG 는 없다.
+
+**채권이 닿는 공유 개체 4 · 부재 선언 4**
+
+| 연결 | 컬럼 → 개체 | 값 수 | 선언 |
+| :-- | :-- | --: | :-- |
+| Organization | `pd_pbcm` → 발행사 노드 | alias 1,818 / 노드 1,817 | `organization_issuer_auto.yaml`(자동) |
+| CreditGrade | `crd_grd` → rank 1~19 + 밴드 2 | 15 | `credit_grade.yaml` · closure 밴드→등급 19 |
+| RiskGrade | `pd_risk_gcd` `'11'~'16'`·`'00'` → 0~6 | 7 | `risk_grade.yaml` · **`range_by_table` 채권 0~6**(펀드·ETF 1~6) |
+| Currency | `curr_cd` KRW | 1 | `currency.yaml` |
+| ⊘ AssetClass · Index · Region | 컬럼 없음 / 발행국 KR 21,881/21,882 상수 | — | `absent_in` → ttl ABSENT 3 · 게이트 어휘 |
+| ⊘ hasCreditGradeHistory | 등급 이력 없음 | — | `absent_properties`(09-02) → ttl ABSENT · 게이트 |
+
+**결정한 것**
+- 08-25: CreditGrade 를 **표준표 노드 + rank + 밴드**로 두어 "AA- 이상" 이 값 4개 목록으로 도착하게(런타임 탐색 0).
+- 09-02(KG 1R): 위험등급 범위를 코드 상수에서 **테이블별 선언**으로 — 채권 `'00'` 19행(해당없음)은 값이므로 0~6, 펀드는 NULL 이므로 1~6. 공용 상수가 펀드 0등급을 허용하던 KG-013/014 사고가 계기. 커밋 `62807a7`.
+- 09-02: 부재 속성을 4도메인 같은 형식으로 전수 선언 → ttl ABSENT + 게이트 어휘. 커밋 `41d383f`.
+- 09-02: 온톨로지·yaml 전수 재검증 — 1차 잔재·오기 200여 곳을 2차 실측으로 정정, 분류 모순 1건(통안채 = 특수채). 커밋 `f0fe676` `05e1962`.
+
+**산출물**: `ontology/bond_kr.ttl`(36줄, 생성물) · KG alias 채권분 1,841 · `docs/ontology_rules/01~12`(규칙 12종 문서, 생성물) · `docs/핵심문서모음/12_데이터사전…/bonds.md`(58컬럼 사전, 생성물).
+
+---
+
+## ⑥ 평가셋과 라우터 — 답을 채점할 기준과 질문을 알아듣는 입구를 만들었다 (08-30)
+
+- **평가셋**: 채권 문항이 2개뿐이던 것을 24문항 신설(조건검색 12·랭킹 5·집계 2·사실확인 1·되묻기 2·기각 3) — gold SQL 은 규칙 조건식 그대로, DB 실행 재현. 이후 실측 오답마다 회귀 문항으로 승격해 **44문항**(09-03) + 안전 최상급 프로브 10. 커밋 `faa8bb2`.
+- **라우터**: 게이트 힌트 5개로는 국고채·통안채·카드채·영구채가 채권으로 안 잡히고 "채권형 ETF" 는 채권으로 잡히던 것 → `router.route()` 신설(머리명사 → DB 값 → `synonyms` → 미특정). 채권 어휘는 코드가 아니라 yaml `synonyms` 가 소유. 커밋 `cdf09f6`.
+- **Ground fallback 제거**: "한국전력 채권" 이 주식 노드로 접지돼 ETF 구성종목이 근거로 실리던 것 → 대상 테이블에 alias 없는 노드는 버린다.
+- **프롬프트 경로**: `clarify`·`answer_policy` 가 프롬프트에 전혀 안 실리고 있었다 → `# 되묻기 규칙`·`answer_rules` 경로 신설. SQL 토큰 상한 512→1536(추천 SQL 1,757자가 잘림).
+
+---
+
+## ⑦ 서버 실측과 가드 — 규칙이 무시되는 자리를 코드로 옮겼다 (08-31 ~ 09-03)
+
+**방법**: 프로브 문항을 서버에 던지고(`eval/probe_server.py`), 답·SQL·think_trace 를 DB 와 대조해 오답을 잡고, 원인 층(HCX 오독 / 가드 사각 / 규칙 원문 / 답변층 / 라우팅 / gold)을 가르고, 같은 오답이 다시 못 나오게 회귀 문항과 테스트를 붙였다. **58건**을 이렇게 처리했다 — 전부 `docs/기술제안서/채권_오답기록_2026-09-03.md`.
+
+**반복된 사고 유형과 대응** (오답기록 §6)
+
+| 유형 | 건수 | 대표 사고 | 대응 |
+| :-- | --: | :-- | :-- |
+| HCX 가 실린 규칙을 무시·오독 | 14 | 'A등급 이상' → `crd_grd='A-'` 단일 · 신용보강 C층 탈락 · '수익률 최고' 에 `'16'` 날조 · '3년 뒤' 를 '3년 안에' 로 | 지시문 승격 → 재발 시 **결정층 가드** |
+| 가드·게이트 사각 | 15 | IN 목록 불개입 · SELECT 표시 컬럼 오반응 · 값 검사가 `TRIM()` 을 못 읽음 · 오염값 `'000'` 통과 · 리터럴 앞 `(주)` | 발동 조건·정규식 정정 + 테스트 |
+| 규칙 원문 오류 | 4 | `NOT(a OR b)` NULL 함정 · `만기윈도우` 의 `>` | 규칙 DB 재현 감사 |
+| 답변층 전사·환각 | 9 | 종목명 0건 전사 · 1위 증발 · 잔존 9,375일→"93.75년" · 라벨 창작 | **기계 조립**(HCX 0회)으로 이전 |
+| 라우팅·어휘 | 5 | '은행채는' 조사 · '전환사채' 어휘 없음 | 라우터·synonyms |
+| gold·평가셋 결함 | 5 | OFFICIAL-001 모수 15,806 낡음 | gold 는 안 고치고 보류 |
+
+**만든 가드·조립기 37개**(`src/runtime/pipeline.py`, 채권 전용) — 층별로:
+- SQL 교정: `expand_grade_comparison`(등급 서열 IN) · `ensure_credit_backstop`(신용보강 층) · `ensure_ktb_kind`(국고채 확정식·발행사 날조 제거) · `ensure_kind_filter` · `ensure_top_safety`(16 단독·폴백) · `strip_fabricated_risk_filter` · `ensure_maturity_sort` · `ensure_count_query`·`ensure_distinct_count` · `ensure_trimmed_compare` · `normalize_date_literals`·`ensure_maturity_lower_bound`·`ensure_cutoff_inclusive`·`align_maturity_year`·`raise_maturity_floor`·`enforce_relative_window`(상대 시점 확정표) · `ensure_bond_representative`(GROUP BY pd_no) · `ensure_bond_evidence_columns` · `ensure_grade_select_column`·`ensure_risk_name_column` · `ensure_reco_sort` · `ensure_default_topn` · `_rank_exclusions`
+- 기각: `forbidden_column_use`(사용 금지 컬럼) · `forbidden_literal_use`(`curr_cd='000'`, 09-03)
+- 결정층 되묻기: `price_ambiguity_clarify`(싸다) · `risk_ambiguity_clarify`(위험 세 축)
+- 조립(HCX 0회): `_bond_list_answer`(목록 · 콜 개시일 병기 · SELECT * 정리) · `_bond_count_answer` · `_zero_count_answer` + `_suggest_similar_issuers`(발행사 되묻기) · `_distribution_answer` · `ensure_top_row_cited` · `ensure_positive_count_answered`
+- 게이트(`gate.py`): `classify_grade_token` 표준표 4분기 · `gate_constants curr_cd`(09-03) · `range_by_table` · `resolve_relative_window` · 상수 `DATA_CUTOFF=BUYABLE_CUTOFF=2026-08-24`, `SNAPSHOT_DATE=2026-08-21`
+
+**리드 결정으로 확정된 것**(08-31~09-03): 국고채 = STRIPS 포함 확장식 · 회사채 = 대분류 · 은행채·지방채 3종 확정식 · ESG `(사)` = 사회적채권 · 0행 사유는 자연어로 · 잔존일수 `N일(약 X년)` · **판정·표기 기준일 8/24** · 개수 없는 랭킹 기본 TOP-5 · '가장 위험한' 은 세 축 되묻기 · gold 는 서버 답에 맞춰 고치지 않는다.
+
+**결과 수치(09-03 밤)**: 전체 테스트 **494 passed** · 로컬 gold **155/155** · 서버 r15 에서 채권 공식 문항 OFFICIAL-001 ✅(15,792종목·2.4초)·OFFICIAL-NA-001 AAAA ✅(HCX 0회·0.3초) · 오답 58건 중 서버 재확인 9건, 나머지는 로컬 수정 상태(재배포 후 `eval/probe_bond_recheck.txt` 29문항 재실측 대기).
+
+---
+
+## ⑧ 정리와 제안서 — 작업을 남에게 넘길 수 있는 형태로 만들었다 (09-03)
+
+| 산출물 | 무엇 | 상태 |
+| :-- | :-- | :-- |
+| `docs/기술제안서/04_도메인_채권.md` | 제안서 채권 원고 — §A 데이터(외부 수집 없음·판정 6종) · §B 결함→선언 5건+1(등급 서열 · 위험등급 0~6 · 발행국·통화 상수 · '위험' 되묻기 · 판매가능 8/24 · 할인채·영구채) · §C 흐름도(OFFICIAL-001 서버 trace 원문) · §D 현업(고객 적합성 확인) · §E 부록(ttl·ABSENT·yaml 발췌·값 수) · §F 재현 SQL | 1차 완료 · 템플릿 정정 3(결측 18.4% · 규칙 40 · 표준등급 20) |
+| `채권_회신_2026-09-03.md` | 팀 회신 — 형 결정 9건 · 병철 확인 1건 | 전달 |
+| `채권_오답기록_2026-09-03.md` | 사고 58건 총괄표·날짜순 상세·회귀 매핑·gold 결함·원인 집계 | 유지 중 |
+| `10_흐름도_취합.md` · `11_기대효과_확장성.md` · `docs/API_SPEC.md` | 채권 담당의 횡단 장 — 4.1~4.4 흐름도(r15 원문 4개, "세 경로 HCX 0회" 서술 정정) · 5.1~5.3(r15 실측: 답변 문장 기계 81% · HCX 미호출 6% · ✅170/231 · KG35 ✅5→24 · 60초 초과 7) · 부록 D | 1차 완료 |
+| `scripts/gen_proposal_numbers.py` §1 국내채권 | 채권 수치를 생성기에 편입 — 제안서는 NUMBERS 만 인용 | 완료 |
+| 이 문서 | 작업 기록 | v4 |
+
+---
+
+## 9. 최종 산출물 목록 — 무엇이 정본인가
+
+**사람이 고치는 것(원천)**: `ontology/enums/domestic_bonds.yaml` · `ontology/shared/credit_grade.yaml`·`risk_grade.yaml`·`currency.yaml` · `data/external/lookups/credit_grade_scale.csv`·`bond_issuer_background.md` · `eval/questions_domestic_bonds.jsonl`(44)·`questions_top_safety_probe.jsonl`(10)·`probe_bond_recheck.txt`(29) · `src/runtime/pipeline.py`·`gate.py`·`router.py` 의 채권 함수 · `tests/test_runtime.py`·`test_guard_v2.py`·`test_improvements.py`·`test_router.py` 채권 케이스 · `scripts/audit_bonds_*.py`·`gen_bond_eval.py`
+
+**빌드가 만드는 것(생성물, 손대지 않음)**: `ontology/bond_kr.ttl` · `common.ttl` 채권분 · KG 4테이블 채권분 · `domestic_bonds.auto.yaml`·`.vocab.yaml`·`*.values.txt` · `organization_issuer_auto.yaml` · `docs/proposal/NUMBERS.md` §1 · 데이터사전 `bonds.md` · `docs/ontology_rules/`
+
+**문서(기록)**: 이 문서 · `채권_오답기록` · `04_도메인_채권` · `review_2026-08-26/`·`review_2026-09-02/` 채권 6종 · `eda/`·`domain/` 3종 · `review_reply_bonds_2026-08-21.md` · `additional_bonds.md`
+
+**배포**: main push → 서버 pull. yaml 만이면 `deploy.sh --yaml-only`, `shared/*.yaml` 이면 `build_ontology.py` 후 `--db-only`, 코드면 `--code-only`. 09-03 오후 수정은 코드+yaml.
+
+---
+
+## 10. 지금 확정된 행동 기준 — 챗봇이 채권 질문에 어떻게 답하나 (2026-09-03)
+
+- **기준일**: 표기·판정 8/24 · 잔존일수는 산출일 8/21 기준으로 병기 · 상대 시점(오늘·내년·N년 뒤·N년 안에)은 확정표.
+- **모수**: 구매가능 `curr_cd='KRW' AND mat_dt >= 20260824` 20,431종목 · 판매조건 634 LOT · 종목 수는 `COUNT(DISTINCT pd_no)`.
+- **등급**: 서열은 KG rank, "AA- 이상" 은 IN 4종 · 국공채 미부여/회사채·특수채 미수록 · 위험등급은 숫자 클수록 안전, 0~6 · 표준표 밖(AAAA)은 게이트 즉답, 표준이나 0건(BB+)도 즉답.
+- **추천·랭킹**: 1등급·C0·사모·만기 경과 제외(NULL-안전)를 밝힌다 · 특수구조는 표시만 · 기본 TOP-5 + 전체 종목 수 · 6% 초과·2·3등급이면 원금 주의.
+- **되묻기**: '위험'·'싸다' 는 결정층에서 축을 제시하고 되묻는다 · 없는 발행사는 같은 어두 발행사를 제시 · 없는 상품명은 유사 후보 4.
+- **없는 것**: 자산군·지수·투자지역·등급 이력은 ABSENT 즉답 · 외화 채권은 원화만 수록 즉답 · 이유·전망·산식은 서술하지 않는다.
+- **답변 문장**: 목록·개수·0건·분포는 기계 조립(HCX 0회), 정렬 순서 그대로, 모수·기준일 머리줄 · 영구채는 "만기일 = 콜 개시일" 병기.
+
+---
+
+## 11. 남은 일과 배운 것
+
+**남은 일**
+1. 재배포(코드+yaml) 후 29문항 서버 재실측 → 오답기록 상태 갱신 · 제안서 04 §B·§C 서버 원문 교체.
+2. 형 결정 9건(회신 §3): '위험' 되묻기 사각 정규식 · 값 검사 컬럼 자동 교정 가드 · `SELECT *` SQL 층 치환 · 값 사전 "사용 금지 값" 표식 · `_GRADE_SCALE` 코드 상수 → KG rank · 국민성장펀드 부분 답변 여부 · Kimi 미특정 경로 · 채권 단일 COUNT 조립(다른 세션 완료) · 발행사 되묻기 재배포.
+3. gold 37~44 재검 · 담보·업종·만기구간 축(프리즈 전 범위 밖, 한계 절에 명시).
+4. 제안서: 흐름도 `▶` 2건 · 05 §D 펀드 한 문장 · API URL 확인 · 9/5 조판.
+
+**배운 것** (다음 도메인·다음 대회에 그대로 쓸 것)
+- **값을 고치지 않고 판정한다.** 결측·0·패딩·오염값은 고치는 게 아니라 뜻을 선언하는 것이다. 선언이 있으면 게이트가, 없으면 HCX 가 채운다.
+- **규칙은 실려도 무시된다.** 같은 사고가 두 번 나면 프롬프트 층을 고치지 말고 결정층 가드로 옮긴다. 목록·집계·분포 답변은 처음부터 기계 조립이 맞았다.
+- **`NOT (a OR b)` 는 NULL 을 떨어뜨린다.** 제외 규칙은 COALESCE + AND 로 쓰고 모수를 두 식으로 교차 실측한다.
+- **숫자는 한 곳에서만 가져온다.** 1차 수치가 문서에 남아 세 번 재발했다(41.1%·15,806·규칙 39). 생성기(NUMBERS)와 감사 스크립트가 답이다.
+- **집계는 정의로 센다.** 마커 문자열로 세면 틀린다(HCX 0회 41% → 6%).
+- **내 판정도 재점검 대상이다.** 검토기록 §8 의 오판정 5건, 오늘의 오기 3건 — 기록으로 남겨야 다음 사람이 같은 자리에서 안 넘어진다.

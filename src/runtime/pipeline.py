@@ -1179,7 +1179,7 @@ def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, 
 _VALUE_PRED = re.compile(r"^\(?\s*(?:\w+\.)?(\w+)\s*(?:(IS\s+NOT\s+NULL)|(<=|>=|<>|!=|<|>)\s*(-?[\d.]+))\s*\)?$", re.I)
 
 
-def _class_count_off_value_predicate(sql: str, col: str, agg: str) -> str:
+def _class_count_off_value_predicate(sql: str, col: str, agg: str, null_only: bool = False) -> str:
     """재검 ③-2 / KG 부류 S — `COUNT(*) AS 클래스수` 의 모수를 **값 컬럼 술어에서 뗀다.**
 
     9R 실측: 기계 조립이 `COUNT(*)` 를 그대로 "클래스 N개" 로 옮기는데, 그 COUNT 는 HCX 가 붙인 값 술어
@@ -1191,7 +1191,7 @@ def _class_count_off_value_predicate(sql: str, col: str, agg: str) -> str:
        `<> 0` 은 방향 술어와 함께일 때만 따라 옮긴다(그때는 이미 함의된다). 그 밖은 손대지 않는다.
     """
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-    if not m_w or re.search(r"\bhaving\b", sql, re.I):
+    if not m_w:
         return sql
     ok_ops = (">", ">=") if agg == "MAX" else ("<", "<=")
     conjs = guard.split_conjuncts(m_w.group(1))
@@ -1202,6 +1202,8 @@ def _class_count_off_value_predicate(sql: str, col: str, agg: str) -> str:
             continue
         if m.group(2):
             cand.append((c, f"{agg}({col}) IS NOT NULL", False))
+        elif null_only:
+            continue     # 개별 조회는 **결측 술어만** 옮긴다 — 방향 술어를 옮기면 MIN 쪽 표시값이 오염된다
         elif m.group(3) in ok_ops:
             cand.append((c, f"{agg}({col}) {m.group(3)} {m.group(4)}", True))
         elif m.group(3) in ("<>", "!="):
@@ -1216,7 +1218,16 @@ def _class_count_off_value_predicate(sql: str, col: str, agg: str) -> str:
 
 
 def _insert_having(rest: str, conds: list[str]) -> str:
-    """GROUP BY 뒤(ORDER BY/LIMIT 앞)에 HAVING 을 끼운다."""
+    """GROUP BY 뒤(ORDER BY/LIMIT 앞)에 HAVING 을 끼운다 — 이미 있으면 AND 로 잇는다.
+
+    🔴 14R 재검 ③-2 — 이 가드가 스스로 만든 HAVING 을 불개입 사유로 삼아 두 번째 값 컬럼에서 자기를 껐다.
+       값 컬럼이 여럿인 개별 조회에서 첫 컬럼만 모수가 교정된다.
+    """
+    m_h = re.search(r"\bhaving\b", rest, re.I)
+    if m_h:
+        stop = re.search(r"\border\s+by\b|\blimit\b", rest[m_h.end():], re.I)
+        at = m_h.end() + (stop.start() if stop else len(rest) - m_h.end())
+        return rest[:at].rstrip() + " AND " + " AND ".join(conds) + " " + rest[at:]
     m = re.search(r"\border\s+by\b|\blimit\b", rest, re.I)
     at = m.start() if m else len(rest)
     return rest[:at].rstrip() + " HAVING " + " AND ".join(conds) + " " + rest[at:]
@@ -1874,6 +1885,27 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     types = _fund_col_types()
     if not types:
         return sql, False
+    # 🔴 14R 재검 ③-2 (부류 E) — **`COUNT(*) AS 클래스수` 의 모수는 값 컬럼 술어와 무관해야 한다.**
+    #    S12 실측 교과서 사례: WHERE 의 `fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100` 때문에
+    #    클래스수가 NULL 수만큼 정확히 모자랐다(10→9 · 5→3 · 13→12). 수익률 NULL 은 신규 설정 클래스에서
+    #    정상적으로 나오므로, 값 술어로 거르면 클래스수가 틀려지는 것이 데이터 구조상 필연이다.
+    #    처방: 값 술어를 WHERE 에서 떼어 **집계 안쪽**(`MAX(CASE WHEN <술어> THEN col END)`)으로 옮긴다 —
+    #    COUNT 는 기본모수 전체를 세고, 표시 범위(MIN~MAX)는 술어를 그대로 존중한다(HAVING 으로 옮기면
+    #    걸러졌어야 할 클래스가 MIN 쪽에 들어온다).
+    m_where = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    val_preds: dict[str, list[str]] = {}
+    moved: list[str] = []
+    if m_where:
+        for c in guard.split_conjuncts(m_where.group(1)):
+            mv = _VALUE_PRED.match(c.strip())
+            if mv and (types.get(mv.group(1).lower()) or "").lower().startswith(("int", "real", "num", "dec", "float")):
+                val_preds.setdefault(mv.group(1).lower(), []).append(c.strip().strip("()").strip())
+                moved.append(c)
+
+    def _agg(fn: str, col: str) -> str:
+        p = val_preds.get(col)
+        return f"{fn}(CASE WHEN {' AND '.join(p)} THEN {col} END)" if p else f"{fn}({col})"
+
     # 판매중클래스수 병기 (2026-09-02 리뷰 ②-7) — 이름 조회에 기본모수를 박으면 판매완료·사모 14,707행 개별 조회가
     # 0행 오거절이라 주입하지 않는 대신, "클래스 7개 중 판매중 7개" 재료를 0행 위험 없이 싣는다.
     new = ["MIN(itm_no) AS 대표_itm_no", "MIN(TRIM(itm_nm)) AS itm_nm", 'COUNT(*) AS "클래스수"',
@@ -1900,12 +1932,12 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
                 # 🔴 순자산은 SUM — 이 DB 의 fd_nast_suma 는 **클래스별 값**이라 펀드 순자산은 합계다 (2026-09-02 리뷰 ②-6 실측:
                 #    코어테크 본체 10클래스 합 2조9,148억 vs 최대 클래스 7,348억 · 삼성MMF법인제1호 4클래스 12.4조/1,051억/…).
                 #    정수 CAST 로 '.0' 노출을 없애고 억원을 직접 굽는다(자릿수 훼손 계열 — 021·022·031 재검과 같은 처방).
-                new += ["CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma",
-                        "CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\""]
+                new += [f"CAST({_agg('SUM', col)} AS INTEGER) AS fd_nast_suma",
+                        f"CAST(ROUND({_agg('SUM', col)}/100000000.0) AS INTEGER) || '억원' AS \"순자산_억원\""]
             elif col in _FUND_RETURN_COLS or col in _class_dependent_cols():
                 # 6R F2 — 클래스별로 값이 다른 컬럼(수익률·기준가·보수…)은 단일 MAX 로 대표하지 않는다: MIN~MAX 범위. 종속 여부는 DB 실측
                 #   (다클래스 펀드에서 값이 갈리는 비율)로 판정 — X25: 종류A 라벨에 종류F 기준가가 붙었다
-                new += [f'MAX({col}) AS "{col}_최고"', f'MIN({col}) AS "{col}_최저"']
+                new += [f'{_agg("MAX", col)} AS "{col}_최고"', f'{_agg("MIN", col)} AS "{col}_최저"']
             else:
                 new.append(f"MAX({col}) AS {alias or col}")
     # 2R Q4-b — 대표예탁원번호(rptt_ksd_itm_no)를 **표시 단위**로만 싣는다: 조립기가 같은 대표번호 행을 한 줄로 접는다
@@ -1916,8 +1948,20 @@ def ensure_fund_lookup_grouping(sql: str, question: str) -> tuple[str, bool]:
     tail = re.sub(r"\blimit\s+\d+\s*$", "", tail, flags=re.I).rstrip()
     tail = re.sub(r"\border\s+by\b.*$", "", tail, flags=re.I | re.S).rstrip()
     tail = re.sub(r"\bgroup\s+by\b.*$", "", tail, flags=re.I | re.S).rstrip()
-    return (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_GROUP_EXPR} "
-            f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}"), True
+    if moved:
+        m_t = re.search(r"\bwhere\b(.*)$", tail, re.I | re.S)     # tail 은 GROUP/ORDER/LIMIT 이 이미 잘려 있다
+        if m_t:
+            kept = [c for c in guard.split_conjuncts(m_t.group(1)) if c not in moved]
+            tail = tail[:m_t.start()] + (" WHERE " + " AND ".join(kept) if kept else "")
+    out = (f"SELECT {', '.join(new)} {tail} GROUP BY {_FUND_GROUP_EXPR} "
+           f"ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT {MAX_ROWS}")
+    # 🔴 14R 재검 ③-2 (부류 E) — **`COUNT(*) AS 클래스수` 의 모수는 값 컬럼 술어와 무관해야 한다.**
+    #    S12 실측 교과서 사례: WHERE 의 `fd_yr1_ern_r IS NOT NULL` 때문에 클래스수가 NULL 수만큼 정확히
+    #    모자랐다(10→9 · 5→3 · 13→12). 수익률 NULL 은 신규 설정 클래스에서 정상적으로 나오므로
+    #    값 술어로 거르는 순간 클래스수가 틀려지는 것이 데이터 구조상 필연이다.
+    #    랭킹 경로에 이미 도는 「값 술어를 WHERE→HAVING 으로」를 여기서도 부른다 — 단 **결측 술어만**
+    #    옮긴다(방향 술어를 옮기면 MIN 쪽 표시값에 걸러졌어야 할 클래스가 들어온다).
+    return out, True
 
 
 # ── 개별 조회 답변 기계 조립 (2R Q4 — R4·S3·S4·S5·R6·S12) ──

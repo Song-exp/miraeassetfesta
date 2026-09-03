@@ -392,3 +392,33 @@ def test_offshore_included_when_asked():
         assert note2 is None and con.execute(same).fetchone() == (15, 46)
     finally:
         con.close()
+
+
+# ── P4-f · 재검 ③-2 (부류 E) — 개별 조회의 클래스수 모수는 값 술어와 무관하다 ─────────────────
+def test_lookup_grouping_class_count_off_value():
+    """S12 교과서 사례: `fd_yr1_ern_r IS NOT NULL AND > -100` 이 클래스수를 NULL 수만큼 깎았다(10→9·5→3·13→12).
+    값 술어를 집계 안쪽으로 옮기면 COUNT 는 기본모수 전체를 세고 표시 범위는 그대로다."""
+    import sqlite3
+    from src.runtime import loader
+    loader.load_context()
+    sql = ("SELECT itm_nm, fd_yr1_ern_r FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%코어테크%' "
+           "AND sale_yn='판매중' AND prvo_pbff_desc='공모' AND fd_yr1_ern_r IS NOT NULL "
+           "AND fd_yr1_ern_r > -100 LIMIT 30")
+    out, ok = P.ensure_fund_lookup_grouping(sql, "코어테크 펀드 1년 수익률 알려줘")
+    assert ok and "MAX(CASE WHEN fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 THEN fd_yr1_ern_r END)" in out
+    con = sqlite3.connect("file:data/financial_products.db?mode=ro", uri=True)
+    try:
+        rows = con.execute(out).fetchall()
+    finally:
+        con.close()
+    assert [r[2] for r in rows] == [10, 4, 5, 5, 13, 4]              # 심사관 S12 gold 클래스수
+    assert (rows[0][4], rows[0][5]) == (189.77, 187.09)              # 표시 범위는 불변
+    assert (rows[4][4], rows[4][5]) == (17.73, -41.31)
+
+
+def test_lookup_grouping_untouched_without_value_predicate():
+    """값 술어가 없는 개별 조회(U10 등급 질의 — 부류 E 대조군)는 SQL 모양이 종전과 같아야 한다."""
+    sql = ("SELECT itm_nm, zrin_fd_ivst_risk_gcd FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋베트남%' "
+           "AND sale_yn='판매중' AND prvo_pbff_desc='공모' LIMIT 30")
+    out, ok = P.ensure_fund_lookup_grouping(sql, "미래에셋베트남 펀드 위험등급 알려줘")
+    assert ok and "CASE WHEN zrin_fd_ivst_risk_gcd" not in out

@@ -720,8 +720,10 @@ def test_fund_lookup_grouping():
     assert not f(s, "미래에셋코어테크 펀드 1년 수익률 알려줘")[1]     # 멱등 — GROUP BY 가 생겼으면 불개입
     rows = con.execute(s).fetchall()
     assert len(rows) == 6                                          # 6펀드 (2026-09-02 DB 실측)
-    assert rows[0][1].startswith("미래에셋코어테크증권자투자신탁") and rows[0][2] == 9   # 본체가 첫 행(최단 이름) · <>0 필터 후 9클래스
-    assert rows[0][3] == 9                                         # 판매중클래스수 (리뷰 ②-7 — 기본모수 미주입의 보완)
+    # 🔴 14R 재검 ③-2(부류 E) — 클래스수 모수는 값 술어와 무관하다: 9 → **10**(NULL 1클래스 회수).
+    #    값 술어는 집계 안쪽(`MAX(CASE WHEN … THEN col END)`)으로 옮겨 표시 범위는 그대로다.
+    assert rows[0][1].startswith("미래에셋코어테크증권자투자신탁") and rows[0][2] == 10   # 본체가 첫 행(최단 이름)
+    assert rows[0][3] == 10                                        # 판매중클래스수 (리뷰 ②-7) — 14R ③-2 로 10 전부 판매중
     assert (rows[0][4], rows[0][5]) == (189.77, 187.09)            # 최고·최저 — 1클래스(188.83)만 답하던 것의 재료
     # R6 — 등급명만 SELECT → 묶기 + 근거컬럼 가드의 역방향 gcd 병기. 🔴 이 펀드는 클래스마다 mtco_itm_no 가
     #    달라(531101~531107) 정본 펀드키로는 6행이다 — 값은 전 행 '높은 위험'·2 로 같고 클래스수 합이 7.
@@ -2092,7 +2094,9 @@ def test_r6_Iprime_Jprime(ctx):
 
     r3 = answer_question("T-W3", "피델리티재팬 펀드 1년 수익률 알려줘", planner=P(), ctx=ctx)
     assert "[Answer] 개별 조회 답변 기계 조립" in r3.think_trace and "JPN" not in r3.sql and "'%피델리티재팬%'" in r3.sql
-    assert "34.36%~36.28%" in r3.answer and "클래스 13개" in r3.answer and "판매완료" in r3.answer   # 14클래스 = 판매중 13 + 판매완료 1(별도 대표번호)
+    # 🔴 14R 재검 ③-2(부류 E) — 13 → **14**: `fd_yr1_ern_r IS NOT NULL AND > -100` 이 클래스수를 깎던 것을
+    #    집계 안쪽으로 옮겼다. 수익률 범위는 불변.
+    assert "34.36%~36.28%" in r3.answer and "클래스 14개" in r3.answer and "판매완료" in r3.answer
     # J′ — W6: 이름+4호 결합 LIKE 를 호수 가드가 제거해도 토큰이 체인 끝에서 복원
     P.sql = ("SELECT zrin_fd_ivst_risk_grd_nm, itm_nm FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' "
              "AND REPLACE(itm_nm,' ','') LIKE '%미래에셋디스커버리증권투자신탁4호%' LIMIT 30")

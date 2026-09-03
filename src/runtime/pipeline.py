@@ -48,6 +48,12 @@ class PipelineResult:
     #    grounding 없이는 어떤 yaml 규칙이 실제로 프롬프트에 실렸는지 알 수 없다.
     sql: str = ""            # 실제로 실행한 SQL (LIMIT 보정 후). 기각됐으면 기각된 SQL
     grounding: str = ""      # 플래너에 넘긴 근거문서 원문
+    # 🔴 2026-09-03 — 가드·슬롯 **적용 전** HCX 원문. 로그·실험 전용이며 응답 5필드가 아니다.
+    #    이것 없이는 "가드가 무엇을 고쳤는가" 를 사후에 재생할 수 없다 —
+    #    enforce 슬롯 섀도(docs/guard_to_yaml_migration_2026-09-03.md 단계 2)가 요구한다.
+    #    재생성이 돌면 그 원문으로 덮어쓴다(마지막으로 플래너가 낸 것).
+    raw_sql: str = ""
+    enforce_fired: list = field(default_factory=list)   # 발동한 enforce mark 목록
 
 
 class Planner(Protocol):
@@ -7162,6 +7168,7 @@ def answer_question(
          f"{len(grounding):,}자 · 구성: {blocks}")
     t0 = time.monotonic()
     raw_sql = planner.plan_sql(q, grounding)
+    result.raw_sql = raw_sql          # 가드 적용 전 원문 — 섀도 재생용(로그 전용)
 
     if raw_sql.strip().upper().startswith(REFUSE_PREFIX):
         # R-5 ② — 플래너가 답변불가 규칙에 걸렸다고 선언. SQL 없이 종료 (실행·답변 생성 호출 없음)
@@ -7275,6 +7282,7 @@ def answer_question(
                     "- ORDER BY 는 **위치 번호가 아니라 컬럼명·별칭**으로 쓴다(열 수가 바뀌어도 안 깨진다).")
         step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
         raw2 = planner.plan_sql(q, feedback)
+        result.raw_sql = raw2         # 재생성이 돌면 그 원문이 마지막 플래너 산출이다
         if raw2.strip().upper().startswith(REFUSE_PREFIX):
             return raw2.strip()[len(REFUSE_PREFIX):].strip()
         # 🔴 재생성 SQL 도 같은 가드 체인을 태운다 — 안 태우면 재생성이 조건식을 정확히 고쳐도

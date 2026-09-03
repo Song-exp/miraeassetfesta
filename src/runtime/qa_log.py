@@ -26,6 +26,8 @@ def build_record(result: PipelineResult, elapsed_s: float, *, with_grounding: bo
         "retrieved_context": result.retrieved_context,
         "think_trace": result.think_trace,
         "sql": result.sql,
+        "raw_sql": result.raw_sql,          # 가드 전 HCX 원문 — 무엇을 고쳤는지 재생용
+        "enforce_fired": list(result.enforce_fired),
         "elapsed_s": round(elapsed_s, 2),
     }
     if with_grounding:

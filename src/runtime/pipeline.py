@@ -6555,6 +6555,41 @@ def apply_union_branch_guards(sql: str, q: str) -> tuple[str, list[str]]:
 _PRED_COL = re.compile(r"(?<![.\w'])([A-Za-z_]\w*)\s*(?:[=<>!]|\bLIKE\b|\bGLOB\b|\bIN\b|\bIS\b|\bBETWEEN\b)", re.I)
 
 
+def drop_undeclared_table_or_branches(sql: str) -> tuple[str, list[str]]:
+    """FROM/JOIN 에 없는 테이블을 참조하는 **OR 가지**를 걷는다 — 가지가 전부 사라지면 손대지 않는다.
+
+    🔴 16R gold ③-1 (부류 V′ · `OFFICIAL-004` 회귀) — 실행 전 검사가 계산해 둔 조치를 **기계가 집행한다.**
+       실측: `… OR replace(ext_etf_holdings.ticker,' ','') LIKE '%우주항공%' OR … '%Space%'` 두 가지 때문에
+       문장 전체가 기각되고 재생성이 **완전히 같은 문장**을 돌려줘 무응답이 됐다. 그 두 가지만 걷으면
+       13R 의 답이 그대로 나온다. OR 가지는 조건을 넓히는 자리라 걷어도 모수가 넓어지지 않는다
+       (AND 절은 걷으면 모수가 넓어지므로 대상이 아니다 — 그쪽은 `drop_hallucinated_column_conjuncts` 가
+       리터럴 중복이 확인될 때만 다룬다).
+    """
+    declared = {t.lower() for t in re.findall(r"\b(?:from|join)\s+([A-Za-z_][\w.]*)", sql, re.I)}
+    bad = {t for t in (set(TABLES) | set(EXT_TABLES)) - declared
+           if re.search(rf"\b{re.escape(t)}\s*\.", sql, re.I)}
+    if not bad:
+        return sql, []
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, []
+    out, dropped = [], []
+    for c in _flat_conjuncts(m_w.group(1)):
+        if not any(re.search(rf"\b{re.escape(t)}\s*\.", c, re.I) for t in bad):
+            out.append(c)
+            continue
+        branches = guard.split_disjuncts(_outer_group(c.strip()) or c)
+        keep = [b for b in branches if not any(re.search(rf"\b{re.escape(t)}\s*\.", b, re.I) for t in bad)]
+        if len(branches) < 2 or not keep:
+            out.append(c)                        # 가지가 하나뿐이거나 전부 사라진다 — 기각으로 보낸다
+            continue
+        dropped += [b.strip()[:60] for b in branches if b not in keep]
+        out.append(keep[0].strip() if len(keep) == 1 else "(" + " OR ".join(b.strip() for b in keep) + ")")
+    if not dropped:
+        return sql, []
+    return sql[:m_w.start(1)] + " " + " AND ".join(out) + " " + sql[m_w.end(1):], dropped
+
+
 def drop_hallucinated_column_conjuncts(sql: str) -> tuple[str, list[str]]:
     """스키마에 없는 컬럼을 쓴 최상위 AND 절을, **그 값 리터럴이 다른 절에 이미 걸려 있을 때만** 걷는다.
 
@@ -6857,6 +6892,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (집계 질의는 LIMIT 을 쓰지 않는다)")
+    sql, undecl = drop_undeclared_table_or_branches(sql)
+    if undecl:
+        step(f"[Guard] 미선언 테이블 OR 가지 제거 — {' · '.join(undecl)} (16R gold ③-1 · OFFICIAL-004 실측: "
+             "`ext_etf_holdings.ticker` OR 가지 2개 때문에 문장 전체가 기각되고 재생성이 완전히 같은 문장을 "
+             "돌려줘 무응답이 됐다. OR 가지는 조건을 넓히는 자리라 걷어도 모수가 넓어지지 않는다)")
     sql, halluc = drop_hallucinated_column_conjuncts(sql)
     if halluc:
         step(f"[Guard] 환각 컬럼 술어 제거 — {' · '.join(halluc)} (16R KG ③-6 · gold ③-1: 스키마에 없는 컬럼을 쓴 "

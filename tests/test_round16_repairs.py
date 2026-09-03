@@ -279,3 +279,29 @@ def test_index_canon_qualified_in_join():
         assert P.ensure_etf_index_canon(bare) == (bare, False)
     finally:
         con.close()
+
+
+# ── P4-a gold ③-1 부류 V′ — 기각 메시지가 계산해 둔 조치를 기계로 집행 ────────
+def test_drop_undeclared_table_or_branch():
+    """OFFICIAL-004 회귀 — `ext_etf_holdings.ticker` OR 가지 2개만 걷으면 13R 답이 그대로 나온다."""
+    from src.runtime import loader
+    loader.load_context()
+    sql = ("SELECT DISTINCT pd_abrv_nm, pd_nm FROM domestic_etfs WHERE (replace(pd_nm,' ','') LIKE '%우주항공%' "
+           "OR /*g*/(REPLACE(ref_base_index,' ','') GLOB 'Aerospace' "
+           "OR REPLACE(ref_base_index,' ','') GLOB 'Aerospace[CTP]R*') "
+           "OR replace(ext_etf_holdings.ticker,' ','') LIKE '%우주항공%' "
+           "OR replace(ext_etf_holdings.ticker,' ','') LIKE '%Space%') "
+           "AND pd_grp_no = 'ETF' AND pd_sale_yn = 1 ORDER BY pd_nm ASC LIMIT 30")
+    assert "ext_etf_holdings" in (P.validate_sql(sql) or "")        # 종전: 문장 전체 기각 → 재생성 동일 → 무응답
+    out, dropped = P.drop_undeclared_table_or_branches(sql)
+    assert len(dropped) == 2 and "ext_etf_holdings" not in out
+    assert P.validate_sql(out) is None
+    con = P.connect_readonly()
+    try:
+        assert len(con.execute(out).fetchall()) == 6                # 13R 답과 같은 6종
+    finally:
+        con.close()
+    assert P.drop_undeclared_table_or_branches(out) == (out, [])    # 멱등
+    # 가지가 하나뿐이면(전부 사라진다) 손대지 않고 기각으로 보낸다
+    only = "SELECT pd_nm FROM domestic_etfs WHERE ext_etf_holdings.ticker = 'X' AND pd_grp_no='ETF' LIMIT 30"
+    assert P.drop_undeclared_table_or_branches(only) == (only, [])

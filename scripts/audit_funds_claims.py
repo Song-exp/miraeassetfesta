@@ -95,6 +95,9 @@ chk("DS-1", "화이트리스트 반례 — fd_estb_ctry_cd '000' 23,055 · pfiv_
 grp_key = "or_co_xtn_itt_cd || '|' || CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END"
 chk("EN-Fund", "Fund 합성키 원값 distinct 14,467(더미 배제) · 판매중 4,340",
     f"SELECT COUNT(DISTINCT or_co_xtn_itt_cd||'|'||mtco_itm_no), COUNT(DISTINCT CASE WHEN sale_yn='판매중' THEN or_co_xtn_itt_cd||'|'||mtco_itm_no END) {F} WHERE NOT ({dummy_sql.replace('C', 'mtco_itm_no')})", (14467, 4340))
+# NUMBERS.md §1 이 인용하는 값 — 생성기(gen_proposal_numbers.py)와 같은 정본식이어야 한다
+chk("EN-Fund-base", "기본모수 펀드 3,040 (펀드단위 정본식 · itm_no 폴백 포함)",
+    f"SELECT COUNT(DISTINCT or_co_xtn_itt_cd||'|'||COALESCE({grp_key}, itm_no)) {F} WHERE {BASE}", 3040)
 chk("EN-Fund-pad", "Fund 합성키 zero-pad distinct 14,409 · 판매중 4,305 (펀드단위 규칙 기준)",
     f"SELECT COUNT(DISTINCT {grp_key}), COUNT(DISTINCT CASE WHEN sale_yn='판매중' THEN {grp_key} END) {F} WHERE NOT ({dummy_sql.replace('C', 'mtco_itm_no')})", (14409, 4305))
 chk("EN-Share", "ShareClass han_clas_nm 195종", f"SELECT COUNT(DISTINCT han_clas_nm) {F} WHERE han_clas_nm IS NOT NULL", 195)

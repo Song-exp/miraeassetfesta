@@ -48,6 +48,50 @@ for t in ("domestic_etfs", "overseas_etfs"):
     L.append(f"- `{t}`: " + " · ".join(f"{k} {v:,}" for k, v in sorted(d.items())))
 L.append("")
 
+L.append("### 공모펀드 기본모수 · 식별 키")
+L.append("")
+# 🔴 세 문서(06 §A·§B·§E, 09)가 같은 값을 인용한다 — 손으로 적으면 어긋난다(8/25 초안 fss 11,611 이 실제로 그랬다).
+BASE = "sale_yn='판매중' AND prvo_pbff_desc='공모'"
+# 펀드단위 정본식 = enums/public_funds.yaml query_rules.펀드단위 와 같은 식이어야 한다
+FKEY = ("COALESCE(CASE WHEN length(trim(mtco_itm_no))>=7 THEN trim(mtco_itm_no) "
+        "ELSE substr('0000000'||trim(mtco_itm_no),-7) END, itm_no)")
+DUMMY = ("({0} IS NULL OR trim({0})='' OR replace(replace(trim({0}),'KR',''),'0','')='' "
+         "OR (length(trim({0}))>1 AND replace(trim({0}), substr(trim({0}),1,1), '')=''))")
+pf = lambda w: q(f"select count(*) from public_funds where {w}")[0]
+fk = lambda w: q(f"select count(*) from (select distinct or_co_xtn_itt_cd, {FKEY} from public_funds where {w})")[0]
+n_pf = rows("public_funds")
+L.append("| 항목 | 값 |")
+L.append("| :-- | --: |")
+L.append(f"| 전체 행 (= 클래스) | {n_pf:,} |")
+L.append(f"| 사모 행 | {pf("prvo_pbff_desc='사모'"):,} |")
+L.append(f"| 판매중 행 | {pf("sale_yn='판매중'"):,} |")
+L.append(f"| **기본모수 행** (판매중 AND 공모) | **{pf(BASE):,}** |")
+L.append(f"| **기본모수 펀드** (펀드단위 키) | **{fk(BASE):,}** |")
+L.append(f"| 펀드단위 키 distinct — 전체 (더미 제외) | {fk('NOT ' + DUMMY.format('mtco_itm_no')):,} |")
+L.append(f"| 펀드단위 키 distinct — 판매중 (더미 제외) | {fk("sale_yn='판매중' AND NOT " + DUMMY.format('mtco_itm_no')):,} |")
+L.append(f"| 위험등급 미수록 (NULL ≠ 0등급) | {pf('zrin_fd_ivst_risk_gcd IS NULL'):,} |")
+L.append("")
+L.append("**식별 코드 더미** — `NULL` 만 결측으로 보면 틀린다. 조인·개체 키에서 제외하는 행:")
+L.append("")
+L.append("| 컬럼 | 더미 행 | 비율 |")
+L.append("| :-- | --: | --: |")
+for col in ("fss_itm_no", "kofia_fd_ccd", "rptt_ksd_itm_no", "std_itm_no", "ksd_itm_no", "mtco_itm_no"):
+    d = pf(DUMMY.format(col))
+    L.append(f"| `{col}` | {d:,} | {d/n_pf*100:.1f}% |")
+L.append("")
+# mtco 단독 조인이 남의 운용사 펀드에 붙는 비율 — 자기조인은 느려서 집계식으로 센다
+_g = con.execute(f"select {FKEY} k, or_co_xtn_itt_cd o, count(*) n from public_funds "
+                 f"where NOT {DUMMY.format('mtco_itm_no')} group by 1,2").fetchall()
+_t = {}
+for k, o, n in _g:
+    _t[k] = _t.get(k, 0) + n
+_all = sum(v * v for v in _t.values())
+_same = sum(n * n for _, _, n in _g)
+_span = sum(1 for k in _t if sum(1 for a, b, _c in _g if a == k) > 1)
+L.append(f"> `mtco_itm_no` **단독 조인 금지** — 펀드단위 키 기준 {_all:,}쌍 중 **{_all-_same:,}쌍({(_all-_same)/_all*100:.1f}%)** 이 다른 운용사의 펀드에 붙는다 "
+         f"(2개 이상 운용사에 걸친 값 {_span:,}종). 키는 `(or_co_xtn_itt_cd, mtco_itm_no)` 복합키다.")
+L.append("")
+
 L.append("## 2. 외부 수집 (L2)")
 L.append("")
 L.append("| 수집물 | 행 | 커버리지 | 기준일 |")
@@ -87,6 +131,11 @@ L.append("| 개체 | 노드 수 |")
 L.append("| :-- | --: |")
 for nt, n in con.execute("select node_type, count(*) c from kg_node group by 1 order by c desc"):
     L.append(f"| {nt} | {n:,} |")
+L.append("")
+mf = q("select count(*) from kg_node where node_type='Fund' and node_id like 'MotherFund_%'")[0]
+fd = q("select count(*) from kg_node where node_type='Fund'")[0]
+L.append(f"> KG `Fund` {fd:,} = `rptt_ksd_itm_no` 묶음 {fd-mf:,} + 마스터 밖 MotherFund {mf:,}. "
+         "🔴 펀드단위 집계 키 `(or_co_xtn_itt_cd, mtco_itm_no)` 와는 **다른 축**이다 — 집계·순자산은 복합키, 개체 조회는 rptt.")
 L.append("")
 ttl_files = ["common.ttl", "bond_kr.ttl", "etf_kr.ttl", "etf_gl.ttl", "fund_pub.ttl"]
 L.append("### 제출 ttl 5분할 (규격 p.9)")

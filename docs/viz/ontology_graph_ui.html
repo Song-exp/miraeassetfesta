@@ -1,0 +1,685 @@
+<title>값 사전 그래프 탐색기</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F5F6F8; --surface:#FFFFFF; --ink:#1B232E; --ink-2:#4E5B6B; --ink-3:#7E8B9A; --line:#D9DEE5;
+  --open:#3B5BA5; --open-soft:#E4EAF7; --closed:#1F6F80; --closed-soft:#DFEEF1;
+  --table:#7A5C2E; --table-soft:#F3EBDD; --ext:#6B7A8C; --ext-soft:#E9EDF1; --kind:#7C4B8C; --kind-soft:#EFE4F3;
+  --col:#8A6A3A; --col-soft:#FBF7EF; --chip:#2F6B5A; --chip-soft:#E3F1EB; --rule:#5B6573; --rule-soft:#F0F2F5;
+  --absent:#B2542B; --edge:#98A3B1; --hi:#1B232E; --code-bg:#EEF1F4;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131820; --surface:#1B222C; --ink:#E6EAF0; --ink-2:#B4BDC9; --ink-3:#7F8A98; --line:#2C3541;
+    --open:#8FA6E0; --open-soft:#25304A; --closed:#6CBFD0; --closed-soft:#1E3238;
+    --table:#D2A96E; --table-soft:#3A3020; --ext:#A3AFBD; --ext-soft:#2A323C; --kind:#C79AD3; --kind-soft:#3A2A40;
+    --col:#D9B27A; --col-soft:#2E2A22; --chip:#7FC7AE; --chip-soft:#1F332C; --rule:#A6B0BC; --rule-soft:#232B35;
+    --absent:#E0946E; --edge:#4E5A69; --hi:#FFFFFF; --code-bg:#222B36;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131820; --surface:#1B222C; --ink:#E6EAF0; --ink-2:#B4BDC9; --ink-3:#7F8A98; --line:#2C3541;
+  --open:#8FA6E0; --open-soft:#25304A; --closed:#6CBFD0; --closed-soft:#1E3238;
+  --table:#D2A96E; --table-soft:#3A3020; --ext:#A3AFBD; --ext-soft:#2A323C; --kind:#C79AD3; --kind-soft:#3A2A40;
+  --col:#D9B27A; --col-soft:#2E2A22; --chip:#7FC7AE; --chip-soft:#1F332C; --rule:#A6B0BC; --rule-soft:#232B35;
+  --absent:#E0946E; --edge:#4E5A69; --hi:#FFFFFF; --code-bg:#222B36;
+}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans KR",system-ui,"Malgun Gothic",sans-serif;font-size:14px;line-height:1.6}
+header{max-width:1360px;margin:0 auto;padding:26px 24px 6px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+h1{font-family:"Noto Serif KR",serif;font-size:25px;margin:6px 0 6px;text-wrap:balance}
+.meta{color:var(--ink-2);max-width:90ch;margin:0}
+.tabs{display:flex;gap:4px;margin:14px 0 0;border-bottom:1px solid var(--line)}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 14px;font:inherit;font-weight:600;color:var(--ink-2);cursor:pointer;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.tabs button:focus-visible{outline:2px solid var(--open);outline-offset:2px}
+.wrap{max-width:1360px;margin:0 auto;padding:12px 24px 72px;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px}
+.stage svg{width:100%;height:auto;display:block}
+.scene-note{font-size:13px;color:var(--ink-2);padding:6px 6px 2px;max-width:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink-2);padding:8px 6px 2px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:2px solid}
+.legend .lk{border-radius:2px}
+.legend .ln::before{content:"";display:inline-block;width:20px;border-top:2px solid var(--edge);margin-right:6px;vertical-align:middle}
+.legend .ab::before{content:"";display:inline-block;width:20px;border-top:2px dashed var(--absent);margin-right:6px;vertical-align:middle}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.panel h2{font-family:"Noto Serif KR",serif;font-size:20px;margin:0 0 2px;overflow-wrap:anywhere}
+.panel .type{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;margin-bottom:10px}
+.panel .count{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.panel p{margin:8px 0;max-width:60ch}
+.panel h3{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:16px 0 6px;font-weight:600}
+.panel ul{margin:0;padding-left:18px}
+.panel li{margin:3px 0}
+.panel table{border-collapse:collapse;width:100%;font-size:12.5px}
+.panel td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.panel td:first-child{white-space:nowrap;color:var(--ink-2)}
+code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--code-bg);padding:1px 4px;border-radius:3px}
+.absent{color:var(--absent)}
+.hint{color:var(--ink-3);font-size:12.5px}
+.node{cursor:pointer}
+.node circle,.node rect{stroke-width:2;transition:opacity .15s}
+.node text{font-family:"IBM Plex Sans KR",sans-serif;pointer-events:none}
+.node .nm{font-size:12.5px;font-weight:600;fill:var(--ink)}
+.node .ct{font-size:10.5px;fill:var(--ink-2);font-family:"IBM Plex Mono",monospace}
+.node .mono{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:500;fill:var(--ink)}
+.node.open circle{fill:var(--open-soft);stroke:var(--open)}
+.node.closed circle{fill:var(--closed-soft);stroke:var(--closed)}
+.node.table rect{fill:var(--table-soft);stroke:var(--table)}
+.node.ext rect{fill:var(--ext-soft);stroke:var(--ext)}
+.node.kind rect{fill:var(--kind-soft);stroke:var(--kind)}
+.node.column rect{fill:var(--col-soft);stroke:var(--col);stroke-width:1.5}
+.node.chip rect{fill:var(--chip-soft);stroke:var(--chip);stroke-width:1.5}
+.node.rule rect{fill:var(--rule-soft);stroke:var(--rule);stroke-width:1.5;stroke-dasharray:4 3}
+.node.ghost circle,.node.ghost rect{fill:none;stroke:var(--absent);stroke-dasharray:5 4;stroke-width:1.5}
+.node.ghost .nm{fill:var(--absent)}
+.node.sel circle,.node.sel rect{stroke-width:3.5;stroke:var(--hi)}
+.node.dim{opacity:.25}
+.edge{stroke:var(--edge);stroke-width:1.4;fill:none;transition:opacity .15s}
+.edge.absent{stroke:var(--absent);stroke-dasharray:5 4}
+.edge.rel{stroke:var(--open);stroke-width:1.6}
+.edge.kindlink{stroke:var(--kind);stroke-dasharray:3 4}
+.edge.hier{stroke:var(--chip);stroke-dasharray:2 4}
+.edge.hi{stroke-width:2.8;stroke:var(--hi)}
+.edge.hi.absent{stroke:var(--absent)}
+.edge.dim{opacity:.12}
+.elabel{font-size:10.5px;fill:var(--ink-2);font-family:"IBM Plex Mono",monospace;pointer-events:none;paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+.elabel.hidden{display:none}
+.ring{fill:none;stroke:var(--line);stroke-dasharray:2 6}
+.zone{font-size:11px;fill:var(--ink-3);letter-spacing:.08em;font-weight:600}
+
+.rules{max-width:1360px;margin:0 auto;padding:0 24px 80px}
+.rules h2{font-family:"Noto Serif KR",serif;font-size:20px;margin:8px 0 4px}
+.rules .sub{color:var(--ink-2);font-size:13px;margin:0 0 14px;max-width:90ch}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:start}
+.rbox{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.rbox h3{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
+.rbox h3 span{font-family:"IBM Plex Mono",monospace;letter-spacing:0;text-transform:none;color:var(--ink-2);font-size:12px}
+.rbox table{border-collapse:collapse;width:100%;font-size:12.5px}
+.rbox td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.rbox td:first-child{white-space:nowrap;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink);width:1%}
+.rbox td:last-child{color:var(--ink-2)}
+.badge{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--ink-3);margin-left:6px;vertical-align:1px;font-family:"IBM Plex Sans KR",sans-serif}
+.badge.trig{border-color:var(--closed);color:var(--closed)}
+.badge.enf{border-color:var(--chip);color:var(--chip);font-weight:600}
+.badge.always{border-color:var(--ink-3)}
+.rbox.wide{grid-column:1/-1}
+.rfilter{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.rfilter button{font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.rfilter button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);font-weight:600}
+</style>
+
+<header>
+  <div class="eyebrow">미래에셋 금융상품 Agent · 온톨로지 · 값 사전 KG</div>
+  <h1>노드를 누르면 그 개체가 무엇이고, 어느 테이블의 어떤 값으로 존재하는지 보입니다</h1>
+  <p class="meta">전체 탭은 공유 개체 11종 허브와 테이블 클래스 4개. 도메인 탭은 그 테이블 박스를 펼쳐 <b>어느 컬럼이 어느 개체로 접지되는지</b>, 계층·규칙·부재가 어디 붙는지를 그립니다. 수치는 2026-09-02~03 실측이며 2026-09-04 전수 재검에서 33/33 일치했습니다. 탭마다 아래에 <b>실측</b> 절이 붙습니다 — 전체 탭은 ttl·KG 대조, 펀드 탭은 78문항 서버 실측.</p>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-scene="all">전체</button>
+    <button role="tab" aria-selected="false" data-scene="bond">채권</button>
+    <button role="tab" aria-selected="false" data-scene="etf">ETF</button>
+    <button role="tab" aria-selected="false" data-scene="fund">펀드</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage">
+    <svg id="g" role="img" aria-label="값 사전 KG 그래프. 노드를 선택하면 개체 설명이 옆 패널에 나타난다."></svg>
+    <div class="scene-note" id="note"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+  <aside class="panel" id="panel"></aside>
+</div>
+
+
+<section class="rules" id="rules"></section>
+
+<section class="rules" id="status" hidden>
+  <h2>2026-09-04 구현 실측 — 선언한 것과 실재하는 것</h2>
+  <p class="sub">위 절은 <b>선언된 것</b>이다. 여기는 같은 대상을 ttl·KG 산출물에서 <b>세어 본 것</b>이다. 앞 절 수치(2026-09-02~03)는 오늘 33개 항목 전수 재검에서 전부 일치했다. 도메인별 실측은 각 탭 아래에 있다.</p>
+  <div class="rgrid">
+    <div class="rbox">
+      <h3>선언 ↔ 실재 (ttl)<span>ObjectProperty 16종</span></h3>
+      <table>
+        <tr><td><code>hasAssetClass</code></td><td>인스턴스 트리플 <b>3,172</b> ✅</td></tr>
+        <tr><td><code>successor</code></td><td>1건 (프랭클린 → 우리자산운용)</td></tr>
+        <tr><td>나머지 <b>14종</b></td><td><code>manages</code> · <code>issues</code> · <code>isHeldBy</code> · <code>hasCreditGrade</code> · <code>hasCurrency</code> · <code>hasAttribute</code> · <code>investsInCountry</code> · <code>belongsToFund</code> · <code>tracksIndex</code> · <code>hasManager</code> · <code>hasIssuer</code> · <code>hasRegion</code> · <code>hasRiskGrade</code> · <code>holds</code> — <b>트리플 0</b>. 등장하는 것은 전부 <code>owl:inverseOf</code> 상호참조다</td></tr>
+      </table>
+      <p class="sub" style="margin:8px 0 0">반대 방향도 있다 — 실제로 쓰이는데 <b>선언이 없는</b> 술어 셋: <code>coversRegion</code> 2,535 · <code>feedsInto</code> 1,704 · <code>subsidiaryOf</code> 3. 선언된 이름은 <code>hasRegion</code> 인데 emit 되는 이름은 <code>coversRegion</code> 이다.</p>
+    </div>
+    <div class="rbox">
+      <h3>연결 밀도 (KG)<span>노드 41,580 · 간선 7,414</span></h3>
+      <table>
+        <tr><td>Security</td><td>27,996 중 엣지 있음 <b>4</b></td></tr>
+        <tr><td>Fund</td><td>7,584 중 <b>1,682</b> (전부 feedsInto)</td></tr>
+        <tr><td>Organization</td><td>2,527 중 <b>0</b></td></tr>
+        <tr><td>Index</td><td>3,172 중 <b>3,172</b> ✅</td></tr>
+        <tr><td>RiskGrade · Currency<br>Country · CreditGrade<br>FundAttribute</td><td>7 · 8 · 17 · 21 · 179 — <b>전부 0</b></td></tr>
+        <tr><td>합</td><td>고립 <b>36,678 (88%)</b></td></tr>
+      </table>
+      <p class="sub" style="margin:8px 0 0">설계 의도(“KG는 별도 엔진이 아니라 매핑 테이블”)와 정합하고, 접지 사전으로는 <code>kg_alias</code> 66,591건이 실제로 작동한다. 다만 런타임이 읽는 간선은 <code>subsidiaryOf</code> <b>3건뿐</b>이고 나머지 7,411은 적재조차 되지 않는다.</p>
+    </div>
+    <div class="rbox">
+      <h3>산출물 신선도<span>재생성 필요</span></h3>
+      <table>
+        <tr><td>ttl 5분할 · DB</td><td>09-03 20:42 ✅ 최신</td></tr>
+        <tr><td><code>build/viz_kg.json</code></td><td>08-26 · 노드 39,677 (현재 41,580) ❌</td></tr>
+        <tr><td><code>build/kg.html</code></td><td>08-26 ❌</td></tr>
+        <tr><td>커버리지 리포트</td><td><code>prfd_attr_cds</code> 를 쉼표 목록이 아니라 통짜 distinct 로 세어 “179/8926” — <b>오탐</b>. 태그 단위로 쪼개야 한다</td></tr>
+      </table>
+    </div>
+    <div class="rbox">
+      <h3>검증이 실제로 막고 있는 것<span>오류 0 · 경고 8</span></h3>
+      <table>
+        <tr><td>단일 원천</td><td>ttl·KG 둘 다 생성물이고 <code>DO NOT EDIT</code>. 손으로 고친 흔적 없음</td></tr>
+        <tr><td>죽은 alias</td><td>DB distinct 에 없는 값을 잡고 실패 시 산출물을 만들지 않는다</td></tr>
+        <tr><td>경고 8건</td><td>전부 의도된 <code>pending</code> — 1차엔 있고 2차엔 없는 채권 등급 5·통화 3</td></tr>
+        <tr><td>매핑 100%</td><td>AssetClass 18/18 · CreditGrade 15/15 · Currency 7/7</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="rules" id="status-fund" hidden>
+  <h2>공모펀드 — 2026-09-04 서버 실측</h2>
+  <p class="sub">이 도메인 축(클래스·위험등급·역할분리·모자형·부재 선언 …)에서 뽑은 <b>78문항</b>을 서버에 던져 답변을 사람이 판정했다. 결함 16건을 원인으로 묶으면 <b>고칠 자리 8개</b>다.</p>
+  <div class="rgrid">
+    <div class="rbox wide">
+      <h3>78문항 판정<span>✅ 48 · 🟡 14 · ❌ 16</span></h3>
+      <table>
+        <tr><td>부재 선언 누락</td><td><b>ABSENT 4종은 4/4 통과</b>(좌수·운용역·기준가추이·신용등급). 그런데 <code>hasInvestmentStrategy</code> 선언이 없어 "국민성장펀드 투자전략"에서 <b>전략을 지어냈다</b> — 부인 문장과 단정 문장이 한 답변에 공존. 같은 메커니즘에 한 줄 추가하면 닫힌다</td></tr>
+        <tr><td>부정 조건 반전</td><td>"MMF를 <b>제외하고</b>" → <code>zrin_ptn_nm='MMF'</code> 로 뒤집힘. "국내에서 <b>설립된</b>" → 투자지역(<code>fd_ivst_rgn_desc</code>)으로 셈 — 설립국가와 투자처를 섞었다. <code>부정조건</code> 규칙은 trigger 라 발동하지 않았다</td></tr>
+        <tr><td>답변 조립기</td><td>총보수 목록의 2·3·4위가 <code>2.3.4.</code> 로 뭉갬 · UNION 가지가 0행일 때 <b>컬럼 헤더를 데이터로 세어</b> "이자형 1개" 라는 없는 수치를 냄</td></tr>
+        <tr><td>보수 단위</td><td>마스터 보수 4종은 ‰(퍼밀)인데 답변이 <code>0.015%</code> 로 적었다 — 10배. <code>보수단위</code> 규칙은 trigger 7개인데 걸리지 않았다</td></tr>
+        <tr><td>이름 매칭</td><td>공백 무시는 걸리는데 <b>1글자 오타</b>('코어택'·'코어태크')는 못 넘는다. 클래스 '종류A' 를 <code>han_clas_nm</code>(실제 값 '수수료선취-오프라인')로 찾아 0행</td></tr>
+        <tr><td>JOIN 방향</td><td><code>FROM ext_fund_page</code> 로 외부 테이블을 주 테이블로 잡아 마스터 컬럼이 없어 기각 — 마스터가 FROM, ext_* 가 JOIN 이다</td></tr>
+        <tr><td>재생성 프롬프트</td><td>값 검사 기각 → 재생성이 환각 컬럼 생성 → 무응답. 같은 문항이 <b>오전엔 답하고 오후엔 실패</b>(비결정)</td></tr>
+        <tr><td>모수·결측 병기</td><td>숫자는 맞는데 옆에 붙어야 할 한 마디가 없다 — '누적'·'결측 39%'·'사모 영역이라'·'청산 아님'·'상위가 전부 MMF'. 규칙에는 이미 적혀 있고 지켜지지 않는다</td></tr>
+      </table>
+    </div>
+    <div class="rbox">
+      <h3>접지 공백 — 값이 있는데 KG에 없는 축<span>공모펀드</span></h3>
+      <table>
+        <tr><td><code>zrin_ptn_nm</code></td><td>세부유형 <b>85종 전부 미등록</b>(인도주식·중국주식·베트남주식 …). 대유형 <code>zrin_btyp_nm</code> 은 18/18 매핑돼 있다. 실측: 두 문항 모두 Ground 가 “매칭 없음” → 하나는 맞게 찍고 하나는 없는 값을 만들어 실패</td></tr>
+        <tr><td><code>fd_ivst_rgn_desc</code></td><td>9종 중 7종 — 미매핑 '해당없음' 3,678행 · '기타' 38행</td></tr>
+        <tr><td><code>trusc_xtn_itt_cd</code></td><td>50종 중 48종 — 미매핑 2종은 더미(<code>99999999</code> 598행 · <code>00000000</code> 74행)</td></tr>
+      </table>
+      <p class="sub" style="margin:8px 0 0">위 링크 표의 “값 수”는 <b>DB distinct</b> 라 KG가 실제로 덮은 비율이 보이지 않는다. 이 표가 그 차이다.</p>
+    </div>
+    <div class="rbox">
+      <h3>규칙 중복 — 같은 사실을 네 번 말한다<span>always_on 18 · 2,767자</span></h3>
+      <table>
+        <tr><td><code>판매중만</code><br><code>구매가능</code></td><td>둘 다 <code>sale_yn = '판매중'</code> — <b>글자까지 동일</b>. 이름만 둘이다</td></tr>
+        <tr><td><code>공모만</code></td><td><code>prvo_pbff_desc = '공모'</code></td></tr>
+        <tr><td><code>기본모수</code></td><td>위 둘의 AND — <b>앞 세 규칙을 포함</b></td></tr>
+        <tr><td><code>집계_TopN_필수</code></td><td>기본모수 + 정렬 컬럼 결측 조건 — <b>기본모수를 포함</b></td></tr>
+      </table>
+      <p class="sub" style="margin:8px 0 0">다섯이 전부 <b>always_on</b> 이라 매 질의 프롬프트에 함께 실린다(435자). 같은 모수 조건을 네 겹으로 반복하는 셈이고, 규칙 감사(H4)가 지적한 always_on 과다의 실례다.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+(()=>{
+  const c=document.getElementById('status'), f=document.getElementById('status-fund');
+  const sync=k=>{ c.hidden = (k!=='all'); f.hidden = (k!=='fund'); };
+  document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>sync(b.dataset.scene)));
+  let k='all'; try{ k=localStorage.getItem('kg-scene')||'all'; }catch(e){}
+  sync(k);
+})();
+</script>
+
+<script>const RULES={"domains": {"bond": {"file": "ontology/enums/domestic_bonds.yaml", "rules": [{"n": "대표행", "t": "종목 수 집계는 COUNT(DISTINCT pd_no) 또는 GROUP BY pd_no — 1,078종목이 장내·장외 2~4행. 속성 답변에서 '장내행 우선' 으로 한 줄만 고르지 말 것: 장외행은 종류·등급·발행사·위험등급·듀레이션이 NULL 일 수 있다. 값이 다르…", "trig": null, "enf": null}, {"n": "판매행", "t": "판매 조건(매수수익률·매매단가·세후수익률) 질의는 buy_yield IS NOT NULL (634행, 전부 장외 LOT) — 복수 LOT 종목 307(2개 306 · 3개 1)은 조건 N건으로 병기", "trig": null, "enf": null}, {"n": "구매가능", "t": "buyable_quantity 는 무효(사용 금지). '살 수 있나' = curr_cd='KRW' AND mat_dt >= 20260824 (21,814행) 면 구매가능. 🔴 구매가능 판정 기준일은 **2026-08-24(월)** — 데이터 as-of(8/22 토)와 …", "trig": null, "enf": null}, {"n": "문자열비교", "t": "범주형·이름 컬럼은 항상 TRIM 후 비교 (bd_knd·pd_pbcm·영문명 고정폭 패딩 잔존). 런타임 가드가 =·<>·IN 을 교정하지만 처음부터 TRIM 을 쓴다. 존재하지 않는 테이블명(bonds_master 환각)은 normalize_table_names 가…", "trig": null, "enf": null}, {"n": "위험등급방향", "t": "pd_risk_gcd 는 문자열 '11'~'16'·'00'. 뒷자리가 등급이며 숫자가 클수록 안전: 11=매우높은위험(1등급) · 12=높은위험 · 13=다소높은위험 · 14=보통위험 · 15=낮은위험 · 16=매우낮은위험(6등급) · 00=해당없음. 🔴 최상급·안정형…", "trig": null, "enf": null}, {"n": "수익최상급조회", "t": "수익률·금리 최상급 조회('수익률이 가장/제일 높은·낮은 채권')에는 질문에 없는 위험등급·안전 필터를 넣지 않는다 — 최상급 '가장/제일' 은 수익률 축이지 안전 축이 아니다. 전 모수(구매가능 규칙과 같은 모수 — curr_cd='KRW' AND mat_dt >= …", "trig": null, "enf": null}, {"n": "등급서열", "t": "🔴 등급 낱말에 이상·이하가 붙으면 crd_grd 조건은 반드시 TRIM(crd_grd) IN (서열 확장 목록) 으로 쓴다 — '=' 단일 등급은 오답이고, >= '' 부등호는 문자열 사전순이라 서열이 아니다. 서열(높→낮): AAA > AA+ > AA0 > AA- …", "trig": null, "enf": null}, {"n": "등급정규화", "t": "crd_grd 조회 시 'AA'→'AA0' 등 접미사 변환 후 비교. 국공채는 등급 없음 = 정상", "trig": null, "enf": null}, {"n": "필터컬럼표시", "t": "🔴 WHERE 에 쓴 판단 컬럼(crd_grd·pd_risk_gcd·bd_knd 등)은 SELECT 에도 넣는다 — 답변기는 SELECT 된 컬럼만 보므로, 필터 근거가 결과에 없으면 '그 정보가 없다' 오거절이 나온다 (⛑ 런타임 가드 pipeline.ensure_g…", "trig": null, "enf": null}, {"n": "영값배제", "t": "수치 정렬·필터 기본 IS NOT NULL AND <> 0 (normalization.zero_as_missing). 예외 컬럼은 zero_is_value. 0 인 행은 '해당 값이 수록되어 있지 않습니다'로 응답 (주최 공지)", "trig": null, "enf": null}, {"n": "수익률정상", "t": "applied_yield > 0 — =0 201행은 주식연계채 등 YTM 산출 대상 아님", "trig": null, "enf": null}, {"n": "듀레이션정상", "t": "dur IS NOT NULL AND dur != 99 AND dur != 0 AND remaining_days > 0 (99·0 은 결측 표기 · 만기 경과 행 제외). 익일 질의의 ndy_dur 도 같은 조건.", "trig": null, "enf": null}, {"n": "익일값", "t": "ndy_* 컬럼은 '익일' 질의에만. 일반 질의는 당일 컬럼.", "trig": null, "enf": null}, {"n": "과세수익률금지", "t": "avg_annual_tax_yield 사용 금지 (전량 0)", "trig": null, "enf": null}, {"n": "더티금지", "t": "dirty·ndy_dirty 사용 금지 — 99.0%가 eval_price 동일값(정보량 0). '실제 결제금액' 답변 금지", "trig": null, "enf": null}, {"n": "등급일사용금지", "t": "crd_grd_dt 로 등급 최신성·신선도 판단 금지 — 스키마: '등급 미변경 시 과거 일자로 유지될 수 있음'", "trig": null, "enf": null}, {"n": "이자유형분리", "t": "표면금리 정렬은 bd_intp_tcd·bd_inrt_tcd 로 유형 분리 — 할인채(발행 할인율)·변동금리(스냅샷)·srfc_irt=0(구조) 을 고정 이표채와 한 축에 놓지 말 것. 🔴 분리 절(TRIM(bd_intp_tcd)='이표채' AND TRIM(bd_inrt…", "trig": null, "enf": null}, {"n": "정렬축", "t": "🔴 질문의 금리 낱말은 정렬·비교 컬럼으로 고정한다 — 표면금리·표면이자율·쿠폰 = srfc_irt · 수익률 = applied_yield · 세후수익률 = after_tax_yield · 매수수익률 = buy_yield. 질문에 없는 축으로 정렬하지 않고, 답변의 정…", "trig": null, "enf": null}, {"n": "장내종가", "t": "exg_close_price/yield 는 장내 17,746행 중 값이 0 이 아닌 1,270행만 유효(0 = 거래 없음 16,476행) — 기준일(exg_close_price_base_dt) 필수 병기. 장외 4,136행은 NULL(해당없음)", "trig": null, "enf": null}, {"n": "구조표시", "t": "추천·랭킹에서 특수구조(콜·풋·후순위·전환·영구·코코·분리채권·물가채)를 제외하지 않는다 — 빼는 것은 고위험제외 규칙뿐(분리채권 209 는 전부 국고채 6등급). 대신 채권 목록 SELECT 에 아래 식을 '구조' 열로 그대로 붙인다(LIKE 만 사용 · 우선순위 순…", "trig": null, "enf": null}, {"n": "ESG라벨", "t": "종목명의 ESG 라벨은 컬럼이 없어 이름으로만 판정한다(표기 기준): 녹색채권 = (pd_nm LIKE '%(녹)%' OR pd_nm LIKE '%(녹/%' OR pd_nm LIKE '%/녹)%' OR pd_nm LIKE '%/녹/%') · 사회적채권 = (pd_nm …", "trig": null, "enf": null}, {"n": "추천개수정렬", "t": "추천·랭킹 질의는 LIMIT 5 가 기본이다 — 질문에 개수가 있으면(n개·n종목·top n·n가지) 그 수(상한 30). 조회·집계·사실확인 질의는 LIMIT 30 상한 그대로. 추천은 GROUP BY pd_no 로 종목당 한 줄, ORDER BY applied_yi…", "trig": null, "enf": null}, {"n": "개수질문", "t": "'몇 개·몇 종목·개수' 질문은 SELECT COUNT(DISTINCT pd_no) 로 집계해 수를 답한다 — 목록 SELECT 의 LIMIT 행을 세거나 임의 N행을 보여주는 것은 오답이다(LIMIT 30 상한 아래서는 행을 세어도 개수가 아니다). '몇 개만 골라줘…", "trig": null, "enf": null}, {"n": "등급별집계", "t": "'위험등급별 몇 종목·등급별 분포' 질의는 SELECT pd_risk_gcd, pd_risk_nm, COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY pd_risk_gcd, pd_risk_nm — WHERE 로 등급을 거르지 않…", "trig": null, "enf": null}, {"n": "존재질문", "t": "'~채권 있어?/있나요?' 존재 질문은 COUNT(DISTINCT pd_no) 집계 또는 목록 SELECT 어느 쪽도 유효하다 — 단 COUNT(*) 는 행수라 종목 수가 아니다(대표행). 🔴 집계 결과가 양수면 정답은 '네, N종목 있습니다'(+예시·모수) 이고 0이…", "trig": null, "enf": null}, {"n": "금리유형", "t": "'변동금리 채권' 질의 = TRIM(bd_inrt_tcd)='변동금리' 830종목을 답하되 '고정+변동금리' 148종목(일정 기간 고정 후 변동 — ABS·금융채 구조)을 반드시 병기한다. FRN 전체를 물으면 IN ('변동금리','고정+변동금리') 978종목. '고정…", "trig": null, "enf": null}, {"n": "고위험제외", "t": "추천·랭킹 질의는 WHERE 에 pd_risk_gcd <> '11' AND COALESCE(TRIM(crd_grd), '') <> 'C0' AND bd_ofr_tcd <> '사모' 를 넣는다. ❌ NOT (pd_risk_gcd='11' OR crd_grd='C0') 금…", "trig": null, "enf": null}, {"n": "신용보강", "t": "🔴 '정부가 책임지는/보증하는/나라가 갚는/안전한 공공 채권' 류 질의는 반드시 WHERE 에 아래 필터를 그대로 넣는다 — 국공채 단독 필터는 오답이다: (TRIM(std_pd_mcls_nm)='국공채' OR COALESCE(TRIM(pd_pbcm),'')='한국은행…", "trig": null, "enf": null}, {"n": "시장집계금지", "t": "pd_exg_mkt 단독 group-by 금지 — 구성 효과 교란 (§9.5). 같은 종목이 양 시장에 있을 수 있음", "trig": null, "enf": null}, {"n": "장외등급해석", "t": "장외 등급 결측 48.9%(2,023/4,136)는 미평가 — 저품질·고위험으로 해석 금지 (장내는 11.3%)", "trig": null, "enf": null}, {"n": "유동화위험금지", "t": "유동화 = TRIM(bd_knd) IN ('MBS','유동화회사채','Conduit회사채') OR pd_pbcm LIKE '%유동화%' OR pd_pbcm LIKE '%신용보증%' OR pd_pbcm LIKE '%기술보증%' OR pd_nm LIKE '%유동화%' (4…", "trig": null, "enf": null}, {"n": "외화채없음", "t": "🔴 스코프 규칙 — 이 적재분의 통화 스코프는 `scope.currency: [KRW]` 하나다(21,881행). 모든 채권 질의에 curr_cd='KRW' 를 기본 조건으로 걸고, 달러·엔·유로·외화 질의는 '없는 상품' 이 아니라 **'이 데이터의 수록 범위 밖'*…", "trig": null, "enf": null}, {"n": "기준일", "t": "세 날짜를 구분한다 (원천: shared/dataset.yaml `dates` — 코드·규칙이 같은 선언을 읽는다) — ① 데이터 스냅샷 종가일 info_base_dt 20260821(금): remaining_days·가격·수익률의 산출 기준 ② 주최 as-of 8/2…", "trig": null, "enf": null}, {"n": "종류필터", "t": "🔴 채권 종류 낱말(국고채·국채·은행채·카드채·회사채·지방채·통안채·MBS 등)은 동의어 표의 컬럼·값으로 정확히 필터한다. 다의 통칭 3종은 아래 확정식 그대로: ① 국고채·국채 = (TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),…", "trig": null, "enf": null}, {"n": "종류비교", "t": "'A랑 B 중 뭐가 더 높아·A vs B' 두 종류 비교 질의는 한 쿼리에서 CASE 로 분기해 양쪽을 다 조회한다 — SELECT CASE WHEN (A 확정식) THEN 'A' WHEN (B 확정식) THEN 'B' END AS 종류, COUNT(DISTINCT p…", "trig": null, "enf": null}, {"n": "날짜표기", "t": "날짜 컬럼(*_dt)은 정수 YYYYMMDD (REAL 적재). 조건식은 반드시 하이픈·따옴표 없는 정수로: mat_dt <= 20290822. ❌ 2029-08-22 (무따옴표) 는 SQLite 뺄셈=1999 — mat_dt<=1999 가 되어 만기일 미수록(0값) …", "trig": null, "enf": null}, {"n": "만기윈도우", "t": "'N년 안에 만기·만기까지 N년' = mat_dt >= 20260824 AND mat_dt <= 판정일+N년(YYYYMMDD 정수 — 3년이면 20290824). 🔴 상대 시점은 질문 시점 2026-08-24(월) 고정으로 센다: 오늘 = mat_dt = 2026082…", "trig": null, "enf": null}, {"n": "발행사조회", "t": "발행사 질의는 KG 매핑값이 있으면 TRIM(pd_pbcm) 정확 일치, 없으면 pd_pbcm LIKE '%이름%' ('(주)' 위치·꼬리 공백이 제각각: 한국전력 → '한국전력공사(주)' · 산업은행 → '한국산업은행' · 기업은행 → '(주)중소기업은행'). 약칭(…", "trig": null, "enf": null}, {"n": "공모사모판정", "t": "공모/사모는 bd_ofr_tcd 로만(공모 19,875 · 사모 2,007). 종목명으로 추론 금지 — 이름의 '(사)' 는 사모가 아니라 사회적채권 라벨(99.8% 가 공모).", "trig": null, "enf": null}, {"n": "무이자질의", "t": "'이자를 안 주는·무이자·무이표·제로쿠폰·이자 없는 채권' = bd_intp_tcd='할인채' (689행 · 구매가능 686종목 — 발행 시 할인 매각, srfc_irt 란은 발행 할인율) 가 기본. 표면금리 0 인 579행/577종목(이표채 499·복리채 57·할인채…", "trig": null, "enf": null}, {"n": "영구채필터", "t": "'신종자본증권·영구채·AT1·조건부자본증권' 질의 = (pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%') — 구매가능 237종목. '신종' 단독은 14종목을 놓친다. 이 채권의 mat_dt 는 만기일이 아니라 1차 콜행사개시일 — 답변에 '만기일 …", "trig": null, "enf": null}]}, "etf_kr": {"file": "ontology/enums/domestic_etfs.yaml", "rules": [{"n": "편입비중상위", "t": "\"○○를 가장 많이 편입한 ETF\" 는 **상품명이 아니라 실측 비중**으로 답한다 — ext_etf_holdings 를 external_join 키(etf_code = pd_itm_no)로 JOIN 하고 weight_pct 로 정렬한다. 🔴 키움 챗봇이 여기서 틀렸다…", "trig": null, "enf": null}, {"n": "ETF만", "t": "pd_grp_no = 'ETF'", "trig": null, "enf": null}, {"n": "ETN만", "t": "pd_grp_no = 'ETN'", "trig": null, "enf": null}, {"n": "구매가능", "t": "pd_lste_dt = 99991231 AND pd_sale_yn = 1", "trig": null, "enf": null}, {"n": "보수유효", "t": "cu_charge_rt > 0 AND pd_grp_no = 'ETF' 총보수 정렬·필터·Top-N('총보수 낮은 ETF' 등)은 **두 조건을 함께** WHERE 에 넣는다. · `cu_charge_rt > 0` — 0(=미입력)·NULL 이 1,713행이라 조건 없이…", "trig": null, "enf": null}, {"n": "섹터테마질의", "t": "pd_sect_cd 사용 금지 — ref_base_index·상품명·ext_*_holdings 3축 우회로 풀고 근거 축을 답변에 밝힌다 🔴 `wu_inv_ast_type` 도 섹터가 아니다 — 자산군(주식·채권·원자재·대체투자·단기자금…)뿐이라 `LIKE '%반도체%…", "trig": ["섹터", "테마", "업종", "관련", "반도체", "2차전지", "배터리", "바이오", "헬스", "의료", "전력", "원자력", "에너지", "로봇", "소비", "방산", "우주", "리츠", "은행", "게임", "소프트", "조선", "통신", "유통", "자동차", "금융", "인터넷", "엔터", "식품", "철강", "건설", "화학", "신재생", "미디어", "친환경", "전기차"], "enf": null}, {"n": "수익률정상", "t": "<질의 대상 기간 컬럼> > -100 AND <동일 컬럼> IS NOT NULL", "trig": null, "enf": null}, {"n": "수익률정상_근거", "t": "-100 센티넬은 전 기간에 있다 (2차 실측 2026-08-25) — 1d 1 · 1m 16 · 3m 45 · 6m 66 · ytd 69 · 1y 110건. 1y 110건 전건이 du_clpr=0 동반(거래중단·상폐). 정렬·필터에 쓰는 바로 그 기간 컬럼에 건다 —…", "trig": ["수익", "성과", "등락"], "enf": null}, {"n": "수익률상위질의", "t": "기간 수익률 Top-N 은 SELECT 에 **`cu_lev_fector`(배수)를 함께** 넣는다 — `SELECT pd_abrv_nm, <기간컬럼>, cu_lev_fector FROM ...`. 서버 실측 2026-09-02: \"3개월 수익률 좋은 국내 ETF 5개…", "trig": ["수익률", "성과", "수익", "많이 오른", "상승률"], "enf": null}, {"n": "종가정상", "t": "du_clpr > 0", "trig": null, "enf": null}, {"n": "수치기본배제", "t": "<수치 컬럼> IS NOT NULL AND <수치 컬럼> <> 0 — normalization.zero_is_value_columns 는 예외", "trig": null, "enf": null}, {"n": "전부0컬럼금지", "t": "cu_charge_etc_rt · pd_dvid_inc_dist · fn_average_maturity · fn_effective_duration · fn_modified_duration 사용 금지", "trig": null, "enf": null}, {"n": "분배질의_ETF만", "t": "pd_grp_no = 'ETF' AND pd_divd_amt_pshr > 0", "trig": ["분배", "배당", "지급", "월배당", "인컴", "매달", "매월", "다달", "월지급"], "enf": null}, {"n": "월분배", "t": "pd_dvid_cycl = 'M'", "trig": ["분배", "배당", "월", "매달", "매월", "다달", "월지급"], "enf": null}, {"n": "분배금개별조회", "t": "🔴 분배금 **절대액 컬럼(pd_divd_amt_pshr·pd_divd_amt_ann)을 SELECT 하지 않는다** — 100배 스케일 오염이 확정됐다. 실측 2026-09-02: TIGER 미국배당다우존스 pshr = 3603.4554 인데 검산(분배율 2.832%…", "trig": ["분배금", "배당금", "분배액", "배당액", "분배", "배당"], "enf": null}, {"n": "기초지수", "t": "COALESCE(NULLIF(TRIM(ref_base_index),''), NULLIF(TRIM(cu_base_index),''))", "trig": null, "enf": true}, {"n": "복제방식_모수", "t": "pd_grp_no = 'ETF' AND cu_strtegy IN ('실물복제','합성복제','액티브')", "trig": ["복제", "합성", "실물", "액티브", "패시브", "운용방식", "전략"], "enf": null}, {"n": "판매중만", "t": "pd_sale_yn = 1", "trig": null, "enf": null}, {"n": "거래정상", "t": "pd_tr_yn = 0", "trig": null, "enf": null}, {"n": "레버리지", "t": "ABS(cu_lev_fector) > 1", "trig": ["레버리지", "2X", "3X", "2배", "3배", "곱", "따블", "더블"], "enf": null}, {"n": "레버리지_인버스혼입경고", "t": "ABS(cu_lev_fector) > 1 AND (pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0) 이 조건에 걸리는 상품이 결과에 있으면 **빼지 말고 인버스 포함 사실을 답변에 밝힌다**. 레버…", "trig": null, "enf": null}, {"n": "인버스", "t": "(pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0) 🔴 질문이 \"인버스 **ETF**\" 면 여기에 `AND pd_grp_no = 'ETF'` 를 **반드시** 함께 건다. 이 조건에 걸리는 235건…", "trig": null, "enf": null}, {"n": "지수추종_순수", "t": "ref_base_index NOT LIKE '%Covered Call%' AND ref_base_index NOT LIKE '%Blend%' AND ref_base_index NOT LIKE '%Premium%' AND ref_base_index NOT LIKE '%5…", "trig": ["추종", "지수", "인덱스", "순수"], "enf": null}, {"n": "롱숏", "t": "pd_abrv_nm LIKE '%롱%숏%' OR pd_nm LIKE '%롱%숏%' 🔴 이 2건(KODEX 200롱코스닥150숏선물·코스닥150롱코스피200숏선물)은 \"인버스 ETF\" 질의에 넣으면 안 되고 \"레버리지\" 도 아니다(배수 1배). \"시장이 내리면 버는 상품…", "trig": ["롱", "숏", "인버스", "하락", "내리", "떨어"], "enf": null}, {"n": "자산군오분류_제외", "t": "pd_itm_no NOT IN ('KR7261140008')", "trig": null, "enf": null}, {"n": "채권형질의", "t": "wu_inv_ast_type LIKE '%채권%' AND NOT (pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%' OR cu_lev_fector < 0) AND pd_itm_no NOT IN ('KR7261140008')", "trig": ["채권"], "enf": null}, {"n": "편입비중상위_레버리지경고", "t": "ABS(cu_lev_fector) > 1 이 조건에 걸리는 상품이 결과 상위에 있으면 **빼지 말고 답변에 밝힌다** — 단일종목 ETF 가 있는 대형주는 상위가 레버리지로 채워진다(실측: 삼성전자 TOP5 중 레버리지 5/5, 1위 KODEX 삼성전자단일종목레버리지 …", "trig": null, "enf": null}, {"n": "운용사정규화", "t": "ref_fund_mgmt_co (영문 정규) ↔ 코드북 asset_manager.csv 한글 약칭 — cu_fund_mgmt_co 직접 비교 금지", "trig": null, "enf": null}, {"n": "어휘_표기정규화", "t": "🔴 상품명과 지수명은 **언어가 갈린다** — 국내ETF 상품명은 한글 1,779/1,780, 지수명(ref_base_index)은 한글 0건(전부 영문)이다. 그래서 \"코스피200 ETF\" 를 한쪽만 보면 놓친다 — 실측: 상품명 21건 · 지수명 95건 · **교집…", "trig": ["코스피", "코스닥", "나스닥", "다우", "항셍", "니케이", "닛케이", "S&P", "KRX", "CSI", "지수", "추종", "인덱스", "에스앤피"], "enf": null}, {"n": "한글자_어휘금지", "t": "🔴 `금`·`은` 처럼 **한 글자로 LIKE 를 걸지 말 것.** 실측 오탐이 절반이다 — `%금%` 97건 중 49건이 금**융**·금**리**·현**금**(예: TIGER200금융, KODEX 금융채1~2년), `%은%` 49건 중 13건이 **은행**(예: RI…", "trig": ["금", "은"], "enf": null}, {"n": "국내_AI표기", "t": "\"AI\" 는 상품명 93건에 있으나 그중 **3건이 오탐**이다 — 운용사 브랜드 `DAISHIN`(대신) 안의 AI 다 (대신 DAISHIN 오피스리츠 · K200 · 금융&지주고배당). 한글 이름이라 앞뒤가 한글인 경우가 많아 (`코리아AI전력기기`) 공백 경계로는…", "trig": ["AI", "인공지능"], "enf": null}, {"n": "상품명조회", "t": "🔴 개별 상품을 이름으로 찾을 때는 `pd_abrv_nm`(약어명)을 본다. 사람은 약어명으로 부른다. `pd_nm`(정식명)에는 운용사·법적 형태가 앞뒤로 붙어 있어 호칭과 글자가 다르다. 서버 실측 2026-08-31 — \"KODEX 200 총보수 알려줘\" 가 `W…", "trig": null, "enf": null}, {"n": "질문에_없는_필터금지", "t": "🔴 질문이 요구하지 않은 제한 조건을 임의로 붙이지 않는다 — 서버 실측 2026-09-02 \"바이오 ETF 추천해줘\" 에 `cu_charge_rt > 0`(보수 안 물음)과 `ABS(cu_lev_fector) <= 1` (레버리지 제외 안 물음)이 붙었다. 전자는 모…", "trig": null, "enf": null}, {"n": "배수질의", "t": "🔴 \"3배 레버리지\" 처럼 **배수가 문장에 있으면 `cu_lev_fector` 조건을 반드시 건다** — 3배는 `ABS(cu_lev_fector) = 3`, 2배는 `= 2`, 배수 미지정 레버리지는 `ABS(cu_lev_fector) > 1`. 서버 실측 2026…", "trig": ["배", "3배", "2배", "레버리지", "곱버스", "인버스2X", "곱하기"], "enf": null}, {"n": "추적오차질의", "t": "🔴 추적오차 낮은순은 `du_chas_errt > 0` 을 **반드시** 함께 건다 — 서버 실측 2026-09-04 재발: 조건 없이 `ORDER BY du_chas_errt ASC` 가 나가 **1위가 0.0%** 였다(HANARO KOFR금리액티브). 0값 16건…", "trig": ["추적오차", "추적", "오차", "괴리", "괴리율", "벤치마크"], "enf": null}, {"n": "상품설명_창작금지", "t": "🔴 **SELECT 하지 않은 값을 답변에서 설명하지 않는다.** 서버 실측 2026-09-04 — \"원자재 ETN 3개 추천\" 답변이 \"은 선물의 가격 변동을 **2배수로** 추종합니다\"·\"지수가 하락할 때 **2배 수익**\" 이라고 썼는데 SQL 은 `cu_lev_…", "trig": ["추천", "소개", "설명", "특징", "어떤 상품", "어떤 ETF"], "enf": null}, {"n": "전체개수_모수", "t": "🔴 \"총 몇 개\" 에 답할 때 **어떤 모수인지 밝힌다.** 서버 실측 2026-09-04 — \"국내 상장 ETF 총 몇 개야?\" 에 `pd_sale_yn = 1` 이 주입돼 **1,160** 이 나갔는데, 판매중 조건 없는 전체 ETF 는 **1,235**, ETN …", "trig": ["총", "전체", "몇 개", "개수", "모두", "다 해서"], "enf": null}, {"n": "ETN_정렬축", "t": "🔴 ETN 은 **순자산으로 정렬할 수 없다** — `du_last_aum` 이 545건 **전건 0 또는 NULL**(0 초과 0건 · NULL 123)이다. `개수만_준_질의` 의 기본 정렬(순자산 내림차순)을 ETN 에 그대로 쓰면 정렬이 무의미해져 DB 저장 순…", "trig": ["ETN", "상장지수증권", "원자재", "은 선물", "금 선물", "천연가스", "원유"], "enf": null}, {"n": "거래활발질의", "t": "🔴 축을 **먼저 정하고 답변에 밝힌다** — 기본은 **거래대금** `du_val_1d`(단위 원)이고, \"거래량\" 을 명시하면 `du_vol_1d`(단위 주)를 쓴다. 두 축은 **답이 거의 완전히 다르다**: 서버 실측 2026-09-04 — 거래대금 1위 KOD…", "trig": ["거래", "활발", "유동성", "인기", "많이 사고", "거래량", "거래대금", "손바뀜"], "enf": null}, {"n": "환헤지질의", "t": "🔴 국내 상장 ETF 에 환헤지 **플래그 컬럼은 없다.** 상품명 접미어로만 구분한다 — `(pd_abrv_nm LIKE '%(H)%' OR pd_abrv_nm LIKE '%(합성 H)%' OR pd_nm LIKE '%(H)%' OR pd_nm LIKE '%(합성 H…", "trig": ["환헤지", "헤지", "환노출", "환위험", "언헤지", "환율"], "enf": null}, {"n": "연금질의", "t": "🔴 \"퇴직연금·연금 계좌로 살 수 있는\" 은 **`pd_pen_tr_yn = 'Y'`** 로 거른다(ETF 1,022건). 서버 실측 2026-09-04 오답 — 이 조건 없이 그냥 판매중 ETF 30건을 뽑아 \"퇴직연금으로 살 수 있는 ETF\" 라고 답했다. 연금 계…", "trig": ["퇴직연금", "연금", "IRP", "개인연금", "DC", "노후"], "enf": null}, {"n": "변동성질의", "t": "변동성은 `du_vlty_1y`(최근 252거래일 연환산, **단위 %**)를 쓰고 `du_vlty_1y > 0` 을 함께 건다. 🔴 `IS NOT NULL` 만으로는 모자란다 — 0값 3건(TIGER 금속선물(H)·ACE 러시아MSCI(합성)· ACE 글로벌메타버스테…", "trig": ["변동성", "안정적", "흔들", "출렁", "등락", "리스크"], "enf": null}, {"n": "추적오차_괴리율", "t": "추적오차·괴리율은 **국내 전용** 컬럼이다 — `du_chas_errt`(추적오차율 %)·`du_diff_rt`(괴리율 %). 해외 테이블에는 없다(du_diff_rt 3건뿐 — 없다고 답한다). ✅ 추적오차 낮은순: `du_chas_errt > 0 AND pd_gr…", "trig": ["추적오차", "괴리율", "괴리", "추적", "벌어"], "enf": null}, {"n": "지역질의_합집합", "t": "특정 국가·지역에 투자하는 ETF 를 찾을 때 `wu_inv_rgn` **단독 필터를 쓰지 않는다** — 원천 데이터 오분류가 실측된다(2026-09-02 전수조사: 'TIGER 미국S&P500선물(H)' 가 rgn='국내', 'TIGER 차이나항셍30' 이 rgn='…", "trig": ["미국", "중국", "차이나", "일본", "인도", "베트남", "유럽", "글로벌", "이머징", "대만", "투자하는", "투자지역"], "enf": null}, {"n": "국내는_지역필터가_아니다", "t": "🔴🔴 질문의 `국내`·`국내 상장` 을 **`wu_inv_rgn` 조건으로 절대 옮기지 않는다.** domestic_etfs 테이블은 이미 **전건이 국내 상장 ETF·ETN(1,780행)** 이라 별도 필터가 필요 없다. 붙이면 해외에 투자하는 상품이 통째로 빠진다 …", "trig": ["국내"], "enf": null}, {"n": "보수개별조회", "t": "🔴 개별 상품의 총보수를 물으면 **`NULLIF(cu_charge_rt, 0)` 으로 감싸서** SELECT 한다. 형식: `SELECT pd_abrv_nm, NULLIF(cu_charge_rt, 0) AS cu_charge_rt FROM domestic_etfs W…", "trig": null, "enf": null}, {"n": "환헤지", "t": "pd_nm LIKE '%H)%' 🔴 **닫는 괄호까지 붙여서** 찾는다. `%H%` 로 찾으면 372건이 나오는데 그중 112건이 오탐이다 — 운용사 브랜드 `HANARO`·`DAISHIN` 안의 H 다. 실측 2026-08-31 — `H)` 로 끝나는 것 **260건…", "trig": ["환헤지", "헤지", "환노출", "(H)", "환율", "환"], "enf": null}, {"n": "선물", "t": "pd_nm LIKE '%선물%' 대응 컬럼이 없어 상품명이 유일 근거다. 지수명 `Futures` 는 25건뿐이라 지수로는 못 찾는다 (상품명 401건 · 지수명에 Futures 없는 것이 376건 · 반대 방향 오탐 0건). 🔴 401건 중 **311건이 ETN** …", "trig": ["선물"], "enf": null}, {"n": "단일종목", "t": "pd_nm LIKE '%단일종목%' 18건뿐이고 전수 확인했다 — 기초자산은 **삼성전자·SK하이닉스 둘뿐**이고 **18건 전부 배수 2.0** (레버리지 16 · 인버스2X 2). 자산군은 대체투자 16 · 주식 2(ETN). 🔴 분산 상품이 아니다. \"ETF 니까…", "trig": ["단일"], "enf": null}, {"n": "총수익지수_TR", "t": "ref_base_index LIKE '%TR%' (총수익) · LIKE '%PR%' (가격) 실측 — 지수명에 TR 214건 · PR 44건(단어경계; 부분일치 332·104 — 2026-09-02 재계수). 상품명에는 표기가 거의 없어 **지수명으로만** 판별한다. …", "trig": ["TR", "PR", "총수익", "배당재투자"], "enf": null}, {"n": "현재가_실시간아님", "t": "🔴 `ru_mkt_price`·`ru_mkt_volume` 를 **SELECT 하지 않는다** — 이름과 달리 실시간이 아니라 **종가·일거래량 복사본**이다(실측 2026-09-04: ru_mkt_price = du_clpr 1,774/1,780 · ru_mkt_vo…", "trig": ["현재가", "지금", "실시간", "시세", "가격", "얼마", "주가", "오늘"], "enf": null}, {"n": "개수만_준_질의", "t": "🔴 `LIMIT N` 을 쓸 때 **`ORDER BY` 없이 두지 않는다.** 질문이 개수만 주고 기준을 안 주면(\"인버스 ETF **3개** 알려줘\") 기본 정렬은 **순자산 내림차순** `ORDER BY du_last_aum DESC` 이고, 답변에 그 기준을 한 …", "trig": null, "enf": null}, {"n": "섹터_한영대응", "t": "🔴 주최가 출제 축으로 지목한 **\"섹터 - 상품\"** 질의용 대응표(8/31 공지). 섹터 컬럼은 **없다** — `pd_sect_cd` 는 섹터가 아니라 상품유형(2차: 코드2 1,160 · 코드3 419 · 단일종목 18 · 미분류(NULL) 182 — 옛 1,1…", "trig": ["섹터", "테마", "업종", "관련", "반도체", "2차전지", "배터리", "바이오", "헬스", "의료", "전력", "원자력", "에너지", "로봇", "소비", "방산", "우주", "리츠", "은행", "게임", "소프트", "조선", "통신", "유통", "자동차", "금융", "인터넷", "엔터", "식품", "철강", "건설", "화학", "신재생", "미디어", "친환경", "전기차"], "enf": null}, {"n": "위험요인질의", "t": "\"위험요인·위험성·리스크\" 를 물으면 **위험을 서술할 재료 컬럼을 SELECT 에 넣는다** — `pd_abrv_nm, pd_risk_nm(위험등급), cu_lev_fector(배수), du_vlty_1y(연변동성), wu_inv_ast_type(자산군), pd_nm…", "trig": ["위험", "리스크", "원금", "손실", "안전", "물리"], "enf": null}]}, "etf_gl": {"file": "ontology/enums/overseas_etfs.yaml", "rules": [{"n": "ETF만", "t": "pd_grp_no = 'ETF'", "trig": null, "enf": null}, {"n": "ETN만", "t": "pd_grp_no = 'ETN'", "trig": null, "enf": null}, {"n": "기초지수유효", "t": "cu_base_index NOT LIKE '%not provided%' AND cu_base_index NOT LIKE '%not available%'", "trig": null, "enf": null}, {"n": "보수유효", "t": "cu_charge_rt > 0 총보수 **정렬·필터·Top-N**('수수료 저렴한 해외 ETF' 등)에만 반드시 넣는다. 0값 419건(레버리지/인버스/ETN 위주)은 '보수 0' 이 아니라 미수록 — 없으면 0값 행들이 '가장 저렴' 으로 도배된다(2026-08-31…", "trig": null, "enf": null}, {"n": "ISIN조인금지", "t": "🔴 pd_isin_cd·pd_lipper_id 는 단독 조인·단건 조회 키로 쓰지 않는다 — 각각 63종이 2개 상품에 걸린다(같은 ISIN 이 OEUR.K/OEFA.K 둘 다). 조인·단건 조회 키는 pd_itm_no. ISIN 검색 결과가 복수면 티커를 병기해 모두…", "trig": ["ISIN", "편입", "보유", "담은", "담고", "구성", "포함", "들어"], "enf": null}, {"n": "종목질의_회사채포함", "t": "발행사(Sec_lei_*·Sec_m_*) 후손 확장 결과에 채권이 섞이면 제외하지 말고 답변에 밝힌다", "trig": ["편입", "보유", "담은", "담고", "구성", "포함", "들어", "채권"], "enf": null}, {"n": "인버스숏", "t": "cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0 OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X Short %' OR pd_nm LIKE '%Daily Short%' OR (pd_nm LIKE '%Bea…", "trig": null, "enf": null}, {"n": "레버리지", "t": "cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1 🔴 NULL 5,136건(85%)은 '미수록' 이지 **1배 확정이 아니다** — 결측 행을 '레버리지 아님' 으로 말하지 않는다(이름의 2X·3X·Ultra 를 함께 본다…", "trig": ["레버리지", "2X", "3X", "2배", "3배", "Ultra", "배수", "따블", "더블"], "enf": null}, {"n": "레버리지_인버스혼입경고", "t": "cu_lev_fector IS NOT NULL AND ABS(cu_lev_fector) <> 1 AND (cu_inverse_short_yn = 'Y' OR cu_lev_fector < 0 OR pd_nm LIKE '%Inverse%' OR pd_nm LIKE '%X …", "trig": null, "enf": null}, {"n": "상장일유효", "t": "pd_lstg_dt <> 0", "trig": null, "enf": null}, {"n": "판매중만", "t": "pd_sale_yn = 1", "trig": null, "enf": null}, {"n": "거래정상", "t": "pd_tr_yn = 0", "trig": null, "enf": null}, {"n": "구매가능", "t": "1 = 1 해외ETF 는 상장폐지 필터 컬럼이 없고 유효분 전부 판매중이라 조건이 없다(1=1). 구매 가능 여부를 물으면 \"마스터에 수록된 종목 = 구매 가능(주최 기준)\" 으로 답한다.", "trig": null, "enf": null}, {"n": "수치정렬기본", "t": "{col} IS NOT NULL AND {col} <> 0", "trig": null, "enf": null}, {"n": "zero_is_value", "t": "", "trig": null, "enf": null}, {"n": "zero_is_missing", "t": "", "trig": null, "enf": null}, {"n": "통합정렬환율", "t": "du_last_aum * fx_rate(USD→KRW, fx_rate.csv) 🔴 국내(원화)와 해외(달러)를 **한 표로 정렬하려면 환산이 선행**돼야 한다 — 환산을 안 했으면 통합 정렬 금지, 상품군별로 분리해 제시한다.", "trig": ["원화", "환율", "통합", "함께", "국내", "비교", "합쳐"], "enf": null}, {"n": "단어경계_필수", "t": "🔴 영문 약어를 `LIKE '%AI%'` 로 걸면 안 된다. 실측 오탐이 압도적이다 — `AI` 부분일치 840건 중 **786건(93.6%)이 오탐**이고(Ch**ai**nlink · D**ai**ly · C**a**l**i**fornia 등), `US` 는 1,33…", "trig": null, "enf": null}, {"n": "상품명조회", "t": "🔴 해외는 국내와 정반대다. `pd_abrv_nm` 이 이름이 아니라 **티커**다 — 6,037건 전건이 `pd_itm_no` 에서 `.K`/`.O` 를 뗀 것과 일치한다(AAUA / AAUA.K). 약어명이 정식명 안에 든 것은 68/6,037(대소문자 구분)·19…", "trig": null, "enf": null}, {"n": "질문에_없는_필터금지", "t": "🔴 질문이 요구하지 않은 제한 조건을 임의로 붙이지 않는다(국내와 같은 방침). 서버 실측 2026-09-04 — \"환헤지된 미국 ETF 알려줘\" 에 아무도 요구하지 않은 `cu_inverse_short_yn = 'N' AND cu_lev_fector > 0` 이 붙어…", "trig": ["ETF", "알려줘", "추천", "뭐가", "있어", "목록", "개수", "몇"], "enf": null}, {"n": "목록조회_별칭", "t": "🔴 **목록 질의에 전 컬럼을 나열하지 않는다** — `SELECT DISTINCT pd_nm, 티커, cu_*, du_*, pd_* …` 처럼 45개 컬럼을 늘어놓는 것은 `SELECT *` 와 같다(서버 실측 2026-09-04 환헤지 질의). 답변기가 컬럼을 오독…", "trig": ["알려줘", "추천", "목록", "뭐가", "있어", "리스트"], "enf": null}, {"n": "환헤지질의", "t": "🔴 해외 ETF 에 환헤지 **플래그 컬럼은 없다.** 상품명으로만 구분한다 — `pd_nm LIKE '%Hedged%'` 실측 2026-09-04: 69건(Currency Hedged 6 · 미국 투자 46). 대표: DBEF(Xtrackers MSCI EAFE He…", "trig": ["환헤지", "헤지", "Hedged", "환노출", "환위험", "언헤지"], "enf": null}, {"n": "전략텍스트_분류금지", "t": "🔴 `cu_strtegy` 는 분류 컬럼이 아니다 — 투자설명서 문장 텍스트(고유값 5,943종)다. 여기에 LIKE 를 걸어 상품을 분류하지 않는다. 서버 실측 2026-09-02 — \"월배당 ETF\" 에 `cu_strtegy LIKE '%Monthly Income%…", "trig": null, "enf": null}, {"n": "월배당_해외한계", "t": "🔴 해외 테이블에는 **분배주기 컬럼이 없다** (국내의 pd_dvid_cycl 같은 것이 없음). \"월배당 해외 ETF\" 를 정확히 판별할 수 없다 — 이름 기반 근사만 가능하다: `' '||replace(...)||' ' LIKE '% Income %'`(단어경계_…", "trig": ["월배당", "월지급", "매월", "매달", "다달", "분배", "배당주기", "Income"], "enf": null}, {"n": "현재가_실시간아님", "t": "🔴 `ru_mkt_price`·`ru_mkt_volume` 를 **SELECT 하지 않는다** — 종가·거래량 복사본이다 (실측 2026-09-04: 각각 du_clpr·du_vol_1d 와 6,023/6,037 동일). `du_clpr AS 종가USD`, `du_vo…", "trig": ["현재가", "지금", "실시간", "시세", "가격", "얼마", "주가", "오늘", "price"], "enf": null}, {"n": "개수만_준_질의", "t": "🔴 `LIMIT N` 을 `ORDER BY` 없이 두지 않는다. 축이 문장에 없으면 기본 정렬은 **순자산 내림차순** `ORDER BY du_last_aum DESC` 이고 답변에 그 기준을 밝힌다(국내와 동일 방침). 서버 실측 2026-09-01 — \"미국 반도체…", "trig": null, "enf": null}, {"n": "개별조회_별칭", "t": "🔴 개별 상품 정보 조회(\"VOO 정보 알려줘\")에 **`SELECT *` 를 쓰지 않는다.** 49개 컬럼이 암호 같은 원어 이름으로 답변기에 넘어가면 오독한다 — 서버 실측 2026-09-01, VOO 한 답변에서 4건: ① `pd_us_cik`(SEC 등록번호) …", "trig": ["정보", "뭐야", "어떤", "알려", "소개", "설명"], "enf": null}]}, "fund": {"file": "ontology/enums/public_funds.yaml", "rules": [{"n": "종목단위", "t": "행 = itm_no (dedup 불필요 — 2차)", "trig": null, "enf": null}, {"n": "펀드단위", "t": "GROUP BY or_co_xtn_itt_cd, COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END, public_funds.it…", "trig": null, "enf": true}, {"n": "펀드단위_근거", "t": "GROUP BY mtco_itm_no 단독은 틀린 집계 — 415종의 값이 2개 이상 운용사에 걸친다. 짧은 mtco 는 정상 값이며 zero-pad(7자)가 정본, 길이 8+ 는 자르지 말 것. 더미 mtco(기본모수 11행)는 패딩하면 남남끼리 뭉친다 — itm_n…", "trig": null, "enf": null}, {"n": "추천개수", "t": "추천·상위·Top-N 질의에 개수가 없으면 LIMIT 5 (개수를 말했으면 그 수) — 답에 '상위 5개 기준' 을 밝힌다", "trig": null, "enf": null}, {"n": "개인법인", "t": "pers_corp_desc 의 '해당없음'(기본모수 6,864행)은 결측이 아니라 **개인·법인 전용이 아닌 일반 펀드**다. '개인이 가입할 수 있는' = pers_corp_desc IN ('개인','해당없음') · '법인 전용' = '법인' · '개인 전용' = '…", "trig": ["개인", "법인"], "enf": null}, {"n": "해외구분", "t": "해외 투자 여부는 ovrs_fd_desc('해외' 4,483 · '국내외혼합' 878 · '국내' 3,498 — 기본모수) — '해외 투자 펀드' 는 IN ('해외','국내외혼합') 이 기본(혼합 포함 여부를 답에 밝힌다). 세부 지역(아시아·북미 등)은 fd_ivst…", "trig": ["해외", "국내외", "글로벌"], "enf": null}, {"n": "헤지펀드", "t": "🔴 hdge_fd_yn 으로 풀지 말 것 — 그 플래그는 사모 등록분만 표시해 공모에서 0행이고, 그걸 근거로 \"없다\" 고 답하면 오답이다. 공모로 판매되는 헤지펀드는 **사모투자재간접 공모펀드** 형태다: (zrin_ptn_nm = '글로벌헤지전략' OR itm_nm…", "trig": ["헤지펀드", "헤지 펀드", "헤지 전략", "절대수익"], "enf": null}, {"n": "설명서항목", "t": "마스터에 없는 아래 항목은 투자설명서 수집분 ext_fund_page 에 있다 — JOIN 으로 답한다. 조인: ext_fund_page.itm_no = public_funds.itm_no 🔴 두 테이블 모두 itm_no 를 가지므로 별칭을 붙이고 **모든 컬럼을 한정…", "trig": ["설정일", "설정된", "언제 설정", "오래된", "환매", "환매수수료", "환매 조건", "환매금지", "모펀드", "투자설명서", "설명서", "구조", "투자전략", "전략", "동향"], "enf": null}, {"n": "당사판매", "t": "🔴 '미래에셋증권에서 살 수 있는/취급하는' 은 **판매사** 질의다 — thco_sale_yn = 'Y' 로 푼다 (기본모수 8,550행 · 2,908펀드. 나머지 419행은 NULL = 당사 미취급). 미래에셋증권을 운용사(or_co_xtn_itt_cd)나 수탁사(…", "trig": ["미래에셋증권", "당사", "우리 회사", "우리회사", "살 수 있는", "판매하는", "취급", "판매사"], "enf": null}, {"n": "운용사질의", "t": "🔴 운용사는 or_co_xtn_itt_cd(운용회사대외기관코드)로 식별한다 — 운용사 '이름' 컬럼은 마스터에 없다. mtco_nm 은 **존재하지 않는 컬럼**이고, mtco_itm_no 는 운용사가 아니라 운용사가 매긴 펀드 번호다. 이름은 ext_fund_page…", "trig": ["운용사", "운용하는", "자산운용", "운용회사", "운용 회사"], "enf": null}, {"n": "유형별분포", "t": "🔴 펀드의 '유형' 은 **자산 유형**이다 — 공모/사모(prvo_pbff_desc)는 모집 방식이지 유형이 아니다. 제로인 대유형 zrin_btyp_nm 으로 GROUP BY 한다(기본모수 19종: 해외주식형 2,784 · 주식형 1,773 · 해외기타 801 · …", "trig": ["유형별", "유형", "종류별", "어떤 유형", "분포", "몇 개씩"], "enf": null}, {"n": "전문투자자코드금지", "t": "pfiv_sale_cntl_tcd 는 코드 의미 미제공(주최 확정) — 어떤 질의에도 조건·정렬로 쓰지 않는다", "trig": null, "enf": null}, {"n": "판매중만", "t": "sale_yn = '판매중'", "trig": null, "enf": null}, {"n": "구매가능", "t": "sale_yn = '판매중'", "trig": null, "enf": null}, {"n": "공모만", "t": "prvo_pbff_desc = '공모'", "trig": null, "enf": null}, {"n": "기본모수", "t": "sale_yn = '판매중' AND prvo_pbff_desc = '공모' # 집계·Top-N 은 이 조건을 반드시 WHERE 에 넣는다. 모수 8,969 를 답변에 밝힐 것", "trig": null, "enf": true}, {"n": "집계_TopN_필수", "t": "🔴 집계·Top-N SQL 은 반드시 WHERE 에 sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND <정렬 컬럼> IS NOT NULL AND <정렬 컬럼> <> 0 을 포함한다(zero_is_value 컬럼은 0 조건 제외 · 수익률…", "trig": null, "enf": null}, {"n": "대표행", "t": "🔴 랭킹·Top-N·집계는 클래스(행)가 아니라 펀드 단위다 — 펀드단위 키(or_co_xtn_itt_cd + zero-pad mtco_itm_no)로 GROUP BY 하고 펀드당 1행(정렬 컬럼 MAX 인 클래스)만 낸다. 행 단위면 한 펀드의 클래스들이 TOP5 를…", "trig": null, "enf": null}, {"n": "수익률극단값", "t": "수익률 랭킹에서 극단값을 제외하지 않는다(제외는 수익률기점오류_제외의 검증 3건뿐). 수익률 8기간 컬럼 (fd_mm1_ern_r ~ fd_yr5_ern_r)은 전부 누적. SELECT 에 zrin_attr_nms 와 fd_daily_bas_dt 를 함께 싣는다 — 답…", "trig": null, "enf": null}, {"n": "ETF제외", "t": "itm_nm NOT LIKE '%상장지수%'", "trig": null, "enf": null}, {"n": "수익률정상", "t": "<질의 대상 기간 컬럼> IS NOT NULL AND <질의 대상 기간 컬럼> > -100", "trig": null, "enf": null}, {"n": "수익률기점오류_제외", "t": "정렬 컬럼이 fd_mm18_ern_r·fd_yr1_ern_r·fd_yr2_ern_r·fd_yr3_ern_r·fd_yr5_ern_r(18개월 이상)이면 WHERE 에 itm_no NOT IN ('KR5157450126','KR5153450511','KR5119470012…", "trig": ["수익률", "수익", "성과", "상위", "순위", "랭킹", "추천", "높은", "좋은"], "enf": null}, {"n": "자산군_주식형", "t": "zrin_btyp_nm IN ('주식형','해외주식형') OR (zrin_btyp_nm IS NULL AND (trim(or_attr_desc)='주식형' OR (trim(or_attr_desc) IN ('재간접','파생상품') AND itm_nm LIKE '%(주식%…", "trig": null, "enf": null}, {"n": "태그필터", "t": "',' || prfd_attr_cds || ',' LIKE '%,<코드>,%' 또는 ',' || zrin_attr_nms || ',' LIKE '%,<명칭>,%'", "trig": null, "enf": null}, {"n": "국가태그", "t": "🔴 국가는 fd_ivst_rgn_desc 로 풀 수 없다 — 그 컬럼은 지역 6종(글로벌·국내·아시아·남미/북미·이머징/브릭스·유럽)뿐이라 '중국' 값이 아예 없고, 중국 펀드가 글로벌·아시아에 흩어져 있다. 국가는 **속성 태그**로 푼다: ',' || prfd_at…", "trig": ["중국", "미국", "인도", "베트남", "일본", "러시아", "브라질", "홍콩", "독일", "인도네시아", "차이나", "차이나본토", "중국본토"], "enf": null}, {"n": "보수단위", "t": "🔴 마스터 보수 4종(or_co_rwrd_r 운용 · sale_co_rwrd_r 판매 · trusc_rwrd_r 수탁 · ofwk_trus_rwrd_r 사무관리)은 **‰(천분율)** 이다 — 값÷10 이 %. 보수를 SELECT 할 때는 **% 환산 별칭을 반드시 함…", "trig": ["보수", "총보수", "수수료", "비용", "저렴", "싼", "낮은"], "enf": null}, {"n": "연금가능", "t": "han_clas_policies LIKE '%퇴직연금%' OR han_clas_policies LIKE '%개인연금%' (결측 시 itm_nm LIKE '%연금%' 보조)", "trig": null, "enf": null}, {"n": "부정조건", "t": "🔴 질문의 배제 낱말(제외하고·빼고·말고·아닌)은 **부정 조건**이다 — `<>` · `NOT IN` · `NOT LIKE` 로 푼다. 등호로 뒤집으면 정반대 집합이 나오고, 숫자가 그럴듯해서 오답인 줄도 모른다 (2026-09-04 FND-006 실측: 'MMF를 …", "trig": ["제외", "빼고", "말고", "아닌", "없는", "除", "제외하고", "를 뺀", "은 빼"], "enf": null}, {"n": "복합질의", "t": "🔴 질문이 두 수를 묻거나(A 는 몇 개고 **그중** B 는 몇 개) 조건 뒤에 되물음이 붙으면 (0건인데 **실제로는** 어디야), 한 SQL 이 **두 답을 모두** 담아야 한다. 답변기는 결과에 없는 수를 만들 수 없다 — 앞부분만 담긴 결과가 오면 뒷부분은 영…", "trig": ["그중", "그 중", "중에서", "이고", "이며", "는 몇", "실제", "각각", "포함하면", "까지 포함"], "enf": null}, {"n": "종목명검색", "t": "🔴 공백을 무시하고 매칭한다 — REPLACE(itm_nm,' ','') LIKE '%<공백 제거한 키워드>%'. 종목명 표기의 공백이 제각각이라('삼성 베스트 MMF 법인 제1호') 양쪽을 정규화하지 않으면 있는 상품을 놓친다 — 실측: '미래에셋 코어테크' 그대로 …", "trig": null, "enf": null}, {"n": "이름표기_구조어휘", "t": "구조·전략 어휘는 태그(zrin_attr_nms, 보유 8,550/8,969)를 1순위로, 종목명 LIKE 를 보조로 쓴다. · 태그로 충분: 월지급 → '분배식' · 레버리지 여부 → '레버리지' · 인버스 → '리버스' · 분할매수 → '분할매수' · 태그 OR 이…", "trig": ["목표전환", "전환형", "인덱스", "TDF", "TIF", "TRF", "커버드콜", "만기", "레버리지", "인버스", "월지급", "분배", "배당", "인컴", "분할매수", "빈티지"], "enf": null}, {"n": "이름표기_우선순위", "t": "구조 컬럼이 있는 축은 그쪽이 1순위, 종목명 LIKE 는 폴백 — 환헤지 exchdg_yn · 재간접/파생 or_attr_desc · 연금 han_clas_policies · 사모 prvo_pbff_desc · 통화 curr_cd. 종목명 괄호 자산군('(주식)' 등…", "trig": ["헤지", "환헤지", "재간접", "파생", "연금", "사모", "통화", "자산군", "주식형", "채권형", "혼합형", "괄호"], "enf": null}, {"n": "영문명", "t": "🔴 영문 상품명 질의도 itm_nm 으로 푼다 — itm_eng_nm 은 NULL 0 이지만 73% 가 한글 복사·대문자화 값이라 LIKE 로 풀면 대부분 놓친다. 영문명을 답에 쓸 때는 (itm_eng_nm <> itm_nm AND itm_eng_nm NOT GLOB…", "trig": ["영문", "영어", "English", "english"], "enf": null}, {"n": "벤치마크검색", "t": "bmrk_nm LIKE '%<지수명>%' (복합식 'KOSPI200 25% + 종합채권01Y 75%' 안의 성분까지 포함 — 정확일치는 KOSPI200 47%·MSCI ACWI 83% 를 놓친다). 영문 지수명은 bmrk_nm OR bmrk_eng_nm. 결측은 \"평가…", "trig": ["벤치마크", "지수", "추종", "KOSPI", "코스피", "MSCI", "S&P", "인덱스"], "enf": null}]}}, "shared": [{"file": "asset_class.yaml", "entity": "AssetClass", "nodes": 9, "parents": 0, "absent_in": {"domestic_bonds": "자산군 컬럼 없음 — 상품 자체가 채권. 클래스 계층(DomesticBond ⊂ Bond)으로 처리"}, "range": {}, "desc": "투자자산군 (주식/채권/원자재 등)", "scale": ""}, {"file": "credit_grade.yaml", "entity": "CreditGrade", "nodes": 22, "parents": 20, "absent_in": {"domestic_etfs": "신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음. 위험등급(RiskGrade)과 별개 축", "overseas_etfs": "신용등급 컬럼 없음", "public_funds": "신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)"}, "range": {}, "desc": "신용등급 (AAA 최상위 ~ C, BBB-/BB+ 경계가 투자/투기)", "scale": "rank 1(AAA) ~ 20(D)"}, {"file": "currency.yaml", "entity": "Currency", "nodes": 8, "parents": 0, "absent_in": {}, "range": {}, "desc": "상품의 표시/거래 통화", "scale": ""}, {"file": "index.yaml", "entity": "Index", "nodes": 21, "parents": 4, "absent_in": {"domestic_bonds": "기초지수 컬럼 없음 — 채권은 지수 추종 상품이 아님. '지수 추종 채권' 질의는 기각"}, "range": {}, "desc": "기초지수·벤치마크", "scale": ""}, {"file": "organization.yaml", "entity": "Organization", "nodes": 64, "parents": 0, "absent_in": {}, "range": {}, "desc": "운용사·발행사 (자산운용사 브랜드 기준. 정식 법인명 아님 — 코드북 주석 참조)", "scale": ""}, {"file": "region.yaml", "entity": "Region", "nodes": 60, "parents": 58, "absent_in": {"domestic_bonds": "투자지역 컬럼 없음 — pd_ctry_cd(발행국)는 2차 21,881/21,882 행이 KR(XS 1행)인 사실상 상수 (1차 42,393/42,394 · enums 판정: kg_entity null)"}, "range": {}, "desc": "투자지역 (계층: 국가 ⊂ 권역 ⊂ 글로벌)", "scale": ""}, {"file": "risk_grade.yaml", "entity": "RiskGrade", "nodes": 7, "parents": 0, "absent_in": {"overseas_etfs": "위험등급 컬럼 자체 없음 → '위험등급 낮은 해외ETF' 질의는 HCX 호출 0회로 기각"}, "range": {"public_funds": {"min": 1, "max": 6, "label_min": "매우 높은 위험", "label_max": "매우 낮은 위험", "note": "0등급 없음 — 등급 미수록 클래스는 NULL(0 아님)"}, "domestic_etfs": {"min": 1, "max": 6, "label_min": "매우높은위험", "label_max": "매우낮은위험", "note": "0등급 없음"}, "domestic_bonds": {"min": 0, "max": 6, "label_min": "매우높은위험", "label_max": "매우낮은위험", "unclassified": 0, "note": "0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재 — 답변 가능"}}, "desc": "투자위험등급 (1=매우높은위험 ~ 6=매우낮은위험, 낮을수록 위험. 0=미분류)", "scale": "0~6 (정수)"}], "codebooks": ["asset_manager.csv", "asset_manager_en.csv", "asset_type_map.csv", "etf_sector.csv", "fund_attr_code.csv", "fund_country_tag.csv", "fx_rate.csv", "index_axis_override.csv", "index_master.csv", "market.csv", "public_funds_asset_manager.derived.csv", "region_map.csv", "security_alias_manual.csv", "trustee.csv"]};</script>
+<script>
+const RD={bond:['bond'],etf:['etf_kr','etf_gl'],fund:['fund']};
+const RNAME={bond:'국내채권 · domestic_bonds.yaml',etf_kr:'국내 ETF · domestic_etfs.yaml',etf_gl:'해외 ETF · overseas_etfs.yaml',fund:'공모펀드 · public_funds.yaml'};
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function tbl(rows,fmt){return rows.length?`<table>${rows.map(fmt).join('')}</table>`:'<div class="hint">없음</div>';}
+function box(title,count,inner,wide){return `<div class="rbox${wide?' wide':''}"><h3>${title}<span>${count}</span></h3>${inner}</div>`;}
+function ruleRows(rs,f){
+  const list=rs.filter(r=>f==='all'||(f==='always'&&!r.trig)||(f==='trig'&&r.trig)||(f==='enf'&&r.enf!=null));
+  return tbl(list,r=>`<tr><td>${esc(r.n)}${r.enf!=null?`<span class="badge enf">enforce${r.enf?' on':' off'}</span>`:''}${r.trig?`<span class="badge trig">trigger</span>`:`<span class="badge always">always</span>`}</td><td>${esc(r.t)}${r.trig?`<div class="hint">트리거: ${esc(r.trig.slice(0,8).join(' · '))}${r.trig.length>8?' …':''}</div>`:''}</td></tr>`);
+}
+let rfilter='all';
+function renderRules(key){
+  const root=document.getElementById('rules');
+  if(key==='all'){
+    const sh=RULES.shared, dom=RULES.domains;
+    root.innerHTML=`<h2>공통 온톨로지 선언과 도메인 규칙 현황</h2><p class="sub">공통(shared)은 개체·계층·부재·범위를 선언해 ttl·KG 로 컴파일된다. 도메인(enums)의 query_rules 는 프롬프트(text)와 적용기(enforce)로 간다. 도메인 탭에서 규칙 전문을 본다.</p>
+    <div class="rgrid">
+      ${box('shared/*.yaml — 공유 개체 선언',sh.length+' 파일',tbl(sh,x=>`<tr><td>${esc(x.entity)}</td><td>${esc(x.desc)}<div class="hint">노드 ${x.nodes}${x.parents?` · 계층(parent) ${x.parents}`:''}${x.scale?` · ${esc(x.scale)}`:''}</div>${Object.keys(x.absent_in).length?`<div class="hint absent">⊘ 부재: ${Object.keys(x.absent_in).join(', ')}</div>`:''}${Object.keys(x.range).length?`<div class="hint">범위: ${Object.entries(x.range).map(([t,r])=>`${t} ${r.min}~${r.max}`).join(' · ')}</div>`:''}</td></tr>`),true)}
+      ${box('도메인별 규칙 수','4 도메인',tbl(Object.entries(dom),([k,d])=>`<tr><td>${esc(RNAME[k])}</td><td>query_rules <b>${d.counts.rules}</b> (always ${d.counts.always} · trigger ${d.counts.trig} · enforce on ${d.counts.enf_on}) · 컬럼 ${d.counts.cols} · kg_entity ${d.kg_entity.length} · 부재 ${d.absent.length} · 게이트 상수 ${d.gates.length} · 되묻기 ${d.clarify.length}</td></tr>`))}
+      ${box('codebooks/*.csv — 출처·기준일 필수',RULES.codebooks.length+' 파일',`<div class="hint">${RULES.codebooks.map(esc).join(' · ')}</div>`)}
+      ${box('선언과 규칙의 경계','',`<table><tr><td>온톨로지 선언</td><td>kg_entity 포인터 · shared 노드·alias 규칙·계층·edge · absent_properties / absent_in · range_by_table → <b>ttl + KG</b></td></tr><tr><td>규칙</td><td>query_rules(text → 프롬프트 / enforce → 적용기) · 결측 판정 · normalization · clarify · answer_rules · gate_constants · value_vocab → <b>프롬프트·게이트·검증</b></td></tr></table>`)}
+    </div>`;
+    return;
+  }
+  const parts=RD[key].map(dk=>{
+    const d=RULES.domains[dk];
+    return `<h2>${esc(RNAME[dk])}</h2><p class="sub">query_rules ${d.counts.rules} (always ${d.counts.always} · trigger ${d.counts.trig} · enforce on ${d.counts.enf_on}) · 컬럼 ${d.counts.cols} 중 kg_entity ${d.kg_entity.length}</p>
+    <div class="rfilter">${[['all','전부'],['always','always_on'],['trig','triggered'],['enf','enforce']].map(([v,l])=>`<button aria-pressed="${rfilter===v}" data-f="${v}">${l}</button>`).join('')}</div>
+    <div class="rgrid">
+      ${box('query_rules — 조회 규칙',d.counts.rules,ruleRows(d.rules,rfilter),true)}
+      ${box('kg_entity — 온톨로지로 가는 컬럼',d.kg_entity.length,tbl(d.kg_entity,x=>`<tr><td>${esc(x.n)}</td><td>→ ${esc(x.t)}</td></tr>`))}
+      ${box('absent_properties — 부재 선언',d.absent.length,tbl(d.absent,x=>`<tr><td class="absent">⊘ ${esc(x.n)}</td><td>${esc(x.t)}</td></tr>`))}
+      ${box('gate_constants — 상수 컬럼 게이트',d.gates.length,tbl(d.gates,x=>`<tr><td>${esc(x.n)}</td><td>${esc(x.t)}</td></tr>`))}
+      ${box('clarify — 되묻기',d.clarify.length,tbl(d.clarify,x=>`<tr><td>${esc(x.n)}</td><td>${esc(x.t)}</td></tr>`))}
+      ${box('normalization — 더미·센티넬·비교',d.norm.length,tbl(d.norm,x=>`<tr><td>${esc(x.n)}</td><td>${esc(x.t)}</td></tr>`))}
+      ${box('answer_rules — 답변 규약',d.answer.length,tbl(d.answer,x=>`<tr><td>${esc(x.n)}</td><td>${esc(x.t)}</td></tr>`))}
+    </div>`;
+  });
+  root.innerHTML=parts.join('');
+  root.querySelectorAll('.rfilter button').forEach(b=>b.addEventListener('click',()=>{rfilter=b.dataset.f;renderRules(key);}));
+}
+</script>
+
+<script>
+// ───────── 공유 개체 (전 장면 공통 상세)
+const BASE = {
+  ORG:{t:'open',nm:'Organization',ko:'운용사·발행사·수탁사',cnt:2527,
+    mean:'상품을 운용하거나 발행하거나 맡아 두는 법인. 마스터에는 이름 컬럼이 없거나(펀드) 표기가 오염돼 있어(국내ETF 운용사 컬럼에 펀드명 99종) 코드북과 규칙으로 정본을 만들었다.',
+    links:[['국내채권','pd_pbcm',1818,'발행사 (hasIssuer)'],['국내ETF','cu_fund_mgmt_co / ref_fund_mgmt_co','99 / 29','운용사 (hasManager)'],['해외ETF','cu_fund_mgmt_co',382,'운용사'],['공모펀드','or_co_xtn_itt_cd · trusc_xtn_itt_cd','275 · 50','운용사 코드 · 수탁사 코드 → 코드북으로 이름']],
+    extra:['슬롯: <code>label_official</code>(공식 라벨) · <code>formerName</code>(구상호) · <code>successor</code>(후계 법인)','역관계 <code>manages↔hasManager</code>, <code>issues↔hasIssuer</code>'],
+    weak:'역할별 노드가 분리돼 있다(미래에셋 ETF 운용사 ≠ 채권 발행사 노드). 그룹 노드 + broader 로 묶는 확장이 향후.',
+    run:'Route 어휘 · Ground 접지 · 같은 공식 라벨의 형제 코드를 IN 으로 묶음'},
+  IDX:{t:'open',nm:'Index',ko:'기초지수·벤치마크',cnt:3172,
+    mean:'ETF가 추종하거나 펀드가 비교하는 지수. 같은 지수가 테이블마다, 변형(TR·NR·CR)마다 다르게 적혀 있어 정본 노드 하나에 변형을 closure 로 매단다.',
+    links:[['국내ETF','ref_base_index / cu_base_index','904 / 19','ref 가 정본(cu 는 95.5% 공백·오염)'],['해외ETF','cu_base_index',1848,'표기 변형 다수'],['공모펀드','bmrk_nm',389,'벤치마크']],
+    extra:['간선: <code>hasAssetClass</code> 3,172 · <code>coversRegion</code> 2,535 — 지수로 자산군·지역을 찾는다','예: <code>Idx_MSCI_ACWI</code> 하나에 국내ETF·해외ETF·펀드 세 테이블이 닿는다'],
+    weak:'복합 벤치마크 253종은 통째로 노드. 성분 분해는 하지 않았다(근거 없음).',
+    run:'Ground 가 변형 표기를 정본으로 접지, closure 후손 전개. 섹터·테마 질의는 지수와 구성종목 두 경로로 우회'},
+  SEC:{t:'open',nm:'Security',ko:'구성 종목',cnt:27996,
+    mean:'상품 안에 들어 있는 주식·채권. 마스터에는 구성종목 컬럼이 없어 외부 수집(KRX·EDGAR·설명서)으로 만들었고, 상품→종목 관계는 간선이 아니라 ext_* 테이블 자체다.',
+    links:[['ext_etf_holdings','ticker · constituent',10154,'국내ETF 75,859행, 커버리지 93.9%'],['ext_ovs_etf_holdings','cusip · lei · holding_name',31117,'해외ETF 906,848행, 커버리지 22.7%'],['ext_fund_holdings','isin · holding_nm',11893,'펀드 설명서 59,206행']],
+    extra:['키 우선순위: 국내 6자리 티커 &gt; cusip &gt; LEI &gt; 정규화 이름. <b>이름만 같으면 병합하지 않는다</b>','편입 기준: 비중 TOP50 + 수동 코드북. 국내ETF만 전량','간선: <code>subsidiaryOf</code> 3 (에코프로 → 자회사 3사, DART 근거)'],
+    weak:'alias 가 없는 종목은 접지하지 못한다(해외 커버리지 22.7%).',
+    run:'"캠브리콘 편입 ETF" = 표기 6종 alias 합집합 × holdings JOIN 키'},
+  FND:{t:'open',nm:'Fund',ko:'펀드 묶음 · 모펀드',cnt:7584,
+    mean:'클래스 행(23,676)을 펀드로 묶는 단위. KG 노드는 rptt 예탁원번호 묶음 6,867 + 모펀드 717. 집계·순자산은 (or_co, mtco) 복합키, 개체 조회는 rptt — 두 뜻이 공존한다.',
+    links:[['공모펀드','rptt_ksd_itm_no',6867,'더미(KR0000000000 5,308)는 제외']],
+    extra:['간선: <code>feedsInto</code> 1,704 (자펀드 → 모펀드)','FundClass 노드 0 · belongsToFund 간선 0 — 컬럼이 이미 담고 있어 23,676 중복 생성을 피한 설계'],
+    weak:'관계 기수(행→Fund N:1)를 선언하지 않은 대가가 교차 문형의 클래스↔펀드 오답. 기수 선언·Measure 노드 확장이 진행 중.',
+    run:'"국민성장펀드 구조" = 고유명 슬롯 + Fund 노드 + feedsInto 후손 + ext_fund_page JOIN'},
+  FA:{t:'open',nm:'FundAttribute',ko:'펀드 속성 태그',cnt:179,
+    mean:'개방형·폐쇄형·연금저축·ESG 같은 속성. 한 컬럼(prfd_attr_cds)에 코드 210종·15축이 콤마로 이어져 있어 코드마다 노드를 두고 token 확정식을 alias 에 붙였다.',
+    links:[['공모펀드','prfd_attr_cds (token)',179,"확정식 <code>','||col||',' LIKE '%,code,%'</code>"]],
+    extra:['코드북 <code>fund_attr_code.csv</code> 로 20종 유일 확정'],
+    weak:'LIKE 로 풀면 10 이 110 에 걸린다 — token 확정식이 유일한 조건식.',
+    run:'"연금저축 가능한 ESG 펀드" = 태그 두 개의 확정식 AND'},
+  AC:{t:'closed',nm:'AssetClass',ko:'자산군',cnt:9,
+    mean:'주식·채권·원자재·대체투자·단기자금 등 상품이 투자하는 자산의 종류. 섹터·테마가 아니다(반도체 같은 낱말을 걸면 0건).',
+    links:[['국내ETF','wu_inv_ast_type / ref_ast_type','9 / 7','원천 이원화'],['해외ETF','wu_inv_ast_type',6,''],['공모펀드','zrin_btyp_nm',18,'']],
+    absent:[['국내채권','상품 자체가 채권 — 클래스 계층으로 처리']],
+    run:'Index → hasAssetClass 간선으로 "채권 지수 추종 ETF" 를 지수 경로로 푼다'},
+  RG:{t:'closed',nm:'RiskGrade',ko:'투자위험등급',cnt:7,
+    mean:'0~6 등급. 숫자가 클수록 안전한 역방향 척도이고, 채권에는 미분류 0등급이 19행 실재한다. 1~5 로 제약하면 정상 데이터가 막힌다.',
+    links:[['국내채권','pd_risk_gcd',7,'범위 0~6'],['국내ETF','pd_risk_cd / pd_risk_nm',6,'범위 1~6'],['공모펀드','zrin_fd_ivst_risk_gcd / _grd_nm','6 / 8','범위 1~6, NULL≠0']],
+    absent:[['해외ETF','위험등급 컬럼 자체 없음 → HCX 0회 기각']],
+    extra:['범위는 <code>range_by_table</code> 한 곳에서 ttl 제약과 게이트 상수를 같이 생성'],
+    run:'Gate ② — 범위 밖 등급은 생성 전 기각. "안전한" = 6'},
+  CG:{t:'closed',nm:'CreditGrade',ko:'신용등급 (서열)',cnt:21,
+    mean:'AAA~C 19등급 + 투자/투기 밴드 2. 서열과 밴드는 데이터에 없어 한국기업평가 표준표를 코드북으로 들여왔다. 유일하게 순서를 가진 닫힌 축.',
+    links:[['국내채권','crd_grd',15,'DB 표기 AA0=AA 를 alias 로 흡수. 결측 41.1%는 대부분 국공채(정상)']],
+    absent:[['국내ETF','ETF 는 발행사 신용등급 없음'],['해외ETF','신용등급 컬럼 없음'],['공모펀드','등급은 구성종목 단위(미수록)']],
+    extra:['계층: 등급 ⊂ 밴드 (<code>skos:broader</code>) → closure','등급 토큰 4분기: not_grade / <b>unknown(AAAA)</b> / no_data(BB+) / ok'],
+    run:'"AA- 이상" → rank 로 등급 4개 → alias 에서 DB 표기 → <code>IN (\'AAA\',\'AA+\',\'AA0\',\'AA-\')</code>'},
+  CUR:{t:'closed',nm:'Currency',ko:'통화',cnt:8,
+    mean:'거래·표시 통화. 채권·국내ETF·해외ETF 는 사실상 상수(KRW / KRW / USD)라 상수 컬럼 게이트의 대상이고, 펀드만 7종이 실재한다.',
+    links:[['국내채권','curr_cd','1 (+잡음 1)',"KRW 상수 · distinct 2 (KRW 21,881 + '000' 1행)"],['국내ETF','pd_curr_cd',1,'상수'],['해외ETF','pd_trd_ccy',1,'USD 상수 → "EUR 거래 해외ETF" 기각'],['공모펀드','curr_cd',7,'']],
+    run:'Gate ④ 상수 컬럼 — 우리 gold 실측에서 나온 규칙'},
+  REG:{t:'closed',nm:'Region',ko:'투자 지역 (계층)',cnt:60,
+    mean:'국가 ⊂ 권역 ⊂ 글로벌. 국내ETF 는 한글 11종, 해외ETF 는 영문 59종, 2차 신규 컬럼은 영문 23종으로 삼중 표기라 계층 하나로 통합했다.',
+    links:[['국내ETF','wu_inv_rgn / ref_geo_focus','11 / 23','감사에서 0/23 미연결 → 87% 복구'],['해외ETF','wu_inv_rgn',59,''],['공모펀드','fd_ivst_rgn_desc',9,'']],
+    absent:[['국내채권','pd_ctry_cd 21,881/21,882 = KR (상수)']],
+    extra:['원천 지역 오분류 미국 28·중국 15건은 값을 고치지 않고 <code>지역질의_합집합</code> 규칙으로 우회'],
+    run:'"아시아" → closure 로 국가 목록'},
+  CTY:{t:'closed',nm:'Country',ko:'국가 태그',cnt:17,
+    mean:'펀드 속성 코드 중 국가를 뜻하는 17종. 상품명 안의 국가어와 충돌하지 않도록 라벨 충돌 검사에서 걸러진다.',
+    links:[['공모펀드','prfd_attr_cds (token)',17,'국가태그 확정식']],
+    run:'"중국 펀드" → 지역 컬럼이 아니라 태그 확정식으로'},
+  B:{t:'table',nm:'fp:DomesticBond',ko:'국내채권',cnt:21882,sub:'58컬럼 · 판정 58/58 · 규칙 40',
+    mean:'스포크가 4개로 가장 단순한 도메인. 유일하게 서열 축(CreditGrade)을 쓰고, 외부 수집 데이터가 없다. 한 종목이 장내·장외 2~4행이라 대표행 규칙이 필요하다.',
+    links:[['Organization','pd_pbcm',1818,'발행사'],['CreditGrade','crd_grd',15,''],['RiskGrade','pd_risk_gcd',7,'0~6'],['Currency','curr_cd','1 (+잡음 1)',"KRW 21,881 + '000' 1행"]],
+    absent:[['AssetClass','상품 자체가 채권'],['Index','지수 추종 상품 아님'],['Region','발행국 KR 상수'],['hasCreditGradeHistory','등급 이력 없음']],
+    run:'공식 예시 #1 "판매 가능한 AA- 이상" = closure 서열 + 판매가능 조건 + 결측 모수 병기'},
+  DE:{t:'table',nm:'fp:DomesticETF',ko:'국내 ETF',cnt:1780,sub:'98컬럼 · ETF 1,235 / ETN 545 · 규칙 44',
+    mean:'ETN 545건(30.6%)이 섞여 있어 ETF 의 하위 클래스로 두지 못한 테이블. 같은 개체에 컬럼이 두 개씩 닿는 원천 이원화(cu/ref, wu/ref)가 넷이다.',
+    links:[['Organization','cu_fund_mgmt_co / ref_fund_mgmt_co','99 / 29',''],['Index','ref_base_index / cu_base_index','904 / 19',''],['Region','wu_inv_rgn / ref_geo_focus','11 / 23',''],['AssetClass','wu_inv_ast_type / ref_ast_type','9 / 7',''],['RiskGrade','pd_risk_cd / pd_risk_nm',6,'1~6'],['Currency','pd_curr_cd',1,''],['Security','ext_etf_holdings 경유',10154,'']],
+    absent:[['CreditGrade','발행사 신용등급 없음'],['hasHoldingsHistory · hasNavHistory','스냅샷 1시점']],
+    run:'상품종류 판별은 <code>pd_grp_no</code>. "ETF만" 규칙이 always_on'},
+  OE:{t:'table',nm:'fp:OverseasETF',ko:'해외 ETF',cnt:6037,sub:'49컬럼 · ETF 5,972 / ETN 65 · 규칙 23',
+    mean:'위험등급 컬럼이 아예 없어 부재 선언이 답변불가 게이트가 되는 테이블. 구성종목은 SEC EDGAR 906,848행, 커버리지 22.7%.',
+    links:[['Organization','cu_fund_mgmt_co',382,''],['Index','cu_base_index',1848,''],['Region','wu_inv_rgn',59,''],['AssetClass','wu_inv_ast_type',6,''],['Currency','pd_trd_ccy',1,'USD 상수'],['Security','ext_ovs_etf_holdings 경유',31117,'']],
+    absent:[['RiskGrade','위험등급 컬럼 자체 없음'],['CreditGrade','신용등급 없음']],
+    run:'상품종류 판별은 <code>cu_etn_yn</code>. 답변에 report_date 병기'},
+  PF:{t:'table',nm:'fp:PublicFund',ko:'공모펀드',cnt:23676,sub:'75컬럼 · 기본모수 8,969행 / 3,040펀드 · 규칙 31',
+    mean:'행이 펀드가 아니라 클래스인 테이블. 첫 결정이 grain(행 단위)이었다. 스포크가 9개로 가장 많고 펀드만 닿는 개체가 셋(Fund·FundAttribute·Country).',
+    links:[['Organization','or_co_xtn_itt_cd · trusc_xtn_itt_cd','275 · 50',''],['Fund','rptt_ksd_itm_no',6867,''],['FundAttribute','prfd_attr_cds (token)',179,''],['Country','prfd_attr_cds (token)',17,''],['Index','bmrk_nm',389,''],['AssetClass','zrin_btyp_nm',18,''],['Region','fd_ivst_rgn_desc',9,''],['RiskGrade','zrin_fd_ivst_risk_gcd / _grd_nm','6 / 8',''],['Currency','curr_cd',7,''],['Security','ext_fund_holdings 경유',11893,'']],
+    absent:[['CreditGrade','등급은 구성종목 단위'],['hasUnitsOutstanding','좌수 없음'],['hasFundManager','운용역 없음'],['hasNavHistory · hasHoldingsHistory','스냅샷 1시점']],
+    run:'규칙 강제(enforce) P0 전환 3개 중 2개가 이 테이블(기본모수·펀드단위)'},
+  E1:{t:'ext',nm:'ext_etf_holdings',ko:'국내ETF 구성종목',cnt:75859,mean:'KRX 공시 구성종목. 1,160/1,235 ETF 커버(93.9%). 상품→종목 관계는 이 테이블이 곧 간선이라 KG 에 옮기지 않았다.',links:[['DomesticETF','etf_code = pd_itm_no','조인키','']],run:'"○○를 가장 많이 편입한 ETF" 는 상품명이 아니라 weight_pct 로'},
+  E2:{t:'ext',nm:'ext_ovs_etf_holdings',ko:'해외ETF 구성종목',cnt:906848,mean:'SEC EDGAR NPORT-P. 1,356/5,972 ETF(22.7%). 보고기준일 8종 → 답변에 report_date 병기.',links:[['OverseasETF','etf_ticker = replace(pd_itm_no, \'.K\'/\'.O\')','조인키','ISIN 조인 폐기']],run:''},
+  E3:{t:'ext',nm:'ext_fund_holdings',ko:'펀드 구성종목',cnt:59206,mean:'투자설명서에서 수집한 보유 종목. 팬아웃(1:N)이라 구성종목 질의에만 확정식으로 JOIN 한다.',links:[['PublicFund','(grp, or_co) = (mtco_itm_no, or_co_xtn_itt_cd)','복합 조인키','mtco 단독은 6.6% 오부착(85,649쌍 중 5,616)']],run:''},
+  E4:{t:'ext',nm:'ext_fund_page',ko:'펀드 페이지',cnt:10565,mean:'설정일·환매조건 등 마스터에 없는 항목. 두 테이블 모두 itm_no 를 가지므로 별칭과 컬럼 한정이 필수.',links:[['PublicFund','itm_no',10565,'']],run:'공식 예시 #2 "국민성장펀드 구조" 에서 설명서항목 규칙이 트리거 미일치로 미주입됐던 자리 — 9/3 수정'},
+  PRD:{t:'kind',nm:'fp:Product',ko:'상품 상위 클래스',cnt:null,mean:'제출 규격 p.9 의 공통 상위 클래스. 테이블 클래스 4개와 상품종류 클래스(ETF·ETN)가 모두 이 아래에 있되, 두 축은 서로 종속하지 않는다.',links:[],run:''},
+  ETF:{t:'kind',nm:'fp:ETF',ko:'상장지수펀드',cnt:null,mean:'운용사가 설정한 펀드. fp:ETN 과 owl:disjointWith. 테이블 클래스의 상위가 아니라 별도 축이며 판별은 pd_grp_no / cu_etn_yn 컬럼이 한다.',links:[['DomesticETF','pd_grp_no=\'ETF\'',1235,''],['OverseasETF','pd_grp_no=\'ETF\'',5972,'fp:ForeignETF']],run:'"ETF만" 규칙 always_on'},
+  ETN:{t:'kind',nm:'fp:ETN',ko:'상장지수증권',cnt:null,mean:'증권사가 발행한 채무증권. 발행사 신용위험이 있고 구성종목 개념이 없다. 국내 545·해외 65건이 ETF 마스터에 섞여 있는 것이 축 분리 결정의 이유.',links:[['DomesticETF','pd_grp_no=\'ETN\'',545,''],['OverseasETF','cu_etn_yn',65,'']],run:''},
+};
+
+// ───────── 장면 정의
+const SCENES = {};
+
+// 전체
+(()=>{
+  const CX=470,CY=430,R=200,ring=['ORG','IDX','SEC','REG','CUR','CTY','FA','FND','AC','RG','CG'];
+  const nodes={};
+  ring.forEach((k,i)=>{const a=(-90+i*360/ring.length)*Math.PI/180;nodes[k]={...BASE[k],x:CX+R*Math.cos(a),y:CY+R*Math.sin(a)};});
+  Object.assign(nodes,{B:{...BASE.B,x:120,y:250},DE:{...BASE.DE,x:820,y:250},OE:{...BASE.OE,x:820,y:640},PF:{...BASE.PF,x:120,y:640},
+    E1:{...BASE.E1,x:960,y:330},E2:{...BASE.E2,x:960,y:430},E3:{...BASE.E3,x:960,y:530},
+    PRD:{...BASE.PRD,x:470,y:52},ETF:{...BASE.ETF,x:360,y:110},ETN:{...BASE.ETN,x:580,y:110}});
+  SCENES.all={w:1040,h:780,nodes,ring:{x:CX,y:CY,r:R},
+    zones:[['공유 개체 11종 — 허브',CX,CY-R-28],['테이블 클래스 4 — 스포크',120,205],['외부 홀딩스 = 간선 테이블',960,290],['상품종류 축 (테이블 축과 분리)',470,22]],
+    edges:[
+      ['B','ORG','pd_pbcm 1,818'],['B','CG','crd_grd 15'],['B','RG','pd_risk_gcd 7'],['B','CUR','curr_cd 1 (+잡음 1)'],['B','AC','⊘','absent'],['B','IDX','⊘','absent'],['B','REG','⊘','absent'],
+      ['DE','ORG','cu/ref_fund_mgmt_co 99/29'],['DE','IDX','ref/cu_base_index 904/19'],['DE','REG','wu_inv_rgn/ref_geo_focus 11/23'],['DE','AC','wu/ref_ast_type 9/7'],['DE','RG','pd_risk_cd 6'],['DE','CUR','pd_curr_cd 1'],['DE','CG','⊘','absent'],
+      ['OE','ORG','cu_fund_mgmt_co 382'],['OE','IDX','cu_base_index 1,848'],['OE','REG','wu_inv_rgn 59'],['OE','AC','wu_inv_ast_type 6'],['OE','CUR','pd_trd_ccy 1'],['OE','RG','⊘','absent'],['OE','CG','⊘','absent'],
+      ['PF','ORG','or_co/trusc 275/50'],['PF','FND','rptt_ksd_itm_no 6,867'],['PF','FA','prfd_attr_cds 179'],['PF','CTY','prfd_attr_cds 17'],['PF','IDX','bmrk_nm 389'],['PF','AC','zrin_btyp_nm 18'],['PF','REG','fd_ivst_rgn_desc 9'],['PF','RG','zrin_risk_gcd 6'],['PF','CUR','curr_cd 7'],['PF','CG','⊘','absent'],
+      ['DE','E1','etf_code = pd_itm_no','via'],['OE','E2','etf_ticker','via'],['PF','E3','(grp, or_co)','via'],['E1','SEC','10,154 종목','via'],['E2','SEC','31,117 종목','via'],['E3','SEC','11,893 종목','via'],
+      ['IDX','AC','hasAssetClass 3,172','rel'],['IDX','REG','coversRegion 2,535','rel'],
+      ['PRD','ETF','','kindlink'],['PRD','ETN','','kindlink'],['ETF','ETN','disjointWith','kindlink'],['ETF','DE','pd_grp_no 판별','kindlink'],['ETF','OE','cu_etn_yn 판별','kindlink']],
+    note:'전체: 개체 11종이 허브. 선 위 이름은 연결 컬럼과 값 수. 노드를 누르면 그 노드의 선만 남는다.',
+    intro:{title:'노드를 눌러 보세요',body:`<p>이 그래프는 상품을 담지 않습니다. 상품을 고르는 <b>조건의 값</b>을 담습니다. 편입 기준은 하나 — “질문의 어휘가 컬럼의 값으로 이어지는가.”</p><h3>읽는 법</h3><ul><li>원의 크기는 노드 수(로그). Security 27,996 이 가장 크고 RiskGrade 7 이 가장 작다.</li><li>테이블 → 개체 선 위의 이름은 <b>연결 컬럼과 distinct 값 수</b>. 이 값들이 alias 로 전수 등록돼 있어 “사전에 없다 = DB에 없다”가 성립한다.</li><li><span class="absent">점선 ⊘</span>은 컬럼 자체가 없다는 부재 선언. 답변불가 게이트의 근거다.</li><li>구성종목 관계(holds)는 간선이 아니라 오른쪽 <b>ext_* 테이블</b> 자체다.</li></ul><h3>도메인 탭</h3><p>채권·ETF·펀드 탭은 테이블 박스를 펼쳐 컬럼 단위로 그린다.</p>`}};
+})();
+
+// 컬럼·칩·규칙 노드 헬퍼
+const col=(nm,ko,cnt,mean,extra,x,y,run)=>({t:'column',nm,ko,cnt,mean,extra,x,y,run});
+const chip=(nm,ko,mean,x,y,extra)=>({t:'chip',nm,ko,cnt:null,mean,extra,x,y});
+const rule=(nm,ko,mean,x,y,extra)=>({t:'rule',nm,ko,cnt:null,mean,extra,x,y});
+const ghost=(base,x,y,why)=>({...base,t:base.t==='closed'||base.t==='open'?'ghost-c':'ghost-r',ghostWhy:why,x,y});
+const at=(k,x,y)=>({...BASE[k],x,y});
+
+// 채권
+SCENES.bond={w:1040,h:800,
+  nodes:{
+    B:at('B',140,400),
+    c_pbcm:col('pd_pbcm','발행사명',1818,'발행사 이름. 고정폭 패딩이 잔존해 TRIM 비교가 필수(무TRIM 16행 vs TRIM 2,031행 실측). 1,818개 값 전부가 Organization 노드의 alias.',['organization_issuer_auto.yaml 자동 노드 1,817','(주)·주식회사 접두형 발행사 431곳 — 되묻기 후보 어두 비교'],400,150,'"한국전력 채권" → 발행사 노드 접지 → IN (\'한국전력공사\',…)'),
+    c_crd:col('crd_grd','신용등급',15,'등급 문자열 15종. DB 표기는 AA0(=AA), C0(≠C) 같은 접미 0 규칙. 결측 41.1%는 대부분 국공채라 "등급 없음"이 정상. "AA- 이상"의 서열은 이 컬럼에 없다.',['등급정규화: AA→AA0 접미 변환 후 비교','등급서열: 이상·이하가 붙으면 TRIM(crd_grd) IN (서열 확장 목록) — 단일 등호는 오답'],400,250,'서열은 CreditGrade closure 가, 표기는 alias 가 준다'),
+    c_risk:col('pd_risk_gcd','투자위험등급 코드',7,'문자열 \'11\'~\'16\'·\'00\'. 뒷자리가 등급이고 숫자가 클수록 안전(16=매우낮은위험). \'00\'=미분류 19행이 실재해 범위가 0~6.',['최상급·안정형은 \'16\' 단독','"가장 위험한 채권"은 세 축(투자위험등급/신용등급/금리위험)이 갈려 되묻기'],400,350,'range_by_table 0~6 → ttl 제약과 게이트 상수 동시 생성'),
+    c_curr:col('curr_cd','통화','1 (+잡음 1)','KRW 사실상 상수(distinct 2 중 1이 잡음). 판매가능 조건의 한 축.',[],400,450,'상수 컬럼 — 외화 채권 질의는 범위 밖'),
+    c_mat:col('mat_dt','만기일',null,'만기 경과 여부가 판매가능 판정의 축. 영구채 266행은 만기가 콜 개시일이라 듀레이션 이론위반의 절반을 만든다.',['판정 기준일 2026-08-24(월) — 데이터 as-of 8/22 와 다름 (리드 결정 09-02)'],400,550,'구매가능 = curr_cd=\'KRW\' AND mat_dt >= 20260824 (21,814행)'),
+    c_pd_no:col('pd_no · 장내/장외','종목·행 단위',null,'한 종목이 장내·장외 2~4행(1,078종목). 종목 수는 COUNT(DISTINCT pd_no). 장외행은 등급·발행사·듀레이션이 NULL 일 수 있어 "장내행 우선" 한 줄 선택 금지.',['판매행: buy_yield IS NOT NULL (634행, 전부 장외 LOT)'],400,650,'대표행 규칙 — 값이 다르면 두 줄 병기'),
+    ORG:at('ORG',660,150), CG:at('CG',660,250), RG:at('RG',660,350), CUR:at('CUR',660,450),
+    r_buy:rule('판매가능','구매가능 판정',"BUYABLE_QUANTITY 는 무효(주최 확정). 살 수 있나 = KRW AND 만기 미경과. 상폐·리스팅 종료 제외 전부 구매가능.",660,550,['21,814행 / 21,882행']),
+    r_rep:rule('대표행','종목 단위 집계','종목 수는 DISTINCT pd_no. 속성 답변은 장내·장외 값이 다르면 병기, 같으면 한 번.',660,650,[]),
+    h_inv:chip('투자등급','CG_Investment · rank 1~10','AAA · AA+ · AA0 · AA- · A+ · A0 · A- · BBB+ · BBB0 · BBB-. closure 로 "투자등급 채권"이 등급 10개 목록으로 펼쳐진다.',900,200,['skos:broader 상위']),
+    h_spec:chip('투기등급','CG_Speculative · rank 11~19','BB+ ~ C. 데이터에 있는 것은 15/21 이라 표에는 있으나 데이터 0건인 등급(BB+)은 no_data 로 판정.',900,300,[]),
+    h_rg:chip('0 ~ 6','미분류 0 · 1 매우높은위험 … 6 매우낮은위험','채권만 0등급이 실재(19행). 국내ETF·펀드는 1~6. 해외ETF는 컬럼 자체 없음.',900,400,[]),
+    AC:ghost(BASE.AC,900,560,'상품 자체가 채권 — 자산군 컬럼 없음'),
+    IDX:ghost(BASE.IDX,900,640,'지수 추종 상품 아님 — "지수 추종 채권" 기각'),
+    REG:ghost(BASE.REG,900,720,'발행국 pd_ctry_cd 21,881/21,882 = KR — "해외채권" 기각'),
+  },
+  zones:[['fp:DomesticBond 를 펼침 — 컬럼',400,100],['접지 개체 · 규칙',660,100],['계층 · 서열 · 부재',900,150]],
+  edges:[
+    ['B','c_pbcm','','col'],['B','c_crd','','col'],['B','c_risk','','col'],['B','c_curr','','col'],['B','c_mat','','col'],['B','c_pd_no','','col'],
+    ['c_pbcm','ORG','1,818 alias (hasIssuer)'],['c_crd','CG','15 alias · AA0=AA'],['c_risk','RG','7 alias · 0~6'],['c_curr','CUR','1 alias'],
+    ['c_mat','r_buy','mat_dt ≥ 20260824'],['c_curr','r_buy','KRW'],['c_pd_no','r_rep','DISTINCT pd_no'],
+    ['CG','h_inv','broader','hier'],['CG','h_spec','broader','hier'],['RG','h_rg','range_by_table','hier'],
+    ['B','AC','⊘','absent'],['B','IDX','⊘','absent'],['B','REG','⊘','absent']],
+  labelsAlways:true,
+  note:'채권: 스포크 4개, 부재 3개. 유일하게 서열이 있는 축(CreditGrade)을 쓰므로 "이상·이하" 질의가 closure 로 값 목록이 된다. 외부 수집 데이터는 없고 대신 등급 표준표를 코드북으로 들여왔다.',
+  intro:{title:'국내채권 — 21,882행 × 58컬럼',body:`<p>테이블 박스를 펼쳤다. 왼쪽 컬럼 6개가 오른쪽 개체 4개와 규칙 2개로 접지되고, 맨 오른쪽에 계층(등급 밴드)·범위(0~6)·부재(⊘ 3)가 붙는다.</p><h3>이 도메인의 결정</h3><ul><li><b>서열은 데이터에 없다</b> → 표준표 21노드 2밴드를 코드북으로, closure 로 전개</li><li><b>0등급 19행 실재</b> → 범위 0~6 (1~5 로 두면 정상 데이터 차단)</li><li><b>발행국 KR 상수</b> → Region 부재 선언, "해외채권" 기각</li><li><b>장내·장외 2~4행</b> → 대표행 규칙, 종목 수는 DISTINCT</li></ul><p class="hint">규칙 40개 전부 always_on(17,469자 · 9/3 기준) — 선별 주입이 꺼져 있는 유일한 도메인. 감사 §4-2.</p>`}};
+
+// ETF
+SCENES.etf={w:1040,h:860,
+  nodes:{
+    ETF:at('ETF',150,60), ETN:at('ETN',300,60),
+    DE:at('DE',150,250), OE:at('OE',150,640),
+    d_grp:col('pd_grp_no','상품종류 판별','ETF/ETN','ETF 1,235 / ETN 545. 테이블 클래스가 아니라 이 컬럼이 상품종류를 가른다. "ETF만: pd_grp_no=\'ETF\'" 규칙이 always_on.',[],400,130,'ETN 이 섞이면 "총보수 낮은 ETF" 가 오답'),
+    d_mgmt:col('cu_fund_mgmt_co / ref_fund_mgmt_co','운용사 (이원화)','99 / 29','cu 컬럼은 펀드 이름이 통째로 들어간 오염 표기 99종(\'TIGER\', \'미래에셋TIGER200IT증권…\'). ref 는 29종. 둘 다 같은 Organization 노드의 alias.',['구상호·후계 법인 슬롯으로 합병 운용사 대응'],400,200,'"미래에셋 ETF" → 노드 하나 → IN (99종)'),
+    d_idx:col('ref_base_index / cu_base_index','기초지수 (이원화)','904 / 19','ref 가 정본(결측 2.2%). cu 는 ETF 1,235행 중 1,179행(95.5%) 공백이고 값이 있는 9행도 무관 상품 — 오염 컬럼. 지수 확정식이 cu 등호를 ref 순수추종식으로 교체한다(P0-3 슬롯).',['섹터·테마 질의는 pd_sect_cd 금지 → 지수·상품명·holdings 3축 우회'],400,270,'"KOSPI200 추종 ETF": cu 0행 → 슬롯 34행'),
+    d_rgn:col('wu_inv_rgn / ref_geo_focus','투자지역 (한글 / 영문)','11 / 23','한글 11종과 2차 신규 영문 23종. 9/2 감사에서 ref_geo_focus 가 Region 에 0/23 연결 → 87% 복구. 원천 오분류(미국 28·중국 15건)는 값을 고치지 않고 합집합 규칙으로.',[],400,340,'지역질의_합집합: (wu_inv_rgn=\'미국\' OR ref_geo_focus=\'United States of America\')'),
+    d_ast:col('wu_inv_ast_type / ref_ast_type','자산군 (이원화)','9 / 7','주식·채권·원자재·대체투자·단기자금… 섹터가 아니다. LIKE \'%반도체%\' 를 걸면 0건.',[],400,410,''),
+    d_risk:col('pd_risk_cd / pd_risk_nm','위험등급 (코드/이름)',6,'1~6. 0등급 없음. 코드와 이름 두 컬럼이 같은 RiskGrade 노드로.',[],400,480,''),
+    o_etn:col('cu_etn_yn','상품종류 판별','ETF/ETN','ETF 5,972 / ETN 65. 규격 예시 클래스 fp:ForeignETF ⊂ fp:ETF = 이 중 ETF 5,972건.',[],400,560,''),
+    o_mgmt:col('cu_fund_mgmt_co','운용사',382,'382종. 영문 브랜드 절단(\'Mirae Asset Global Investments\' → \'Mirae Asset\')으로 매칭.',[],400,620,''),
+    o_idx:col('cu_base_index','기초지수',1848,'1,848종 표기 변형. \'Index is not available on Lipper Database\' 같은 센티넬은 기초지수유효 규칙으로 제외.',[],400,680,''),
+    o_rgn:col('wu_inv_rgn','투자지역 (영문)',59,'59종 영문. Region 계층으로 국내 한글 표기와 같은 노드에.',[],400,740,''),
+    o_ccy:col('pd_trd_ccy','거래통화',1,'USD 상수. "EUR 거래 해외ETF" 는 상수 컬럼 게이트가 0.5초에 기각.',[],400,800,'gate_constants'),
+    ORG:at('ORG',660,210), IDX:at('IDX',660,330), REG:at('REG',660,450), AC:at('AC',660,540), RG:at('RG',660,620), CUR:at('CUR',660,760),
+    SEC:at('SEC',900,420),
+    E1:at('E1',900,300), E2:at('E2',900,540),
+    h_idx:chip('변형 ⊂ 정본','S&P 500 TR · CR · NR → Idx_SP500','같은 지수의 표기 변형을 정본 노드 하나에 closure 로 매단다. Idx_MSCI_ACWI 하나에 국내ETF·해외ETF·펀드 세 테이블이 닿는다.',900,640,[]),
+    h_rgn:chip('국가 ⊂ 권역 ⊂ 글로벌','Region 계층 60','"아시아" → closure 로 국가 목록. 삼중 표기(한글 11·영문 59·영문 23)가 한 계층으로.',900,720,[]),
+    CG:ghost(BASE.CG,900,810,'ETF 는 발행사 신용등급 없음 — RiskGrade 와 별개 축'),
+    RGx:{...ghost(BASE.RG,660,690,'해외ETF 는 위험등급 컬럼 자체 없음 → HCX 0회 기각'),nm:'RiskGrade',ko:'해외 ⊘'},
+  },
+  zones:[['fp:DomesticETF 펼침',400,105],['fp:OverseasETF 펼침',400,535],['접지 개체',660,150],['구성종목 · 계층 · 부재',900,240]],
+  edges:[
+    ['ETF','ETN','disjointWith','kindlink'],['ETF','d_grp','판별','kindlink'],['ETF','o_etn','판별','kindlink'],
+    ['DE','d_grp','','col'],['DE','d_mgmt','','col'],['DE','d_idx','','col'],['DE','d_rgn','','col'],['DE','d_ast','','col'],['DE','d_risk','','col'],
+    ['OE','o_etn','','col'],['OE','o_mgmt','','col'],['OE','o_idx','','col'],['OE','o_rgn','','col'],['OE','o_ccy','','col'],
+    ['d_mgmt','ORG','99 / 29'],['d_idx','IDX','904 / 19'],['d_rgn','REG','11 / 23'],['d_ast','AC','9 / 7'],['d_risk','RG','6 (1~6)'],
+    ['o_mgmt','ORG','382'],['o_idx','IDX','1,848'],['o_rgn','REG','59'],['o_ccy','CUR','1 (USD)'],
+    ['DE','E1','etf_code = pd_itm_no','via'],['OE','E2','etf_ticker','via'],['E1','SEC','10,154','via'],['E2','SEC','31,117','via'],
+    ['IDX','h_idx','closure','hier'],['REG','h_rgn','closure','hier'],['IDX','AC','hasAssetClass','rel'],['IDX','REG','coversRegion','rel'],
+    ['DE','CG','⊘','absent'],['OE','CG','⊘','absent'],['OE','RGx','⊘','absent']],
+  labelsAlways:true,
+  note:'ETF: 테이블 둘, 그래프 하나. 국내는 같은 개체에 컬럼이 둘씩 닿는 이원화가 넷이고, 해외는 위험등급 컬럼이 없다. 이 비대칭이 곧 설계 포인트. 구성종목은 오른쪽 ext 테이블 경유.',
+  intro:{title:'ETF — 국내 1,780행 · 해외 6,037행',body:`<p>두 테이블 박스를 위아래로 펼쳤다. 국내 컬럼 6개, 해외 컬럼 5개가 가운데 개체 6개로 접지되고, 오른쪽에 구성종목(ext 경유)·계층·부재가 붙는다.</p><h3>이 도메인의 결정</h3><ul><li><b>ETN 545·65건 혼입</b> → 테이블 클래스를 fp:ETF 하위로 두지 않음. 판별은 pd_grp_no / cu_etn_yn</li><li><b>지수 표기 불일치</b> → Index 독립 개체 3,172 + 변형⊂정본 closure. cu_base_index 는 오염 컬럼</li><li><b>지역 삼중 표기</b> → Region 계층 하나</li><li><b>구성종목 컬럼 부재</b> → 외부 수집 98만 행, Security 노드, 이름만 같으면 병합 금지</li><li><b>해외 위험등급 부재</b> → 게이트 기각</li></ul>`}};
+
+// 펀드
+SCENES.fund={w:1040,h:860,
+  nodes:{
+    PF:at('PF',140,430),
+    f_org:col('or_co_xtn_itt_cd · trusc_xtn_itt_cd','운용사 · 수탁사 코드','275 · 50','이름 컬럼이 없다. 코드북(asset_manager.csv 275 · trustee.csv 50)으로 Organization 노드. 약칭 라벨(\'삼성\' 2자)이 매칭 하한에 걸려 label_official 슬롯을 분리했다.',['브랜드 하나가 법인 코드 여럿(삼성자산운용·삼성액티브) → 같은 공식 라벨의 형제 코드 IN'],400,120,'"삼성자산운용 펀드" Ground 0 → 슬롯으로 복구 (FND-034)'),
+    f_rptt:col('rptt_ksd_itm_no','대표 예탁원번호',6867,'클래스를 펀드로 묶는 키. 더미 KR0000000000 5,308행은 결측으로 판정해 제외. KG Fund 노드 6,867 이 이 값.',[],400,200,'개체 조회는 rptt, 집계는 복합키 — 펀드의 두 뜻'),
+    f_key:col('(or_co_xtn_itt_cd, mtco_itm_no)','펀드 단위 복합키',14467,'집계·순자산의 펀드 단위. mtco 단독은 운용사 안에서만 유일해 748종이 복수 운용사에 걸친다(단독 조인 시 85,649쌍 중 5,616쌍 = 6.6% 오부착). 짧은 mtco 는 zero-pad 7자가 정본.',['펀드단위: GROUP BY or_co, zeropad(mtco,7) — P0-2a 슬롯이 COUNT(*) 를 교체'],400,280,'"몇 개" = COUNT(DISTINCT 복합키) + 클래스 수 병기'),
+    f_attr:col('prfd_attr_cds','속성 태그 (콤마 다중값)','179 + 17','코드 210종·15축이 콤마로 이어진 한 컬럼. FundAttribute 179 + Country 17 노드가 token 확정식 alias 로 매달린다. LIKE 로 풀면 10 이 110 에 걸린다.',[],400,360,"','||prfd_attr_cds||',' LIKE '%,code,%'"),
+    f_bmrk:col('bmrk_nm','벤치마크',389,'389종. Index 노드로 접지되어 국내ETF·해외ETF 와 같은 정본 지수를 공유한다.',[],400,440,''),
+    f_ast:col('zrin_btyp_nm','유형 (자산군)',18,'주식형·채권형·혼합형…. or_attr_desc 는 자산군·운용구조·파생활용 3축이 압축된 컬럼이라 axis_mapping 으로 분리. 펀드 유형은 개체가 아니라 하위 클래스(FIBO 원칙).',['혼합형 = 주식혼합형 + 채권혼합형 확정식 (FND-023)'],400,520,''),
+    f_rgn:col('fd_ivst_rgn_desc · ovrs_fd_desc','투자지역 · 해외 여부','9 · 3','세부 지역 9종(국내·글로벌·아시아·남미/북미·유럽·이머징/브릭스·중동/아프리카·기타·해당없음)은 Region 노드. 해외 여부는 별도 컬럼(해외 4,483 · 국내외혼합 878 · 국내). 국가 질의는 이 컬럼이 아니라 태그로.',[],400,600,''),
+    f_risk:col('zrin_fd_ivst_risk_gcd / _grd_nm','위험등급 (코드/이름)','6 / 8','1~6. NULL 14,987(63%)은 0이 아니라 미수록. 이름 띄어쓰기 변형 2종(\'높은위험\' 20행)은 alias 로 흡수.',[],400,680,''),
+    f_sale:col('sale_yn · prvo_pbff_desc','판매 상태 · 공모/사모',null,'2차 데이터에 사모 8,960행 혼입(1차 168). 기본모수 = 판매중 AND 공모 = 8,969행 / 3,040펀드. P0-1 슬롯이 집계·랭킹 SQL 에 이 조건을 강제한다.',[],400,760,'모수 없이 "펀드 몇 개" → 2.6배 부풀림'),
+    ORG:at('ORG',660,120), FND:at('FND',660,220), FA:at('FA',660,340), CTY:at('CTY',660,410), IDX:at('IDX',660,480), AC:at('AC',660,550), REG:at('REG',660,620), RG:at('RG',660,690),
+    r_pop:rule('기본모수','판매중 AND 공모','8,969행 / 3,040펀드. 모든 답변이 모수를 명시한다.',660,770,['enforce P0-1 · 회귀 0']),
+    h_cls:chip('클래스 행 23,676','—N:1→ 펀드 묶음 6,867','행 → Fund 관계의 기수. 선언되지 않은 채 코드 가드가 SQL 모양으로 지키다 UNION 가지에서 침묵 → 교차 오답 16건. 기수 선언·Measure 노드 확장이 진행 중.',900,180,[]),
+    h_mom:chip('모펀드 717','feedsInto 1,704','자펀드 → 모펀드. 공식 예시 #2 "국민성장펀드 구조" 에서 모자 구조를 이 간선으로 답한다.',900,260,[]),
+    h_tok:chip('token alias 196',"','||col||',' LIKE '%,code,%'",'다중값 컬럼의 확정식. 모델은 태그 두 개의 확정식을 AND 로 복사할 뿐 컬럼 형식을 추측하지 않는다.',900,360,[]),
+    E3:at('E3',900,470), E4:at('E4',900,550), SEC:at('SEC',900,640),
+    CG:ghost(BASE.CG,900,740,'채권형 펀드도 등급은 구성종목 단위(미수록)'),
+    ABS:{t:'ghost-r',nm:'좌수 · 운용역 · 시계열',ko:'부재 선언 4',cnt:null,mean:'hasUnitsOutstanding(좌수) · hasFundManager(운용역) · hasNavHistory · hasHoldingsHistory. 설정유형코드 \'10\' 을 "10좌"로 6펀드에 단언한 사고(KG-027)가 계기. 게이트가 생성 전에 기각하고 대체 안내(fd_nast_suma·bns_bpr)를 붙인다.',x:900,y:810,ghostWhy:'컬럼 자체가 없음'},
+  },
+  zones:[['fp:PublicFund 펼침 — 컬럼',400,75],['접지 개체 · 규칙',660,70],['묶음 · 확정식 · 외부 · 부재',900,130]],
+  edges:[
+    ['PF','f_org','','col'],['PF','f_rptt','','col'],['PF','f_key','','col'],['PF','f_attr','','col'],['PF','f_bmrk','','col'],['PF','f_ast','','col'],['PF','f_rgn','','col'],['PF','f_risk','','col'],['PF','f_sale','','col'],
+    ['f_org','ORG','275 · 50 (코드북)'],['f_rptt','FND','6,867'],['f_key','FND','집계 단위 14,467'],['f_attr','FA','179 token'],['f_attr','CTY','17 token'],['f_bmrk','IDX','389'],['f_ast','AC','18'],['f_rgn','REG','7'],['f_risk','RG','6 / 8 (1~6)'],['f_sale','r_pop','판매중 AND 공모'],
+    ['FND','h_cls','N:1 기수','hier'],['FND','h_mom','feedsInto','hier'],['FA','h_tok','확정식','hier'],
+    ['PF','E3','(grp, or_co) 복합 조인키','via'],['PF','E4','itm_no','via'],['E3','SEC','11,893 종목','via'],
+    ['PF','CG','⊘','absent'],['PF','ABS','⊘','absent']],
+  labelsAlways:true,
+  note:'펀드: 스포크 9개, 펀드만 닿는 개체 3(Fund·FundAttribute·Country). 결함의 성격이 "값이 없다"가 아니라 "행이 펀드가 아니다"라 첫 결정이 행 단위였다.',
+  intro:{title:'공모펀드 — 23,676행(클래스) × 75컬럼',body:`<p>테이블 박스를 펼쳤다. 컬럼 9개가 개체 8개와 규칙 1개로 접지되고, 오른쪽에 묶음 구조(클래스→펀드→모펀드)·token 확정식·외부 테이블 2·부재가 붙는다.</p><h3>이 도메인의 결정</h3><ul><li><b>행이 클래스</b> → 펀드 단위 복합키 (or_co, mtco). std_itm_no 는 묶음 키가 아님(18,909/18,948 이 1:1)</li><li><b>사모 8,960행 혼입</b> → 기본모수 강제 (P0-1)</li><li><b>더미 키</b> rptt 5,308 · fss 49.2% → 조인 키에서 제외</li><li><b>속성 15축이 한 컬럼</b> → token 노드 179 + 국가 17</li><li><b>좌수·운용역·시계열 없음</b> → 부재 선언, 게이트 기각</li></ul><p class="hint">"펀드"는 두 뜻 — 운용단위 복합키 14,467 vs KG Fund 노드 7,584. 절마다 어느 쪽인지 표기한다.</p>`}};
+
+// ───────── 렌더러
+const svg=document.getElementById('g'), panel=document.getElementById('panel'), note=document.getElementById('note'), legend=document.getElementById('legend');
+const NS='http://www.w3.org/2000/svg';
+const el=(t,a={})=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+const fmt=n=>n==null?'':(typeof n==='number'?n.toLocaleString('ko-KR'):n);
+const TYPE={open:'열린 개체',closed:'닫힌 분류축',table:'테이블 클래스',ext:'외부 테이블',kind:'상품종류 축',column:'컬럼',chip:'구조 (계층·묶음·확정식)',rule:'규칙',ghost:'부재 선언'};
+const COLOR={open:'var(--open)',closed:'var(--closed)',table:'var(--table)',ext:'var(--ext)',kind:'var(--kind)',column:'var(--col)',chip:'var(--chip)',rule:'var(--rule)',ghost:'var(--absent)'};
+let scene=null, nodeEls={}, edgeEls=[];
+
+function render(key){
+  scene=SCENES[key]; nodeEls={}; edgeEls=[];
+  svg.innerHTML=''; svg.setAttribute('viewBox',`0 0 ${scene.w} ${scene.h}`);
+  if(scene.ring) (scene.rings||[scene.ring.r]).forEach(rr=>svg.appendChild(el('circle',{cx:scene.ring.x,cy:scene.ring.y,r:rr,class:'ring'})));
+  (scene.zones||[]).forEach(([t,x,y])=>{const z=el('text',{x,y,class:'zone','text-anchor':'middle'});z.textContent=t;svg.appendChild(z);});
+  const gE=el('g');svg.appendChild(gE);
+  scene.edges.forEach(([a,b,label,kind='link'])=>{
+    const p=scene.nodes[a],q=scene.nodes[b]; if(!p||!q)return;
+    const cls='edge '+(['absent','rel','kindlink','hier'].includes(kind)?kind:'');
+    const path=el('path',{d:`M${p.x},${p.y} L${q.x},${q.y}`,class:cls.trim()});gE.appendChild(path);
+    const t=el('text',{x:(p.x+q.x)/2,y:(p.y+q.y)/2-4,class:'elabel'+(scene.labelsAlways&&label?'':' hidden'),'text-anchor':'middle'});t.textContent=label;gE.appendChild(t);
+    edgeEls.push({a,b,path,t});
+  });
+  const gN=el('g');svg.appendChild(gN);
+  Object.entries(scene.nodes).forEach(([k,n])=>{
+    const p=n, isGhost=n.t.startsWith('ghost');
+    const tcls=isGhost?'ghost':n.t;
+    const g=el('g',{class:'node '+tcls,tabindex:0,role:'button','aria-label':n.nm+' '+(n.ko||'')});
+    if(n.t==='open'||n.t==='closed'||n.t==='ghost-c'){
+      const r=isGhost?24:13+7*Math.log10(Math.max(n.cnt||2,2));
+      g.appendChild(el('circle',{cx:p.x,cy:p.y,r}));
+      const t1=el('text',{x:p.x,y:p.y-2,class:'nm','text-anchor':'middle'});t1.textContent=n.nm;g.appendChild(t1);
+      const t2=el('text',{x:p.x,y:p.y+12,class:'ct','text-anchor':'middle'});t2.textContent=isGhost?'⊘':fmt(n.cnt);g.appendChild(t2);
+      const t3=el('text',{x:p.x,y:p.y+r+14,class:'ct','text-anchor':'middle'});t3.textContent=n.ko;g.appendChild(t3);
+    }else{
+      const wide=n.t==='column'||n.t==='chip'||n.t==='rule'||n.t==='ghost-r';
+      const w=n.t==='ext'?140:n.t==='kind'?96:wide?200:150, h=n.t==='kind'?34:wide?44:48;
+      g.appendChild(el('rect',{x:p.x-w/2,y:p.y-h/2,width:w,height:h,rx:5}));
+      const t1=el('text',{x:p.x,y:p.y-(h>40?4:-4),class:n.t==='column'?'mono':'nm','text-anchor':'middle'});t1.textContent=n.nm.length>30?n.nm.slice(0,29)+'…':n.nm;g.appendChild(t1);
+      if(h>40){const t2=el('text',{x:p.x,y:p.y+13,class:'ct','text-anchor':'middle'});t2.textContent=(n.ko||'')+(n.cnt!=null?' · '+fmt(n.cnt)+(n.t==='table'||n.t==='ext'?'행':''):'');g.appendChild(t2);}
+    }
+    g.addEventListener('click',()=>select(k));
+    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(k);}});
+    gN.appendChild(g);nodeEls[k]=g;
+  });
+  note.textContent=scene.note;
+  legend.innerHTML=key==='all'
+    ?`<span><i style="border-color:var(--open);background:var(--open-soft)"></i>열린 개체</span><span><i style="border-color:var(--closed);background:var(--closed-soft)"></i>닫힌 분류축</span><span><i class="lk" style="border-color:var(--table);background:var(--table-soft)"></i>테이블 클래스</span><span><i class="lk" style="border-color:var(--ext);background:var(--ext-soft)"></i>외부 홀딩스</span><span><i class="lk" style="border-color:var(--kind);background:var(--kind-soft)"></i>상품종류 축</span><span class="ln">연결 컬럼 (값 수)</span><span class="ab">부재 선언 ⊘</span>`
+    :`<span><i class="lk" style="border-color:var(--table);background:var(--table-soft)"></i>테이블</span><span><i class="lk" style="border-color:var(--col);background:var(--col-soft)"></i>컬럼</span><span><i style="border-color:var(--open);background:var(--open-soft)"></i>열린 개체</span><span><i style="border-color:var(--closed);background:var(--closed-soft)"></i>닫힌 축</span><span><i class="lk" style="border-color:var(--chip);background:var(--chip-soft)"></i>계층·묶음·확정식</span><span><i class="lk" style="border-color:var(--rule);background:var(--rule-soft);border-style:dashed"></i>규칙</span><span><i class="lk" style="border-color:var(--ext);background:var(--ext-soft)"></i>외부 테이블</span><span class="ab">부재 ⊘</span>`;
+  intro();
+  renderRules(key);
+}
+function select(k){
+  const n=scene.nodes[k], isGhost=n.t.startsWith('ghost'), tcls=isGhost?'ghost':n.t;
+  const nb=new Set([k]);
+  edgeEls.forEach(e=>{const on=e.a===k||e.b===k;e.path.classList.toggle('hi',on);e.path.classList.toggle('dim',!on);e.t.classList.toggle('hidden',!(on&&e.t.textContent)&&!(scene.labelsAlways&&on));if(on){nb.add(e.a);nb.add(e.b);}});
+  Object.keys(nodeEls).forEach(j=>{nodeEls[j].classList.toggle('sel',j===k);nodeEls[j].classList.toggle('dim',!nb.has(j));});
+  const links=(n.links||[]).map(([t,c,v,nt])=>`<tr><td>${t}</td><td><code>${c}</code>${v!==''&&v!=null?` · <span class="count">${fmt(v)}</span>`:''}${nt?`<div class="hint">${nt}</div>`:''}</td></tr>`).join('');
+  const abs=(n.absent||[]).map(([t,why])=>`<tr><td class="absent">⊘ ${t}</td><td>${why}</td></tr>`).join('');
+  panel.innerHTML=`
+    <div class="type" style="color:${COLOR[tcls]}">${TYPE[tcls]}</div>
+    <h2>${n.nm}</h2>
+    <div>${n.ko||''}${n.cnt!=null?` · <span class="count">${fmt(n.cnt)}${n.t==='table'||n.t==='ext'?'행':(n.t==='column'?'':' 노드')}</span>`:''}${n.sub?` <span class="hint">· ${n.sub}</span>`:''}</div>
+    ${isGhost?`<p class="absent">부재 선언 — ${n.ghostWhy}</p>`:''}
+    <p>${n.mean||''}</p>
+    ${links?`<h3>${n.t==='table'||n.t==='ext'||n.t==='kind'?'닿는 개체 · 컬럼 (값 수)':'닿는 테이블 · 컬럼 (값 수)'}</h3><table>${links}</table>`:''}
+    ${abs?`<h3>부재 선언</h3><table>${abs}</table>`:''}
+    ${n.extra&&n.extra.length?`<h3>구조 메모</h3><ul>${n.extra.map(x=>`<li>${x}</li>`).join('')}</ul>`:''}
+    ${n.run?`<h3>질의 시점에 하는 일</h3><p>${n.run}</p>`:''}
+    ${n.weak?`<h3>정직한 약점</h3><p class="absent">${n.weak}</p>`:''}`;
+}
+function intro(){
+  panel.innerHTML=`<div class="type" style="color:var(--ink-3)">시작</div><h2>${scene.intro.title}</h2>${scene.intro.body}`;
+  edgeEls.forEach(e=>{e.path.classList.remove('hi','dim');e.t.classList.toggle('hidden',!(scene.labelsAlways&&e.t.textContent));});
+  Object.keys(nodeEls).forEach(j=>nodeEls[j].classList.remove('sel','dim'));
+}
+svg.addEventListener('click',e=>{if(e.target===svg||e.target.classList.contains('ring'))intro();});
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
+  render(b.dataset.scene);
+  try{localStorage.setItem('kg-scene',b.dataset.scene);}catch(e){}
+}));
+
+// ── 도메인 탭 방사형 재배치 (2026-09-04) ─────────────────────────────────────
+// 전체 탭처럼 허브-스포크로 읽히게 좌표만 다시 계산한다. 노드 정의·간선은 건드리지 않는다.
+// 배치: 중심 = 테이블 클래스 · 안쪽 링 = 그 테이블의 컬럼(넓은 박스) · 바깥 링 = 접지되는 개체(원)
+//       컬럼과 개체를 같은 각도에 두어 "컬럼 → 개체" 가 바깥으로 곧게 뻗는다.
+(()=>{
+  const TAU=Math.PI*2, pol=(cx,cy,r,a)=>({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});
+  const isCol=n=>n.t==='column', isEnt=n=>n.t==='open'||n.t==='closed'||n.t==='ghost-c';
+  const isSat=n=>n.t==='chip'||n.t==='rule'||n.t==='ghost-r';
+
+  function relayout(sc,{cx,cy,rCol,rEnt,rSat,centers,w,h,zones}){
+    const N=sc.nodes, E=sc.edges;
+    const out=k=>E.filter(e=>e[0]===k).map(e=>e[1]);
+    const inn=k=>E.filter(e=>e[1]===k).map(e=>e[0]);
+    // 1) 중심 테이블
+    centers.forEach(([k,dx,dy])=>{ if(N[k]){N[k].x=cx+dx; N[k].y=cy+dy;} });
+    // 2) 컬럼 — 소속 테이블별로 각도 구간을 나눠 배치
+    const colAng={};
+    centers.forEach(([tk,,,a0,a1])=>{
+      const cols=out(tk).filter(k=>N[k]&&isCol(N[k]));
+      cols.forEach((k,i)=>{
+        const a=(a0+(a1-a0)*(cols.length===1?0.5:i/(cols.length-1)))*Math.PI/180;
+        colAng[k]=a; Object.assign(N[k],pol(cx,cy,rCol,a));
+      });
+    });
+    // 3) 개체 — 자기에게 들어오는 컬럼들의 평균 각도. 없으면 빈 각도에 채운다
+    const ents=Object.keys(N).filter(k=>isEnt(N[k])&&!centers.some(c=>c[0]===k));
+    const placed={}, free=[];
+    ents.forEach(k=>{
+      const as=inn(k).filter(c=>colAng[c]!==undefined).map(c=>colAng[c]);
+      if(as.length){ const x=as.reduce((s,a)=>s+Math.cos(a),0), y=as.reduce((s,a)=>s+Math.sin(a),0);
+        placed[k]=Math.atan2(y,x); } else free.push(k);
+    });
+    // 같은 각도에 둘 이상이면 벌린다
+    const byAng={}; Object.entries(placed).forEach(([k,a])=>{const q=a.toFixed(3);(byAng[q]=byAng[q]||[]).push(k);});
+    Object.values(byAng).forEach(ks=>ks.forEach((k,i)=>{ placed[k]+= (i-(ks.length-1)/2)*0.34; }));
+    // 빈 각도(이미 놓인 개체 사이의 가장 넓은 틈)에 차례로 꽂는다
+    free.forEach(k=>{
+      const used=Object.values(placed).map(a=>((a%TAU)+TAU)%TAU).sort((x,y)=>x-y);
+      let best=0,bw=-1;
+      for(let i=0;i<used.length;i++){const a=used[i],b=used[(i+1)%used.length]+(i===used.length-1?TAU:0);
+        if(b-a>bw){bw=b-a;best=(a+b)/2;}}
+      placed[k]=used.length?best:0;
+    });
+    Object.entries(placed).forEach(([k,a])=>Object.assign(N[k],pol(cx,cy,rEnt,a)));
+    // 4) 위성(규칙·칩) — 붙어 있는 개체/컬럼 각도의 더 바깥
+    const sats={};
+    Object.keys(N).filter(k=>isSat(N[k])).forEach((k,i)=>{
+      const src=inn(k).concat(out(k));
+      const a=src.map(x=>placed[x]!==undefined?placed[x]:colAng[x]).filter(v=>v!==undefined);
+      sats[k]=a.length?Math.atan2(a.reduce((s,v)=>s+Math.sin(v),0),a.reduce((s,v)=>s+Math.cos(v),0))
+                     :(-90+i*40)*Math.PI/180;
+    });
+    const satBy={}; Object.entries(sats).forEach(([k,a])=>{const q=a.toFixed(3);(satBy[q]=satBy[q]||[]).push(k);});
+    Object.values(satBy).forEach(ks=>ks.forEach((k,i)=>{ sats[k]+= (i-(ks.length-1)/2)*0.30; }));
+    Object.entries(sats).forEach(([k,a])=>Object.assign(N[k],pol(cx,cy,rSat,a)));
+    // 5) 외부 테이블 체인 — 아래쪽에 가로로
+    const ext=Object.keys(N).filter(k=>N[k].t==='ext');
+    ext.forEach((k,i)=>{ N[k].x=cx-((ext.length-1)/2-i)*170; N[k].y=cy+rSat+70; });
+    // 5-b) 남은 충돌은 각도를 조금씩 벌려 푼다 (링 위 노드만 · 반지름 유지)
+    const BW={column:200,chip:200,rule:200,'ghost-r':200,ext:140,kind:96,table:150};
+    const BH={column:44,chip:44,rule:44,'ghost-r':44,ext:48,kind:34,table:48};
+    const bbox=n=>{ if(BW[n.t]===undefined){const r=13+7*Math.log10(Math.max(n.cnt||2,2))+16;
+        return[n.x-r,n.y-r,n.x+r,n.y+r+14];}
+      const w=BW[n.t],h=BH[n.t]; return[n.x-w/2,n.y-h/2,n.x+w/2,n.y+h/2]; };
+    const hit=(a,b)=>a[0]<b[2]-6&&b[0]<a[2]-6&&a[1]<b[3]-6&&b[1]<a[3]-6;
+    const movable=Object.keys(N).filter(k=>N[k].t!=='ext'&&!centers.some(c=>c[0]===k));
+    for(let pass=0;pass<60;pass++){
+      let moved=false;
+      for(let i=0;i<movable.length;i++)for(let j=i+1;j<movable.length;j++){
+        const ka=movable[i],kb=movable[j],A=N[ka],B=N[kb];
+        if(!hit(bbox(A),bbox(B))) continue;
+        moved=true;
+        [[A,-1],[B,1]].forEach(([n,sgn])=>{
+          const dx=n.x-cx, dy=n.y-cy, r=Math.hypot(dx,dy)||1, a=Math.atan2(dy,dx)+sgn*0.035;
+          n.x=cx+r*Math.cos(a); n.y=cy+r*Math.sin(a);
+        });
+      }
+      if(!moved) break;
+    }
+    // 6) 캔버스·안내원
+    sc.w=w; sc.h=h; sc.ring={x:cx,y:cy,r:rCol}; sc.rings=[rCol,rEnt];
+    sc.zones=zones;
+  }
+
+  if(SCENES.bond) relayout(SCENES.bond,{cx:720,cy:700,rCol:300,rEnt:480,rSat:620,w:1440,h:1440,
+    centers:[['B',0,0,-150,150]],
+    zones:[['컬럼 — 테이블의 값',720,378],['개체 — 공유 어휘',720,196]]});
+
+  if(SCENES.fund) relayout(SCENES.fund,{cx:720,cy:700,rCol:310,rEnt:490,rSat:630,w:1440,h:1460,
+    centers:[['PF',0,0,-160,160]],
+    zones:[['컬럼 — 테이블의 값',720,368],['개체 — 공유 어휘',720,186]]});
+
+  if(SCENES.etf) relayout(SCENES.etf,{cx:720,cy:700,rCol:330,rEnt:500,rSat:640,w:1480,h:1480,
+    centers:[['DE',-115,0,110,250],['OE',115,0,-70,70]],
+    zones:[['국내 ETF 컬럼',330,392],['해외 ETF 컬럼',1110,392],['개체 — 공유 어휘',720,186]]});
+})();
+
+let start='all'; try{start=localStorage.getItem('kg-scene')||'all';}catch(e){}
+if(!SCENES[start])start='all';
+document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x.dataset.scene===start?'true':'false'));
+render(start);
+</script>

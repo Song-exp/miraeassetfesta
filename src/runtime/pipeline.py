@@ -746,7 +746,29 @@ _SQL_GRADE_IN = re.compile(r"crd_grd\s*\)?\s*(?:NOT\s+)?IN\s*\(", re.I)
 _SQL_GRADE_IN_FULL = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*IN\s*\(([^)]*)\)", re.I)   # NOT IN 은 구조상 매칭 안 됨
 
 
-_FUND_TBL = re.compile(r"\bfrom\s+public_funds\b", re.I)
+class _OuterFundTable:
+    """`FROM public_funds` 를 **바깥 질의에서만** 인정한다 — 부질의 안의 것은 세지 않는다.
+
+    2026-09-04 KG-006 실측("미래에셋코어테크 펀드의 운용사와 수탁사는 어디야?") — HCX 가
+
+        SELECT … FROM ext_fund_page WHERE itm_no IN (SELECT itm_no FROM public_funds WHERE …)
+
+    를 냈는데, 종전 전제가 "from public_funds" 를 **아무 데서나 찾는 검색**이라 부질의 안의 것을 보고
+    개별 조회 묶기 가드가 발동했다. 가드는 바깥 SELECT 에 `sale_yn`·`rptt_ksd_itm_no`·
+    `or_co_xtn_itt_cd`·`mtco_itm_no` 를 주입했고, 그 컬럼들은 `ext_fund_page` 에 없어
+    **가드가 만든 SQL 이 기각당했다**(재생성도 같은 실패 → 오거절).
+
+    가드들은 예외 없이 바깥 SELECT/WHERE 를 고치므로, 판정도 바깥 FROM 이어야 한다.
+    """
+
+    _FIRST_FROM = re.compile(r"\bfrom\s+([A-Za-z_]\w*)", re.I)
+
+    def search(self, sql: str):
+        m = self._FIRST_FROM.search(sql or "")
+        return m if m and m.group(1).lower() == "public_funds" else None
+
+
+_FUND_TBL = _OuterFundTable()
 _SQL_ANCHOR = re.compile(r"\bgroup\s+by\b|\border\s+by\b", re.I)
 # 질문이 모수 밖을 명시하면 주입하지 않는다 — '사모 펀드 중 큰 것' 에 공모 필터를 박으면 정반대 오답
 # 🔴 8R 부류 F (KG 1R R6) — 목록에서 '역외' 를 뺐다. 역외는 **운용사 코드 집합**을 넓히는 말이지 판매상태·공모여부를

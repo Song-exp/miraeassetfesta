@@ -83,7 +83,7 @@ flowchart LR
 | Index | `ref_base_index` 904 / `cu_base_index` 19 | `cu_base_index` 1,848 | TR/CR/NR 변형 → 정본 |
 | Region | `wu_inv_rgn` 11 / `ref_geo_focus` 23 | `wu_inv_rgn` 59 | 한글·영문 이원화 |
 | AssetClass | `wu_inv_ast_type` 9 / `ref_ast_type` 7 | `wu_inv_ast_type` 6 | |
-| RiskGrade | `pd_risk_cd`/`pd_risk_nm` 6 (**1~6**) | **⊘** | |
+| RiskGrade | `pd_risk_cd`/`pd_risk_nm` 6 (**1~6**) | **⊘** | 🔴 주최 자료 예시는 `1~5` 이나 국내ETF 실측은 **1~6** — 6등급(매우낮은위험) 21건이 실재해 1~5 로 제약하면 차단된다. 채권(0~6)과 함께 `range_by_table` 이 테이블별로 선언한다 |
 | Currency | `pd_curr_cd` 1 | `pd_trd_ccy` 1 | EUR 등 상수 게이트 |
 | Security | `ext_etf_holdings` 10,154 | `ext_ovs_etf_holdings` 31,117 | holds = ext 테이블 |
 | ⊘ CreditGrade | ⊘ | ⊘ | ETF 는 발행사 신용등급 없음 |

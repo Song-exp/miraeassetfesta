@@ -31,20 +31,21 @@
 | :-- | :-- |
 | 채권 | {'구조': '행 = 종목 × 거래시장 × 기준일 × 판매LOT (pd_no + pd_exg_mkt + info_base_dt + info_seq — 스키마 NOT NULL 4개가 PK). 21,882행 / pd_no distinct 20,497. 동일 pd_no 2~4행 = 1,078종목(2행 772 · 3행 305 · 4행 1).', 'evidence_grade': 'A', '구성': '장내 17,746행(전부 pd_no 유일) + 장외 4,136행(pd_no 3,828). 중복 1,078종목 중 1,077은 "장내 1행 + 장외 1~3행" (같은 종목이 두 시장에 모두 수록) · 1종목만 장외 LOT 2개. info_base_dt 는 전 행 20260821 단일값이라 현 스냅샷에선 키 역할 없음.',  |
 | 국내ETF | {'구조': '행 = 상품 (pd_itm_no 완전 유일 — 1,780행 = 1,780 distinct)', 'evidence_grade': 'A', 'note': '이 테이블은 행이 곧 상품이다. COUNT(*) 를 그대로 쓸 수 있다. (공모펀드도 2차에서 itm_no 유일로 정상화됐으므로 "펀드와 달리" 서술은 폐기.) ETF 1,235 · ETN 545 (30.6%) 혼입 — 상품군 분리는 pd_grp_no (product_group 참조).'} |
-| 해외ETF | {'구조': '행 = 상품 (pd_itm_no 완전 유일 — 6,037행 = 6,037 distinct · 2차 2026-08-22)', 'evidence_grade': 'A', 'note': '🔴 유일 키는 pd_itm_no **뿐이다.** pd_isin_cd·pd_lipper_id 는 각각 63종이 2개 상품에 걸려 (예: 같은 ISIN 이 OEUR.K/OEFA.K 두 티커에) 단독 조인 키로 쓰면 안 된다 (columns._identifier_dup). 1차 대비 신규 395건(157건은 7/11 이후 상장) · 소멸 20건(레버리지 단기상품 상폐 — Tradr 2X Short NBIS 등). 시세 기준일 du_clpr_base_dt = 20260821 이 5,687건이나 20260609(14)·202 |
+| 해외ETF | {'구조': '행 = 상품 (pd_itm_no 완전 유일 — 6,037행 = 6,037 distinct · 2차 2026-08-22)', 'evidence_grade': 'A', 'note': '🔴 유일 키는 pd_itm_no **뿐이다.** pd_isin_cd·pd_lipper_id 는 각각 63종이 2개 상품에 걸려 (예: 같은 ISIN 이 OEUR.K/OEFA.K 두 티커에) 단독 조인 키로 쓰면 안 된다 (columns._identifier_dup). 1차 대비 신규 391건(pd_itm_no 기준; 157건은 7/11 이후 상장) · 소멸 0건 — ISIN 이 바뀐 20건(Tradr 2X Short NBIS 등)은 2차에도 티커가 있어 상폐가 아니다(2026-09-02 v1 대조). 시세 기준일 d |
 | 펀드 | {'구조': '행 = 종목(itm_no) — 클래스 단위 마스터. 23,676행 = 23,676 distinct itm_no · NULL 0', 'evidence_grade': 'A', '증명': '🔑 2026-08-25 2차 데이터 실측 — itm_no 가 행 단위로 완전 유일하다 (profile_table primary_key 탐지기 확인). 1차의 행 폭발 원인이던 prfd_attr_cd 가 삭제되고 prfd_attr_cds(쉼표 구분 목록) 로 집약됐다. 따라서 "COUNT(*) 금지 · GROUP BY itm_no 선행" 규칙은 **폐기**한다 — 행 = 종목이다.', 'std_itm_no의_위치': "std_itm_no 는 클래스 묶음 키가 **아니다** — distinct 18,948 중 18, |
 
 #### (2) grain 관련 query_rules — 전수
 
 | 도메인 | 규칙 | 내용 |
 | :-- | :-- | :-- |
-| 채권 | `대표행` | 종목 수를 세는 집계는 GROUP BY pd_no — 1,078종목이 2~4행 (row_grain). COUNT(*) 를 종목 수로 쓰지 말 것. 🔴 2026-08-27 정정 — 속성 답변에서 '장내행 우선' 으로 한 줄을 고르지 말 것. eval_price 가 다른 8종목은 장외행의 종류·등급·발행사·위험등급·듀레이션이 NULL 이라, 어느 줄을 집느냐로 'AA-' 와 '정보 없음' 이 갈린다. 두 줄을 나란히 병기한다 — ① 값이 같으면 한 번만 답한다 ② 장외 가격에는 '액면가 수준' 단서를 붙인다. 결측을 옆 줄 값으로 채우는 것은 데이터가 아니라 추측이다. |
+| 채권 | `대표행` | 종목 수 집계는 COUNT(DISTINCT pd_no) 또는 GROUP BY pd_no — 1,078종목이 장내·장외 2~4행. 속성 답변에서 '장내행 우선' 으로 한 줄만 고르지 말 것: 장외행은 종류·등급·발행사·위험등급·듀레이션이 NULL 일 수 있다. 값이 다르면 두 줄을 병기(같으면 한 번), 장외 가격엔 '액면가 수준' 단서. 결측을 옆 줄 값으로 채우지 않는다. |
+| 채권 | `등급별집계` | '위험등급별 몇 종목·등급별 분포' 질의는 SELECT pd_risk_gcd, pd_risk_nm, COUNT(DISTINCT pd_no) FROM domestic_bonds GROUP BY pd_risk_gcd, pd_risk_nm — WHERE 로 등급을 거르지 않는다. 🔴 '00'(해당없음 19종목) 행을 결과에서 떨어뜨리면 불완전 답변이다 — 1~6등급 합 20,486 ≠ 전체 20,497 로 검증에서 바로 걸린다(2026-09-01 실측: 6줄만 답해 19종목 누락). 7줄 전부 답하고 '해당없음(등급 미부여) 19종목' 으로 말한다. 합계 주의: 8종목(KR352502GG80 등)이 '00' 행과 '15'/'16' 행을 둘 다 가져 등급별 DISTINCT 합(20,505)이 전체(20,497)보다 8 크다 — '00' 전용은 11종목. 합계를 물으면 전체 20,497 로 답하고, 등급별 수를 단순 합산해 전체라고 말하지 않는다. 다른 축(신용등급별·종류별) 분포 질의도 같 |
 | 채권 | `시장집계금지` | pd_exg_mkt 단독 group-by 금지 — 구성 효과 교란 (§9.5). 같은 종목이 양 시장에 있을 수 있음 |
 | 펀드 | `종목단위` | 행 = itm_no (dedup 불필요 — 2차) |
-| 펀드 | `펀드단위` | GROUP BY or_co_xtn_itt_cd,          CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no               ELSE substr('0000000' \|\| mtco_itm_no, -7) END |
-| 펀드 | `펀드단위_검증` | 2026-08-25 — 더미 배제(dummy_as_missing) 후 합성키 distinct 14,522(원값) · 판매중 4,342. 🔴 1차의 4,643 은 1차 모수 수치다. 12자리 더미 '000000000000' 은 배제 조건에 걸린다. |
-| 펀드 | `펀드단위_근거` | GROUP BY mtco_itm_no 단독은 틀린 집계 — 운용사 내부 번호라 415종의 값이 2개 이상 운용사에 걸친다. 선행 0 손실로 길이 1~7 이 섞여 7자리 zero-pad 필요. 길이 8+ 값은 자르지 말 것. |
-| 펀드 | `집계_TopN_필수` | 🔴 집계·Top-N 은 기본모수(판매중 AND 공모)로 한정한다 — 판매완료 12,714행은 평가 컬럼 99% 결측, 사모는 질의 대상 아님. 정렬 컬럼에 'IS NOT NULL AND <> 0'(zero_is_value 컬럼 제외) + 수익률정상. 결과에 모수·기준일(fd_daily_bas_dt) 병기. |
+| 펀드 | `펀드단위` | {'text': "GROUP BY or_co_xtn_itt_cd,\n         COALESCE(CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no\n                       ELSE substr('0000000' \|\| mtco_itm_no, -7) END, public_funds.itm_no)", 'enforce': {'enabled': True, 'when': {'tables': ['public_funds'], 'question': {'any': ['몇 개', '개수', '얼마나 많'], 'not_any': ['클래스']}, 'sql': {'has': ['count(*)'], 'lacks': ['union', 'group by', '펀드수']}}, 'action': 'replace_expr', 'from_pattern': 'COUNT\\s*\\(\\s*\\*\\s*\\)(?:\\s+AS\\s+(?:"[^"]+"\|\ |
+| 펀드 | `펀드단위_근거` | GROUP BY mtco_itm_no 단독은 틀린 집계 — 415종의 값이 2개 이상 운용사에 걸친다. 짧은 mtco 는 정상 값이며 zero-pad(7자)가 정본, 길이 8+ 는 자르지 말 것. 더미 mtco(기본모수 11행)는 패딩하면 남남끼리 뭉친다 — itm_no 로 폴백하거나 행 단위로 둔다(역외 NULL 110행과 같은 처리). |
+| 펀드 | `집계_TopN_필수` | 🔴 집계·Top-N SQL 은 반드시 WHERE 에 sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND <정렬 컬럼> IS NOT NULL AND <정렬 컬럼> <> 0 을 포함한다(zero_is_value 컬럼은 0 조건 제외 · 수익률 컬럼이면 수익률정상 추가) — 이 조건이 빠진 집계·Top-N 은 오답이다. 판매완료 12,714행은 위험등급·수익률 99% 결측(순자산 92%·유형 79%), 사모는 질의 대상 아님. 결과에 모수·기준일(fd_daily_bas_dt) 병기. |
+| 펀드 | `대표행` | 🔴 랭킹·Top-N·집계는 클래스(행)가 아니라 펀드 단위다 — 펀드단위 키(or_co_xtn_itt_cd + zero-pad mtco_itm_no)로 GROUP BY 하고 펀드당 1행(정렬 컬럼 MAX 인 클래스)만 낸다. 행 단위면 한 펀드의 클래스들이 TOP5 를 도배한다. 역외(ofsfd_yn=1)는 mtco_itm_no 가 없어 행 단위로 둔다. 답에는 "클래스 n개" 병기 + 대표 클래스 itm_no. |
 
 #### (3) 실측 — 행과 개체가 얼마나 어긋나나
 

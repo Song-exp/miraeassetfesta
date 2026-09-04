@@ -44,9 +44,9 @@ python scripts/gen_ontology_rules_doc.py 2 8    # 규칙 2·8 만
 
 | 도메인 | `query_rules` | 컬럼 판정 | 도메인 전용 블록 |
 | :-- | --: | :-- | :-- |
-| 채권 | 25 | 58/58 | `name_encoding`, `clarify`, `axis_derivation`, `workshop` |
-| 국내ETF | 18 | 62/98 | `product_group`, `derivation_rules`, `axis_derivation`, `external_join` |
-| 해외ETF | 13 | 35/49 | `column_korean_names`, `product_group`, `constant_columns`, `domestic_asymmetry`, `external_join` |
-| 펀드 | 14 | 70/75 | `missing_profile`, `entities`, `class_hierarchy`, `axis_mapping`, `derivation_rules`, `attributes`, `cross_domain`, `external_facts` |
+| 채권 | 40 | 58/58 | `name_encoding`, `synonyms`, `answer_rules`, `clarify`, `axis_derivation`, `workshop`, `gate_constants`, `absent_properties` |
+| 국내ETF | 44 | 62/98 | `product_group`, `derivation_rules`, `axis_derivation`, `external_join`, `clarify`, `name_encoding`, `synonyms`, `answer_rules`, `gate_constants`, `absent_properties` |
+| 해외ETF | 23 | 35/49 | `column_korean_names`, `product_group`, `constant_columns`, `gate_constants`, `domestic_asymmetry`, `external_join`, `clarify`, `synonyms`, `name_encoding`, `answer_rules` |
+| 펀드 | 31 | 74/75 | `schema_exclude`, `missing_profile`, `gate_constants`, `answer_rules`, `clarify`, `entities`, `class_hierarchy`, `axis_mapping`, `derivation_rules`, `attributes`, `cross_domain`, `external_facts`, `absent_properties`, `synonyms` |
 
 **비어 있는 것** — 역질문 규칙(`clarify`)은 채권에만, 교차 도메인 규칙(`cross_domain`)은 펀드에만 있다. `shared/` 개체 7종의 수동 `edges` 는 전부 0 이라 `kg_edge` 는 **전량 `source: rule`(추정)** 이고, 그래서 답변에 “추정” 을 병기한다. AssetClass · Currency · RiskGrade 는 `parent` 가 없어 계층 질의가 안 된다.

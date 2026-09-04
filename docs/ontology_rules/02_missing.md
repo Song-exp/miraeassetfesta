@@ -33,15 +33,15 @@
 | 채권 | 6 | 14 | 22 | 16 | 0 | 0 | 0 | 58 |
 | 국내ETF | 45 | 8 | 4 | 4 | 0 | 1 | 0 | 62 |
 | 해외ETF | 22 | 5 | 1 | 3 | 0 | 4 | 2 | 37 |
-| 펀드 | 5 | 30 | 19 | 1 | 6 | 0 | 3 | 64 |
+| 펀드 | 7 | 31 | 21 | 1 | 6 | 0 | 2 | 68 |
 
 > 🔴 **문서화된 4분류 밖의 값이 있다** — `unresolved`, `None`. `None` 은 필드 자체가 비어 있는 것이고, 그 외는 정의되지 않은 분류다. 답변 문장이 분류에서 나오므로 **분류 밖 값은 답변 규칙이 없는 상태**다.
 
-#### (2) `mixed` 판정 78개 중 **값별 분해가 없는 것 70개**
+#### (2) `mixed` 판정 80개 중 **값별 분해가 없는 것 71개**
 
 `mixed` 는 '행마다 이유가 다름' 이라는 선언이므로 `missing_semantics` 로 값별 분해가 있어야 답변 문장을 고를 수 있다. 분해가 없으면 **판정만 있고 답변 규칙은 없는 상태**다.
 
-> 🔴 분해 없는 컬럼 70개 — 국내ETF.`pd_ticker`, 국내ETF.`pd_isin_cd`, 국내ETF.`pd_ric`, 국내ETF.`du_last_aum`, 국내ETF.`pd_divd_amt_pshr`, 국내ETF.`pd_divd_amt_ann`, 국내ETF.`pd_dvid_yield`, 국내ETF.`pd_dvid_cycl`, 국내ETF.`pd_dvid_pay_cnt`, 국내ETF.`pd_dvid_pay_months`, 국내ETF.`pd_dvid_nav`, 국내ETF.`pd_dvid_tax_basis`, 국내ETF.`pd_dvid_base_dt`, 국내ETF.`pd_dvid_prc_base_dt`, 국내ETF.`du_chas_errt`, 국내ETF.`du_diff_rt`, 국내ETF.`du_chas_errt_base_dt`, 국내ETF.`du_diff_rt_base_dt`, 국내ETF.`du_nav_base_dt`, 국내ETF.`du_vlty_1y`, 국내ETF.`du_vlty_6m`, 국내ETF.`du_vlty_3m`, 국내ETF.`du_vlty_1m`, 국내ETF.`du_vlty_base_dt`, 국내ETF.`fn_portfolio_dt`, 국내ETF.`fn_base_dt`, 국내ETF.`ref_base_index`, 국내ETF.`ref_base_dt`, 국내ETF.`ref_fund_mgmt_co`, 국내ETF.`ref_ast_type`, 국내ETF.`ref_geo_focus`, 국내ETF.`du_er_1d`, 국내ETF.`du_er_1m`, 국내ETF.`du_er_3m`, 국내ETF.`du_er_6m`, 국내ETF.`du_er_ytd`, 국내ETF.`ru_mkt_price`, 국내ETF.`ru_mkt_volume`, 국내ETF.`pd_sect_cd`, 국내ETF.`du_nav_yday`, 국내ETF.`du_nav_rnf_amt`, 국내ETF.`du_clpr`, 국내ETF.`cu_lev_fector`, 국내ETF.`cu_strtegy`, 국내ETF.`pd_curr_cd`, 해외ETF.`du_er_1d`, 해외ETF.`du_last_aum`, 해외ETF.`ru_mkt_price`, 해외ETF.`cu_lev_fector`, 해외ETF.`pd_lstg_dt`, 해외ETF.`du_val_1d`, 해외ETF.`cu_fund_mgmt_co`, 해외ETF.`cu_strtegy`, 해외ETF.`cu_inverse_short_yn`, 해외ETF
+> 🔴 분해 없는 컬럼 71개 — 국내ETF.`pd_ticker`, 국내ETF.`pd_isin_cd`, 국내ETF.`pd_ric`, 국내ETF.`du_last_aum`, 국내ETF.`pd_divd_amt_pshr`, 국내ETF.`pd_divd_amt_ann`, 국내ETF.`pd_dvid_yield`, 국내ETF.`pd_dvid_cycl`, 국내ETF.`pd_dvid_pay_cnt`, 국내ETF.`pd_dvid_pay_months`, 국내ETF.`pd_dvid_nav`, 국내ETF.`pd_dvid_tax_basis`, 국내ETF.`pd_dvid_base_dt`, 국내ETF.`pd_dvid_prc_base_dt`, 국내ETF.`du_chas_errt`, 국내ETF.`du_diff_rt`, 국내ETF.`du_chas_errt_base_dt`, 국내ETF.`du_diff_rt_base_dt`, 국내ETF.`du_nav_base_dt`, 국내ETF.`du_vlty_1y`, 국내ETF.`du_vlty_6m`, 국내ETF.`du_vlty_3m`, 국내ETF.`du_vlty_1m`, 국내ETF.`du_vlty_base_dt`, 국내ETF.`fn_portfolio_dt`, 국내ETF.`fn_base_dt`, 국내ETF.`ref_base_index`, 국내ETF.`ref_base_dt`, 국내ETF.`ref_fund_mgmt_co`, 국내ETF.`ref_ast_type`, 국내ETF.`ref_geo_focus`, 국내ETF.`du_er_1d`, 국내ETF.`du_er_1m`, 국내ETF.`du_er_3m`, 국내ETF.`du_er_6m`, 국내ETF.`du_er_ytd`, 국내ETF.`ru_mkt_price`, 국내ETF.`ru_mkt_volume`, 국내ETF.`pd_sect_cd`, 국내ETF.`du_nav_yday`, 국내ETF.`du_nav_rnf_amt`, 국내ETF.`du_clpr`, 국내ETF.`cu_lev_fector`, 국내ETF.`cu_strtegy`, 국내ETF.`pd_curr_cd`, 해외ETF.`du_er_1d`, 해외ETF.`du_last_aum`, 해외ETF.`ru_mkt_price`, 해외ETF.`cu_lev_fector`, 해외ETF.`pd_lstg_dt`, 해외ETF.`du_val_1d`, 해외ETF.`cu_fund_mgmt_co`, 해외ETF.`cu_strtegy`, 해외ETF.`cu_inverse_short_yn`, 해외ETF
 
 | 도메인 | 컬럼 | 한글명 | missing_semantics |
 | :-- | :-- | :-- | :-- |
@@ -51,10 +51,11 @@
 | 채권 | `exg_close_price` | 장내 채권종가 | {0: 'missing'} |
 | 채권 | `exg_close_yield` | 장내 종가수익률 | {0: 'missing'} |
 | 채권 | `exg_close_price_base_dt` | 장내 종가 기준일 | {'': 'missing'} |
+| 펀드 | `itm_eng_nm` | 종목영문명 | {'itm_nm복사': '13,972행(59.0%) — 한글 종목명이 그대로 들어 있다 (판매중 6,014)', '대문자화': "2,757행 — itm_nm 을 upper() 한 값('C-Pe'→'C-PE')", '영한혼합': "318행 — 'MIRAEASSET GLOBAL SOLUTION 40 FUND1(BOND HYBRID)운용' 류", '운영메모': "177행 — '소규모해지'·'201 |
 | 펀드 | `or_co_xtn_itt_cd` | 운용사 대외기관코드 | {'99999999': "운용사 미지정 27행(전부 판매완료) — codebooks/asset_manager.csv 는 이 코드를 '현대와이즈03사'(종목명 접두 최빈값 · 점유 15% · source 가 '법인명 아님' 이라 자인)로 등재해 KG 에 Org_fund_99999999 노드를 만들고 있다. 🔴 실재하지 않는 운용사다 — 운용사명으로 답하지 말 것. 답변은 '운용사 정보가 수록돼 |
 | 펀드 | `trusc_xtn_itt_cd` | 수탁사 대외기관코드 | {'null': "수탁사 코드 미기재 42행 — 미지정·누락 혼재로 원인 미확정. 답변은 '수탁사 정보가 수록돼 있지 않습니다' (다른 값으로 채우지 말 것). 물리 NULL 42 · distinct 50 은 2026-08-29 DB 재현 확인", '99999999': "미지정 센티넬 598행 — codebooks/trustee.csv 미등재. 정상 코드는 '00020081'·'0002000 |
 
-— 총 **8개 컬럼**
+— 총 **9개 컬럼**
 
 #### (3) 위장결측·센티넬 선언
 
@@ -62,7 +63,7 @@
 - **펀드** `dummy_as_missing` — {'_note': '🔴 NULL 만 결측으로 보면 틀린다. 식별 코드의 결측 대부분이 0패딩 더미다. 정규화 없이 조인하면 \'000000000000\' 하나에 1만 행이 뭉치고, LLM 프롬프트에 원값이 닿으면 "등록번호는 000000000000입니다" 라고 답한다 — 환각 감점에 직결된다.', '🔴_화이트리스트_필수': 'patterns 를 columns 목록 **밖**의 컬럼에 적용하지 말 것. 고정 자리수 코드에서 \'전부 0\' 은 흔한 정상값이다 — fd_estb_ctry_cd \'000\' 23,055 · pfiv_sale_cntl_tcd \'00\' 22,263 · fd_set_pcd \'00\' 1,967 은 값이다. 🔴 **다른 도메인에 이 규칙을 복사하지 말 것** (2026-08-30 전 도메인 스캔 실측 — 무엇이 사라
 - **펀드** `invalid_values` — {'_note': '등재 0건 유지. 🔴 2026-08-30 C-4-03 재실측 — 구 기술 "1차 이탈값 5종 전부 소멸" 은 부정확했다. 3종만 소멸이고 2종은 남아 있으며 성격이 서로 다르다:\n  · \'20054.0\' · \'06\' · \'해외\' → 소멸 확인.\n  · \'00080008\' 4,536행(or_co_xtn_itt_cd) → 🔴 **이탈값이 아니다. 미래에셋자산운용**\n    (codebooks/asset_manager.csv status=confirmed · 판매중 2,306). 1차가 최대 운용사 코드를 오염값으로 잘못 올렸던 것 —\n    **이 값을 배제하면 미래에셋 펀드가 통째로 사라진다. 절대 필터에 걸지 말 것.**\n  · \'KRZ50226929C\' 1행(ksd_itm_no) → 여전히 이탈
 - **펀드** `contaminated_rows` — {'_note': '✅ 2026-08-25 — 감지 조건(mtco_itm_no LIKE \'%"%\' OR itm_no=\'"\') 0행. 1차의 오염 66행/9종목·귀속표는 2차 데이터에 없다. 감지 조건은 재적재 시 재감지용으로 유지한다.', '감지': 'mtco_itm_no LIKE \'%"%\' OR itm_no = \'"\'', '영향_2차': 0}
-- **펀드** `zero_as_missing` — {'_note': '🔴 기본 규칙 — 수치 컬럼을 **정렬·필터·집계에 쓸 때는 IS NOT NULL AND <> 0** 을 건다. 개별 조회에서 0 은 "수록되어 있지 않습니다" 로 답한다(값을 고쳐 채우지 말 것). 단 아래 zero_is_value 컬럼은 0 이 실제값이므로 예외. 1차 규칙 fd_nast_suma(0값 294) · 수익률_9기간전부0(69) 은 2차에 해당 행이 0건이라 **삭제**했다.', '보수_3종전부0': {'규칙': 'or_co_rwrd_r=0 AND sale_co_rwrd_r=0 AND trusc_rwrd_r=0 인 행을 보수 결측으로 취급', '영향': '전체 1,081 미만 · 판매중 101 · 판매중·공모 29', 'evidence_grade': 'B', '근거': '운용·판매·수탁이 동시에 0 인 공모
+- **펀드** `zero_as_missing` — {'_note': '🔴 기본 규칙 — 수치 컬럼을 **정렬·필터·집계에 쓸 때는 IS NOT NULL AND <> 0** 을 건다. 개별 조회에서 0 은 "수록되어 있지 않습니다" 로 답한다(값을 고쳐 채우지 말 것). 단 아래 zero_is_value 컬럼은 0 이 실제값이므로 예외. 1차 규칙 fd_nast_suma(0값 294) · 수익률_9기간전부0(69) 은 2차에 해당 행이 0건이라 **삭제**했다.', '보수_3종전부0': {'규칙': 'or_co_rwrd_r=0 AND sale_co_rwrd_r=0 AND trusc_rwrd_r=0 인 행을 보수 결측으로 취급', '영향': '전체 715(1,081 은 or_co_rwrd_r=0 단독 행수 — 2026-09-02 확정) · 판매중 101 · 판매중·공모 29', 'evidence
 
 ## 4. 근거 (라이브 DB 실측)
 

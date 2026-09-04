@@ -66,7 +66,7 @@
 | 항목 | 내용 |
 | :-- | :-- |
 | strategy | {'accuracy': '100/100', 'rule': "cu_strtegy='액티브' → Active, else Passive"} |
-| leverageType | {'accuracy': '100/100 (1차 기준 — 🔴 2차 재검증 필요)', 'rule': '🔴 2026-08-25 개정 — 방향은 derivation_rules.inverse_direction, 배수는 derivation_rules.leverage_multiple 의 조합. (구 규칙 "cu_lev_fector 값매핑 1→Standard, -1→Inverse1X …" 는 부호 소실로 인버스를 전부 Standard/Leveraged 로 오분류한다.)', 'rule_보강': '소수 배수 -0.5(3건)·+1.5(3건) 실재 — 전부 ETN. 매핑에 받을 것. 2차 실측 부호 분포: ETF -1.0 1건 / ETN -2.0 16 · -1.0 6 — 나머지 인버스는 양수.'} |
+| leverageType | {'accuracy': '100/100 (1차 기준 — 🔴 2차 재검증 필요)', 'rule': '🔴 2026-08-25 개정 — 방향은 derivation_rules.inverse_direction, 배수는 derivation_rules.leverage_multiple 의 조합. (구 규칙 "cu_lev_fector 값매핑 1→Standard, -1→Inverse1X …" 는 부호 소실로 인버스를 전부 Standard/Leveraged 로 오분류한다.)', 'rule_보강': "소수 배수 +0.5(3건 — 약어명 '-0.5X' 인데 부호 소실)·+1.5(3건) 실재 — 전부 ETN. 매핑에 받을 것. 2차 실측 부호 분포: ETF -1.0 1건 / ETN -2.0 16 · -1.0 6 — 나머지 인버스는  |
 | distributionType | {'accuracy': '100/100', 'rule': "상품명에 'TR'/'Total Return' → TotalReturn, else Distributing"} |
 | replicationMethod | {'accuracy': '99/100', 'rule': "cu_strtegy 실물복제→Physical / 합성복제→Synthetic / 'C'·NULL → 미분류"} |
 | region | {'accuracy': '94/100', 'rule': "wu_inv_rgn='국내'→Domestic, else Overseas (+ '미국달러/엔선물' 통화는 Overseas 보정)"} |

@@ -44,21 +44,21 @@
 
 | 테이블 | 컬럼 | alias수 | 노드수 |
 | :-- | --: | --: | --: |
-| ext_ovs_etf_holdings | holding_name | 13,751 | 8,688 |
+| ext_ovs_etf_holdings | holding_name | 13,755 | 8,691 |
 | ext_ovs_etf_holdings | cusip | 11,977 | 11,977 |
-| public_funds | rptt_ksd_itm_no | 6,883 | 6,883 |
+| public_funds | rptt_ksd_itm_no | 6,867 | 6,867 |
 | ext_fund_holdings | holding_nm | 6,497 | 5,316 |
 | ext_fund_holdings | isin | 5,474 | 5,470 |
 | ext_ovs_etf_holdings | lei | 5,385 | 5,385 |
-| ext_etf_holdings | ticker | 3,315 | 3,315 |
-| ext_etf_holdings | constituent | 3,290 | 3,290 |
+| ext_etf_holdings | ticker | 5,086 | 5,086 |
+| ext_etf_holdings | constituent | 5,068 | 5,068 |
 | overseas_etfs | cu_base_index | 1,848 | 1,848 |
 | domestic_bonds | pd_pbcm | 1,818 | 1,817 |
 | domestic_etfs | ref_base_index | 904 | 904 |
-| public_funds | bmrk_nm | 389 | 389 |
+| public_funds | bmrk_nm | 668 | 398 |
 | overseas_etfs | cu_fund_mgmt_co | 382 | 381 |
-| public_funds | or_co_xtn_itt_cd | 275 | 272 |
-| domestic_etfs | cu_fund_mgmt_co | 99 | 39 |
+| public_funds | or_co_xtn_itt_cd | 274 | 271 |
+| public_funds | prfd_attr_cds | 196 | 196 |
 
 #### (3) 코드북 — 사람이 확정한 정본
 
@@ -76,7 +76,7 @@
 | `market.csv` | 6 |
 | `public_funds_asset_manager.derived.csv` | 74 |
 | `region_map.csv` | 12 |
-| `security_alias_manual.csv` | 18 |
+| `security_alias_manual.csv` | 29 |
 | `trustee.csv` | 18 |
 
 ## 4. 근거 (라이브 DB 실측)

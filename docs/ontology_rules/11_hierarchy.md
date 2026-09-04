@@ -33,26 +33,28 @@
 | `Currency` | 8 | 0 | 🔴 **없음** |
 | `Index` | 21 | 4 | ✅ 있음 |
 | `Organization` | 64 | 0 | 🔴 **없음** |
-| `Region` | 59 | 57 | ✅ 있음 |
+| `Region` | 60 | 58 | ✅ 있음 |
 | `RiskGrade` | 7 | 0 | 🔴 **없음** |
 
 #### (2) 실측 — KG 에 올라간 계층
 
 | 개체 | 노드수 |
 | :-- | --: |
-| Security | 26,271 |
-| Fund | 7,600 |
+| Security | 27,996 |
+| Fund | 7,584 |
 | Index | 3,172 |
-| Organization | 2,530 |
-| Region | 58 |
+| Organization | 2,527 |
+| FundAttribute | 179 |
+| Region | 60 |
 | CreditGrade | 21 |
+| Country | 17 |
 | AssetClass | 9 |
 | Currency | 8 |
 | RiskGrade | 7 |
 
 | kg_closure_행 | 조상노드 | 자손노드 |
 | :-- | --: | --: |
-| 9,917 | 4,102 | 9,788 |
+| 9,965 | 4,109 | 9,834 |
 
 ## 4. 근거 (라이브 DB 실측)
 
@@ -60,12 +62,14 @@
 
 | 개체 | 노드수 |
 | :-- | --: |
-| Security | 26,271 |
-| Fund | 7,600 |
+| Security | 27,996 |
+| Fund | 7,584 |
 | Index | 3,172 |
-| Organization | 2,530 |
-| Region | 58 |
+| Organization | 2,527 |
+| FundAttribute | 179 |
+| Region | 60 |
 | CreditGrade | 21 |
+| Country | 17 |
 | AssetClass | 9 |
 | Currency | 8 |
 | RiskGrade | 7 |
@@ -74,7 +78,7 @@
 
 | kg_closure_행 | 조상노드 | 자손노드 |
 | :-- | --: | --: |
-| 9,917 | 4,102 | 9,788 |
+| 9,965 | 4,109 | 9,834 |
 
 ## 5. 안 지키면
 

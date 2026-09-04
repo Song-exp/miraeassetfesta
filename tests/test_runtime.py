@@ -1555,3 +1555,123 @@ def test_refusal_reason_keeps_tail_and_hides_identifiers():
     assert refusal_reason_text(errs[0]) != refusal_reason_text(None)
     # 부류를 못 가리면 종전 문구 그대로
     assert refusal_reason_text(None).startswith("질의를 안전하게 실행할 수 없어")
+
+
+# ── 정렬축 · 이자유형분리 (2026-09-04 서버 실측 회귀) ──────────────────────
+
+def test_ensure_sort_axis():
+    """'표면금리' 질의가 applied_yield 로 정렬돼 답변 축까지 '수익률' 로 바뀐 실측의 회귀."""
+    from src.runtime.pipeline import ensure_sort_axis
+
+    q = "A등급 이상 회사채 중 표면금리 높은 순으로 5개 알려줘"
+    sql = ("SELECT pd_no, pd_nm, MAX(applied_yield) AS applied_yield, std_pd_mcls_nm, crd_grd, mat_dt "
+           "FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='회사채' GROUP BY pd_no "
+           "ORDER BY applied_yield DESC LIMIT 5")
+    fixed, changed = ensure_sort_axis(sql, q)
+    assert changed and "ORDER BY srfc_irt DESC" in fixed
+    assert "srfc_irt" in fixed[:fixed.index("FROM")]          # 정렬 컬럼은 SELECT 에도 (필터컬럼표시)
+    assert "applied_yield" in fixed                            # 기존 컬럼은 남긴다 — 병기
+    # MAX/MIN 감싼 대표행 형도 축만 바꾼다(방향·감싸기 유지)
+    f2, c2 = ensure_sort_axis(sql.replace("ORDER BY applied_yield", "ORDER BY MAX(applied_yield)"), q)
+    assert c2 and "ORDER BY MAX(srfc_irt)" in f2
+    # ② ORDER BY 부재 — ensure_reco_sort 가 표면금리 질의를 건너뛰는 사각을 받는다
+    nosort = "SELECT pd_no, pd_nm, crd_grd FROM domestic_bonds WHERE TRIM(crd_grd)='AAA' LIMIT 5"
+    f3, c3 = ensure_sort_axis(nosort, "표면금리 높은 채권 추천해줘")
+    assert c3 and "ORDER BY srfc_irt DESC" in f3 and "srfc_irt" in f3[:f3.index("FROM")]
+    f4, c4 = ensure_sort_axis(nosort, "표면금리 낮은 순으로 알려줘")
+    assert c4 and "ORDER BY srfc_irt ASC" in f4
+    # 불개입 — 수익률 질의 / 두 축 동시 언급 / 집계 / 이미 srfc_irt 정렬
+    assert not ensure_sort_axis(sql, "수익률 높은 순으로 5개 알려줘")[1]
+    assert not ensure_sort_axis(sql, "표면금리랑 수익률 높은 순으로 알려줘")[1]
+    assert not ensure_sort_axis("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE srfc_irt > 5 LIMIT 1",
+                                "표면금리 5% 넘는 채권 몇 종목이야?")[1]
+    assert not ensure_sort_axis(sql.replace("applied_yield DESC", "srfc_irt DESC"), q)[1]
+
+
+def test_ensure_coupon_type_split():
+    """이자유형분리는 추천·랭킹에서만 — 조건검색에 주입하면 gold BND-D-028 모수가 599→497 로 깨진다."""
+    from src.runtime.pipeline import ensure_coupon_type_split
+
+    reco = ("SELECT pd_no, pd_nm, srfc_irt FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='회사채' "
+            "GROUP BY pd_no ORDER BY srfc_irt DESC LIMIT 5")
+    fixed, changed = ensure_coupon_type_split(reco, "표면금리 높은 순으로 5개 추천해줘")
+    assert changed and "bd_intp_tcd)='이표채'" in fixed and "bd_inrt_tcd)='고정금리'" in fixed
+    assert "srfc_irt > 0" in fixed
+    assert fixed.index("이표채'") < fixed.index("ORDER BY")     # WHERE 안쪽에 붙는다
+    # 🔴 조건검색(BND-D-028)에는 주입하지 않는다 — 정렬이 같아도 추천 신호가 없다
+    lookup = ("SELECT pd_no, pd_nm, srfc_irt FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='회사채' "
+              "AND srfc_irt > 5 GROUP BY pd_no ORDER BY srfc_irt DESC LIMIT 30")
+    assert not ensure_coupon_type_split(lookup, "A등급 이상 회사채 중 표면금리가 5% 넘는 것을 알려줘")[1]
+    # 불개입 — 질문이 이자 유형을 콕 집음 / 이미 유형 절 있음 / 수익률 정렬
+    assert not ensure_coupon_type_split(reco, "할인채 중 표면금리 높은 순으로 추천해줘")[1]
+    assert not ensure_coupon_type_split(reco + " ", "변동금리 채권 표면금리 순위 알려줘")[1]
+    assert not ensure_coupon_type_split(fixed, "표면금리 높은 순으로 5개 추천해줘")[1]
+    assert not ensure_coupon_type_split(reco.replace("srfc_irt DESC", "applied_yield DESC"),
+                                        "수익률 높은 순으로 5개 추천해줘")[1]
+
+
+def test_ensure_ktb_kind_scls_alone():
+    """소분류 단독 국고채 필터를 확정식으로 — 2026-09-04 실측('국고채는 신용등급이 어떻게 돼?').
+
+    std_pd_scls_nm='국고채' 단독은 290종목/371행: bd_knd='국고채권' 인데 소분류가 '물가채' 인
+    물가연동국고채권 5종목이 빠진다(확정식 295종목/377행).
+    """
+    from src.runtime.pipeline import ensure_ktb_kind
+
+    sql = "SELECT DISTINCT TRIM(crd_grd) FROM domestic_bonds WHERE TRIM(std_pd_scls_nm) = '국고채' LIMIT 30"
+    fixed, changed = ensure_ktb_kind(sql, "국고채는 신용등급이 어떻게 돼?")
+    assert changed and "TRIM(bd_knd)='국고채권'" in fixed and "std_pd_scls_nm)='국고채'" in fixed
+    # 같은 절이 여러 번(종류비교 CASE) 나오면 전부 바꾼다
+    twice = ("SELECT CASE WHEN TRIM(std_pd_scls_nm)='국고채' THEN '국고채' ELSE '통안채' END AS 종류 "
+             "FROM domestic_bonds WHERE TRIM(std_pd_scls_nm)='국고채' OR TRIM(bd_knd)='통화안정채권' LIMIT 30")
+    f2, c2 = ensure_ktb_kind(twice, "국고채랑 통안채 중 뭐가 수익률 높아?")
+    assert c2 and "std_pd_scls_nm)='국고채' THEN" not in f2 and f2.count("TRIM(bd_knd)='국고채권'") == 2
+    # STRIPS 탈출구 — 콕 집으면 bd_knd 단독식으로만
+    f3, c3 = ensure_ktb_kind(sql, "스트립 제외한 국고채 신용등급 알려줘")
+    assert c3 and "TRIM(bd_knd)='국고채권'" in f3 and "std_pd_scls_nm" not in f3
+    # 불개입 — 이미 확정식 / 머리명사가 국공채
+    assert not ensure_ktb_kind(fixed, "국고채는 신용등급이 어떻게 돼?")[1]
+    assert not ensure_ktb_kind(sql, "국고채를 포함해서 국공채는 전부 몇 종목이야?")[1]
+
+
+def test_bond_list_axis_leads_row():
+    """행 앞머리 값은 정렬 축이다 — SELECT 에 수익률과 표면금리가 함께 와도 머리줄과 어긋나지 않는다."""
+    from src.runtime.pipeline import _bond_list_answer
+
+    sql = ("SELECT pd_no, pd_nm, srfc_irt, applied_yield, crd_grd FROM domestic_bonds "
+           "WHERE TRIM(std_pd_mcls_nm)='회사채' GROUP BY pd_no ORDER BY srfc_irt DESC LIMIT 2")
+    rows = ("pd_no | pd_nm | srfc_irt | applied_yield | crd_grd\n"
+            "KR1 | 우리금융캐피탈458 | 7.5 | 4.1 | AA-\n"
+            "KR2 | 엠캐피탈 355 | 7.5 | 4.2 | A0")
+    out = _bond_list_answer(sql, rows, 2, "표면금리 높은 순으로 2개 추천해줘")
+    assert out and "표면금리 높은 순" in out
+    assert out.index("표면금리 7.5%") < out.index("수익률 4.1%")   # 정렬 축이 앞
+
+
+def test_bond_list_axis_direction():
+    """감싸지 않은 ORDER BY col DESC 의 방향 — '낮은 순' 으로 뒤집혀 나가던 자리 (2026-09-04)."""
+    from src.runtime.pipeline import _bond_list_answer
+
+    base = ("SELECT pd_no, pd_nm, srfc_irt FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='회사채' "
+            "GROUP BY pd_no ORDER BY srfc_irt {} LIMIT 1")
+    rows = "pd_no | pd_nm | srfc_irt\nKR1 | 우리금융캐피탈458 | 7.5"
+    q = "표면금리 순으로 알려줘"
+    assert "표면금리 높은 순" in _bond_list_answer(base.format("DESC"), rows, 1, q)
+    assert "표면금리 낮은 순" in _bond_list_answer(base.format("ASC"), rows, 1, q)
+    assert "표면금리 낮은 순" in _bond_list_answer(base.format(""), rows, 1, q)      # 무표기 = ASC
+    assert "수익률 높은 순" in _bond_list_answer(
+        base.format("DESC").replace("srfc_irt", "applied_yield"),
+        rows.replace("srfc_irt", "applied_yield"), 1, "수익률 순으로 알려줘")
+
+
+def test_bond_list_warning_basis_is_yield():
+    """주의 문구 기준은 수익률 — 표면금리 7.5%(수익률 4.08%)에 원금 위험 문구를 붙이지 않는다 (2026-09-04)."""
+    from src.runtime.pipeline import _bond_list_answer
+
+    sql = ("SELECT pd_no, pd_nm, srfc_irt, applied_yield FROM domestic_bonds "
+           "WHERE TRIM(std_pd_mcls_nm)='회사채' GROUP BY pd_no ORDER BY srfc_irt DESC LIMIT 1")
+    q = "표면금리 높은 순으로 알려줘"
+    low = "pd_no | pd_nm | srfc_irt | applied_yield\nKR1 | 우리금융캐피탈458 | 7.5 | 4.083"
+    hi = "pd_no | pd_nm | srfc_irt | applied_yield\nKR1 | 엠캐피탈358-3 | 7.164 | 6.758"
+    assert "원금을 돌려받지 못할" not in _bond_list_answer(sql, low, 1, q)
+    assert "원금을 돌려받지 못할" in _bond_list_answer(sql, hi, 1, q)

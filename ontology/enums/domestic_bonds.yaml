@@ -330,7 +330,9 @@ columns:
       "B+": 2행
       "B-": 5행
       "C0": 🔴 사실상 부도 임박 — 103행. Top-N·추천에서 기본 제외
-    kg_entity: null                        # 채권 전용 → SQL 컬럼으로 충분 (§4.1)
+    kg_entity: CreditGrade                 # 🔴 2026-09-04 정정 — 옛 주석 '채권 전용 → SQL 컬럼으로 충분' 은 등급 서열 코드북 도입(08-30) 전 판단이다.
+                                           # 지금 crd_grd 는 shared/credit_grade.yaml 의 노드 21(등급 19 + 밴드 2)에 alias 15 로 매달려 rank·skos:broader closure 를 쓰는 1층 개체다(§B.2-1).
+                                           # 값은 채권에만 있지만(다른 3테이블 alias 0) '개체가 아님' 은 아니다 — 포인터가 null 이면 커버리지 매트릭스(부록 C)가 이 컬럼을 세지 않는다.
     note: >
       1차 20종(결측 41.6%) → 2차 15종(결측 18.4%). 사라진 표기: BB+, B0, CCC, CC0, C. 🔴 1차 "등급병합
       (COALESCE pd_evco_crd_grd)" 규칙은 컬럼 삭제로 폐기. 서열 코드북: data/external/lookups/credit_grade_scale.csv
@@ -745,7 +747,8 @@ query_rules:
   과세수익률금지: "avg_annual_tax_yield 사용 금지 (전량 0)"
   더티금지:    "dirty·ndy_dirty 사용 금지 — 99.0%가 eval_price 동일값(정보량 0). '실제 결제금액' 답변 금지"
   등급일사용금지: "crd_grd_dt 로 등급 최신성·신선도 판단 금지 — 스키마: '등급 미변경 시 과거 일자로 유지될 수 있음'"
-  이자유형분리:  "표면금리 정렬은 bd_intp_tcd·bd_inrt_tcd 로 유형 분리 — 할인채(발행 할인율)·변동금리(스냅샷)·srfc_irt=0(구조) 을 고정 이표채와 한 축에 놓지 말 것"
+  이자유형분리:  "표면금리 정렬은 bd_intp_tcd·bd_inrt_tcd 로 유형 분리 — 할인채(발행 할인율)·변동금리(스냅샷)·srfc_irt=0(구조) 을 고정 이표채와 한 축에 놓지 말 것. 🔴 분리 절(TRIM(bd_intp_tcd)='이표채' AND TRIM(bd_inrt_tcd)='고정금리' AND srfc_irt > 0)은 추천·랭킹 질의에만 넣는다 — 조건검색('표면금리 5% 넘는 것')에 넣으면 모수가 599→497종목으로 줄어 오답이다(2026-09-04 실측 · gold BND-D-012 는 분리 O, BND-D-028 은 분리 X). 분리했으면 답변에 '고정금리 이표채 기준' 을 밝힌다. ⛑ pipeline.ensure_coupon_type_split"
+  정렬축:     "🔴 질문의 금리 낱말은 정렬·비교 컬럼으로 고정한다 — 표면금리·표면이자율·쿠폰 = srfc_irt · 수익률 = applied_yield · 세후수익률 = after_tax_yield · 매수수익률 = buy_yield. 질문에 없는 축으로 정렬하지 않고, 답변의 정렬 축 이름은 질문 낱말 그대로 쓴다(조립기는 ORDER BY 컬럼에서 축 이름을 뽑는다). 정렬 컬럼은 SELECT 에도 넣는다(필터컬럼표시). 단독 '금리·이자율' 은 다의라 두 축 중 하나로 단정하지 않는다 — 질문이 두 축을 함께 말하면 그대로 둔다. 2026-09-04 서버 실측: 'A등급 이상 회사채 표면금리 높은 순 5개' 가 ORDER BY MAX(applied_yield) 로 나가 답변까지 '수익률 높은 순' 으로 축을 바꿔 적었다(1·2위의 표면금리는 7.1·3.0 — 정답 1위는 우리금융캐피탈458 7.5). 값이 전부 실제 행이라 환각 검사에 안 걸리는 축 치환이다. ⛑ pipeline.ensure_sort_axis 가 축을 교정하고, ORDER BY 자체가 없으면(ensure_reco_sort 는 표면금리 질의에 정렬을 주입하지 않는다) 주입한다"
   장내종가:    "exg_close_price/yield 는 장내 17,746행 중 값이 0 이 아닌 1,270행만 유효(0 = 거래 없음 16,476행) — 기준일(exg_close_price_base_dt) 필수 병기. 장외 4,136행은 NULL(해당없음)"
   구조표시:    "추천·랭킹에서 특수구조(콜·풋·후순위·전환·영구·코코·분리채권·물가채)를 제외하지 않는다 — 빼는 것은 고위험제외 규칙뿐(분리채권 209 는 전부 국고채 6등급). 대신 채권 목록 SELECT 에 아래 식을 '구조' 열로 그대로 붙인다(LIKE 만 사용 · 우선순위 순): CASE WHEN TRIM(bd_knd) IN ('특수은행채','일반은행채','금융지주회사채') AND pd_risk_gcd IN ('11','12','13') THEN '은행 자본성증권(후순위·조건부자본·영구)' WHEN pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%' THEN '영구채' WHEN pd_nm LIKE '%(후)%' OR pd_nm LIKE '%(후/%' OR pd_nm LIKE '%/후)%' OR pd_nm LIKE '%/후/%' THEN '후순위' WHEN pd_nm GLOB '*[0-9]CB*' OR pd_nm LIKE '%(전환%' OR pd_nm LIKE '%/전환%' THEN '전환사채' WHEN pd_nm GLOB '*[0-9]EB*' THEN '교환사채' WHEN pd_nm GLOB '*[0-9]BW*' THEN '신주인수권부' WHEN pd_nm LIKE '%분리채권%' THEN '국고채 STRIPS' WHEN pd_nm LIKE '%물가%' THEN '물가연동' WHEN pd_nm LIKE '%콜%' AND pd_nm NOT LIKE '%콜마%' THEN '콜옵션부' WHEN pd_nm LIKE '%(풋)%' OR pd_nm LIKE '%(풋/%' OR pd_nm LIKE '%/풋)%' OR pd_nm LIKE '%/풋/%' THEN '풋옵션부' ELSE '' END AS 구조 첫 줄(은행 자본성증권)은 이름이 아니라 컬럼 두 개(발행 종류 + 위험등급 1~3)로 판정한다 — 이름의 코코/조건상각/(상) 은 판정에 쓰지 않는다. 콜은 '콜' 앞뒤에 한글이 없을 때만(한국콜마 제외). 답변에서 이 열의 값을 종목 옆에 한 단어로 붙이고, 영구채는 '만기일 = 콜 개시일', 은행 자본성증권은 '원금 상각·이자 미지급 조건 가능' 을 덧붙인다. ESG 라벨 (녹)/(사)/(지) 는 name_encoding.esg_labels. 조회·사실확인 질의는 아무것도 빼지 않는다."
   ESG라벨:        "종목명의 ESG 라벨은 컬럼이 없어 이름으로만 판정한다(표기 기준): 녹색채권 = (pd_nm LIKE '%(녹)%' OR pd_nm LIKE '%(녹/%' OR pd_nm LIKE '%/녹)%' OR pd_nm LIKE '%/녹/%') · 사회적채권 = (pd_nm LIKE '%(사)%' OR pd_nm LIKE '%(사/%' OR pd_nm LIKE '%/사)%' OR pd_nm LIKE '%/사/%') · 지속가능채권 = (pd_nm LIKE '%(지)%' OR pd_nm LIKE '%(지/%' OR pd_nm LIKE '%/지)%' OR pd_nm LIKE '%/지/%') (각 356 · 1,984 · 159행). 'ESG 채권' = 셋의 OR. 답변에 '종목명 표기 기준' 병기(해석 확정 — 주최 무응답, 데이터 실측 근거 팀 결정 2026-08-31). (사)는 사모가 아니다 — 공모/사모는 bd_ofr_tcd."

@@ -2629,11 +2629,18 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         if len(parts) != len(cols):
             return None
         recs.append(dict(zip(cols, parts)))
-    ycol = next((c for c in _BOND_YIELD_COLS if c in cols), None)
+    # 행 앞머리에 오는 값은 정렬 축이다 — SELECT 에 applied_yield 와 srfc_irt 가 함께 오면 고정 순서상
+    # 수익률이 앞에 서서 '표면금리 높은 순' 머리줄과 어긋난다 (2026-09-04). ORDER BY 컬럼을 먼저 본다.
+    osort = re.search(r"\bORDER\s+BY\s+(?:MAX|MIN)?\(?\s*([A-Za-z_]\w*)", sql, re.I)
+    scol = osort.group(1).lower() if osort else None
+    ycol = (scol if scol in _BOND_YIELD_COLS and scol in cols else
+            next((c for c in _BOND_YIELD_COLS if c in cols), None))
     star = bool(re.search(r"\bSELECT\s+(?:DISTINCT\s+)?\*", sql, re.I))
     # 정렬 축 — ORDER BY 첫 키(MAX/MIN 감싼 대표행 형 포함)
     axis_txt = ""
-    m = re.search(r"\bORDER\s+BY\s+(?:MAX|MIN)?\(?\s*([A-Za-z_]\w*)\s*\)?(?:\s+(ASC|DESC))?", sql, re.I)
+    # 방향은 `\s*` 로 받는다 — `ORDER BY srfc_irt DESC`(감싸지 않은 형)에서 앞의 `\s*` 가 공백을 먹어
+    # `\s+(ASC|DESC)` 가 빗나가면 DESC 목록이 '낮은 순' 으로 뒤집혀 나간다 (2026-09-04)
+    m = re.search(r"\bORDER\s+BY\s+(?:MAX|MIN)?\(?\s*([A-Za-z_]\w*)\s*\)?\s*(ASC|DESC)?", sql, re.I)
     if m and m.group(1).lower() in _BOND_AXIS_KO:
         name, hi, lo = _BOND_AXIS_KO[m.group(1).lower()]
         axis_txt = f"{name} {hi if (m.group(2) or 'ASC').upper() == 'DESC' else lo}"
@@ -2664,7 +2671,14 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
                 yv = None
             # 0 은 결측(주최 공지: 0·빈값은 의도된 값 → "없다" 로) — 2026-09-02 전환사채 목록에 "수익률 0.0%" 가 값처럼 나감
             bits.append(f"{_BOND_AXIS_KO.get(ycol, (ycol,))[0]} {'미수록' if yv == 0 else r[ycol] + '%'}")
-            warn = warn or (yv is not None and yv > 6)
+        # 원금 주의 문구의 기준은 수익률이다(고위험제외 규칙: applied_yield > 6% 또는 위험등급 2·3등급).
+        # 정렬 축이 표면금리여도 표면금리 7.5%(수익률 4.08%)에 위험 문구를 붙이지 않는다 (2026-09-04)
+        for c in ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield"):
+            if c in cols and r.get(c):
+                try:
+                    warn = warn or float(r[c]) > 6
+                except ValueError:
+                    pass
         for c in _BOND_YIELD_COLS:
             if c != ycol and c in cols and r.get(c):
                 bits.append(f"{_BOND_AXIS_KO.get(c, (c,))[0]} {r[c]}%")
@@ -2697,6 +2711,10 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         tail.append(f"잔존일수는 데이터 산출일 {gate.SNAPSHOT_DATE} 기준 값입니다(질문 시점 {gate.DATA_CUTOFF} 보다 3일 앞).")
     if warn:
         tail.append("수익률이 높은 채권은 원금을 돌려받지 못할 위험도 높을 수 있습니다. 신용등급·위험등급을 함께 확인하세요.")
+    # 이자유형분리로 축을 좁혔으면 그 사실을 밝힌다 — 모수가 그만큼 줄어든 목록이다 (gold BND-D-012 must_include '고정금리')
+    if (_ORDER_SRFC.search(sql) and re.search(r"bd_intp_tcd\s*\)?\s*=\s*'이표채'", sql)
+            and re.search(r"bd_inrt_tcd\s*\)?\s*=\s*'고정금리'", sql)):
+        tail.append(COUPON_SPLIT_NOTE)
     if _RECO_Q.search(question) and "pd_risk_gcd <> '11'" in sql and "bd_ofr_tcd <> '사모'" in sql:
         tail.append("위험등급이 매우 높은(1등급) 채권과 사모 채권은 제외했습니다.")
     if tail:
@@ -5055,6 +5073,93 @@ def ensure_reco_sort(sql: str, question: str) -> tuple[str, bool]:
     return sql[:pos].rstrip() + " ORDER BY applied_yield DESC" + sql[pos:], True
 
 
+# 표면금리 축 낱말 — 확정 낱말만 싣는다. 단독 '금리·이자율' 은 다의라 매핑하지 않는다
+# (_TOP_YIELD_Q 가 수익률과 한 부류로 묶고, gold 채권 문항에 단독 '금리' 정렬 정본이 0건이다).
+_SRFC_Q = re.compile(r"표면\s*(?:금리|이자율|이율)|쿠폰\s*(?:금리|이자율|이율)?|coupon", re.I)
+_YIELD_AXIS_Q = re.compile(r"수익률|이자수익|연\s*환산")      # 두 축을 함께 말하면 불개입
+_SRFC_LOW_Q = re.compile(r"낮은\s*순|(?:가장|제일|젤)\s*낮|최저|작은\s*순")
+_ORDER_YIELD_COL = re.compile(
+    r"(ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*)(applied_yield|after_tax_yield|corp_pretax_yield|buy_yield)\b", re.I)
+
+
+_ROLLUP_HEAD = re.compile(r"\b(?:COUNT|AVG|SUM|GROUP_CONCAT)\s*\(", re.I)
+
+
+def _select_add_col(sql: str, col: str) -> str:
+    """SELECT 목록에 컬럼 하나를 덧붙인다 — `*`·집계 롤업·이미 있으면 그대로.
+
+    MAX/MIN 머리는 대표행 형(GROUP BY pd_no + 정렬 컬럼 극값)이라 목록 질의다 — GROUP BY 가 있으면
+    맨 컬럼을 덧붙여도 되고(SQLite), 없으면 롤업이므로 손대지 않는다."""
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql
+    head, rest = sql[:frm.start()], sql[frm.start():]
+    if "*" in head or _ROLLUP_HEAD.search(head) or re.search(rf"\b{col}\b", head):
+        return sql
+    if re.search(r"\b(?:MAX|MIN)\s*\(", head, re.I) and not re.search(r"\bGROUP\s+BY\b", sql, re.I):
+        return sql
+    return head.rstrip() + ", " + col + " " + rest
+
+
+def ensure_sort_axis(sql: str, question: str) -> tuple[str, bool]:
+    """'표면금리' 질의의 정렬 축을 srfc_irt 로 맞춘다. (보정된 SQL, 보정했는지)
+
+    2026-09-04 서버 실측: 'A등급 이상 회사채 중 표면금리 높은 순으로 5개' 가 ORDER BY MAX(applied_yield)
+    로 나가 답변도 '수익률 높은 순' 으로 축을 바꿔 적었다 — 1·2위(스탠다드차타드 15-07·15-06)의 표면금리는
+    7.1·3.0 으로 상위권이 아니다(정답 1위 우리금융캐피탈458 7.5). 값이 전부 실제 행이라 환각 검사에 안 걸린다.
+    gold BND-D-012·BND-D-028 둘 다 ORDER BY srfc_irt 가 정본이다(정렬축 규칙).
+    ② ORDER BY 자체가 없는 사각도 함께 받는다 — ensure_reco_sort 는 _OTHER_AXIS_Q('표면')에 걸려
+    표면금리 질의에 정렬을 주입하지 않으므로, 그대로 두면 정렬 없는 임의 N행이 나간다.
+    발동 조건: ① domestic_bonds ② 질문에 표면금리 낱말 ③ 질문이 수익률 축을 함께 말하지 않음
+    (두 축 동시 언급은 불개입 — align_maturity_year 원칙) ④ 집계(COUNT) 아님.
+    모수를 바꾸지 않는 축 교정이라 조회·랭킹 어느 쪽에서도 안전하다(제외 절 주입은 이자유형분리 몫)."""
+    if "domestic_bonds" not in sql or not _SRFC_Q.search(question) or _YIELD_AXIS_Q.search(question):
+        return sql, False
+    if re.search(r"\bCOUNT\s*\(", sql, re.I):
+        return sql, False
+    m = _ORDER_YIELD_COL.search(sql)
+    if m:                                        # ① 축 치환 — 방향(ASC/DESC)·MAX/MIN 감싸기는 그대로 둔다
+        return _select_add_col(sql[:m.start()] + m.group(1) + "srfc_irt" + sql[m.end():], "srfc_irt"), True
+    if re.search(r"\bORDER\s+BY\b", sql, re.I) or not _RECO_Q.search(question):
+        return sql, False
+    direction = "ASC" if _SRFC_LOW_Q.search(question) else "DESC"   # ② 정렬 부재 — 주입
+    sql = _select_add_col(sql, "srfc_irt")
+    if "srfc_irt" not in sql:                    # `*`·집계라 넣지 못했으면 정렬만 걸지 않는다
+        return sql, False
+    lm = re.search(r"\s*\bLIMIT\b", sql, re.I)
+    pos = lm.start() if lm else len(sql)
+    return sql[:pos].rstrip() + f" ORDER BY srfc_irt {direction}" + sql[pos:], True
+
+
+_ORDER_SRFC = re.compile(r"ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*srfc_irt\b", re.I)
+# 사용자가 이자 유형을 콕 집으면 분리하지 않는다 — 그 축을 보겠다는 뜻이다
+_INTP_NAMED_Q = re.compile(r"할인채|무이자|무이표|제로\s*쿠폰|변동\s*금리|복리채|단리채|이표채")
+COUPON_SPLIT_NOTE = ("표면금리는 고정금리 이표채끼리만 비교했습니다 — 할인채는 표면금리 란이 발행 할인율이고 "
+                     "변동금리는 스냅샷 값이라 같은 축에 놓지 않습니다(이자유형분리).")
+
+
+def ensure_coupon_type_split(sql: str, question: str) -> tuple[str, bool]:
+    """표면금리 랭킹 SQL 에 이자유형분리(고정금리 이표채) 절을 주입. (보정된 SQL, 보정했는지)
+
+    이자유형분리 규칙 — 할인채 689행은 srfc_irt 가 발행 할인율이고 변동금리는 스냅샷이라 고정 이표채와
+    한 축에 놓으면 순위가 뒤섞인다. gold BND-D-012('표면금리 높은 채권 추천')가 정본이다:
+    bd_intp_tcd='이표채' AND bd_inrt_tcd='고정금리' AND srfc_irt > 0, must_not_include 할인채·변동금리.
+    🔴 발동은 추천·랭킹(_RECO_Q)에서만 — 같은 srfc_irt 정렬이라도 조건검색은 주입하지 않는다.
+    gold BND-D-028('A등급 이상 회사채 표면금리 5% 넘는 것')에 주입하면 599 → 497종목으로 102종목이
+    사라진다(2026-09-04 실측). 고위험제외 규칙의 '조회는 제외하지 않는다' 와 같은 경계다.
+    불개입: 질문이 이자 유형을 명시 · 이미 유형 절이 있음 · 집계."""
+    if "domestic_bonds" not in sql or not _RECO_Q.search(question):
+        return sql, False
+    if not _ORDER_SRFC.search(sql) or re.search(r"\bCOUNT\s*\(", sql, re.I):
+        return sql, False
+    if _INTP_NAMED_Q.search(question) or re.search(r"bd_intp_tcd|bd_inrt_tcd", sql, re.I):
+        return sql, False
+    excl = ["TRIM(bd_intp_tcd)='이표채'", "TRIM(bd_inrt_tcd)='고정금리'"]
+    if not re.search(r"srfc_irt\s*[><]", sql):
+        excl.append("srfc_irt > 0")
+    return _append_exclusions(sql, excl)
+
+
 _KTB_Q = re.compile(r"국고채|(?<![가-힣])국채")
 # '국공채 중(가운데·에서·안에) … 국고채' — 국고채가 머리명사인 부분집합 질의. 그 밖에 '국공채' 가 있으면 국공채가 머리명사.
 _GOV_SUBSET_Q = re.compile(r"국공채\s*(?:중|가운데|에서|안에|내에서|내)\s*[^.,?!]*?(?:국고채|(?<![가-힣])국채)")
@@ -5074,6 +5179,10 @@ def ktb_head_is_gov(question: str) -> bool:
 
 _MCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*=\s*'국공채'", re.I)
 _MCLS_IN = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\([^)]*'국공채'[^)]*\)", re.I)
+# 소분류 단독 경로 — 2026-09-04 서버 실측: '국고채는 신용등급이 어떻게 돼?' 가 std_pd_scls_nm='국고채'
+# 단독(290종목/371행)으로 나갔다. 확정식은 295종목/377행 — bd_knd='국고채권' 인데 소분류가 '물가채' 인
+# 물가연동국고채권 5종목이 빠진다. 이번 질문은 결론(등급 미부여)이 같았지만 '몇 종목' 이면 290 오답이다.
+_SCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_scls_nm\s*\)?\s*=\s*'국고채'", re.I)
 _KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
                "AND TRIM(std_pd_scls_nm)='국고채'))")
 _KTB_PLAIN = "TRIM(bd_knd)='국고채권'"
@@ -5117,10 +5226,16 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
     if ktb_head_is_gov(question):
         return sql, changed
     if "국고채권" not in sql:
+        repl = _KTB_PLAIN if strips_aware else _KTB_FILTER
         m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
-        if not m:
-            return sql, changed
-        return sql[:m.start()] + (_KTB_PLAIN if strips_aware else _KTB_FILTER) + sql[m.end():], True
+        if m:
+            return sql[:m.start()] + repl + sql[m.end():], True
+        # ④ 소분류 단독(std_pd_scls_nm='국고채') → 확정식. 이 분기는 확정식이 아직 없을 때만 도므로
+        #    (확정식엔 '국고채권' 이 들어 있다) 재작성이 확정식을 깨지 않는다. 종류비교 CASE 처럼
+        #    같은 절이 여러 번 나오면 전부 바꾼다 — 앞 하나만 고치면 절반만 정본이 된다.
+        if _SCLS_EQ.search(sql):
+            return _SCLS_EQ.sub(lambda _: repl, sql), True
+        return sql, changed
     if "std_pd_scls_nm" not in sql and not strips_aware:
         m = _KTB_BDKND.search(sql)
         if m:
@@ -7140,6 +7255,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, recosort_fixed = ensure_reco_sort(sql, q)
     if recosort_fixed:
         step("[Guard] 추천 정렬 주입 — 추천 질의에 ORDER BY 가 없어 기본 정렬 applied_yield DESC 를 주입 (2026-09-01 서버 실측: '망하지 않을 회사 채권 골라줘' 가 정렬 없는 임의 5행 — 상위 수익률 누락)")
+    sql, sortaxis_fixed = ensure_sort_axis(sql, q)
+    if sortaxis_fixed:
+        step("[Guard] 정렬 축 교정 — '표면금리' 질의의 정렬을 srfc_irt 로 맞추고 SELECT 에 병기 "
+             "(2026-09-04 서버 실측: 'A등급 이상 회사채 표면금리 높은 순' 이 applied_yield 로 정렬돼 답변 축까지 '수익률' 로 바뀜 — 1·2위 표면금리 7.1·3.0)")
+    sql, cpsplit_fixed = ensure_coupon_type_split(sql, q)
+    if cpsplit_fixed:
+        step("[Guard] 이자유형 분리 — 표면금리 랭킹에 고정금리 이표채 절 주입 (이자유형분리 규칙 · gold BND-D-012. 할인채는 srfc_irt 가 발행 할인율 · 조건검색에는 주입하지 않는다)")
     sql, riskstrip_fixed = strip_fabricated_risk_filter(sql, q)
     if riskstrip_fixed:
         step("[Guard] 날조 위험필터 제거 — 수익률·금리 최상급 조회에 질문에 없는 위험등급 절이 끼어 제거 (2026-09-01 서버 실측: '수익률이 제일 높은 채권' 에 pd_risk_gcd='16' 날조 → 6등급 최고 6.231% 오답, 실제 최고 728.524% C0)")

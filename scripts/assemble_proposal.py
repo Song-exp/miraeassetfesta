@@ -174,6 +174,41 @@ doc14 = f"""# 부록 A·B·C — 취합본 (생성 {TODAY} · scripts/assemble_p
 
 {kg_stats}
 
+# 부록 E — 평가 재현 절차
+
+## E.1 평가셋 구조
+
+`eval/questions_*.jsonl` 7파일 · 147문항(사람 검증 118). 한 문항의 필드:
+`qid` · `question` · `expected_behavior`(answer/clarify/refuse) · `gold_sql` · `gold_rows` · `gold_sample`(상위 행 캐시) · `must_include`/`must_not_include`(답변 채점 문구) · `note`(**서버 오답 원문·원인·수리 기록** — 오답 승격 문항 ETF 29건·채권 50여건).
+
+## E.2 로컬 재현 (HCX 0회 · 비용 0)
+
+```bash
+python -m pytest tests -q            # 라우팅·접지·가드·트리거 회귀 (490+)
+python eval/run_gold_check.py        # 147문항: validate_sql 통과 → 읽기전용 실행 → 행수 → 1위 행 내용 대조
+python scripts/build_ontology.py     # V1~V7 검증 + 커버리지 리포트 재생성
+```
+
+gold 검증은 4겹이다 — 가드 통과 · 실행 성공 · 행수 일치 · **1위 행 값 대조**(정렬축이 바뀐 오답을 잡는다).
+
+## E.3 서버 재현 (배포본 실측)
+
+```bash
+python eval/run_server_check.py --base <엔드포인트> --token <토큰>   # 기본 20문항 · 문항당 HCX 2콜
+python eval/run_server_check.py --dry-run                            # 보낼 문항만 확인 (호출 0)
+```
+
+`must_include`/`must_not_include` 로 기계 채점하고 `eval/server_check_last.json` 에 sql·answer 원문을 남긴다. FAIL 은 사람이 재확인한다(근사 채점).
+
+## E.4 오답 → 회귀 규약
+
+서버 오답 발견 → 원인을 3층(값 사전·규칙·게이트) 중 한 곳의 수리로 → 그 질문을 문항으로 승격, `note` 에 실측 기록 → 이후 모든 수정에서 E.2 가 자동 재검사. 기록표: `ETF_오답기록_2026-09-03.md` · `채권_오답기록_2026-09-03.md`.
+
+## E.5 취합 대기 (조판 시)
+
+- 선행연구 인용표 — 리드(07 공통절 소재)
+- 코드북·외부 출처 목록 — 04·05·06 §E 및 NUMBERS §2 에서 취합
+
 ## 편집 메모 (조판 시 확인)
 
 - 수탁사 코드북 라벨 50종 중 18종 확보 — "없는 건 없다고 밝힌다" 원칙대로 모수 병기하고 진행(펀드 회신 §4, 1안 채택).

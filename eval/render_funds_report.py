@@ -24,8 +24,9 @@ OUT = os.path.join(ROOT, "docs", "funds_test_result_2026-09-04.md")
 
 # (라벨, 프로브 json, 판정 json) — 시간순. 마지막이 최신 회차이고 총평·요약표의 기준이다.
 ROUNDS = [
-    ("1차 · 16:00", "probe_funds_2026-09-04_core.json", "verdicts_funds_2026-09-04.json"),
-    ("2차 · 20:5x", "probe_funds_2026-09-04_r2.json", "verdicts_funds_2026-09-04_r2.json"),
+    ("1차 · 09-04 16:00", "probe_funds_2026-09-04_core.json", "verdicts_funds_2026-09-04.json"),
+    ("2차 · 09-04 20:5x", "probe_funds_2026-09-04_r2.json", "verdicts_funds_2026-09-04_r2.json"),
+    ("3차 · 09-05 02:5x", "probe_funds_2026-09-05_r3.json", "verdicts_funds_2026-09-05_r3.json"),
 ]
 # 본문에 끼워 넣는 손 편집 절 — (앵커, 파일). 앵커 앞에 삽입한다.
 INCLUDES = [("BEFORE_BLOCKS", "funds_defects_2026-09-04.md"), ("AFTER_BLOCKS", "funds_repairs_2026-09-04.md")]

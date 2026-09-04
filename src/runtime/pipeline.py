@@ -5450,11 +5450,30 @@ _PADDED_COLS = ("bd_knd", "pd_pbcm",
                 "rptt_ksd_itm_no", "kofia_fd_ccd", "itm_abrv_nm", "han_clas_nm")
 
 
+# GROUP BY·ORDER BY 절 본문 — 다음 절 키워드 전까지. 집계·정렬 키의 TRIM 판정 범위다.
+_KEY_CLAUSE = re.compile(
+    r"\b(GROUP\s+BY|ORDER\s+BY)\s+(.*?)(?=\bGROUP\s+BY\b|\bORDER\s+BY\b|\bLIMIT\b|\bHAVING\b|\bUNION\b|$)",
+    re.I | re.S)
+# 패딩으로 **실제 쪼개지는** 컬럼만 집계·정렬 키 TRIM 대상 (2026-09-04 실측 — 위 주석 참조)
+_KEY_TRIM_COLS = ("bd_knd", "pd_pbcm")
+_KEY_TRIM_ALT = "|".join(_KEY_TRIM_COLS)
+
+
 def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:
-    """패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 등호·IN 비교를 TRIM 비교로 교정.
+    """패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교 **및 집계·정렬 키**를 TRIM 으로 교정.
 
     2026-08-31 저녁 서버 실측: bd_knd IN ('일반은행채','특수은행채') 무TRIM 이 16행만 통과
-    (TRIM 시 2,031행) — 문자열비교 규칙 무시. LIKE 는 % 와일드카드가 패딩을 흡수하므로 불개입."""
+    (TRIM 시 2,031행) — 문자열비교 규칙 무시. LIKE 는 % 와일드카드가 패딩을 흡수하므로 불개입.
+
+    🔴 2026-09-04 확장(오답기록 #63) — 비교(=·<>·IN)만 보던 탓에 **GROUP BY·ORDER BY 키**를
+    놓쳤다. 서버 실측 `GROUP BY pd_pbcm` 이 고정폭 패딩으로 같은 기관을 갈라 한국산업은행 503→500,
+    한국토지주택공사 499→498 이 되고 **2·3위 순서가 뒤바뀌었다**(ETF FIN-06 과 같은 병, 같은 컬럼).
+    키 TRIM 의 대상은 **패딩으로 실제 쪼개지는 두 컬럼**(_KEY_TRIM_COLS = bd_knd·pd_pbcm)뿐이다 —
+    pd_pbcm 1,837→1,818 · bd_knd 41→32. 펀드·ETF 쪽 후보는 raw = trim 이라 이득이 0 인데, 감싸면
+    펀드단위 확정식이 달라져 뒤 가드가 못 알아본다(아래 주석 · 6R 고정선으로 잡았다).
+    🔴 SELECT 의 같은 컬럼도 함께 감싼다 — GROUP BY 만 TRIM 하면 묶음은 맞아도 표시 이름이 패딩
+    원문 중 아무 행에서나 뽑힌다(같은 병의 다른 얼굴 · FIN-06 은 이 어긋남이 오답의 정체였다).
+    """
     changed = False
     for col in _PADDED_COLS:
         # 🔴 한정자(public_funds.·p.)는 함수 **안**에 둔다 — 2026-09-02 KG-002 실측: `public_funds.TRIM(or_co…)` 문법 오류 → 기각.
@@ -5463,7 +5482,73 @@ def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:
         new = pat.sub(rf"TRIM(\1{col})\2", sql)
         if new != sql:
             sql, changed = new, True
+
+    # ── 집계·정렬 키 (2026-09-04 확장 · 오답기록 #63) ──────────────────────
+    #    🔴 대상은 _PADDED_COLS 전부가 아니라 **패딩으로 실제 쪼개지는 두 컬럼**(_KEY_TRIM_COLS)뿐이다.
+    #       실측 2026-09-04: pd_pbcm raw 1,837 / trim 1,818 · bd_knd 41 / 32 로 갈리는 반면
+    #       펀드·ETF 후보(or_co_xtn_itt_cd·itm_abrv_nm·han_clas_nm·kofia_fd_ccd·std_itm_no…)는
+    #       raw = trim 이라 감싸도 값이 안 바뀐다. 그런데 **감싸면 해가 있다** — 펀드단위 확정식
+    #       `printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER))` 안까지 TRIM 이 끼면 확정식 문자열이
+    #       달라져 뒤따르는 슬롯·가드(FUNDUNIT·기본모수)가 같은 식을 못 알아본다 — 6R 고정선
+    #       R4(기본모수 절 소실)·R6(6행→1행)·S12(`AS TRIM(...)` 문법 오류)가 이걸로 깨졌다.
+    #       이득이 0 이고 손실이 실재하면 대상에서 뺀다.
+    keyed: set[str] = set()
+    bare = re.compile(rf"(?<!TRIM\()((?:\b\w+\.)?)\b({_KEY_TRIM_ALT})\b(?!\s*\()", re.I)
+
+    def _fix_clause(m: "re.Match[str]") -> str:
+        # 🔴 치환이 없으면 **원문 그대로 돌려준다** — 절을 재조립하면 공백·줄바꿈이 바뀌어
+        #    뒤따르는 가드·스냅샷이 같은 SQL 을 다른 문자열로 본다.
+        def _sub(mm: "re.Match[str]") -> str:
+            keyed.add(mm.group(2).lower())
+            return f"TRIM({mm.group(1)}{mm.group(2)})"
+        body = bare.sub(_sub, m.group(2))
+        return m.group(0) if body == m.group(2) else f"{m.group(1)} {body}"
+
+    new = _KEY_CLAUSE.sub(_fix_clause, sql)
+    if new != sql:
+        sql, changed = new, True
+        # SELECT 목록의 같은 컬럼도 감싼다 — 표시 이름과 묶음 키를 같은 값으로 맞춘다.
+        # 🔴 별칭 자리는 건드리지 않는다 — `MAX(x) AS x` 뒤까지 감싸면 `AS TRIM(x)` 로 문법이 깨진다(S12).
+        sel = re.match(r"(?is)^(\s*SELECT\s+(?:DISTINCT\s+)?)(.*?)(\s+FROM\b)", sql)
+        if sel:
+            body = ",".join(_wrap_expr_keep_alias(it, bare, keyed) for it in _top_split(sel.group(2), ","))
+            if body != sel.group(2):
+                sql = sql[:sel.start(2)] + body + sql[sel.end(2):]
     return sql, changed
+
+
+def _top_split(expr: str, sep: str) -> list[str]:
+    """괄호 깊이 0 의 구분자로만 나눈다 — 함수 인자 안의 쉼표는 건드리지 않는다."""
+    out, depth, start = [], 0, 0
+    for i, ch in enumerate(expr):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == sep and depth == 0:
+            out.append(expr[start:i])
+            start = i + 1
+    out.append(expr[start:])
+    return out
+
+
+def _wrap_expr_keep_alias(item: str, bare: "re.Pattern[str]", keyed: set) -> str:
+    """SELECT 항목의 **표현식 부분만** TRIM 으로 감싼다. `AS 별칭` 은 그대로 둔다.
+    괄호 깊이 0 의 ` AS ` 만 별칭 경계로 본다 — `CAST(x AS INTEGER)` 의 AS 는 경계가 아니다."""
+    depth, cut = 0, None
+    for m in re.finditer(r"[()]|\s+AS\s+", item, re.I):
+        tok = m.group(0)
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            depth -= 1
+        elif depth == 0:
+            cut = m.start()
+            break
+    expr, tail = (item[:cut], item[cut:]) if cut is not None else (item, "")
+    expr = bare.sub(lambda mm: (f"TRIM({mm.group(1)}{mm.group(2)})"
+                                if mm.group(2).lower() in keyed else mm.group(0)), expr)
+    return expr + tail
 
 
 _KIND_FILTERS_FALLBACK = [   # 질문 낱말(긴 것부터 소진 탐색) → 확정 필터. 같은 필터로 모이는 낱말은 dedupe
@@ -7834,7 +7919,8 @@ def answer_question(
             grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token, mgmt_fallback)
     sql, trim_fixed = ensure_trimmed_compare(sql)
     if trim_fixed:
-        step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교를 TRIM 비교로 교체 (무TRIM IN 은 16행 vs TRIM 2,031행 실측)")
+        step("[Guard] TRIM 보정 — 고정폭 패딩 컬럼(bd_knd·pd_pbcm)의 무TRIM 비교와 **집계·정렬 키**를 TRIM 으로 교체 "
+             "(무TRIM IN 은 16행 vs TRIM 2,031행 · 2026-09-04 #63: 무TRIM GROUP BY pd_pbcm 이 한국산업은행 503→500 으로 갈라 2·3위가 뒤바뀌었다)")
     sql, pinned = pin_sql_now(sql)
     if pinned:
         step(f"[Guard] SQL 의 '지금' 고정 — 'now'·CURRENT_DATE 를 질문 시점 {gate.BUYABLE_CUTOFF} 로 치환 (서버 실제 시각은 심사일이다 — 2026-09-03 #51 재점검)")

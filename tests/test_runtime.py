@@ -803,6 +803,69 @@ def test_ensure_trimmed_compare():
     assert not ensure_trimmed_compare("SELECT 1 FROM domestic_bonds WHERE crd_grd = 'AAA' LIMIT 1")[1]
 
 
+def test_ensure_trimmed_group_keys():
+    """2026-09-04 오답기록 #63 — 집계·정렬 키의 무TRIM 패딩.
+
+    서버 실측 `GROUP BY pd_pbcm` 이 고정폭 패딩으로 같은 기관을 갈라 한국산업은행 503→500,
+    한국토지주택공사 499→498 이 되고 2·3위 순서가 뒤바뀌었다(ETF FIN-06 과 같은 병)."""
+    import sqlite3
+
+    from src.runtime.loader import db_path
+    from src.runtime.pipeline import ensure_trimmed_compare as f
+
+    sql = ("SELECT pd_pbcm, COUNT(DISTINCT pd_no) FROM domestic_bonds "
+           "WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 GROUP BY pd_pbcm ORDER BY 2 DESC LIMIT 5")
+    fixed, changed = f(sql)
+    assert changed and "GROUP BY TRIM(pd_pbcm)" in fixed
+    assert "SELECT TRIM(pd_pbcm)," in fixed          # 표시 이름과 묶음 키를 같은 값으로
+    if db_path().exists():                            # 순위가 실제로 바뀌는지 — 동률 499 두 기관
+        con = sqlite3.connect(db_path())
+        assert [r[1] for r in con.execute(fixed)][:3] == [1555, 499, 499]
+        assert [r[1] for r in con.execute(sql)][:3] == [1555, 498, 498]   # 무TRIM 이면 갈린다
+
+    # 별칭은 건드리지 않는다 — `AS TRIM(x)` 는 문법 오류다 (6R 고정선 S12)
+    aliased, ch2 = f("SELECT pd_pbcm AS 발행사, COUNT(*) AS pd_pbcm FROM domestic_bonds GROUP BY pd_pbcm LIMIT 5")
+    assert ch2 and "TRIM(pd_pbcm) AS 발행사" in aliased and "AS pd_pbcm" in aliased and "AS TRIM(" not in aliased
+
+    # 🔴 펀드단위 확정식은 불개입 — or_co_xtn_itt_cd 는 raw = trim 이라 이득이 0 인데
+    #    확정식 문자열이 바뀌면 뒤따르는 슬롯·가드가 같은 식을 못 알아본다(6R 고정선 R4·R6)
+    fund = ("SELECT MIN(itm_no) FROM public_funds WHERE sale_yn = '판매중' "
+            "GROUP BY printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) LIMIT 30")
+    assert f(fund) == (fund, False)
+
+    # 정렬 키에 패딩 컬럼이 없으면 원문 그대로 (공백까지 보존 — 뒤 가드가 같은 문자열로 본다)
+    plain = "SELECT pd_nm FROM domestic_bonds\n ORDER BY mat_dt DESC  LIMIT 3"
+    assert f(plain) == (plain, False)
+
+
+def test_bondpop_slot():
+    """2026-09-04 오답기록 #64 · 리드 결정 — 채권 집계·랭킹의 기본모수는 구매가능(8/24)이다."""
+    from src.runtime import guard
+    from src.runtime.loader import load_context
+
+    ctx = load_context()
+    fire = lambda sql, q: guard.apply_enforce(sql, q, ["domestic_bonds"], set(), ctx)
+
+    out, fired = fire("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds "
+                      "WHERE TRIM(bd_inrt_tcd) IN ('변동금리', '고정+변동금리') LIMIT 30",
+                      "금리가 고정이 아니라 변동인 채권은 몇 개야?")
+    assert fired == ["BONDPOP"] and "curr_cd = 'KRW' AND mat_dt >= 20260824 AND (" in out
+
+    # 🔴 OR 절은 괄호로 감싸야 한다 — 안 감싸면 (모수 AND a) OR b 로 새고 모수가 무력해진다
+    out2, f2 = fire("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='국공채' "
+                    "OR (COALESCE(TRIM(bd_knd),'')='' AND TRIM(std_pd_scls_nm)='국고채') LIMIT 30",
+                    "국고채를 포함해서 국공채는 총 몇 종목이야?")
+    assert f2 == ["BONDPOP"] and out2.count("(TRIM(std_pd_mcls_nm)='국공채' OR") == 1
+
+    # 불개입 — 만기 하한이 이미 있거나 / 만기 지난 것을 명시적으로 묻거나 / 집계·랭킹이 아닐 때
+    assert fire("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds "
+                "WHERE curr_cd='KRW' AND mat_dt >= 20260824 LIMIT 30", "지금 매수할 수 있는 채권 몇 종목이야?")[1] == []
+    assert fire("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE mat_dt < 20260824 LIMIT 30",
+                "만기가 지난 채권은 몇 종목이야?")[1] == []
+    assert fire("SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd)='국고채권' LIMIT 5",
+                "국고채 알려줘")[1] == []
+
+
 def test_ensure_count_query():
     from src.runtime.pipeline import ensure_count_query, _cell
     # 2026-09-01 서버 실측 — '5% 넘는 건 몇 개야' 에 COUNT 없는 목록 + 잔존일수순 임의 3행
@@ -1491,13 +1554,16 @@ def test_full_path_gov_count_including_ktb(ctx):
     assert "[Guard] 국고채 종류 교정 보류" in r.think_trace and "[Guard] 국고채 종류 교정 —" not in r.think_trace
     assert "std_pd_mcls_nm)='국공채'" in r.sql and "국고채권" not in r.sql
     assert "[Answer] 채권 종목 수 답변 기계 조립" in r.think_trace and r.answer != "HCX 산문"
-    assert "1,775종목" in r.answer and "그중 국고채(국고채권 + STRIPS)는 295종목" in r.answer
+    # 🔴 2026-09-04 기준일 8/24 통일(리드 결정) — enforce 슬롯 BONDPOP 이 구매가능 모수를 주입해
+    #    1,775(만기 경과 재정증권 1종목 포함) → 1,774 다. 국고채 확정식 295 는 두 모수에서 같다.
+    assert "BONDPOP" in (r.enforce_fired or []) and "mat_dt >= 20260824" in r.sql
+    assert "1,774종목" in r.answer and "그중 국고채(국고채권 + STRIPS)는 295종목" in r.answer
     # 부분집합 질의는 종전대로 확정식 교체 → 295
     r2 = answer_question("T-52b", "국공채 중 국고채만 몇 종목이야?", planner=GovCountPlanner(), ctx=ctx)
-    assert "[Guard] 국고채 종류 교정 —" in r2.think_trace and "295종목" in r2.answer and "1,775" not in r2.answer
+    assert "[Guard] 국고채 종류 교정 —" in r2.think_trace and "295종목" in r2.answer and "1,774" not in r2.answer
     # 대조군 — 국고채 언급 없는 국공채 집계는 가드 미발동
     r3 = answer_question("T-52c", "국공채는 몇 종목이야?", planner=GovCountPlanner(), ctx=ctx)
-    assert "국고채 종류 교정" not in r3.think_trace and r3.answer.startswith("국공채는 총 1,775종목입니다")
+    assert "국고채 종류 교정" not in r3.think_trace and r3.answer.startswith("국공채는 총 1,774종목입니다")
 
 
 def test_bond_count_answer_shapes():

@@ -154,9 +154,10 @@ def test_ground_cross_query_keeps_security_node(ctx):
 # ── B 문지기 — 신용등급은 표준표로 ────────────────────────────────────────
 
 def test_std_grade_table_loaded_and_shaped(ctx):
-    # 표준표는 data/external/lookups/credit_grade_scale.csv (data/ 는 git 밖 — 배포 zip 으로 공유). 없으면 게이트는 데이터 값만으로 판정한다
-    if not ctx.std_grades:
-        pytest.skip("credit_grade_scale.csv 없음 — data/ 배포본 필요")
+    # 표준표는 data/external/lookups/credit_grade_scale.csv — data/ 는 무시 대상이지만 이 코드북 한 건만
+    # 추적한다(.gitignore '예외 2', 2026-09-04). 없으면 게이트가 데이터 값만으로 판정해 조용히 덜 답하므로,
+    # 이제는 건너뛸 사유가 아니라 '추적된 파일이 지워졌다' 는 신호다.
+    assert ctx.std_grades, "credit_grade_scale.csv 가 없다 — git 추적 대상이니 clone/pull 상태를 확인하세요"
     assert len(ctx.std_grades) >= 20
     for g in ctx.std_grades:
         assert gate._GRADE_SHAPE.match(g), g      # '등급 모양' 규칙은 표의 구조에서 온다

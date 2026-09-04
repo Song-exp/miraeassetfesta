@@ -99,7 +99,7 @@
 
 | 파일 | 왜 필요했나 | 지금 쓰임 |
 | :-- | :-- | :-- |
-| `credit_grade_scale.csv` (한국기업평가 21행 · 표준등급 20 · DB 표기 `AA0`=AA · `C0`=C) | "AA- 이상" 이 어느 등급인지, 투자/투기 경계가 어디인지 **데이터 어디에도 없다** | ✅ `shared/credit_grade.yaml` 노드 21(등급 19 + 밴드 2) 과 게이트 표준표의 원천 |
+| `credit_grade_scale.csv` (한국기업평가 21행 · 표준등급 20 · DB 표기 `AA0`=AA · `C0`=C) | "AA- 이상" 이 어느 등급인지, 투자/투기 경계가 어디인지 **데이터 어디에도 없다** | ✅ `shared/credit_grade.yaml` 노드 22(등급 20 + 밴드 2) 과 게이트 표준표의 원천 |
 | `bond_issuer_background.md` | 발행기관의 법정 손실보전 여부 | ✅ `신용보강` 6층 규칙의 근거 |
 | `collateral_type_map.csv` · `issuer_industry_map.csv` | 담보축·업종축 | 🟡 1차 기준 오류 3건 규명 후 보류 — 프리즈 전 범위 밖 |
 | `bond_tax_rules.md` · `bond_glossary.md` · `ktb_individual_structure.md` · `zeroin_methodology.md` | 세금·용어·개인투자용국채·위험등급 체계 | 배경 지식 (개인투자용국채는 2차에서 소멸) |
@@ -117,7 +117,7 @@
 | 연결 | 컬럼 → 개체 | 값 수 | 선언 |
 | :-- | :-- | --: | :-- |
 | Organization | `pd_pbcm` → 발행사 노드 | alias 1,818 / 노드 1,817 | `organization_issuer_auto.yaml`(자동) |
-| CreditGrade | `crd_grd` → rank 1~19 + 밴드 2 | 15 | `credit_grade.yaml` · closure 밴드→등급 19 |
+| CreditGrade | `crd_grd` → rank 1~20 + 밴드 2 | 15 | `credit_grade.yaml` · closure 밴드→등급 20(투자 10 · 투기 10) |
 | RiskGrade | `pd_risk_gcd` `'11'~'16'`·`'00'` → 0~6 | 7 | `risk_grade.yaml` · **`range_by_table` 채권 0~6**(펀드·ETF 1~6) |
 | Currency | `curr_cd` KRW | 1 | `currency.yaml` |
 | ⊘ AssetClass · Index · Region | 컬럼 없음 / 발행국 KR 21,881/21,882 상수 | — | `absent_in` → ttl ABSENT 3 · 게이트 어휘 |

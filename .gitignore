@@ -76,6 +76,19 @@ data/
 # 원본 데이터가 아니라 '코드 ↔ 이름' 매핑이며, .ttl·KG 생성기의 입력이므로 반드시 추적한다.
 !ontology/codebooks/*.csv
 
+# 🔴 예외 2 — 신용등급 표준표도 같은 성격의 코드북이다 (2026-09-04).
+#    data/external/lookups/credit_grade_scale.csv 는 폴더만 data/ 아래일 뿐 원본 데이터가 아니라
+#    한국기업평가 등급정의(공개 페이지, 행마다 source_url)를 옮겨 적은 21행짜리 매핑이고,
+#    런타임이 직접 읽는다(loader.GRADE_SCALE_CSV). 없으면 조용히 틀린다 — 2026-09-04 실측:
+#      · ctx.std_grades 가 빈 집합 → 게이트가 'D'·'CCC'·'BB+' 를 "존재하지 않는 등급" 으로 답한다
+#        (있어야 "표준 체계에는 있으나 이 적재분에 없음"). 유효범위 문구도 'AAA~D' → 'AAA~C'.
+#      · 서버도 마찬가지다. deploy.sh 는 코드를 git pull 로, DB 를 scp 로만 나른다 — data/ 안의
+#        이 파일은 git 이 안 나르면 서버에 없다(compose 가 ./data 를 마운트하므로 pull 되면 들어간다).
+#      · tests/test_runtime.py 의 등급 회귀 2건이 이 파일을 직접 연다 — clone 후 pytest 가 깨진다.
+#    ⚠️ data/ 는 디렉터리째 무시라 `!data/...` 재포함이 먹지 않는다. 이 파일은 `git add -f` 로 한 번
+#       추적에 올려 두었고(추적된 파일에는 .gitignore 가 적용되지 않는다), data/ 무시는 그대로다.
+#       data/ 아래 다른 파일을 같은 방법으로 올리지 마세요 — '코드가 읽는 코드북' 한 건 예외입니다.
+
 # Jupyter — EDA 노트북은 커밋합니다 (2026-08-18 정책 변경).
 #
 # 이전 정책은 notebooks/*.ipynb 전체 무시였습니다. 이유는 ① git diff 가 안 읽혀 리뷰가 불가능

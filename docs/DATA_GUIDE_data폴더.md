@@ -150,7 +150,7 @@ SELECT * FROM build_info;
 
 | 파일 | 내용 |
 | :-- | :-- |
-| `credit_grade_scale.csv` | 신용등급 서열 19단계·투자/투기 경계 → `shared/credit_grade.yaml` 노드화 |
+| `credit_grade_scale.csv` | 신용등급 서열 20단계·투자/투기 경계 → `shared/credit_grade.yaml` 노드화 |
 | `collateral_type_map.csv` · `issuer_industry_map.csv` · `issuer_industry_top200.csv` | 채권 담보구분·발행사 업종 (edge 후보, 아직 미연결) |
 | `bond_tax_rules.md` · `bond_glossary.md` · `bond_issuer_background.md` · `ktb_individual_structure.md` | 채권 세금·용어·발행기관 제도 |
 | `fund_facts_from_prospectus.csv` | 간이투자설명서 추출 8,443행 — **보수 단위 ‰ 확정의 근거** |

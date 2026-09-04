@@ -163,6 +163,45 @@ _REL_NUM = re.compile(
 )
 _MAT_DT_WINDOW = 60      # SQL 에서 mat_dt 와 연도 사이의 허용 거리(글자) — BETWEEN·SUBSTR·CAST 어느 형태든 이 안에 든다
 
+# ── 과거 방향 창 — '최근 N개월'·'지난 N년' (2026-09-05 #66) ───────────────────────────────
+# 🔴 확정표(_RELATIVE_WINDOW·_REL_NUM)에는 과거 방향이 없다. 그래서 "최근 6개월 안에 새로 발행된" 과
+#    "6개월 안에 만기되는" 이 **똑같은 창**(20260824~20270224)으로 잡혔다 — 앞의 '최근' 을 아무도 안 봤다.
+# 🔴 확정표에 섞지 않고 따로 둔다. 코퍼스 395문항의 '최근/지난' 9건 중 6건이 "최근 1년 수익률"·"지난 1주일
+#    수익률" 처럼 **성과 기간(컬럼 선택)** 이지 날짜 창이 아니다. 확정표에 넣으면 그 6건을 오폭한다 —
+#    이 함수는 호출부가 발행 시점 질의로 판정했을 때만 부른다.
+_PAST_NUM = re.compile(
+    r"(?:최근|지난|근래)\s*(\d{1,2})\s*(년|개월|달|주일|주|일)|(?:최근|지난|근래)\s*(반\s*년)"
+)
+
+
+def resolve_past_window(question: str) -> list[tuple[str, int, int]]:
+    """'최근 N개월'·'지난 N년' → [(낱말, lo, hi)] (D-N ~ D, 양끝 포함). 질문 시점 D = BUYABLE_CUTOFF.
+
+    달 수는 일수 환산이 아니라 _add_months 로 센다 — 184일 빼기와 6개월 빼기는 사흘 어긋나고,
+    그 사흘에 종목이 들고 난다.
+    """
+    out: list[tuple[str, int, int]] = []
+    for m in _PAST_NUM.finditer(question):
+        if m.group(3):                                   # '반 년'
+            n, unit = 6, "개월"
+        else:
+            n, unit = int(m.group(1)), m.group(2)
+        if n == 0:
+            continue
+        if unit == "년":
+            lo_d = _add_years(_TODAY, -n)
+        elif unit in ("개월", "달"):
+            lo_d = _add_months(_TODAY, -n)
+        elif unit in ("주", "주일"):
+            lo_d = _TODAY - _dt.timedelta(weeks=n)
+        else:
+            lo_d = _TODAY - _dt.timedelta(days=n)
+        lo, hi = _ymd(lo_d), _ymd(_TODAY)
+        label = re.sub(r"\s+", " ", m.group(0).strip())
+        if not any(l == lo and h == hi for _, l, h in out):
+            out.append((label, lo, hi))
+    return out
+
 
 def resolve_relative_window(question: str) -> list[tuple[str, int, int]]:
     """질문의 상대 시점 낱말 → [(낱말, lo, hi)] (mat_dt 정수 창, 양끝 포함). 질문 시점은 BUYABLE_CUTOFF 로 고정.

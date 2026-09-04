@@ -605,6 +605,11 @@ def align_maturity_year(sql: str, tokens: list[str]) -> tuple[str, bool]:
 _MAT_BETWEEN = re.compile(r"\bmat_dt\s+BETWEEN\s+(\d{8})(?:\.0)?\s+AND\s+(\d{8})(?:\.0)?", re.I)
 _MAT_PRED = re.compile(r"\bmat_dt\b\s*(?:BETWEEN\s+\d{8}(?:\.0)?\s+AND\s+\d{8}(?:\.0)?|(?:>=|<=|<>|!=|=|<|>)\s*\d{8}(?:\.0)?)", re.I)
 _MAT_OR_REMAIN = re.compile(r"\b(?:mat_dt|remaining_days)\b", re.I)
+# 구매가능 모수로 우리가 주입한 하한 — 사용자가 물은 만기 조건이 아니다. 창 발동 판정에서 뺀다(2026-09-05 #66)
+_BUYABLE_FLOOR = re.compile(rf"^\s*mat_dt\s*>=?\s*{BUYABLE_INT}(?:\.0)?\s*$", re.I)
+# 발행 시점 질의 — '만기' 축으로 갈아끼우면 안 되는 문형 (isu_dt 가 따로 있다)
+_ISSUANCE_Q = re.compile(r"발행|신규|새로\s*(?:나온|나와|발행|출시)|출시")
+_MATURITY_Q = re.compile(r"만기|상환|잔존")
 _WHERE_BODY = re.compile(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
 _SQL_NOW = re.compile(r"'now'|\bCURRENT_DATE\b|\bCURRENT_TIMESTAMP\b|\bCURRENT_TIME\b", re.I)
 
@@ -636,25 +641,38 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
        질문 시점(8/24) 도, '내년' 의 뜻도 프롬프트에 없었다. 창은 결정층이 정한다(gate.resolve_relative_window) —
        여기서는 mat_dt·remaining_days 를 쓴 최상위 조건을 전부 걷어내고 확정 창 하나로 바꾼다.
     remaining_days 조건은 제거한다 — 8/21(info_base_dt) 기준이라 8/24 를 오늘로 두면 3일 어긋난다.
-    발동(전부): ① domestic_bonds ② 확정 창이 정확히 하나 ③ 만기 경과 질의 아님 ④ SQL 에 mat_dt/remaining_days 조건이 있거나
-    질문이 '만기·상환' 을 말함(그렇지 않은 '오늘 수익률 좋은 채권' 의 '오늘' 은 창이 아니다) ⑤ 걷어낼 조건이 다른 컬럼과 섞여 있지 않음.
+    발동(전부): ① domestic_bonds ② 확정 창이 정확히 하나 ③ 만기 경과 질의 아님 ④ 발행 시점 질의가 아님 ⑤ SQL 에
+    (구매가능 하한을 뺀) mat_dt/remaining_days 조건이 있거나 질문이 '만기·상환·잔존' 을 말함(그렇지 않은
+    '오늘 수익률 좋은 채권' 의 '오늘' 은 창이 아니다) ⑥ 걷어낼 조건이 다른 컬럼과 섞여 있지 않음.
+
+    🔴 2026-09-05 서버 실측(#66) — "최근 6개월 안에 새로 발행된 회사채 중 표면금리 높은 5개" 가 답한 5종목의
+       실제 발행일은 2023-09-15 ~ 2025-09-24 로 **전부 6개월 밖**이었다. 발행 축(isu_dt, 고유값 2,486)이 데이터에
+       있는데도 창이 mat_dt 로 갔다 — 없는 축을 실재 컬럼으로 갈아끼운 #65 와 같은 부류이고, 이번엔 갈아끼운 것이
+       HCX 가 아니라 이 가드다. 그래서 두 자리를 막는다:
+         ④ 질문이 '발행·신규·새로 나온' 을 말하고 '만기·상환' 을 말하지 않으면 만기 창을 강제하지 않는다
+            (HCX 가 `isu_dt BETWEEN …` 로 옳게 써도 종전엔 mat_dt 창이 덧붙어 '발행 AND 만기' 로 오염됐다).
+         ⑤ `mat_dt >= 20260824` 는 우리가 주입한 구매가능 모수지 사용자가 물은 만기 조건이 아니다 — 이것 때문에
+            만기를 한 번도 말하지 않은 "오늘 수익률 높은 채권" 이 `mat_dt = 20260824`(만기가 오늘) 로 좁혀졌다.
     """
     if "domestic_bonds" not in sql or not windows or _PAST_MATURITY_Q.search(question):
         return sql, None
     if len({(lo, hi) for _, lo, hi in windows}) != 1:
         return sql, None
+    if _ISSUANCE_Q.search(question) and not _MATURITY_Q.search(question):
+        return sql, None                                        # ④ 발행 시점 질의 — 만기 축으로 갈아끼우지 않는다
     label, lo, hi = windows[0]
     want = f"mat_dt = {lo}" if lo == hi else f"mat_dt BETWEEN {lo} AND {hi}"
     m_w = _WHERE_BODY.search(sql)
     body = m_w.group(1) if m_w else ""
-    has_pred = bool(_MAT_OR_REMAIN.search(body))
-    if not has_pred and not re.search(r"만기|상환", question):
-        return sql, None
     fold = "\x01"
     folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
+    conjuncts = [c.replace(fold, " AND ").strip() for c in guard.split_conjuncts(folded)]
+    # ⑤ 구매가능 하한(mat_dt >= 판정일)만 있는 것은 '만기 조건이 있다' 로 세지 않는다
+    has_pred = any(_MAT_OR_REMAIN.search(c) and not _BUYABLE_FLOOR.match(c) for c in conjuncts)
+    if not has_pred and not _MATURITY_Q.search(question):
+        return sql, None
     kept: list[str] = []
-    for c in guard.split_conjuncts(folded):
-        c = c.replace(fold, " AND ").strip()
+    for c in conjuncts:
         if not c:
             continue
         if _MAT_OR_REMAIN.search(c):
@@ -6908,8 +6926,22 @@ def build_grounding(
     rules = ctx.planner_context(target, question if (question and layered) else None)
     if rules:
         parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다. 일부는 이 질문과 무관할 수 있다)\n" + rules)
-    windows = gate.resolve_relative_window(question) if (question and "domestic_bonds" in target) else []
-    if windows:
+    bond_q = bool(question) and "domestic_bonds" in target
+    issuance_q = bond_q and bool(_ISSUANCE_Q.search(question)) and not _MATURITY_Q.search(question)
+    windows = gate.resolve_relative_window(question) if (bond_q and not issuance_q) else []
+    if issuance_q:
+        # 🔴 2026-09-05 #66 — 종전엔 발행 질의에도 "'6개월 안에' = mat_dt BETWEEN …" 를 실어 보냈다. 그 한 줄이
+        #    "최근 6개월 안에 새로 발행된 회사채" 오답의 1차 원인이다(답한 5종목의 실제 발행일은 2023~2025년).
+        #    발행 축은 isu_dt 고, '최근·지난' 은 과거 방향이다 — 둘 다 여기서 못박는다.
+        past = gate.resolve_past_window(question)
+        line = (f"# 질문 시점(오늘) = {gate.BUYABLE_CUTOFF}(월) 로 고정.\n"
+                "# 🔴 이 질문은 **발행 시점** 질의다 — 발행일은 isu_dt 다. mat_dt(만기일)로 발행 시점을 대신하지 않는다.\n"
+                "# isu_dt 는 0·NULL 이 미수록(26행)이므로 발행 시점 조건에는 isu_dt > 0 을 함께 넣는다.")
+        if past:
+            wins = " · ".join(f"'{l}' = isu_dt BETWEEN {lo} AND {hi}" for l, lo, hi in past)
+            line += f"\n# 상대 시점 확정(과거 방향): {wins} — 이 창을 그대로 쓴다."
+        parts.append(line)
+    elif windows:
         # 질문 시점을 못 들으면 HCX 가 '내년' 을 제멋대로 센다(2026-09-03 #51: 20280824~20290824). 창은 결정층이 정하고 가드가 강제한다 —
         # 이 문장은 재생성 횟수를 줄이는 보조다.
         wins = " · ".join(f"'{l}' = {'mat_dt = ' + str(lo) if lo == hi else f'mat_dt BETWEEN {lo} AND {hi}'}" for l, lo, hi in windows)

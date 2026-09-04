@@ -620,7 +620,17 @@ def diagnose_zero_rows(sql: str, con: sqlite3.Connection | None = None) -> ZeroR
         return None
     conj = split_conjuncts(m.group("where").strip())
     if len(conj) < 2:
-        return None
+        # 🔴 2026-09-05 #66 — 최상위가 OR 한 덩어리면 여기서 통째로 포기했다. "우주항공·방산 쪽 기업이 발행한
+        #    채권" 이 `pd_pbcm LIKE '%우주항공%' OR pd_pbcm LIKE '%방산%'` 0행으로 끝났고, 사용자는 사유 없는
+        #    "확인되지 않습니다" 한 줄만 받았다 — 어느 항목을 뒤졌는지조차 알 수 없다. OR 가지로 갈라 진단한다.
+        #    (가지가 하나뿐이면 종전대로 진단할 게 없다.)
+        head = (conj[0] if conj else "").strip()
+        while head.startswith("(") and head.endswith(")") and len(split_disjuncts(head)) == 1:
+            head = head[1:-1].strip()                       # 통째로 감싼 괄호만 벗긴다
+        disj = [d.strip() for d in split_disjuncts(head) if d.strip()]
+        if len(disj) < 2:
+            return None
+        conj = disj
     frm = m.group("from").strip()
     own = con is None
     con = con or connect_readonly()

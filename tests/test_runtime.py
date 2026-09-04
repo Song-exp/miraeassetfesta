@@ -1466,6 +1466,55 @@ def test_enforce_relative_window():
     q5 = "올해 만기 지난 채권"
     assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt < 20260824 LIMIT 5", q5, gate.resolve_relative_window(q5))[1] is None
     assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5", q, gate.resolve_relative_window(q))[1] is None
+    # ── 2026-09-05 서버 실측 #66 회귀 — '축 대체': 발행 시점 질의에 만기 창을 강제하던 자리 ──
+    # 원 사고: "최근 6개월 안에 새로 발행된 회사채 중 표면금리 높은 5개" 가 답한 5종목의 실제 발행일은
+    #          2023-09-15 ~ 2025-09-24 로 5/5 전부 창 밖. 발행 축(isu_dt)이 있는데 창이 mat_dt 로 갔다.
+    floor = "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' AND mat_dt >= 20260824"
+    for qi in ("최근 6개월 안에 새로 발행된 회사채 중에 표면금리 높은 5개 알려줘",
+               "이번 달에 새로 나온 채권", "올해 발행된 채권 알려줘"):
+        assert enforce_relative_window(floor + " LIMIT 30", qi, gate.resolve_relative_window(qi))[1] is None
+    # HCX 가 isu_dt 로 옳게 써도 종전엔 mat_dt 창이 덧붙어 '발행 AND 만기' 로 오염됐다
+    q6 = "올해 발행된 채권 알려줘"
+    assert enforce_relative_window(floor + " AND isu_dt BETWEEN 20260101 AND 20260824 LIMIT 30", q6,
+                                   gate.resolve_relative_window(q6))[1] is None
+    # 구매가능 하한(mat_dt >= 판정일)은 사용자가 물은 만기 조건이 아니다 — 이것 때문에 만기를 말하지 않은
+    # "오늘 수익률 높은 채권" 이 mat_dt = 20260824(만기가 오늘)로 좁혀졌다. q4 와 같은 질문, 실운영 SQL 형태.
+    assert enforce_relative_window(floor + " AND applied_yield > 5 LIMIT 5", q4, gate.resolve_relative_window(q4))[1] is None
+    # 만기 질의는 하한만 있어도 종전대로 발동한다
+    q7 = "3년 안에 만기되는 안전한 채권 몇 개만 골라줘"
+    assert "mat_dt BETWEEN 20260824 AND 20290824" in enforce_relative_window(floor + " LIMIT 30", q7, gate.resolve_relative_window(q7))[0]
+    # '발행' 과 '만기' 를 함께 물으면 만기 축 판정은 살아 있다
+    q8 = "올해 발행된 채권 중 내년에 만기되는 것"
+    assert enforce_relative_window(floor + " LIMIT 30", q8, gate.resolve_relative_window(q8))[1] is None   # 창이 둘 → 불개입
+
+
+def test_resolve_past_window():
+    """'최근 N개월'·'지난 N년' = 과거 방향 (2026-09-05 #66). 확정표(_RELATIVE_WINDOW)는 건드리지 않는다."""
+    from src.runtime import gate
+    p = gate.resolve_past_window
+    assert p("최근 6개월 안에 새로 발행된 회사채") == [("최근 6개월", 20260224, 20260824)]
+    assert p("지난 3개월 발행 채권") == [("지난 3개월", 20260524, 20260824)]
+    assert p("최근 1년 안에 발행된 채권") == [("최근 1년", 20250824, 20260824)]
+    assert p("지난 1주일 신규 발행") == [("지난 1주일", 20260817, 20260824)]
+    assert p("올해 발행된 채권") == []                       # 과거 방향 낱말이 없다
+    # 🔴 확정표는 그대로 — '최근 1년 수익률' 류(코퍼스 '최근' 9문항 중 6문항)를 오폭하지 않는다
+    assert gate.resolve_relative_window("최근 1년 수익률이 더 높은 것은?") == []
+    assert gate.resolve_relative_window("6개월 안에 만기되는 채권") == [("6개월 안에", 20260824, 20270224)]
+
+
+def test_diagnose_zero_rows_or_branches():
+    """0행 사유 — 최상위가 OR 한 덩어리여도 가지별로 진단한다 (2026-09-05 #66).
+
+    원 사고: "우주항공·방산 쪽 기업이 발행한 채권" → `pd_pbcm LIKE '%우주항공%' OR LIKE '%방산%'` 0행 →
+             사용자는 사유 없는 "확인되지 않습니다" 한 줄만 받았다.
+    """
+    from src.runtime import guard
+    for sql in ("SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%우주항공%' OR pd_pbcm LIKE '%방산%' LIMIT 30",
+                "SELECT pd_nm FROM domestic_bonds WHERE (pd_pbcm LIKE '%우주항공%' OR pd_pbcm LIKE '%방산%') LIMIT 30"):
+        d = guard.diagnose_zero_rows(sql)
+        assert d and "우주항공" in d.user_text() and "방산" in d.user_text()
+    # 조건이 하나뿐이면 종전대로 진단 없음
+    assert guard.diagnose_zero_rows("SELECT pd_nm FROM domestic_bonds WHERE pd_pbcm LIKE '%삼성전자%' LIMIT 30") is None
 
 
 def test_raise_maturity_floor_and_pin_now():

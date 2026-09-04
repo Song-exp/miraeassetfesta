@@ -133,16 +133,16 @@
 
 | 파일 | 줄 |
 | :-- | --: |
-| `ontology/common.ttl` | 58,969 |
+| `ontology/common.ttl` | 58,971 |
 | `ontology/bond_kr.ttl` | 36 |
 | `ontology/etf_kr.ttl` | 34 |
 | `ontology/etf_gl.ttl` | 21 |
-| `ontology/fund_pub.ttl` | 34 |
+| `ontology/fund_pub.ttl` | 36 |
 
 ## 4. 평가셋
 
 - `questions_cross_and_unanswerable.jsonl`: 9문항 (사람 검증 8)
-- `questions_domestic_bonds.jsonl`: 44문항 (사람 검증 44)
+- `questions_domestic_bonds.jsonl`: 46문항 (사람 검증 46)
 - `questions_domestic_etfs.jsonl`: 36문항 (사람 검증 31)
 - `questions_final30.jsonl`: 30문항 (사람 검증 0)
 - `questions_official_sample.jsonl`: 8문항 (사람 검증 6)
@@ -150,5 +150,5 @@
 - `questions_public_funds.jsonl`: 20문항 (사람 검증 0)
 - `questions_top_safety_probe.jsonl`: 10문항 (사람 검증 10)
 
-**합계 185문항 · 사람 검증 126건**
+**합계 187문항 · 사람 검증 128건**
 

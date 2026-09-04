@@ -51,8 +51,8 @@ python scripts/build_ontology.py            # KG 재생성 + V1~V7 검증 게이
 
 ```mermaid
 flowchart LR
-  DE["fp:DomesticETF<br/>1,780행 · 98컬럼<br/>ETF 1,235 / ETN 545 (pd_grp_no)<br/>query_rules 44 · ABSENT 3"]
-  OE["fp:OverseasETF<br/>6,037행 · 49컬럼<br/>ETF 5,972 / ETN 65 (cu_etn_yn)<br/>query_rules 23 · ABSENT 2"]
+  DE["fp:DomesticETF<br/>1,780행 · 98컬럼<br/>ETF 1,235 / ETN 545 (pd_grp_no)<br/>query_rules 54 · ABSENT 3"]
+  OE["fp:OverseasETF<br/>6,037행 · 49컬럼<br/>ETF 5,972 / ETN 65 (cu_etn_yn)<br/>query_rules 27 · ABSENT 2"]
   subgraph HUB[공유 개체 — A 와 같은 순서]
     ORG[Organization]; CG[CreditGrade]; RG["RiskGrade<br/>국내 1~6"]; AC[AssetClass]; IDX["Index<br/>변형→정본 closure"]; REG["Region<br/>국가⊂권역⊂글로벌"]; CTY[Country]; CUR[Currency]; SEC["Security<br/>ext_* 경유"]; FND[Fund]; FA[FundAttribute]
   end
@@ -189,7 +189,7 @@ fp:expenseRatio a owl:DatatypeProperty ; rdfs:domain fp:ETF ; rdfs:range xsd:dec
 | OverseasETF | `hasCreditGrade` | 신용등급 컬럼 없음 | — |
 | OverseasETF | `hasRiskGrade` | 위험등급 컬럼 자체 없음 → HCX 0회 기각 | — |
 
-### E.3 yaml 발췌 (부록 B) — 국내 44 · 해외 23 중 대표
+### E.3 yaml 발췌 (부록 B) — 국내 54 · 해외 27 중 대표
 
 ```yaml
 # domestic_etfs.yaml

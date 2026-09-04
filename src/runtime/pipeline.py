@@ -5941,6 +5941,55 @@ def _synonym_keys(ctx) -> dict:
     return out
 
 
+def _colloquial_decl(ctx) -> dict:
+    """발행사 통칭 생성 규칙 — enums `name_encoding.issuer_colloquial` (선언이 원천, 값은 데이터에서)."""
+    for doc in (ctx.enums or {}).values():
+        rule = ((doc or {}).get("name_encoding") or {}).get("issuer_colloquial")
+        if rule:
+            return rule
+    return {}
+
+
+def _other_type_labels(ctx, node_type: str) -> set:
+    """다른 개체 타입의 라벨 집합 — 생성 통칭이 여기에 걸리면 만들지 않는다(모호해진다)."""
+    cache = getattr(ctx, "_other_label_cache", None)
+    if cache is None:
+        cache = {}
+        ctx._other_label_cache = cache
+    if node_type not in cache:
+        cache[node_type] = {(n.label_ko or "").replace(" ", "")
+                            for n in ctx.kg_nodes if n.node_type != node_type and n.label_ko}
+    return cache[node_type]
+
+
+def _colloquial_terms(ctx, node, label: str) -> list[str]:
+    """라벨에서 만든 발행사 통칭 — '한국산업은행'→'산업은행' · '한국전력공사'→'한국전력'.
+
+    2026-09-04 실측: 대표 발행사 23표기 중 6표기('산업은행'·'기업은행'·'도로공사'·'수출입은행'·
+    '토지주택공사'·'한국전력')가 KG 접지 0건이었다. 손으로 적은 통칭 6개(한전·산은·기은·LH·주금공·현대차)만
+    커버돼 있었기 때문이다 — 통칭을 손으로 적는 대신 **변환 규칙을 선언하고 값은 데이터에서 만든다**.
+    _synonym_keys 의 '접두 기계 제거는 위험하다'(Security 라벨 309건 실측)는 판단은 그대로 유효하다 —
+    여기는 발행사(Organization + 채권 alias) 한정이고, 다른 개체 라벨과 겹치면 만들지 않는다."""
+    rule = _colloquial_decl(ctx)
+    if not rule or node.node_type != rule.get("node_type"):
+        return []
+    table = rule.get("alias_table")
+    if table and table not in {t for t, _, _ in ctx.kg_aliases.get(node.node_id, ())}:
+        return []
+    n = label.replace(" ", "")
+    out, low = [], int(rule.get("min_len") or 4)
+    for pre in rule.get("drop_prefix") or ():
+        if n.startswith(pre) and len(n) - len(pre) >= low:
+            out.append(n[len(pre):])
+    for suf in rule.get("drop_suffix") or ():
+        if n.endswith(suf) and len(n) - len(suf) >= low:
+            out.append(n[: -len(suf)])
+    if rule.get("skip_if_other_type_label"):
+        others = _other_type_labels(ctx, node.node_type)
+        out = [t for t in out if t not in others]
+    return [t for t in dict.fromkeys(out) if t != n]
+
+
 def _syn_terms(ctx, node, label: str) -> list[str]:
     """노드 라벨의 yaml 통칭 — 노드가 alias 를 가진 테이블의 yaml 에 적힌 것만 (domestic_etfs.yaml 의 '차이나: 중국' 이
     펀드 Country 노드에 풀링돼 상품명 안 '차이나' 를 잡던 4R S4 회귀의 원인)."""
@@ -6067,6 +6116,8 @@ def _ground(
                         yield piece, True, "label"
             for alias in _syn_terms(ctx, node, label):
                 yield alias, True, "syn"
+            for term in _colloquial_terms(ctx, node, label):
+                yield term, True, "colloquial"   # 선언된 변환으로 만든 발행사 통칭 (name_encoding.issuer_colloquial)
         for fn in getattr(node, "former_names", None) or ():
             if len(fn) >= 3:
                 yield fn, True, "former"   # 구상호 — 매칭되면 후계 법인 코드로 조회하고 '현재 X 가 운용' 을 굽는다 (KG-002·003)

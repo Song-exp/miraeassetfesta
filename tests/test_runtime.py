@@ -1874,3 +1874,43 @@ def test_owner_hint_picks_most_rows():
     counts = _literal_row_counts("domestic_bonds", ["pd_pbcm", "bd_knd"], "국고채권")
     assert counts["bd_knd"] > counts["pd_pbcm"]               # 356 vs 1
     assert max(counts, key=counts.get) == "bd_knd"
+
+
+# ── KG 노드 작동 점검 (2026-09-04 전수) ────────────────────────────────────
+
+def test_bond_node_coverage_and_grounding():
+    """채권이 닿는 노드가 실제로 접지되는가 — 구조(커버리지)와 런타임(Ground) 양쪽."""
+    from src.runtime.loader import connect_readonly, load_context
+    from src.runtime.pipeline import _ground, expand_node
+
+    ctx = load_context()
+    with connect_readonly() as con:
+        # ① 값 커버리지 — 등급·위험등급은 100%, 통화는 오염값 1건만 제외, 발행사는 종류 오염 1건만 제외
+        for col, expect_miss in (("crd_grd", 0), ("pd_risk_gcd", 0), ("curr_cd", 1), ("pd_pbcm", 1)):
+            vals = {(r[0] or "").strip() for r in con.execute(f"SELECT DISTINCT {col} FROM domestic_bonds")} - {""}
+            mapped = {(r[0] or "").strip() for r in con.execute(
+                "SELECT raw_value FROM kg_alias WHERE table_name='domestic_bonds' AND column_name=?", (col,))}
+            assert len(vals - mapped) == expect_miss, f"{col} 미연결 {sorted(vals - mapped)[:3]}"
+
+    # ② 밴드 closure — 자신 + 후손 10
+    assert len(expand_node(ctx, "CG_Investment")) == 11
+    assert len(expand_node(ctx, "CG_Speculative")) == 11
+
+    # ③ 접지 — 등급·밴드·발행사(정식명·통칭·자동 통칭)·통화
+    def ids(q, tables=("domestic_bonds",)):
+        hits, _ = _ground(q, ctx, list(tables))
+        return [getattr(h, "node_id", "?") for h in hits]
+
+    assert "CG_AAm" in ids("AA- 이상 원화채권 알려줘")
+    assert "CG_Investment" in ids("투자등급 채권 알려줘")
+    assert "CG_Speculative" in ids("투기등급 채권 알려줘")
+    assert "Curr_KRW" in ids("원화 채권 몇 종목이야?")
+    kepco = ids("한국전력공사 채권 알려줘")
+    for term in ("한전 채권 알려줘", "한국전력 채권 알려줘"):        # 손으로 적은 통칭
+        assert ids(term) == kepco, term
+    for term, full in (("산업은행", "한국산업은행"), ("도로공사", "한국도로공사"),
+                       ("수출입은행", "한국수출입은행"), ("토지주택공사", "한국토지주택공사")):
+        assert ids(f"{term} 채권 알려줘") == ids(f"{full} 채권 알려줘") != [], term   # 선언 규칙이 만든 통칭
+
+    # ④ 회귀 — '한국전력' 은 ETF 교차질의에서 여전히 종목 노드다 (2026-08-26 오매칭 방지)
+    assert ids("한국전력을 담은 국내 ETF 알려줘", ("domestic_etfs", "ext_etf_holdings")) == ["Sec_kr_015760"]

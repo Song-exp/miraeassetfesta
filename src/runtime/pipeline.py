@@ -1408,6 +1408,58 @@ _ORG_ASK = re.compile(r"운용사|운용회사|위탁회사|수탁사|수탁회�
 _COUNT_ASK = re.compile(r"몇\s*(?:개|곳|건)|개수|상위\s*\d|랭킹|순위|가장\s*많")
 
 
+_LOOKAHEAD_HEAD = re.compile(r"^\^\(\?\!.*?\)\.\*", re.S)
+
+
+def absent_partial_note(question: str, ctx, tables: list) -> str:
+    """질문이 **일부만** 부재 속성을 물었을 때 붙일 안내. 없으면 빈 문자열.
+
+    `absent_properties` 는 속성 하나를 통째로 "없다" 고 선언한다. 그런데 2026-09-04 OFFICIAL-002
+    (**주최 공식 문항**)는 *"국민성장펀드의 **구조와** 투자전략 동향"* 처럼 **있는 것과 없는 것을
+    함께** 묻는다. 그래서 `hasInvestmentStrategy` 의 vocab 은 `구조|보수|환매…` 를 부정 전방탐색으로
+    빼 두었고 — 게이트는 설계대로 비켜 갔다. 문제는 그다음이다: **HCX 플래너가 통째로 거절했다.**
+
+    질문을 쪼갤 구조가 없으니, 최소한 **없는 쪽을 명시**해야 한다. 여기서는 부정 전방탐색을 떼고
+    핵심 어휘만으로 다시 맞춰, 걸리면 그 선언의 `why`·`substitute.note` 를 안내로 돌려준다.
+    """
+    if len(tables) != 1:
+        return ""
+    for item in (getattr(ctx, "absent_props", {}) or {}).get(tables[0], []):
+        for pat in item.get("vocab") or []:
+            core = _LOOKAHEAD_HEAD.sub("", pat)
+            if core == pat or not core:
+                continue                      # 전방탐색이 없는 선언은 게이트가 이미 담당한다
+            if re.search(core, question):
+                sub = item.get("substitute") or {}
+                return item["why"] + (f" {sub['note']}" if sub.get("note") else "")
+    return ""
+
+
+def fund_exists(name_token: str) -> bool:
+    """그 이름의 펀드가 마스터에 실재하는가 — 거절을 뒤집어도 되는지의 유일한 근거."""
+    if not name_token:
+        return False
+    con = connect_readonly()
+    try:
+        nm = name_token.replace(" ", "")
+        return bool(con.execute("SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE ? LIMIT 1",
+                                (f"%{nm}%",)).fetchone())
+    finally:
+        con.close()
+
+
+def refusal_override_sql(name_token: str) -> str:
+    """이름이 지목된 펀드의 기본 조회 — 거절을 뒤집을 때 대신 세우는 SQL."""
+    nm = name_token.replace(" ", "").replace("'", "''")
+    return ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+            "MAX(or_co_xtn_itt_cd) AS 운용사코드, MAX(zrin_btyp_nm) AS 유형, MAX(or_attr_desc) AS 약관분류, "
+            "MAX(zrin_fd_ivst_risk_grd_nm) AS 위험등급, MAX(fd_nast_suma) AS fd_nast_suma "
+            "FROM public_funds "
+            f"WHERE REPLACE(itm_nm,' ','') LIKE '%{nm}%' "
+            f"GROUP BY {guard.FUND_KEY_EXPR} "
+            "ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC LIMIT 30")
+
+
 def ensure_fund_org_lookup(sql: str, question: str, name_token: str | None) -> tuple[str, bool]:
     """개별 펀드의 **운용사·수탁사** 조회를 확정식으로 세운다. (SQL, 세웠는지)
 
@@ -8122,6 +8174,17 @@ def answer_question(
     raw_sql = planner.plan_sql(q, grounding)
     result.raw_sql = raw_sql          # 가드 적용 전 원문 — 섀도 재생용(로그 전용)
 
+    partial_absent = ""
+    if raw_sql.strip().upper().startswith(REFUSE_PREFIX) and name_token and fund_exists(name_token):
+        # 🔴 2026-09-04 OFFICIAL-002(**주최 공식 문항**) — "국민성장펀드의 구조와 투자전략 동향" 은
+        #    **있는 것과 없는 것을 함께** 묻는데 플래너가 통째로 거절했다(SQL 0회). 이름이 지목한 상품이
+        #    마스터에 실재하면 "데이터에 없다" 는 거절은 틀렸다 — 적어도 그 상품의 수록 항목은 답해야 한다.
+        #    실재하지 않으면(OFFICIAL-NA-002 'Kimi' 0행) 거절이 옳으므로 그대로 둔다.
+        partial_absent = absent_partial_note(q, ctx, tables)
+        step(f"[Guard] 거절 뒤집기 — 이름이 지목한 '{name_token}' 이 마스터에 실재한다. 수록 항목으로 조회를 세운다"
+             + (" · 부재 항목은 답변에 명시한다" if partial_absent else ""))
+        raw_sql = refusal_override_sql(name_token)
+
     if raw_sql.strip().upper().startswith(REFUSE_PREFIX):
         # R-5 ② — 플래너가 답변불가 규칙에 걸렸다고 선언. SQL 없이 종료 (실행·답변 생성 호출 없음)
         why = raw_sql.strip()[len(REFUSE_PREFIX):].strip()
@@ -8516,6 +8579,10 @@ def answer_question(
     if rows_forced:
         step("[Answer] 결과 전사 강제 — 1행 이상을 받고도 결과를 하나도 인용하지 않고 거절한 답변을 기계 전사로 교체 "
              "(10R gold N7 · OFFICIAL-005 실측: 1행을 받고도 '정보가 없습니다')")
+    if partial_absent and partial_absent[:24] not in (result.answer or ""):
+        result.answer = (result.answer or "").rstrip() + "\n\n" + partial_absent
+        step("[Answer] 부분 부재 고지 — 질문이 함께 물은 미수록 항목을 답변 끝에 기계로 적었다 "
+             "(2026-09-04 OFFICIAL-002: 있는 것과 없는 것을 함께 묻는 질문을 쪼갤 구조가 없어 통째로 거절하던 자리)")
     if axis_note and axis_note not in result.answer:
         result.answer = axis_note + "\n\n" + result.answer
         step("[Answer] 축 교체 고지 — 질문이 지목한 축이 전건 결측이라 다른 축으로 답한 사실을 머리줄에 기계로 적었다 "

@@ -1287,6 +1287,21 @@ def _fund_sort_target(sql: str) -> tuple[str, str] | None:
     return None
 
 
+def _order_by_select_pos(sql: str) -> int | None:
+    """ORDER BY 가 위치 표기(`ORDER BY 3`)면 그 0-기반 SELECT 자리. 아니면 None.
+
+    값 열이 별칭(`MIN(...) as total_commission`)이면 컬럼명으로는 결과 헤더에서 못 찾는다 — 자리로 찾는다.
+    2026-09-04 FND-005: 총보수 랭킹이 이 때문에 기계 조립을 못 타고 HCX 산문으로 떨어져 번호(`2.3.4.`)가
+    뭉개지고 단위가 10배 틀렸다."""
+    m = _ORDER_BY_HEAD.search(sql)
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not m or not frm or not m.group(1).strip().isdigit():
+        return None
+    i = int(m.group(1).strip()) - 1
+    sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+    return i if 0 <= i < len(_split_select_items(sel)) else None
+
+
 def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
     """펀드단위 랭킹의 대표행을 기계 보정한다. (보정된 SQL, 보정했는지)
 
@@ -2315,6 +2330,15 @@ def _pct(v: str) -> str:
     return s
 
 
+def _fee_pct(v: float) -> str:
+    """보수 ‰ 값을 % 로 옮긴다 — 마스터 보수 4종은 천분율 선언이라 값÷10 이 %.
+
+    2026-09-04 FND-005 실측: `0.015` 를 그대로 `0.015%` 로 적어 10배 틀렸다. yaml `보수단위` 규칙과
+    answer_rules 두 곳에 이미 적혀 있었는데도 답변기가 안 지켰다 — 말이 아니라 조립기가 환산해야 한다.
+    `_pct` 는 소수 2자리라 0.0015 가 '0' 으로 뭉개진다. 보수는 4자리로 남긴다."""
+    return f"{v / 10.0:.4f}".rstrip("0").rstrip(".") or "0"
+
+
 def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
                    ground_lines: list[str] | None = None) -> str | None:
     """개별 조회 묶기(lookup grouping) 결과의 답변을 기계 조립한다. 아니면 None. HCX 0회.
@@ -2575,8 +2599,13 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
         label = "순자산"
         # 실제 SQL 이 쓴 축을 그대로 고지한다 — 축이 바뀌면 순위가 바뀐다(U13 🟡 의 지적)
         axis = "클래스 합계(SUM)" if re.search(r"\bsum\s*\(\s*(?:\w+\.)?fd_nast_suma", sql, re.I) else "대표 클래스 기준(MAX)"
+    elif col in _FUND_FEE_COLS:
+        # 보수는 별칭(total_commission)으로 나오는 일이 잦아 컬럼명으로 못 찾는다 — ORDER BY 자리로 잡는다
+        val_i = cols.index(col) if col in cols else _order_by_select_pos(sql)
+        label = "총보수" if all(re.search(rf"\b{c}\b", sql, re.I) for c in _FUND_FEE_COLS) else _fund_col_ko(col)
+        axis = "클래스 최고값(MAX)" if direction == "DESC" else "클래스 최저값(MIN)"
     else:
-        val_i = cols.index(col) if col in cols else None
+        val_i = cols.index(col) if col in cols else _order_by_select_pos(sql)
         label = f"{_RET_LABEL[col]} 수익률" if col in _RET_LABEL else _fund_col_ko(col)
         axis = "클래스 최고값(MAX)" if direction == "DESC" else "클래스 최저값(MIN)"
     if val_i is None:
@@ -2599,6 +2628,11 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
         if col == "fd_nast_suma":
             num = raw[:-2] if raw.endswith("억원") else raw
             val = f"{int(num):,}억원" if num.lstrip("-").isdigit() else (raw or "미수록")
+        elif col in _FUND_FEE_COLS:
+            try:
+                val = f"{_fee_pct(float(raw))}%"
+            except ValueError:
+                return None
         else:
             try:
                 f = float(raw)
@@ -7191,13 +7225,38 @@ def drop_unquestioned_numeric_clause(sql: str, question: str) -> tuple[str, str 
     return sql, None
 
 
+_LABEL_COL = re.compile(r"^'(.+)'$")
+
+
+def _restore_empty_label_rows(cols: list[str], rows: list) -> list:
+    """UNION 라벨 가지가 0행이면 그 행을 0 으로 되살린다.
+
+    2026-09-04 DOM-10 실측: `SELECT '이자형', COUNT(*) … GROUP BY 1 UNION ALL SELECT '배당형' …` 에서
+    첫 가지가 0행이라 **헤더 `'이자형' | COUNT(*)` 만 남고 행이 통째로 사라졌다.** 답변기는 그 헤더를
+    세어 "이자형 1개" 라고 지어냈다. 라벨은 헤더에 있는데 값이 없으면 답변기가 채워 넣는다 —
+    집계 0 은 '없다'이지 '모른다'가 아니므로 **0 행으로 명시**한다.
+    COUNT 가 아닌 집계(AVG·MAX 등)는 0 이 거짓이므로 빈칸(미수록)으로 둔다.
+    """
+    out = list(rows)
+    for i, c in enumerate(cols):
+        m = _LABEL_COL.match(c.strip())
+        if not m:
+            continue
+        lit = m.group(1)
+        if any(str(r[i]).strip() == lit for r in out):
+            continue
+        out.append(tuple(lit if j == i else (0 if re.search(r"count\s*\(", cc, re.I) else None)
+                         for j, cc in enumerate(cols)))
+    return out
+
+
 def _execute(sql: str) -> tuple[str, int]:
     con = connect_readonly()
     try:
         con.execute(f"pragma busy_timeout={int(SQL_TIMEOUT_S * 1000)}")
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description]
-        rows = cur.fetchmany(MAX_ROWS)
+        rows = _restore_empty_label_rows(cols, cur.fetchmany(MAX_ROWS))
         head = " | ".join(cols)
         body = "\n".join(" | ".join(_cell(v, c) for v, c in zip(r, cols)) for r in rows)
         return f"{head}\n{body}", len(rows)

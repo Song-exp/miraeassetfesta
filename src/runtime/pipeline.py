@@ -7631,6 +7631,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if btyp_fixed:
         step("[Guard] 유형 축 주입 — 질문이 고른 유형(zrin_btyp_nm) 절이 SQL 어디에도 없어 확정식을 AND 로 주입 "
              "(7R 뿌리⑥ = KG 4R G3 + 6R P′ · Y7 실측: '주식형 … 운용사 3곳' 답이 전체 랭킹 V5 와 바이트 단위로 같았다)")
+    # 🔴 값 사전 대조(check_values)보다 앞 — 0행 매칭 값 하나가 정답 SQL 을 통째로 죽이던 자리.
+    #    2026-09-04 KG-012: `zrin_btyp_nm IN ('해외주식형','국내외혼합')` 에서 뒤엣값이 그 컬럼에 없어
+    #    기각당했는데, 실측하면 그 SQL 이 낸 205펀드/522클래스가 정답이었다.
+    if tables:
+        sql, dead = guard.prune_dead_in_literals(sql, ctx)
+        if dead:
+            step("[Guard] IN 목록 정리 — 그 컬럼에 없는 값 " + " · ".join(f"'{d}'" for d in dead)
+                 + " 을 걷어냈다 (0행 매칭이라 결과 불변 · 유효값이 남을 때만 · 2026-09-04 KG-012)")
     sql, gnull_fixed = ensure_group_null_label(sql)
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "

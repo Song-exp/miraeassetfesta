@@ -268,6 +268,48 @@ def nearest_enum_value(index: dict, table: str, column: str, literal: str) -> st
     return next(iter(cands)) if len(cands) == 1 else None
 
 
+def prune_dead_in_literals(sql: str, ctx: RuntimeContext) -> tuple[str, list[str]]:
+    """IN 목록에서 **그 컬럼에 없는 값**만 걷어낸다. (보정된 SQL, 걷어낸 값 목록)
+
+    2026-09-04 KG-012 실측 — 재생성 SQL 이 이랬다:
+
+        zrin_ptn_nm = '중국주식' AND zrin_btyp_nm IN ('해외주식형', '국내외혼합')
+
+    `'국내외혼합'` 은 `ovrs_fd_desc` 의 값이라 `zrin_btyp_nm` 에선 **0행에 매칭된다.** 그런데 값 검사가
+    이걸 기각해 답변이 통째로 죽었다 — 실측하면 그 SQL 이 낸 답(205펀드/522클래스)이 **정답이었다.**
+
+    🔴 안전성의 근거: OR 가지(=IN 목록)에서 **0행 매칭 값을 빼는 것은 결과를 바꾸지 않는다.** 증명 가능하게
+       결과 보존적이라 조용한 오답을 만들 수 없다.
+    🔴 불개입: 유효한 값이 하나도 안 남으면 손대지 않는다. 그건 빼는 순간 **모수가 넓어져** 조용한 오답이
+       되므로 종전대로 기각해야 한다(단독 등호 `col = '없는값'` 도 같은 이유로 대상이 아니다).
+    """
+    index = getattr(ctx, "value_index", None) or {}
+    if not index:
+        return sql, []
+    tables = sql_tables(sql)
+    dropped: list[str] = []
+    out = sql
+    for m in list(_IN.finditer(sql)):
+        tbl, col, body = m.group(1), m.group(2), m.group(3)
+        col_l = col.lower()
+        t = next((x for x in ([tbl.lower()] if tbl else tables) if (x, col_l) in index), None)
+        if t is None:
+            continue
+        vals = index.get((t, col_l))
+        if vals is None:
+            continue
+        lits = _LIT.findall(body)
+        if len(lits) < 2:
+            continue                                  # 단독 값은 빼면 모수가 넓어진다 — 불개입
+        keep = [l for l in lits if _norm(l) in vals]
+        if not keep or len(keep) == len(lits):
+            continue                                  # 전부 죽었으면 기각이 옳다 · 전부 살았으면 할 일 없음
+        dropped += [l for l in lits if _norm(l) not in vals]
+        body_new = ", ".join("'" + l + "'" for l in keep)
+        out = out.replace(m.group(0), m.group(0).replace(body, body_new), 1)
+    return out, dropped
+
+
 def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
     """값 사전이 완전한 컬럼에 한해, WHERE 리터럴이 실제 값인지 검사한다."""
     index = getattr(ctx, "value_index", None) or {}

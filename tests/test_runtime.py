@@ -1488,6 +1488,30 @@ def test_enforce_relative_window():
     assert enforce_relative_window(floor + " LIMIT 30", q8, gate.resolve_relative_window(q8))[1] is None   # 창이 둘 → 불개입
 
 
+def test_issuance_time_q_not_issuer_q():
+    """🔴 "X가 발행한 채권" 의 '발행' 은 시점이 아니라 **발행 주체**다 (2026-09-05 #66 자기검토).
+
+    첫 수리는 '발행' 어휘만 보고 발행 시점 질의로 판정해, 발행사 질의 4문항에 "이 질문은 발행 시점
+    질의다 — 발행일은 isu_dt 다" 라는 거짓 단언을 프롬프트에 실었다(BND-U-035 되묻기 문항 포함).
+    시점 신호(상대 창·과거 창·연도)가 함께 있을 때만 발행 시점 질의다.
+    """
+    from src.runtime.pipeline import is_issuance_time_q as f
+    # 발행사 질의 — 시점 신호가 없다
+    assert not f("삼성전자가 발행한 채권 있어?")
+    assert not f("보험사가 발행한 채권 중에 제일 안전한 걸로 추천해줘")
+    assert not f("망하지 않을 회사가 발행한 채권만 골라줘")
+    assert not f("우주항공·방산 쪽 기업이 발행한 채권 정리해줘")
+    assert not f("채권을 가장 많이 발행한 기관 5곳을 종목 수와 함께 알려줘")
+    # 발행 시점 질의 — 상대 창·과거 창·연도
+    assert f("최근 6개월 안에 새로 발행된 회사채 중에 표면금리 높은 5개 알려줘")
+    assert f("올해 발행된 채권 알려줘")
+    assert f("2024년에 발행된 채권 알려줘")
+    assert f("이번 달에 새로 나온 채권")
+    # 만기 어휘가 함께 있으면 만기 축 판정이 이긴다(창이 둘이면 가드가 따로 불개입한다)
+    assert not f("올해 발행된 채권 중 내년에 만기되는 것")
+    assert not f("내년에 만기가 되는 회사채 중 신용등급이 AA 이상인 것을 알려줘")
+
+
 def test_resolve_past_window():
     """'최근 N개월'·'지난 N년' = 과거 방향 (2026-09-05 #66). 확정표(_RELATIVE_WINDOW)는 건드리지 않는다."""
     from src.runtime import gate

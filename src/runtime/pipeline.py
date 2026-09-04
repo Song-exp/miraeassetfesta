@@ -608,8 +608,25 @@ _MAT_OR_REMAIN = re.compile(r"\b(?:mat_dt|remaining_days)\b", re.I)
 # 구매가능 모수로 우리가 주입한 하한 — 사용자가 물은 만기 조건이 아니다. 창 발동 판정에서 뺀다(2026-09-05 #66)
 _BUYABLE_FLOOR = re.compile(rf"^\s*mat_dt\s*>=?\s*{BUYABLE_INT}(?:\.0)?\s*$", re.I)
 # 발행 시점 질의 — '만기' 축으로 갈아끼우면 안 되는 문형 (isu_dt 가 따로 있다)
+# 🔴 '발행' 만으로 판정하면 안 된다 — 한국어에서 "X가 발행한 채권" 의 발행은 **시점이 아니라 발행 주체**다
+#    (코퍼스 실측: '발행' 이 든 채권 문항 5개 중 4개가 발행사 질의 — "삼성전자가 발행한 채권 있어?"·"보험사가
+#    발행한 채권 중 제일 안전한 걸로"·"망하지 않을 회사가 발행한 채권만"·"우주항공·방산 쪽 기업이 발행한 채권").
+#    그래서 **시점 신호와 함께 있을 때만** 발행 시점 질의로 본다 — is_issuance_time_q() 가 유일한 판정이다.
 _ISSUANCE_Q = re.compile(r"발행|신규|새로\s*(?:나온|나와|발행|출시)|출시")
 _MATURITY_Q = re.compile(r"만기|상환|잔존")
+_YEAR_Q = re.compile(r"(?<!\d)(?:19|20)\d{2}\s*년")     # '2024년에 발행된' — 확정표가 안 잡는 과거 연도
+
+
+def is_issuance_time_q(question: str) -> bool:
+    """질문이 **발행 시점**을 묻는가 — 발행 어휘 + 시점 신호, 그리고 만기 어휘가 없을 것.
+
+    시점 신호는 상대 시점 창('올해'·'6개월 안에')·과거 방향 창('최근 6개월')·연도 표기('2024년') 셋 중 하나.
+    신호가 없으면 발행사 질의이므로 이 판정은 서지 않는다(2026-09-05 #66 자기검토에서 잡은 오폭).
+    """
+    if not question or not _ISSUANCE_Q.search(question) or _MATURITY_Q.search(question):
+        return False
+    return bool(gate.resolve_relative_window(question) or gate.resolve_past_window(question)
+                or _YEAR_Q.search(question))
 _WHERE_BODY = re.compile(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
 _SQL_NOW = re.compile(r"'now'|\bCURRENT_DATE\b|\bCURRENT_TIMESTAMP\b|\bCURRENT_TIME\b", re.I)
 
@@ -658,7 +675,7 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
         return sql, None
     if len({(lo, hi) for _, lo, hi in windows}) != 1:
         return sql, None
-    if _ISSUANCE_Q.search(question) and not _MATURITY_Q.search(question):
+    if is_issuance_time_q(question):
         return sql, None                                        # ④ 발행 시점 질의 — 만기 축으로 갈아끼우지 않는다
     label, lo, hi = windows[0]
     want = f"mat_dt = {lo}" if lo == hi else f"mat_dt BETWEEN {lo} AND {hi}"
@@ -6949,7 +6966,7 @@ def build_grounding(
     if rules:
         parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다. 일부는 이 질문과 무관할 수 있다)\n" + rules)
     bond_q = bool(question) and "domestic_bonds" in target
-    issuance_q = bond_q and bool(_ISSUANCE_Q.search(question)) and not _MATURITY_Q.search(question)
+    issuance_q = bond_q and is_issuance_time_q(question)
     windows = gate.resolve_relative_window(question) if (bond_q and not issuance_q) else []
     if issuance_q:
         # 🔴 2026-09-05 #66 — 종전엔 발행 질의에도 "'6개월 안에' = mat_dt BETWEEN …" 를 실어 보냈다. 그 한 줄이

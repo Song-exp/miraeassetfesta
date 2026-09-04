@@ -408,8 +408,24 @@ def issuer_key(name):
     return _CORP.sub("", s)
 
 
+def _kind_vocabulary(con):
+    """채권 종류·분류 어휘 — 발행사 칸에 이 낱말이 들어 있으면 그것은 발행사가 아니라 오염값이다."""
+    vocab = set()
+    for col in ("bd_knd", "std_pd_mcls_nm", "std_pd_scls_nm"):
+        for (v,) in con.execute(f"select distinct trim({col}) from domestic_bonds where {col} is not null and trim({col})<>''"):
+            vocab.add(norm(v))
+    return vocab
+
+
 def build_issuers(con):
     rows = con.execute("select trim(pd_pbcm), count(*) from domestic_bonds where pd_pbcm is not null and trim(pd_pbcm)<>'' group by 1").fetchall()
+    # 🔴 2026-09-04 서버 실측 #61 — pd_pbcm 에 종류명이 들어간 오염 1행('국고채권' · KRC035AP28C9
+    #    국고채원금분리채권)이 Org_issuer 노드가 되는 바람에, '국고채' 질의가 **종류가 아니라 발행사**로
+    #    접지되고 값 검사 힌트까지 그 컬럼을 지목해 "국공채 몇 종목" 이 오거절로 끝났다(정답 1,775).
+    #    종류·분류 어휘와 겹치는 발행사명은 노드로 만들지 않는다 — 이름이 아니라 종류이기 때문이다.
+    kinds = _kind_vocabulary(con)
+    polluted = [(r, n) for r, n in rows if norm(r) in kinds]
+    rows = [(r, n) for r, n in rows if norm(r) not in kinds]
     groups = collections.defaultdict(list)
     for raw, n in rows:
         groups[issuer_key(raw)].append((norm(raw), n))
@@ -430,13 +446,15 @@ def build_issuers(con):
         f"# source={SOURCE}\n# as_of={AS_OF}\n"
         "# 채권 발행사: domestic_bonds.pd_pbcm distinct → '(주)'/'주식회사'/공백 제거 키로 법인 단위 병합. role: issuer\n"
         f"# 노드 {len(nodes)} · 표기 변형 병합 {merged} · 원 distinct {len(rows)}\n"
-        "# 운용사 노드(organization.yaml Org_000…)와는 별개. property 는 hasIssuer (운용사 hasManager 와 구분)\n"
+        + (f"# 종류 어휘와 겹쳐 제외한 오염 표기 {len(polluted)}: "
+           + " · ".join(f"{r}({n}행)" for r, n in polluted) + " — 2026-09-04 #61\n" if polluted else "")
+        + "# 운용사 노드(organization.yaml Org_000…)와는 별개. property 는 hasIssuer (운용사 hasManager 와 구분)\n"
     )
     doc = {"entity": "Organization", "description": "채권 발행사 (자동 등록분, role=issuer)", "property": "hasIssuer",
            "generated": True, "source": SOURCE, "as_of": AS_OF, "nodes": nodes}
     with open(OUT_ISS, "w", encoding="utf-8", newline="\n") as f:
         f.write(header + yaml_dump(doc))
-    return {"nodes": len(nodes), "merged": merged, "distinct": len(rows)}
+    return {"nodes": len(nodes), "merged": merged, "distinct": len(rows), "polluted": polluted}
 
 
 # ── 운용사·수탁사·ETN 발행사 (국내ETF·해외ETF·펀드 통합) ─────────────────
@@ -656,7 +674,8 @@ def main():
     print(f"index_auto.yaml: 노드 {ix['nodes']} (패밀리 {ix['family']} · 변형 {ix['variant']}) · alias {ix['alias']} · "
           f"수동확장 {ix['ext']} · edge {ix['edges']} · coversRegion 미적중 {ix['miss_region']} · Equity 기본값 {ix['asset_default']} · zrin_btyp 확장 {ix['btyp_ext']}")
     print("패밀리 예시:", ix["family_examples"][:6])
-    print(f"organization_issuer_auto.yaml: 노드 {iss['nodes']} · 표기 변형 병합 {iss['merged']} · 원 distinct {iss['distinct']}")
+    print(f"organization_issuer_auto.yaml: 노드 {iss['nodes']} · 표기 변형 병합 {iss['merged']} · 원 distinct {iss['distinct']}"
+          + (f" · 종류 어휘 겹침 제외 {len(iss['polluted'])}({', '.join(r for r, _ in iss['polluted'])})" if iss['polluted'] else ""))
     mg = build_managers(con)
     print("organization_manager_auto.yaml: 노드 %d · 국내ETF 확장 alias %d · 한영표 %d · 해외 노드 %d(변형 병합 %d) · ETN %d · 펀드코드 노드 %d · 수탁사 %d+%d" % (
         mg['nodes'], mg['etf_ext'], mg['en_rows'], mg['ovs_nodes'], mg['ovs_merged_variants'], mg['etn_nodes'],

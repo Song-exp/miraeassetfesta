@@ -122,6 +122,9 @@ fp:Curr_GBP a fp:Currency ; skos:prefLabel "영국 파운드"@ko, "GBP"@en .
 fp:Curr_SEK a fp:Currency ; skos:prefLabel "스웨덴 크로나"@ko, "SEK"@en .
 fp:Curr_Unknown a fp:Currency ; skos:prefLabel "통화 미상"@ko .
 
+# ── None (shared/dataset.yaml) ──
+fp:None a owl:Class .
+
 # ── FundAttribute (shared/fund_attribute_auto.yaml) ──
 fp:FundAttribute a owl:Class .
 fp:hasAttribute a owl:ObjectProperty ;
@@ -19247,7 +19250,6 @@ fp:Org_issuer_bd29814ed3 a fp:Organization ; skos:prefLabel "교보생명보험"
 fp:Org_issuer_ec1bfc289d a fp:Organization ; skos:prefLabel "교보자산신탁"@ko .
 fp:Org_issuer_f5fbc4077f a fp:Organization ; skos:prefLabel "교보증권"@ko .
 fp:Org_issuer_5a86ac5ad0 a fp:Organization ; skos:prefLabel "국가철도공단"@ko .
-fp:Org_issuer_6c619b5f46 a fp:Organization ; skos:prefLabel "국고채권"@ko .
 fp:Org_issuer_98b9c3f6df a fp:Organization ; skos:prefLabel "국도화학"@ko .
 fp:Org_issuer_73254abac4 a fp:Organization ; skos:prefLabel "국민가이즈제1차"@ko .
 fp:Org_issuer_b6ed98df47 a fp:Organization ; skos:prefLabel "국민글로리제1차"@ko .

@@ -1804,3 +1804,73 @@ def test_grade_span_follows_the_standard_table():
     for tok in ("D", "CCC"):
         a = answer_question("T-nodata", f"신용등급 {tok}인 채권 알려줘", ctx=ctx).answer
         assert "체계에 있으나" in a and "없습니다" in a
+
+
+# ── 동률 2차 정렬 · 대분류 값 정리 · owner 힌트 (2026-09-04 재배포 후 실측 #61·#62 회귀) ──
+
+def test_ensure_tie_break():
+    """표면금리 7.5% 동률의 1·2위가 실측마다 뒤바뀐 #62 의 회귀 — 2차 키가 없으면 등수는 DB 가 준 우연이다."""
+    from src.runtime.pipeline import ensure_tie_break
+
+    q = "표면금리가 높은 순으로 A등급 이상 회사채 5종목 알려줘"
+    grouped = ("SELECT pd_no, pd_nm, MAX(srfc_irt) AS srfc_irt, crd_grd, mat_dt FROM domestic_bonds "
+               "WHERE TRIM(std_pd_mcls_nm)='회사채' GROUP BY pd_no ORDER BY srfc_irt DESC LIMIT 5")
+    fixed, changed = ensure_tie_break(grouped, q)
+    assert changed and fixed.index("ORDER BY") < fixed.index("LIMIT")
+    assert "pd_no ASC LIMIT" in fixed                         # 3차 키는 완전 결정성
+    assert "MIN(CASE TRIM(crd_grd)" in fixed and "MIN(mat_dt) ASC" in fixed   # GROUP BY 면 집계로 감싼다
+    assert fixed.index("'AAA' THEN 1") < fixed.index("ELSE")  # 서열은 우량이 앞(선언에서 온다)
+    # GROUP BY 가 없으면 bare 컬럼으로
+    flat = ("SELECT pd_no, pd_nm, srfc_irt, crd_grd, mat_dt FROM domestic_bonds "
+            "WHERE srfc_irt > 5 ORDER BY srfc_irt DESC LIMIT 5")
+    f2, c2 = ensure_tie_break(flat, q)
+    assert c2 and "MIN(" not in f2 and "mat_dt ASC" in f2 and f2.rstrip().endswith("LIMIT 5")
+    # 만기 정렬이면 만기를 2차 키로 다시 넣지 않는다
+    f3, c3 = ensure_tie_break(flat.replace("ORDER BY srfc_irt", "ORDER BY mat_dt"), "만기 짧은 순 5개")
+    assert c3 and "ORDER BY mat_dt DESC" in f3 and "mat_dt ASC" not in f3   # 만기를 2차 키로 겹쳐 넣지 않는다
+    # 불개입 — 2차 키가 이미 있음(멱등) · 랭킹 축이 아님 · ORDER BY 없음 · JOIN
+    assert not ensure_tie_break(f2, q)[1]
+    assert not ensure_tie_break(flat.replace("ORDER BY srfc_irt DESC", "ORDER BY pd_nm ASC"), q)[1]
+    assert not ensure_tie_break("SELECT COUNT(*) FROM domestic_bonds LIMIT 1", q)[1]
+    assert not ensure_tie_break(flat.replace("FROM domestic_bonds", "FROM domestic_bonds JOIN x ON 1=1"), q)[1]
+
+
+def test_coupon_split_ignores_select_columns():
+    """#62 — SELECT 표시 컬럼의 bd_intp_tcd 를 '이미 유형 절' 로 읽어 가드가 자기를 껐다. 판정은 WHERE 범위."""
+    from src.runtime.pipeline import ensure_coupon_type_split
+
+    q = "표면금리가 높은 순으로 A등급 이상 회사채 5종목 알려줘"
+    shown = ("SELECT pd_no, pd_nm, bd_intp_tcd, MAX(srfc_irt) AS srfc_irt, crd_grd FROM domestic_bonds "
+             "WHERE TRIM(std_pd_mcls_nm)='회사채' GROUP BY pd_no ORDER BY srfc_irt DESC LIMIT 5")
+    fixed, changed = ensure_coupon_type_split(shown, q)
+    assert changed and "bd_inrt_tcd)='고정금리'" in fixed
+    # WHERE 에 진짜 유형 필터가 있으면 종전대로 불개입
+    filtered = shown.replace("WHERE TRIM(std_pd_mcls_nm)='회사채'",
+                             "WHERE TRIM(std_pd_mcls_nm)='회사채' AND TRIM(bd_intp_tcd)='이표채'")
+    assert not ensure_coupon_type_split(filtered, q)[1]
+
+
+def test_normalize_mcls_values():
+    """#61 — IN ('국공채','국고채권') 이 값 검사에 걸려 재생성도 같은 문장 → 정답 1,775 를 아는 질문이 오거절."""
+    from src.runtime.pipeline import normalize_mcls_values
+
+    q = "국고채 포함해서 국공채는 총 몇 종목이야?"
+    sql = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm) IN ('국공채', '국고채권') LIMIT 30"
+    fixed, changed = normalize_mcls_values(sql, q)
+    assert changed and "'국고채권'" not in fixed and "IN ('국공채')" in fixed
+    assert not normalize_mcls_values(fixed, q)[1]              # 멱등
+    # 🔴 어디에도 없는 값은 그대로 기각돼야 한다 — 여기서 지우면 오답이 정답처럼 나간다
+    assert not normalize_mcls_values(
+        "SELECT * FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm) IN ('국공채','없는분류') LIMIT 30", q)[1]
+    # 대분류 값이 하나도 안 남으면 손대지 않는다
+    assert not normalize_mcls_values(
+        "SELECT * FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm) IN ('국고채권','통안채') LIMIT 30", q)[1]
+
+
+def test_owner_hint_picks_most_rows():
+    """#61 — '국고채권' 은 bd_knd 356행이 주인인데 오염 1행짜리 pd_pbcm 이 지목돼 재생성이 헛돌았다."""
+    from src.runtime.guard import _literal_row_counts
+
+    counts = _literal_row_counts("domestic_bonds", ["pd_pbcm", "bd_knd"], "국고채권")
+    assert counts["bd_knd"] > counts["pd_pbcm"]               # 356 vs 1
+    assert max(counts, key=counts.get) == "bd_knd"

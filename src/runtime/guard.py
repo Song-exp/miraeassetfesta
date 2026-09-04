@@ -42,6 +42,7 @@ class ValueViolation:
     literal: str
     hint: list[str]
     owner: str = ""      # 이 값이 실제로 속한 다른 컬럼 (있으면) — 2026-08-31 밤 FND-026
+    owner_counts: tuple = ()   # 후보가 둘 이상일 때 (컬럼, 행수) 내림차순 — 2026-09-04 #61
 
     def __str__(self) -> str:
         ex = " · ".join(h[:40] for h in self.hint[:_MAX_HINT])
@@ -50,7 +51,12 @@ class ValueViolation:
             # 🔴 컬럼을 잘못 고른 것이지 값이 없는 게 아니다 — 이 구분이 없으면 재생성이 같은 실수를 반복하고
             #    파이프라인이 답변 가능한 질의를 거절한다 (FND-026 실측: '해외주식형' 은 zrin_btyp_nm 의 값인데
             #    or_attr_desc 에 써서 기각 → 재생성도 같은 값 유지 → 중국 펀드 560행이 있는데 '확인 불가' 응답).
-            return msg + f" — 이 값은 같은 테이블의 **{self.owner}** 컬럼 값이다. 컬럼을 {self.owner} 로 바꾸거나 그 조건을 다른 축으로 다시 세워라"
+            # 🔴 후보가 둘 이상이면 **행수와 함께** 전부 준다 (2026-09-04 #61 실측: '국고채권' 은 bd_knd 356행이
+            #    주인인데 오염 1행짜리 pd_pbcm 이 지목돼 재생성이 같은 SQL 을 되풀이하고 오거절로 끝났다).
+            spread = (" (" + " · ".join(f"{c} {n:,}행" for c, n in self.owner_counts) + ")"
+                      if len(self.owner_counts) > 1 else "")
+            return (msg + f" — 이 값은 같은 테이블의 **{self.owner}** 컬럼 값이다{spread}. "
+                    f"컬럼을 {self.owner} 로 바꾸거나 그 조건을 다른 축으로 다시 세워라")
         return msg + (f" (실제 값 예: {ex})" if ex else "")
 
 
@@ -102,19 +108,46 @@ def unknown_columns(sql: str, ctx: RuntimeContext) -> list[str]:
     return out
 
 
-def _owner_column(index: dict, table: str, column: str, literal: str) -> str:
-    """이 리터럴이 같은 테이블의 **다른** 컬럼 값이면 그 컬럼명 — 아니면 빈 문자열.
+def _owner_column(index: dict, table: str, column: str, literal: str) -> tuple[str, tuple]:
+    """이 리터럴이 같은 테이블의 **다른** 컬럼 값이면 (주인 컬럼, 후보별 행수) — 아니면 ("", ()).
 
     2026-08-31 밤 FND-026 실측 처방: 값 위반의 태반이 '없는 값' 이 아니라 **컬럼 오선택**이다
     ('해외주식형' 은 zrin_btyp_nm 의 값인데 or_attr_desc 에 썼다). 사유에 이걸 적어야 재생성이
-    같은 값을 되풀이하지 않는다 — 실측에서는 재생성도 실패해 답변 가능한 질의가 거절로 나갔다."""
+    같은 값을 되풀이하지 않는다 — 실측에서는 재생성도 실패해 답변 가능한 질의가 거절로 나갔다.
+
+    🔴 2026-09-04 #61 — 후보가 둘이면 **행수가 많은 컬럼**이 주인이다. '국고채권' 은 bd_knd 356행 ·
+    pd_pbcm 1행(국고채원금분리채권의 발행사 칸에 종류명이 들어간 오염 1행)인데, 사전 순회 순서대로
+    pd_pbcm 을 지목해 재생성이 같은 SQL 을 되풀이했고 답변 가능한 질의가 오거절로 끝났다.
+    행수는 위반 경로에서만 세므로(질의당 최대 1회 스캔) 정상 경로 비용은 0이다."""
     n = _norm(literal)
-    for key, vals in index.items():
-        if len(key) != 2 or key[0] != table or key[1] == column:
-            continue
-        if n in vals:
-            return key[1]
-    return ""
+    cands = [key[1] for key, vals in index.items()
+             if len(key) == 2 and key[0] == table and key[1] != column and n in vals]
+    if len(cands) < 2:
+        return (cands[0] if cands else ""), ()
+    counts = _literal_row_counts(table, cands, literal)
+    if not counts:
+        return cands[0], ()
+    ranked = tuple(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+    return ranked[0][0], ranked
+
+
+def _literal_row_counts(table: str, columns: list[str], literal: str) -> dict:
+    """각 후보 컬럼에서 이 리터럴이 몇 행인가 — 한 번의 스캔. 실패하면 빈 dict(호출자가 종전 순서로 물러선다)."""
+    if not columns or not re.fullmatch(r"\w+", table or ""):
+        return {}
+    cols = [c for c in columns if re.fullmatch(r"\w+", c or "")]
+    if not cols:
+        return {}
+    sel = ", ".join(f"SUM(CASE WHEN LOWER(TRIM({c})) = LOWER(?) THEN 1 ELSE 0 END)" for c in cols)
+    try:
+        con = connect_readonly()
+        try:
+            row = con.execute(f"SELECT {sel} FROM {table}", [literal] * len(cols)).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return {}
+    return {c: int(v or 0) for c, v in zip(cols, row)}
 
 
 _QUALIFIED = re.compile(r"[A-Za-z_]\w*\s*\.\s*([A-Za-z_]\w*)")
@@ -264,7 +297,8 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
             if any(needle in v for v in vals):
                 break
             hint = _value_hints(index.get(("_raw", t, col_l), ()), lit.strip("%"))
-            out.append(ValueViolation(t, col_l, lit, hint, _owner_column(index, t, col_l, lit.strip("%"))))
+            own, spread = _owner_column(index, t, col_l, lit.strip("%"))
+            out.append(ValueViolation(t, col_l, lit, hint, own, spread))
             break
     for tbl, col, lit in pairs:
         # `col = ''` 은 값 조회가 아니라 **결측 관용구**다 (IS NULL OR col='') — 값 사전에 빈 문자열이
@@ -281,7 +315,8 @@ def check_values(sql: str, ctx: RuntimeContext) -> list[ValueViolation]:
             if _norm(lit) in vals:
                 break
             hint = _value_hints(index.get(("_raw", t, col_l), ()), lit)
-            out.append(ValueViolation(t, col_l, lit, hint, _owner_column(index, t, col_l, lit)))
+            own, spread = _owner_column(index, t, col_l, lit)
+            out.append(ValueViolation(t, col_l, lit, hint, own, spread))
             break
     return out
 

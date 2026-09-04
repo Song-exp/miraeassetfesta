@@ -2738,6 +2738,12 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         tail.append(f"잔존일수는 데이터 산출일 {gate.SNAPSHOT_DATE} 기준 값입니다(질문 시점 {gate.DATA_CUTOFF} 보다 3일 앞).")
     if warn:
         tail.append("수익률이 높은 채권은 원금을 돌려받지 못할 위험도 높을 수 있습니다. 신용등급·위험등급을 함께 확인하세요.")
+    # 목록 안에 1차 축 동률이 있으면 무엇으로 갈랐는지 밝힌다 — 2차 키 없이 나간 순서는 재현되지 않는다
+    # (2026-09-04 #62: 표면금리 7.5% 두 종목의 1·2위가 실측마다 뒤바뀜). ⛑ ensure_tie_break 가 SQL 쪽을 고정한다.
+    if ycol and _ORDER_TIE_KEYS.search(sql):
+        vals = [r.get(ycol) for r in recs if r.get(ycol)]
+        if len(vals) != len(set(vals)):
+            tail.append(f"{_BOND_AXIS_KO.get(ycol, (ycol,))[0]} {TIE_BREAK_NOTE}")
     # 이자유형분리로 축을 좁혔으면 그 사실을 밝힌다 — 모수가 그만큼 줄어든 목록이다 (gold BND-D-012 must_include '고정금리')
     if (_ORDER_SRFC.search(sql) and re.search(r"bd_intp_tcd\s*\)?\s*=\s*'이표채'", sql)
             and re.search(r"bd_inrt_tcd\s*\)?\s*=\s*'고정금리'", sql)):
@@ -4998,6 +5004,18 @@ _RANK_Q = re.compile(r"추천|순으로|순위|톱|top\s*\d|골라|\d+\s*(?:개|
 _WHERE_TAIL = re.compile(r"\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT)\b", re.I)
 
 
+def _where_body(sql: str) -> str:
+    """WHERE 절 본문(GROUP/ORDER/LIMIT 앞)만. 없으면 빈 문자열.
+
+    "이 컬럼이 SQL 에 있나" 를 필터 유무로 읽으면 **SELECT 표시 컬럼**에 걸려 가드가 자기를 끈다
+    (2026-09-04 #62: ensure_coupon_type_split · 2026-09-01 BND-S-010: kind 필터 검사). 판정은 여기서."""
+    m = re.search(r"\bWHERE\b", sql, re.I)
+    if not m:
+        return ""
+    t = _WHERE_TAIL.search(sql, m.end())
+    return sql[m.end(): t.start() if t else len(sql)]
+
+
 def ensure_credit_backstop(sql: str, question: str) -> tuple[str, bool]:
     """'정부가 책임지는/보증하는' 질의 SQL 에 신용보강 필터의 빠진 층을 주입. (보정된 SQL, 보정했는지)
 
@@ -5175,17 +5193,70 @@ def ensure_coupon_type_split(sql: str, question: str) -> tuple[str, bool]:
     🔴 발동은 추천·랭킹(_RECO_Q)에서만 — 같은 srfc_irt 정렬이라도 조건검색은 주입하지 않는다.
     gold BND-D-028('A등급 이상 회사채 표면금리 5% 넘는 것')에 주입하면 599 → 497종목으로 102종목이
     사라진다(2026-09-04 실측). 고위험제외 규칙의 '조회는 제외하지 않는다' 와 같은 경계다.
-    불개입: 질문이 이자 유형을 명시 · 이미 유형 절이 있음 · 집계."""
+    불개입: 질문이 이자 유형을 명시 · 이미 유형 **필터**가 있음 · 집계.
+    🔴 2026-09-04 서버 실측 #62 — '이미 유형 절' 판정이 SQL **전문**을 훑어, HCX 가 `bd_intp_tcd` 를
+    SELECT 표시 컬럼으로 넣자(필터컬럼표시 규칙대로) 가드가 자기를 껐다. 그 사이 HCX 가 스스로 넣은
+    `bd_intp_tcd IN ('이표채','복리채')` 로 88종목(단리채 63·할인채 25)이 조용히 빠진 채 모수 10,057 이
+    나갔다(정본 10,145 · 분리하면 9,532). 표시 컬럼은 필터가 아니다 — 판정은 WHERE 범위로 한정한다
+    (BND-S-010 의 'kind 필터 검사 WHERE 범위 한정' 과 같은 처방)."""
     if "domestic_bonds" not in sql or not _RECO_Q.search(question):
         return sql, False
     if not _ORDER_SRFC.search(sql) or re.search(r"\bCOUNT\s*\(", sql, re.I):
         return sql, False
-    if _INTP_NAMED_Q.search(question) or re.search(r"bd_intp_tcd|bd_inrt_tcd", sql, re.I):
+    if _INTP_NAMED_Q.search(question) or re.search(r"bd_intp_tcd|bd_inrt_tcd", _where_body(sql), re.I):
         return sql, False
     excl = ["TRIM(bd_intp_tcd)='이표채'", "TRIM(bd_inrt_tcd)='고정금리'"]
     if not re.search(r"srfc_irt\s*[><]", sql):
         excl.append("srfc_irt > 0")
     return _append_exclusions(sql, excl)
+
+
+# ── 동률 2차 정렬 (2026-09-04 서버 실측 #62) ──────────────────────────────────
+# 표면금리 7.5% 두 종목(우리금융캐피탈458 AA- · 엠캐피탈355 A0)의 순서가 실측마다 뒤바뀌었다 —
+# ORDER BY 뒤에 2차 키가 없으면 등수는 SQLite 가 준 우연이고, 같은 질문에 두 번 다른 답이 나간다.
+# 정책(규칙 정렬축): 1차 축 동률 → ① 신용등급 서열 높은 순(무등급 마지막) ② 만기 이른 순 ③ pd_no.
+_TIE_AXES = ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield", "srfc_irt",
+             "mat_dt", "remaining_days", "dur", "eval_price", "isu_bal_amt")
+_ORDER_CLAUSE = re.compile(r"\bORDER\s+BY\s+(.+?)(?=\s+\bLIMIT\b|$)", re.I | re.S)
+_ORDER_FIRST_COL = re.compile(r"^\s*(?:MAX|MIN)?\s*\(?\s*([A-Za-z_]\w*)", re.I)
+TIE_BREAK_NOTE = "동률은 신용등급 높은 순 → 만기 이른 순으로 정렬했습니다(정렬축 규칙)."
+# 조립기가 "동률을 무엇으로 갈랐다" 를 말해도 되는지 — 2차 키가 실제로 SQL 에 붙어 있을 때만
+_ORDER_TIE_KEYS = re.compile(r"ORDER\s+BY[\s\S]*\bpd_no\s+ASC", re.I)
+
+
+def _grade_rank_case(col: str = "crd_grd") -> str:
+    """신용등급 서열을 정렬용 정수로 — 서열은 선언에서 온다(loader.grade_scale, 2026-09-04 이관). 무등급은 마지막."""
+    scale = _grade_scale()
+    whens = " ".join(f"WHEN '{g}' THEN {i}" for i, g in enumerate(scale, 1))
+    return f"CASE TRIM({col}) {whens} ELSE {len(scale) + 1} END"
+
+
+def ensure_tie_break(sql: str, question: str = "") -> tuple[str, bool]:
+    """채권 랭킹의 ORDER BY 에 동률 2차 키를 붙인다. (보정된 SQL, 보정했는지)
+
+    2026-09-04 서버 실측 #62 — 'A등급 이상 회사채 표면금리 높은 순 5개' 를 두 번 물어 1·2위가 뒤바뀌었다.
+    값·축·모수가 다 맞아도 **순서가 재현되지 않으면 오답**이다(같은 질문에 다른 등수). ETF `보수유효` 규칙엔
+    동률 처리가 있는데 채권 정렬축 규칙엔 없었다.
+    발동: ① domestic_bonds 단독 ② ORDER BY 의 1차 키가 랭킹 축(_TIE_AXES) ③ 2차 키가 아직 없음.
+    GROUP BY 가 있으면(대표행 가드) 2차 키도 집계로 감싼다 — bare 컬럼은 어느 행이 올라올지 정해지지 않는다."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    m = _ORDER_CLAUSE.search(sql)
+    if not m or "," in m.group(1):                        # 2차 키가 이미 있으면 존중
+        return sql, False
+    first = _ORDER_FIRST_COL.match(m.group(1))
+    if not first or first.group(1).lower() not in _TIE_AXES:
+        return sql, False
+    grouped = bool(re.search(r"\bGROUP\s+BY\b", sql, re.I))
+    axis = first.group(1).lower()
+    keys = []
+    grade = _grade_rank_case()
+    keys.append(f"MIN({grade}) ASC" if grouped else f"{grade} ASC")
+    if axis != "mat_dt":
+        keys.append("MIN(mat_dt) ASC" if grouped else "mat_dt ASC")
+    keys.append("pd_no ASC")
+    end = m.end(1)
+    return sql[:end].rstrip() + ", " + ", ".join(keys) + sql[end:], True
 
 
 _KTB_Q = re.compile(r"국고채|(?<![가-힣])국채")
@@ -5236,6 +5307,55 @@ _STRIPS_Q = re.compile(r"스트립|STRIPS|원금이자분리", re.I)
 _KTB_BDKND = re.compile(r"(?:TRIM\(\s*)?bd_knd\s*\)?\s*=\s*'국고채권'", re.I)
 _PBCM_CONJ = re.compile(r"\s+AND\s+(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'"
                         r"|(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'\s+AND\s+", re.I)
+
+
+_MCLS_LIST = re.compile(r"((?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\()([^)]*)(\))", re.I)
+
+
+@lru_cache(maxsize=8)
+def _column_values(table: str, column: str) -> frozenset:
+    """그 컬럼의 실재 값 집합 — 판정을 코드에 적지 않고 DB 에 묻는다. 실패하면 빈 집합(호출자가 불개입)."""
+    if not re.fullmatch(r"\w+", table) or not re.fullmatch(r"\w+", column):
+        return frozenset()
+    try:
+        con = connect_readonly()
+        try:
+            rows = con.execute(f"SELECT DISTINCT TRIM({column}) FROM {table} "
+                               f"WHERE {column} IS NOT NULL AND TRIM({column}) <> ''").fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return frozenset()
+    return frozenset(str(r[0]) for r in rows)
+
+
+def normalize_mcls_values(sql: str, question: str = "") -> tuple[str, bool]:
+    """대분류 IN 목록에 섞인 **종류 값**을 떼어낸다. (보정된 SQL, 보정했는지)
+
+    2026-09-04 서버 실측 #61 — '국고채 포함해서 국공채는 총 몇 종목이야?' 에 HCX 가
+    `TRIM(std_pd_mcls_nm) IN ('국공채','국고채권')` 를 냈다. '국고채권' 은 대분류 값이 아니라 **종류(bd_knd)**
+    값이라 값 검사에 걸렸고, 재생성이 같은 문장을 되풀이해 정답(1,775)을 아는 질문이 오거절로 끝났다.
+    떼어낸 값은 **그 컬럼에서 한 행도 못 맞히는 값**이므로 결과가 바뀌지 않는다 — 없는 조건을 지우는 게
+    아니라 잘못 놓인 조건을 지우는 것이고, 그래서 안전하다.
+    🔴 좁게 연다: ① 대분류 컬럼(std_pd_mcls_nm)만 ② 뗄 값이 같은 테이블의 **종류·소분류 값일 때만**
+    (어디에도 없는 값 'AAAA' 류는 그대로 기각돼야 한다 — gold UNANS 계열) ③ 대분류 값이 하나는 남을 때만.
+    남은 종류 조건은 ensure_ktb_kind 가 머리명사 판정으로 따로 처리한다."""
+    m = _MCLS_LIST.search(sql)
+    if not m:
+        return sql, False
+    lits = re.findall(r"'((?:[^']|'')*)'", m.group(2))
+    if len(lits) < 2:
+        return sql, False
+    mcls = _column_values("domestic_bonds", "std_pd_mcls_nm")
+    sibling = _column_values("domestic_bonds", "bd_knd") | _column_values("domestic_bonds", "std_pd_scls_nm")
+    if not mcls or not sibling:
+        return sql, False
+    keep = [v for v in lits if v.strip() in mcls]
+    drop = [v for v in lits if v.strip() not in mcls]
+    if not keep or not drop or any(v.strip() not in sibling for v in drop):
+        return sql, False
+    body = ", ".join(f"'{v}'" for v in keep)
+    return sql[:m.start(2)] + body + sql[m.end(2):], True
 
 
 def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
@@ -7330,6 +7450,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, kind_fixed = ensure_kind_filter(sql, q)
     if kind_fixed:
         step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
+    sql, mcls_fixed = normalize_mcls_values(sql, q)
+    if mcls_fixed:
+        step("[Guard] 대분류 값 정리 — std_pd_mcls_nm IN 목록에 섞인 종류 값(bd_knd·소분류)을 떼어냈다 "
+             "(2026-09-04 서버 실측 #61: IN ('국공채','국고채권') 이 값 검사에 걸려 재생성도 같은 문장 → "
+             "정답 1,775 를 아는 질문이 오거절. 뗀 값은 그 컬럼에서 0행이라 결과는 바뀌지 않는다)")
     sql, ktb_fixed = ensure_ktb_kind(sql, q)
     if ktb_fixed:
         step("[Guard] 국고채 종류 교정 — 대분류 국공채(지방채·통안채 혼입)로 뭉개진 필터를 국고채 확정식(bd_knd='국고채권' + STRIPS 결측 회수)으로 교체 (2026-08-31 저녁 '국고채 몇 종목'→2,840 실측)")
@@ -7379,6 +7504,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, brep_fixed = ensure_bond_representative(sql)
     if brep_fixed:
         step("[Guard] 채권 대표행 보정 — 목록 SELECT 를 GROUP BY pd_no 로 종목 단위 묶기 + 정렬 컬럼 MAX/MIN (2026-09-02 실측: 장내·장외 중복행으로 발행사 39곳 top5 에 같은 종목 2회 — gold 38개 중 37개가 GROUP BY pd_no)")
+    sql, tie_fixed = ensure_tie_break(sql, q)
+    if tie_fixed:
+        step("[Guard] 동률 2차 정렬 주입 — ORDER BY 1차 축 뒤에 신용등급 서열 → 만기 이른 순 → pd_no 를 붙였다 "
+             "(2026-09-04 서버 실측 #62: '표면금리 높은 순 5개' 를 두 번 물어 7.5% 동률 두 종목의 1·2위가 뒤바뀜 — "
+             "2차 키가 없으면 등수는 DB 가 준 우연이다)")
     sql, hold_fixed = ensure_fund_holdings_template(sql, q, ctx, name_token, tables == ["public_funds"])
     if hold_fixed:
         step("[Guard] 구성종목 확정식 — 개별 펀드의 보유 종목 질의를 ext_fund_holdings(grp+or_co) JOIN 템플릿으로 교체, 대표 클래스 1개의 목록을 비중순으로 "

@@ -479,7 +479,12 @@ def test_regenerated_sql_also_gets_guards():
     """FND-R09 실측 — 재생성 SQL 도 가드 체인을 타야 한다.
 
     금지 컬럼 기각 → 재생성이 han_clas_policies 로 정확히 고쳤는데, 재생성 경로가 ensure_limit 만
-    거쳐 근거컬럼 보강을 건너뛰었다. 필터 컬럼이 SELECT 에 없어 답변기가 27행을 버렸다."""
+    거쳐 근거컬럼 보강을 건너뛰었다. 필터 컬럼이 SELECT 에 없어 답변기가 27행을 버렸다.
+
+    🔴 2026-09-04 — 운반 질문만 '전문투자자만 살 수 있는…' 에서 '클래스 정책이 제한된…' 으로 바꿨다.
+    새 게이트 gate_constants "(전문투자자 전용 여부)" 가 그 질문을 HCX 0회로 가로채(= 의도된 개선)
+    플래너가 한 번도 안 불려 전제가 깨졌기 때문이다. 재는 대상(재생성 SQL 의 가드 체인)은 그대로다.
+    전문투자자 질문 자체의 새 동작은 test_pfiv_question_is_now_gated 가 잰다."""
     from src.runtime.loader import load_context
     from src.runtime.pipeline import answer_question
 
@@ -497,7 +502,7 @@ def test_regenerated_sql_also_gets_guards():
         def compose_answer(self, q, rows, answer_rules=""):
             return "ok"
 
-    r = answer_question("T-R09", "전문투자자만 살 수 있는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    r = answer_question("T-R09", "클래스 정책이 제한된 공모펀드 알려줘", planner=P(), ctx=ctx)
     assert "재생성" in r.think_trace
     # 재생성 SQL 에도 근거컬럼(필터로 쓴 han_clas_policies)이 SELECT 에 실려야 한다
     assert "han_clas_policies" in r.sql.split("FROM")[0], r.sql
@@ -2360,3 +2365,22 @@ def test_nearest_enum_value_still_refuses_ambiguous():
     # 실재하지 않고 후보도 유일하지 않은 값들
     assert g.nearest_enum_value(ctx.value_index, "public_funds", "zrin_btyp_nm", "인도주식형") is None
     assert g.nearest_enum_value(ctx.value_index, "public_funds", "bmrk_nm", "KOSPI 200") is None
+
+
+def test_pfiv_question_is_now_gated():
+    """2026-09-04 DOM-12 — '전문투자자만 살 수 있는' 은 이제 게이트가 HCX 0회로 가로챈다.
+
+    구 경로는 pfiv 기각 → 재생성 → han_clas_policies LIKE '%전문투자자%' 27행이었는데,
+    **그 27이 오답이었다**(gold: 코드 의미 미제공이라 판정 불가). 프롬프트 금지(query_rules.전문투자자코드금지)는
+    지켜지지 않았고 재생성 힌트는 틀린 답으로 유도했다 — 결정층(게이트)으로 올렸다."""
+    from src.runtime.loader import load_context
+    from src.runtime.pipeline import answer_question
+
+    class P:
+        def plan_sql(self, q, g):  raise AssertionError("게이트가 막았어야 한다 — 플래너가 불렸다")
+        def compose_answer(self, q, rows, answer_rules=""):  return "ok"
+
+    r = answer_question("T-DOM12", "전문투자자만 살 수 있는 공모펀드는 몇 개야?", planner=P(), ctx=load_context())
+    assert r.sql == ""
+    assert "해석할 수 없습니다" in r.answer
+    assert "27" not in r.answer, "구 오답(27건)을 다시 내면 안 된다"

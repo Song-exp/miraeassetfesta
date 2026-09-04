@@ -105,3 +105,67 @@ def test_compound_query_rule_reaches_the_planner(ctx):
     off = ctx.planner_context(FUNDS, "KB자산운용 공모펀드 순자산 알려줘")
     assert "복합질의" in on
     assert "복합질의" not in off
+
+
+# ── 단계 1·2 잔여 게이트 (DOM-09 · DOM-12 · FND-R02) + ABSENT (OFFICIAL-002) ──────
+#    🔴 오발동 회귀가 본체다 — 형제 질문은 78문항 셋에서 실제로 ✅ 인 것을 골랐다.
+@pytest.mark.parametrize("q, fires, why", [
+    ("국내에서 설립된 공모펀드는 몇 개야?", True, "DOM-09 — 설립국가 95% 미기재"),
+    ("2025년에 설정된 공모펀드는 몇 개야?", False, "X19 ✅ — '설정된' 단독은 설정일 질의"),
+    ("가장 최근에 설정된 공모펀드 알려줘", False, "KG-033 ✅"),
+    ("원화가 아닌 통화로 설정된 공모펀드는 몇 개야?", False, "DOM-03 — 통화 질의"),
+    ("국내에 투자하는 공모펀드는 몇 개야?", False, "투자지역은 답변 가능"),
+    ("룩셈부르크에서 설립된 공모펀드 알려줘", False, "코드 442 로 답변 가능"),
+
+    ("전문투자자만 살 수 있는 공모펀드는 몇 개야?", True, "DOM-12 — 코드 의미 미제공"),
+    ("개인이 가입할 수 있는 공모펀드는 몇 개야?", False, "pers_corp_desc 로 답변 가능"),
+
+    ("지난 1주일 수익률이 가장 높은 공모펀드 알려줘", True, "FND-R02 — fd_wk1_ern_r 전건 NULL"),
+    ("1개월 수익률 상위 5개 공모펀드 알려줘", False, "fd_mm1_ern_r 은 있다"),
+    ("1년 수익률이 가장 높은 공모펀드 알려줘", False, "FND-003 ✅"),
+
+    ("미래에셋코어테크 펀드의 투자전략 알려줘", True, "순수 전략 질의 — ABSENT"),
+    ("국민성장펀드의 구조와 투자전략 동향 등 찾아서 알려줘", False, "OFFICIAL-002 — 구조는 답해야 한다"),
+    ("미래에셋코어테크 펀드의 보수와 운용전략 알려줘", False, "보수가 물려 있어 SQL 을 돌린다"),
+])
+def test_remaining_gates(ctx, q, fires, why):
+    r = gate.check(q, ctx, FUNDS)
+    assert bool(r.rejected) is fires, f"{why} | 발동={bool(r.rejected)} 기대={fires}: {q}"
+
+
+def test_gate_premises_still_hold():
+    """게이트 4종의 전제 수치. 깨지면 즉답 문구가 거짓이 된다."""
+    con = sqlite3.connect(f"file:{db_path()}?mode=ro", uri=True)
+    base = "FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모'"
+    q = lambda sql: con.execute(sql).fetchone()[0]
+    estb = q(f"SELECT COUNT(*) {base} AND fd_estb_ctry_cd = '000'")
+    total = q(f"SELECT COUNT(*) {base}")
+    wk1 = q(f"SELECT COUNT(*) {base} AND fd_wk1_ern_r IS NOT NULL")
+    pfiv = q(f"SELECT COUNT(DISTINCT pfiv_sale_cntl_tcd) {base}")
+    con.close()
+    assert total == 8969
+    assert estb / total > 0.94, f"설립국가 미기재율이 95% 아래로 내려갔다: {estb}/{total}"
+    assert wk1 == 0, f"1주일 수익률이 채워졌다 — 게이트 해제 검토: {wk1}행"
+    assert pfiv > 1, "판매통제코드가 상수가 되면 게이트 사유가 바뀐다"
+
+
+# ── 단계 3·4·5 — 별칭 규약 · 이관 4줄 · 소분류 · JOIN 방향 ──────────────────────
+def test_fee_alias_rule(ctx):
+    assert "총보수_퍼센트" in ctx.planner_context(FUNDS, "총보수가 가장 낮은 공모펀드 5개 알려줘")
+    assert "총보수_퍼센트" in ctx.answer_context(FUNDS)
+
+
+@pytest.mark.parametrize("needle, qid", [
+    ("3,531건(39%)이 미수록", "DOM-08"),
+    ("법인 자금 파킹용 MMF", "FND-C01"),
+    ("상품 간 크기 비교가 무의미", "FND-R03"),
+])
+def test_transferred_answer_rules(ctx, needle, qid):
+    assert needle in ctx.answer_context(FUNDS), qid
+
+
+def test_subcategory_and_join_direction(ctx):
+    pc = ctx.planner_context(FUNDS, "해외주식형 중에서 인도주식 유형인 공모펀드는 몇 개야?")
+    assert "인도주식" in pc, "Z10 — 소분류 값이 플래너에 없으면 리터럴을 지어낸다"
+    pc2 = ctx.planner_context(FUNDS, "미래에셋코어테크 펀드의 설정일과 모펀드 알려줘")
+    assert "ext_fund_page 를 FROM 에 두지 않는다" in pc2, "KG-006"

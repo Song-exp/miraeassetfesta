@@ -23,6 +23,8 @@ fp:riskGradeValue_PublicFund rdfs:subPropertyOf fp:riskGradeValue ;
                  owl:withRestrictions ( [ xsd:minInclusive 1 ] [ xsd:maxInclusive 6 ] ) ] ;
     rdfs:comment "1(매우 높은 위험)~6(매우 낮은 위험) — 0등급 없음 — 등급 미수록 클래스는 NULL(0 아님)"@ko .
 
+# ABSENT: fp:PublicFund 에는 fp:hasInvestmentStrategy 없음 — 펀드의 운용 전략·투자 방침 서술은 마스터에도 설명서 수집분(ext_fund_page)에도 수록되어 있지 않아 답할 수 없습니다. (대체: zrin_btyp_nm·or_attr_desc·prfd_attr_cds)
+fp:PublicFund rdfs:comment "hasInvestmentStrategy 속성 없음: 펀드의 운용 전략·투자 방침 서술은 마스터에도 설명서 수집분(ext_fund_page)에도 수록되어 있지 않아 답할 수 없습니다."@ko .
 # ABSENT: fp:PublicFund 에는 fp:hasUnitsOutstanding 없음 — 공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다. (대체: fd_nast_suma·bns_bpr)
 fp:PublicFund rdfs:comment "hasUnitsOutstanding 속성 없음: 공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다."@ko .
 # ABSENT: fp:PublicFund 에는 fp:hasFundManager 없음 — 펀드 운용역(펀드매니저) 정보는 마스터·설명서 수집분에 없어 답할 수 없습니다. (대체: or_co_xtn_itt_cd)

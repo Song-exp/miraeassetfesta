@@ -1628,6 +1628,16 @@ def test_absent_properties_gate(ctx):
     assert not gate.check("KODEX 200 구성종목 알려줘", ctx, ["domestic_etfs"]).rejected
     assert gate.check("한국전력 채권 신용등급 추이 알려줘", ctx, ["domestic_bonds"]).rejected
     assert not gate.check("한국전력 채권 신용등급 알려줘", ctx, ["domestic_bonds"]).rejected
+    # ⛑ 2026-09-04 서버 실측 — 옛 어휘는 '신용등급'+명사 인접형만 잡아 구어 동사형이 전부 통과했고, HCX 가 없는 축(등급 이력)을
+    #    있는 컬럼(crd_grd_dt)으로 대체해 679종목 목록을 냈다(등급일 78%가 발행일과 같다). 어휘는 조사·부사만 잇는다.
+    for q in ("최근 6개월 사이에 신용등급이 오른 채권들 정리해줘", "등급이 떨어진 채권 있어?",
+              "최근에 등급 강등된 채권", "신용등급이 2단계 상승한 채권"):
+        g = gate.check(q, ctx, ["domestic_bonds"])
+        assert g.rejected and "수록되어 있지 않습니다" in g.answer, q
+        assert "crd_grd_dt" in g.answer, q                       # substitute — 거절로 끝내지 않고 답할 수 있는 축을 준다
+    for q in ("등급 낮은 채권", "신용등급 대비 수익률이 오른 채권", "신용등급 변동성이 큰 채권",
+              "신용등급 AA- 이상 채권 알려줘", "가장 안전한 채권 3개 추천해줘"):
+        assert not gate.check(q, ctx, ["domestic_bonds"]).rejected, q      # 대조군 — 이력 어휘 확장이 조회·되묻기를 먹지 않는다
     assert not gate.check("설정 좌수 알려줘", ctx, []).rejected                                           # 미특정은 불개입
     # 파이프라인 — HCX 0회 · trace 에 ABSENT 근거
     r = answer_question("T-KG027", "미래에셋코어테크 펀드 설정 좌수 알려줘", planner=None, ctx=ctx)

@@ -10,7 +10,7 @@
 #   당시 codebooks/index_master.csv 로 해외 61종을 수동 등록했으나, index_auto.yaml 의 자동 등록
 #   (지수 3,151노드 + 패밀리 closure)이 같은 값을 더 넓게 덮어 raw 값 충돌(V2) 59건이 발생.
 #   → 수동 중복 노드 53개 삭제. 교차질의 연결은 alias 가 아니라 **parent(자동 패밀리)** 로 유지한다:
-#     Idx_MSCI_ACWI → Idx_a_83b9b8edb8 · Idx_MSCI_EM → Idx_a_c2f932ab65 · Idx_SP500TR → Idx_a_25e8381c5f
+#     Idx_MSCI_ACWI → Idx_a_59a84d8776 · Idx_MSCI_EM → Idx_a_5f2e9774b0 · Idx_SP500TR → Idx_a_6a2bd63a50
 #   즉 "국내ETF+펀드(수동 노드) ↔ 해외ETF(자동 노드)" 는 같은 패밀리 아래에서 closure 로 묶인다.
 #   정규화 규칙(TR/CR/NR·철자변형 → base_index)은 codebooks/index_master.csv 에 남아 있다.
 
@@ -37,7 +37,7 @@ nodes:
       - {table: domestic_etfs, column: cu_base_index, raw: "코스닥150 150%", source: rule, evidence: "ETF 1건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "코스닥150 150%", source: rule, evidence: "펀드 2차 6클래스행 (1차 45건)"}
   Idx_MSCI_ACWI:
-    parent: Idx_a_83b9b8edb8   # 자동 패밀리(MSCI AC World, index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
+    parent: Idx_a_59a84d8776   # 자동 패밀리(MSCI AC World, index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
     label_ko: MSCI ACWI
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI ACWI", source: rule, evidence: "ETF 6건"}
@@ -63,7 +63,7 @@ nodes:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI NORTH AMERICA", source: rule, evidence: "ETF 4건"}
       - {table: public_funds,  column: bmrk_nm,       raw: "MSCI NORTH AMERICA", source: rule, evidence: "펀드 2차 97클래스행 (1차 936건)"}
   Idx_MSCI_EM:
-    parent: Idx_a_c2f932ab65   # 자동 패밀리(MSCI EM (Emerging Markets), index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
+    parent: Idx_a_5f2e9774b0   # 자동 패밀리(MSCI EM (Emerging Markets), index_auto.yaml) — 해외ETF 변형과 closure 로 묶어 교차질의 유지. 2026-08-25
     label_ko: MSCI EM (EMERGING MARKETS)
     aliases:
       - {table: domestic_etfs, column: cu_base_index, raw: "MSCI EM (EMERGING MARKETS)", source: rule, evidence: "ETF 1건"}
@@ -124,9 +124,9 @@ nodes:
       - {table: domestic_etfs, column: cu_base_index, raw: "KRX 미디어통신", source: rule, evidence: "ETF 1건"}
   Idx_SP500TR:
     label_ko: S&P 500 TR
-    parent: Idx_a_25e8381c5f   # 자동 패밀리(S&P 500, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
+    parent: Idx_a_6a2bd63a50   # 자동 패밀리(S&P 500, index_auto.yaml) — closure 로 "같은 지수 추종" 묶음. 2026-08-25
     note: >-
-      해외ETF 대표 지수. 수익률방식 변형(TR·CR·NR)은 2026-08-25 구조 변경으로 이 노드의 alias 가 아니라 패밀리 parent(Idx_a_25e8381c5f) closure 로 묶인다 — 2차: TR 339 · CR 66 · NR 1 = 406행 (1차 335→387 표기 폐기, 2026-09-02).
+      해외ETF 대표 지수. 수익률방식 변형(TR·CR·NR)은 2026-08-25 구조 변경으로 이 노드의 alias 가 아니라 패밀리 parent(Idx_a_6a2bd63a50) closure 로 묶인다 — 2차: TR 339 · CR 66 · NR 1 = 406행 (1차 335→387 표기 폐기, 2026-09-02).
       노드 id 는 index_auto.yaml 이 edge 로 참조하므로 유지 (Idx_SP500 으로 개명 금지).
     aliases:
       - {table: overseas_etfs, column: cu_base_index, raw: "S&P 500 TR", source: manual, evidence: "해외ETF 2차 339행 (1차 335건)"}

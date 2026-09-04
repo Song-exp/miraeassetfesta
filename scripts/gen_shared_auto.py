@@ -47,6 +47,16 @@ def hid(prefix, key):
     return prefix + hashlib.sha1(norm(key).lower().encode("utf-8")).hexdigest()[:10]
 
 
+def ihid(prefix, key):
+    """지수 노드 키 — 공백을 접고 대소문자를 무시한다.
+
+    🔴 2026-09-04 — SQL 조회는 공백을 무시하는데(query_rules.어휘_표기정규화: replace(...,' ','')로
+       KOSPI200 0→95행) 노드 키는 공백으로 갈려 'KRX 300'/'KRX300' · 'MSCI CHINA'/'MSCI China' ·
+       'KOSDAQ 150'/'KOSDAQ150' 이 서로 다른 노드가 됐다. 두 층의 정규화를 맞춘다.
+       ⚠️ 숫자·기호는 지우지 않는다 — 'ICE BofA 1-5 Year' 와 '15+ Year' 는 **다른 지수**다."""
+    return prefix + hashlib.sha1(re.sub(r"\s+", "", norm(key)).lower().encode("utf-8")).hexdigest()[:10]
+
+
 # ── 지수 패밀리 정규화 ────────────────────────────────────────────────
 _SUFFIX_TOKENS = {"TR", "NR", "CR", "PR", "GTR", "NTR", "GR", "NTR.", "USD", "KRW", "JPY", "EUR", "HKD",
                   "CNY", "GBP", "CHF", "AUD", "CAD", "TWD", "INR", "SGD", "INDEX", "DAILY", "HEDGED",
@@ -224,6 +234,13 @@ def yaml_dump(doc):
 def build_index(con):
     manual = load_manual("index.yaml")
     m_key, m_raw = manual_alias_index(manual)
+    m_raw_ns = {}                                  # 공백 접은 키 → 수동 노드 (라벨도 함께 등록)
+    for _r, _nid in m_raw.items():
+        m_raw_ns.setdefault(re.sub(r"\s+", "", _r).lower(), _nid)
+    for _nid, _nd in (manual.get("nodes") or {}).items():
+        for _lab in (_nd.get("label_ko"), _nd.get("label_en")):
+            if _lab:
+                m_raw_ns.setdefault(re.sub(r"\s+", "", norm(_lab)).lower(), _nid)
     region_ids = set((load_manual("region.yaml").get("nodes") or {}).keys())
     ac_ids = set((load_manual("asset_class.yaml").get("nodes") or {}).keys())
 
@@ -248,9 +265,12 @@ def build_index(con):
             if (table, col, r) in m_key:
                 stats["manual_exists"] += 1
                 continue
-            if r in m_raw:   # 같은 표기가 수동 노드에 다른 컬럼으로 등록 → 확장
-                ext[m_raw[r]].append({"table": table, "column": col, "raw": r, "source": "rule",
-                                      "evidence": f"수동 노드와 표기 완전일치 · {n}행"})
+            # 🔴 2026-09-04 — 수동 노드 대조도 **공백을 접어서** 본다. 완전일치만 보면
+            #    수동 'KRX 300' 과 DB 'KRX300' 이 남남이 되어 자동 노드가 따로 생긴다(실측).
+            m_hit = m_raw.get(r) or m_raw_ns.get(re.sub(r"\s+", "", r).lower())
+            if m_hit:
+                ext[m_hit].append({"table": table, "column": col, "raw": r, "source": "rule",
+                                   "evidence": f"수동 노드와 표기 일치(공백 무시) · {n}행"})
                 stats["extension"] += 1
                 continue
             pending.append((table, col, r, n))
@@ -263,13 +283,13 @@ def build_index(con):
     for table, col, r, n in pending:
         fam = family_label(r)
         composite = is_composite(r)
-        if fam != r and (len(fam_members[fam]) >= 2 or hid("Idx_a_", fam) in nodes):
-            fid = hid("Idx_a_", fam)
+        if fam != r and (len(fam_members[fam]) >= 2 or ihid("Idx_a_", fam) in nodes):
+            fid = ihid("Idx_a_", fam)
             nodes.setdefault(fid, {"label_ko": fam, "aliases": [], "auto": True, "family": True})
-            nid = hid("Idx_v_", r)
+            nid = ihid("Idx_v_", r)
             node = nodes.setdefault(nid, {"label_ko": r, "parent": fid, "aliases": [], "auto": True})
         else:
-            nid = hid("Idx_a_", r)
+            nid = ihid("Idx_a_", r)
             node = nodes.setdefault(nid, {"label_ko": r, "aliases": [], "auto": True})
             if composite:
                 node["composite"] = True

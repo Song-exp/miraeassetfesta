@@ -47,7 +47,18 @@ def main():
                 "n_rows_base": n, "tag_sparse": n < SPARSE_ROWS, "aliases": [alias(iso)]}
     attrs = {}
     for r in csv.DictReader(open(os.path.join(CB, "fund_attr_code.csv"), encoding="utf-8-sig")):
-        if r.get("status", "confirmed") != "confirmed":
+        # 🔴 2026-09-04 — `confirmed_low_n`(표본 적으나 검증률 1.000)도 등록한다. 종전 완전일치 비교가
+        #    이름에 confirmed 가 든 이 상태까지 잘라내, 판매중·공모에서 실제로 쓰이는 태그 12종이
+        #    접지되지 않았다(물 4행·조선(해운/선박) 4행·에너지(수소) 2행 …). 표본이 적은 태그일수록
+        #    이름으로 못 찾으므로 접지를 빼는 이유가 아니라 더 필요한 이유다. 반영 후 실사용 192/192 접지.
+        # 🔴 2026-09-04 — `confirmed_low_n` 은 **기본모수에서 실제로 쓰이는 것만** 등록한다.
+        #    ⓐ 종전 완전일치 비교가 이 상태를 통째로 잘라, 판매중·공모에서 쓰이는 태그 12종이
+        #       접지되지 않았다(물 4행·조선(해운/선박) 4행·에너지(수소) 2행 …).
+        #    ⓑ 그렇다고 31종 전부 받으면 안 된다 — n_selling=0 인 태그는 걸어봐야 0행인데
+        #       라벨이 흔한 낱말이면 질문을 가로챈다(실측: M108 '모펀드' 가 "…의 모펀드는 뭐야?" 를
+        #       태그 필터로 접지해 결과 0행 · test_snapshot_round6 고정선 이탈).
+        _st = r.get("status", "confirmed")
+        if not _st.startswith("confirmed") or (_st != "confirmed" and int(r.get("n_selling") or 0) == 0):
             continue
         code, name, axis = r["code"].strip(), r["name"].strip(), r["axis"].strip()
         node = {"label_ko": name, "axis": axis, "axis_name": r["axis_name"].strip(),

@@ -63,13 +63,15 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "하이트진로", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "000080", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "하이트진로", source: rule}
-  Sec_d_065d0f144a:
-    label_en: "HK 26-12 회사채(AA-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0000Y0"
+  Sec_kr_0000Y0:
+    label_ko: "HK 26-12 회사채(AA-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0000Y0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "HK 26-12 회사채(AA-이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70000Y0004", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "HK 26-12 회사채(AA-이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "흥국HK26-12회사채(AA-이상)액티브증권상장", source: rule}
   Sec_kr_000100:
     label_ko: "유한양행"
     status: kr_ticker
@@ -142,13 +144,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "000180", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "성창기업지주", source: rule}
-  Sec_d_0aae0076bd:
-    label_en: "덕양에너젠"
-    status: dom_foreign_ticker
-    note: "ticker=0001A0"
+  Sec_kr_0001A0:
+    label_ko: "덕양에너젠"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0001A0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "덕양에너젠", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0001A0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "덕양에너젠", source: rule}
   Sec_kr_000210:
     label_ko: "DL"
     status: kr_ticker
@@ -478,20 +481,22 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "000792 C2", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "Qinghai Salt Lake Industry Co Ltd", source: rule}
-  Sec_d_a7e5618711:
-    label_en: "아크릴"
-    status: dom_foreign_ticker
-    note: "ticker=0007C0"
+  Sec_kr_0007C0:
+    label_ko: "아크릴"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0007C0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "아크릴", source: rule}
-  Sec_d_bd6f3f8d85:
-    label_en: "KODEX 27-12 회사채(AA-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0007F0"
+      - {table: ext_fund_holdings, column: isin, raw: "0007C0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "아크릴", source: rule}
+  Sec_kr_0007F0:
+    label_ko: "KODEX 27-12 회사채(AA-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0007F0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 27-12 회사채(AA-이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70007F0000", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 27-12 회사채(AA-이상)액티브", source: rule}
   Sec_d_07631b296d:
     label_en: "Yunnan Aluminium Co Ltd"
     status: dom_foreign_ticker
@@ -561,13 +566,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "000895 C2", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "Henan Shuanghui Investment & Development", source: rule}
-  Sec_d_87ed2db306:
-    label_en: "에스엔시스"
-    status: dom_foreign_ticker
-    note: "ticker=0008Z0"
+  Sec_kr_0008Z0:
+    label_ko: "에스엔시스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0008Z0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "에스엔시스", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0008Z0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "에스엔시스", source: rule}
   Sec_kr_000910:
     label_ko: "유니온"
     status: kr_ticker
@@ -651,13 +657,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "000999 C2", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "China Resources Sanjiu Medical & Pharmac", source: rule}
-  Sec_d_5313cb6d98:
-    label_en: "에임드바이오"
-    status: dom_foreign_ticker
-    note: "ticker=0009K0"
+  Sec_kr_0009K0:
+    label_ko: "에임드바이오"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0009K0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "에임드바이오", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0009K0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "에임드바이오", source: rule}
   Sec_kr_001020:
     label_ko: "페이퍼코리아"
     status: kr_ticker
@@ -672,13 +679,14 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "CJ", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "001040", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "CJ", source: rule}
-  Sec_d_83e1426d7d:
-    label_en: "CJ4우(전환)"
-    status: dom_foreign_ticker
-    note: "ticker=00104K"
+  Sec_kr_00104K:
+    label_ko: "CJ4우(전환)"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "00104K", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "CJ4우(전환)", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "00104K", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "CJ4우(전환)", source: rule}
   Sec_kr_001060:
     label_ko: "JW중외제약"
     status: kr_ticker
@@ -714,13 +722,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "001130", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "대한제분", source: rule}
-  Sec_d_bd7912d1e7:
-    label_en: "액스비스"
-    status: dom_foreign_ticker
-    note: "ticker=0011A0"
+  Sec_kr_0011A0:
+    label_ko: "액스비스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0011A0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "액스비스", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0011A0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "액스비스", source: rule}
   Sec_kr_001200:
     label_ko: "유진투자증권"
     status: kr_ticker
@@ -876,13 +885,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "001570", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "금양", source: rule}
-  Sec_d_c789e240c5:
-    label_en: "그린광학"
-    status: dom_foreign_ticker
-    note: "ticker=0015G0"
+  Sec_kr_0015G0:
+    label_ko: "그린광학"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0015G0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "그린광학", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0015G0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "그린광학", source: rule}
   Sec_kr_001620:
     label_ko: "케이비아이동국실업"
     status: kr_ticker
@@ -943,10 +953,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "001790", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "대한제당", source: rule}
-  Sec_d_1f41c58050:
-    label_en: "세미티에스"
-    status: dom_foreign_ticker
-    note: "ticker=0017J0"
+  Sec_kr_0017J0:
+    label_ko: "세미티에스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0017J0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "세미티에스", source: rule}
@@ -1553,13 +1562,15 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "아모레퍼시픽홀딩스", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "002790", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "아모레G", source: rule}
-  Sec_d_434d15afe4:
-    label_en: "아모레퍼시픽홀딩스3우C"
-    status: dom_foreign_ticker
-    note: "ticker=00279K"
+  Sec_kr_00279K:
+    label_ko: "아모레퍼시픽홀딩스3우C"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "00279K", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "아모레퍼시픽홀딩스3우C", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "00279K", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "아모레G3우(전환)", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "아모레퍼시픽홀딩스3우C", source: rule}
   Sec_kr_002810:
     label_ko: "삼영무역"
     status: kr_ticker
@@ -1733,10 +1744,9 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "대웅", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "003090", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "대웅", source: rule}
-  Sec_d_18c88a3e0e:
-    label_en: "대신밸류리츠"
-    status: dom_foreign_ticker
-    note: "ticker=0030R0"
+  Sec_kr_0030R0:
+    label_ko: "대신밸류리츠"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0030R0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "대신밸류리츠", source: rule}
@@ -1961,10 +1971,9 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "보령", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "003850", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "보령제약", source: rule}
-  Sec_d_b8c22d795a:
-    label_en: "KODEX 미국휴머노이드로봇"
-    status: dom_foreign_ticker
-    note: "ticker=0038A0"
+  Sec_kr_0038A0:
+    label_ko: "KODEX 미국휴머노이드로봇"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0038A0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 미국휴머노이드로봇", source: rule}
@@ -1980,10 +1989,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "003960", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "사조대림", source: rule}
-  Sec_d_8e3b4c1e95:
-    label_en: "매드업"
-    status: dom_foreign_ticker
-    note: "ticker=0039P0"
+  Sec_kr_0039P0:
+    label_ko: "매드업"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0039P0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "매드업", source: rule}
@@ -2087,20 +2095,22 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "삼익THK", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "004380", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "삼익THK", source: rule}
-  Sec_d_15ae45ea97:
-    label_en: "TIGER 머니마켓액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0043B0"
+  Sec_kr_0043B0:
+    label_ko: "TIGER 머니마켓액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0043B0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 머니마켓액티브", source: rule}
-  Sec_d_23f88fb717:
-    label_en: "TIME 차이나AI테크액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0043Y0"
+      - {table: ext_fund_holdings, column: isin, raw: "KR70043B0000", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 머니마켓액티브", source: rule}
+  Sec_kr_0043Y0:
+    label_ko: "TIME 차이나AI테크액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0043Y0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIME 차이나AI테크액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0043Y0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "TIME 차이나AI테크액티브", source: rule}
   Sec_kr_004410:
     label_ko: "서울식품"
     status: kr_ticker
@@ -2313,10 +2323,9 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "동진쎄미켐", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "005290", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "동진쎄미켐", source: rule}
-  Sec_d_fb2075f56a:
-    label_en: "TIGER 코리아배당다우존스"
-    status: dom_foreign_ticker
-    note: "ticker=0052D0"
+  Sec_kr_0052D0:
+    label_ko: "TIGER 코리아배당다우존스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0052D0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 코리아배당다우존스", source: rule}
@@ -2671,13 +2680,14 @@ nodes:
       - {table: ext_fund_holdings, column: isin, raw: "006800", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "대우증권", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "미래에셋대우", source: rule}
-  Sec_d_989cbadc5b:
-    label_en: "미래에셋증권2우B"
-    status: dom_foreign_ticker
-    note: "ticker=00680K"
+  Sec_kr_00680K:
+    label_ko: "미래에셋증권2우B"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "00680K", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "미래에셋증권2우B", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "00680K", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "미래에셋증권2우B", source: rule}
   Sec_kr_006840:
     label_ko: "AK홀딩스"
     status: kr_ticker
@@ -2748,13 +2758,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "007280", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "한국특강", source: rule}
-  Sec_d_01e0307e66:
-    label_en: "TIGER KRX금현물"
-    status: dom_foreign_ticker
-    note: "ticker=0072R0"
+  Sec_kr_0072R0:
+    label_ko: "TIGER KRX금현물"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0072R0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER KRX금현물", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0072R0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER KRX금현물", source: rule}
   Sec_kr_007310:
     label_ko: "오뚜기"
     status: kr_ticker
@@ -2860,10 +2871,9 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "대덕", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "008060", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "대덕", source: rule}
-  Sec_d_fc15257f57:
-    label_en: "KODEX 방산TOP10"
-    status: dom_foreign_ticker
-    note: "ticker=0080G0"
+  Sec_kr_0080G0:
+    label_ko: "KODEX 방산TOP10"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0080G0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 방산TOP10", source: rule}
@@ -2879,13 +2889,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "008260", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "NI스틸", source: rule}
-  Sec_d_ce76e88020:
-    label_en: "카나프테라퓨틱스"
-    status: dom_foreign_ticker
-    note: "ticker=0082N0"
+  Sec_kr_0082N0:
+    label_ko: "카나프테라퓨틱스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0082N0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "카나프테라퓨틱스", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0082N0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "카나프테라퓨틱스", source: rule}
   Sec_kr_008350:
     label_ko: "남선알미늄"
     status: kr_ticker
@@ -2930,13 +2941,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "008870", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "금비", source: rule}
-  Sec_d_cc0fd29eb7:
-    label_en: "메쥬"
-    status: dom_foreign_ticker
-    note: "ticker=0088M0"
+  Sec_kr_0088M0:
+    label_ko: "메쥬"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0088M0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "메쥬", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0088M0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "메쥬", source: rule}
   Sec_kr_008930:
     label_ko: "한미사이언스"
     status: kr_ticker
@@ -2951,10 +2963,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "008970", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KBI동양철관", source: rule}
-  Sec_d_ab4488a5a0:
-    label_en: "KODEX 금융고배당TOP10"
-    status: dom_foreign_ticker
-    note: "ticker=0089D0"
+  Sec_kr_0089D0:
+    label_ko: "KODEX 금융고배당TOP10"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0089D0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 금융고배당TOP10", source: rule}
@@ -3087,13 +3098,14 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "삼화전기", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "009470", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "삼화전기", source: rule}
-  Sec_d_824817bc19:
-    label_en: "TIGER 28-04 회사채(A+이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0094K0"
+  Sec_kr_0094K0:
+    label_ko: "TIGER 28-04 회사채(A+이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0094K0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 28-04 회사채(A+이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70094K0007", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 28-04 회사채(A+이상)액티브", source: rule}
   Sec_kr_009520:
     label_ko: "포스코엠텍"
     status: kr_ticker
@@ -3215,10 +3227,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "010400", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "우진아이엔에스", source: rule}
-  Sec_d_944349decf:
-    label_en: "TIGER 200타겟위클리커버드콜"
-    status: dom_foreign_ticker
-    note: "ticker=0104N0"
+  Sec_kr_0104N0:
+    label_ko: "TIGER 200타겟위클리커버드콜"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0104N0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 200타겟위클리커버드콜", source: rule}
@@ -3344,13 +3355,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "011280", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "태림포장", source: rule}
-  Sec_d_8d50e6a17e:
-    label_en: "마이티 200TR"
-    status: dom_foreign_ticker
-    note: "ticker=0112X0"
+  Sec_kr_0112X0:
+    label_ko: "마이티 200TR"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0112X0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "마이티 200TR", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0112X0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "마이티 200TR", source: rule}
   Sec_kr_011300:
     label_ko: "우성머티리얼스"
     status: kr_ticker
@@ -3432,17 +3444,15 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "SKC", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "011790", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "SKC", source: rule}
-  Sec_d_1bd3284726:
-    label_en: "KODEX 26-12 금융채(AA-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0117L0"
+  Sec_kr_0117L0:
+    label_ko: "KODEX 26-12 금융채(AA-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0117L0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 26-12 금융채(AA-이상)액티브", source: rule}
-  Sec_d_5f0a496f8d:
-    label_en: "TIGER 코리아AI전력기기TOP3플러스"
-    status: dom_foreign_ticker
-    note: "ticker=0117V0"
+  Sec_kr_0117V0:
+    label_ko: "TIGER 코리아AI전력기기TOP3플러스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0117V0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 코리아AI전력기기TOP3플러스", source: rule}
@@ -3458,23 +3468,23 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "011930", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "신성이엔지", source: rule}
-  Sec_d_e3b84f27e9:
-    label_en: "KODEX 28-12 회사채(AA-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0119H0"
+  Sec_kr_0119H0:
+    label_ko: "KODEX 28-12 회사채(AA-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0119H0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 28-12 회사채(AA-이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70119H0003", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX28-12회사채(AA-이상)액티브", source: rule}
   Sec_kr_012030:
     label_ko: "DB"
     status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "012030", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "DB", source: rule}
-  Sec_d_7775a2c19c:
-    label_en: "삼양바이오팜"
-    status: dom_foreign_ticker
-    note: "ticker=0120G0"
+  Sec_kr_0120G0:
+    label_ko: "삼양바이오팜"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0120G0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "삼양바이오팜", source: rule}
@@ -3533,10 +3543,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "012690", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "모나리자", source: rule}
-  Sec_d_026b54f270:
-    label_en: "삼성에피스홀딩스"
-    status: dom_foreign_ticker
-    note: "ticker=0126Z0"
+  Sec_kr_0126Z0:
+    label_ko: "삼성에피스홀딩스"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0126Z0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "삼성에피스홀딩스", source: rule}
@@ -3580,13 +3589,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "013120", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "동원개발", source: rule}
-  Sec_d_bb866ff6e9:
-    label_en: "1Q 단기특수은행채액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0131W0"
+  Sec_kr_0131W0:
+    label_ko: "1Q 단기특수은행채액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0131W0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "1Q 단기특수은행채액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70131W0008", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "1Q 단기특수은행채액티브", source: rule}
   Sec_kr_013310:
     label_ko: "아진산업"
     status: kr_ticker
@@ -3617,13 +3627,15 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "013580", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "계룡건설", source: rule}
-  Sec_d_b4e08b5dc1:
-    label_en: "IBK 중기종합채권(AA-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0135Y0"
+  Sec_kr_0135Y0:
+    label_ko: "IBK 중기종합채권(AA-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0135Y0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "IBK 중기종합채권(AA-이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70135Y0002", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "IBK 중기종합채권(AA-이상)액티브", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "IBK 중기종합채권(AA-이상)액티브증권", source: rule}
   Sec_kr_013700:
     label_ko: "까뮤이앤씨"
     status: kr_ticker
@@ -3662,10 +3674,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "014280", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "금강공업", source: rule}
-  Sec_d_94b14b8690:
-    label_en: "TIGER 미국AI데이터센터TOP4Plus"
-    status: dom_foreign_ticker
-    note: "ticker=0142D0"
+  Sec_kr_0142D0:
+    label_ko: "TIGER 미국AI데이터센터TOP4Plus"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0142D0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 미국AI데이터센터TOP4Plus", source: rule}
@@ -3807,20 +3818,20 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "대현", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "016090", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "대현", source: rule}
-  Sec_d_0611bd03ca:
-    label_en: "KODEX 차이나AI반도체TOP10"
-    status: dom_foreign_ticker
-    note: "ticker=0162L0"
+  Sec_kr_0162L0:
+    label_ko: "KODEX 차이나AI반도체TOP10"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0162L0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 차이나AI반도체TOP10", source: rule}
-  Sec_d_5d3164d5a4:
-    label_en: "KODEX 금융채1~2년(AA-이상)PLUS액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0162M0"
+  Sec_kr_0162M0:
+    label_ko: "KODEX 금융채1~2년(AA-이상)PLUS액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0162M0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "KODEX 금융채1~2년(AA-이상)PLUS액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "KR70162M0002", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX금융채1~2년(AA-이상)PLUS액티브", source: rule}
   Sec_kr_016360:
     label_ko: "삼성증권"
     status: kr_ticker
@@ -3861,13 +3872,14 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "016610", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "DB증권", source: rule}
-  Sec_d_afce312df4:
-    label_en: "PLUS K제조업핵심기업액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0166S0"
+  Sec_kr_0166S0:
+    label_ko: "PLUS K제조업핵심기업액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0166S0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "PLUS K제조업핵심기업액티브", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "0166S0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "PLUS K제조업핵심기업액티브", source: rule}
   Sec_kr_016710:
     label_ko: "대성홀딩스"
     status: kr_ticker
@@ -4017,10 +4029,9 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "브이티", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "018290", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "브이티", source: rule}
-  Sec_d_2dc9ccbc40:
-    label_en: "PLUS 중기종합채권(A-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0184L0"
+  Sec_kr_0184L0:
+    label_ko: "PLUS 중기종합채권(A-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0184L0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "PLUS 중기종합채권(A-이상)액티브", source: rule}
@@ -4066,31 +4077,33 @@ nodes:
       - {table: ext_etf_holdings, column: constituent, raw: "와이지-원", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "019210", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "와이지-원", source: rule}
-  Sec_d_c74887f66e:
-    label_en: "RISE SK하이닉스단일종목레버리지"
-    status: dom_foreign_ticker
-    note: "ticker=0192L0"
+  Sec_kr_0192L0:
+    label_ko: "RISE SK하이닉스단일종목레버리지"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0192L0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "RISE SK하이닉스단일종목레버리지", source: rule}
-  Sec_d_086f4b8881:
-    label_en: "RISE 삼성전자단일종목레버리지"
-    status: dom_foreign_ticker
-    note: "ticker=0192M0"
+      - {table: ext_fund_holdings, column: isin, raw: "0192L0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "RISE SK하이닉스단일종목레버리지", source: rule}
+  Sec_kr_0192M0:
+    label_ko: "RISE 삼성전자단일종목레버리지"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0192M0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "RISE 삼성전자단일종목레버리지", source: rule}
-  Sec_d_1297708fef:
-    label_en: "TIGER 중기종합채권(A-이상)액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0192Z0"
+      - {table: ext_fund_holdings, column: isin, raw: "0192M0", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 삼성전자단일종목레버리지", source: rule}
+  Sec_kr_0192Z0:
+    label_ko: "TIGER 중기종합채권(A-이상)액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0192Z0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 중기종합채권(A-이상)액티브", source: rule}
-  Sec_d_5021a078e7:
-    label_en: "TIGER 삼성전자단일종목레버리지"
-    status: dom_foreign_ticker
-    note: "ticker=0195R0"
+      - {table: ext_fund_holdings, column: isin, raw: "KR70192Z0001", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 중기종합채권(A-이상)액티브", source: rule}
+  Sec_kr_0195R0:
+    label_ko: "TIGER 삼성전자단일종목레버리지"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0195R0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 삼성전자단일종목레버리지", source: rule}
@@ -4163,10 +4176,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "021820", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "세원정공", source: rule}
-  Sec_d_3ef918c219:
-    label_en: "네오뷰"
-    status: dom_foreign_ticker
-    note: "ticker=0218L0"
+  Sec_kr_0218L0:
+    label_ko: "네오뷰"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0218L0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "네오뷰", source: rule}
@@ -4176,10 +4188,9 @@ nodes:
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "022100", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "포스코DX", source: rule}
-  Sec_d_fd74678011:
-    label_en: "TIGER 미국테크NYSE100액티브"
-    status: dom_foreign_ticker
-    note: "ticker=0223R0"
+  Sec_kr_0223R0:
+    label_ko: "TIGER 미국테크NYSE100액티브"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "0223R0", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "TIGER 미국테크NYSE100액티브", source: rule}
@@ -4472,13 +4483,14 @@ nodes:
       - {table: ext_etf_holdings, column: ticker, raw: "028260", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "삼성물산", source: rule}
       - {table: ext_fund_holdings, column: isin, raw: "028260", source: rule}
-  Sec_d_094347e0df:
-    label_en: "삼성물산우B"
-    status: dom_foreign_ticker
-    note: "ticker=02826K"
+  Sec_kr_02826K:
+    label_ko: "삼성물산우B"
+    status: kr_ticker
     aliases:
       - {table: ext_etf_holdings, column: ticker, raw: "02826K", source: rule}
       - {table: ext_etf_holdings, column: constituent, raw: "삼성물산우B", source: rule}
+      - {table: ext_fund_holdings, column: isin, raw: "02826K", source: rule}
+      - {table: ext_fund_holdings, column: holding_nm, raw: "삼성물산우B", source: rule}
   Sec_kr_028300:
     label_ko: "HLB"
     status: kr_ticker
@@ -35638,41 +35650,24 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "000060", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "메리츠화재", source: rule}
-  Sec_f_0000H0:
+  Sec_kr_0000H0:
     label_ko: "KODEX 인도Nifty미드캡100"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0000H0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 인도Nifty미드캡100", source: rule}
-  Sec_f_0001A0:
-    label_ko: "덕양에너젠"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0001A0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "덕양에너젠", source: rule}
-  Sec_f_0004V0:
+  Sec_kr_0004V0:
     label_ko: "엔비알모션"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0004V0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "엔비알모션", source: rule}
-  Sec_f_0005G0:
+  Sec_kr_0005G0:
     label_ko: "IBK K-AI반도체코어테크"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0005G0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "IBK K-AI반도체코어테크", source: rule}
-  Sec_f_0007C0:
-    label_ko: "아크릴"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0007C0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "아크릴", source: rule}
   Sec_kr_000830:
     label_ko: "삼성물산"
     status: kr_ticker
@@ -35685,45 +35680,15 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "000880", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "한화", source: rule}
-  Sec_f_00088K:
+  Sec_kr_00088K:
     label_ko: "한화3우B"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "00088K", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "한화3우B", source: rule}
-  Sec_f_0008Z0:
-    label_ko: "에스엔시스"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0008Z0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "에스엔시스", source: rule}
-  Sec_f_0009K0:
-    label_ko: "에임드바이오"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0009K0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "에임드바이오", source: rule}
-  Sec_f_00104K:
-    label_ko: "CJ4우(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "00104K", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "CJ4우(전환)", source: rule}
-  Sec_f_0011A0:
-    label_ko: "액스비스"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0011A0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "액스비스", source: rule}
-  Sec_f_0011T0:
+  Sec_kr_0011T0:
     label_ko: "채비"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0011T0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "채비", source: rule}
@@ -35733,24 +35698,15 @@ nodes:
     ambiguous_names: "제일모직"   # 이름이 다른 종목과 겹쳐 alias 제외 — 키(ticker/cusip)로만 매칭
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "001300", source: rule}
-  Sec_f_0015B0:
+  Sec_kr_0015B0:
     label_ko: "KoAct 미국나스닥성장기업액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0015B0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KoAct 미국나스닥성장기업액티브", source: rule}
-  Sec_f_0015G0:
-    label_ko: "그린광학"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0015G0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "그린광학", source: rule}
-  Sec_f_0015K0:
+  Sec_kr_0015K0:
     label_ko: "TIGER 미국소비트렌드액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0015K0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 미국소비트렌드액티브", source: rule}
@@ -35766,31 +35722,21 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "002550", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "LIG손해보험", source: rule}
-  Sec_f_0026S0:
+  Sec_kr_0026S0:
     label_ko: "1Q 미국S&P500"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0026S0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "1Q 미국S&P500", source: rule}
-  Sec_f_00279K:
-    label_ko: "아모레G3우(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "00279K", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "아모레G3우(전환)", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "아모레퍼시픽홀딩스3우C", source: rule}
   Sec_kr_003410:
     label_ko: "쌍용양회"
     status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "003410", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "쌍용양회", source: rule}
-  Sec_f_0035T0:
+  Sec_kr_0035T0:
     label_ko: "PLUS 글로벌휴머노이드로봇액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0035T0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "PLUS 글로벌휴머노이드로봇액티브", source: rule}
@@ -35800,17 +35746,9 @@ nodes:
     ambiguous_names: "SK"   # 이름이 다른 종목과 겹쳐 alias 제외 — 키(ticker/cusip)로만 매칭
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "003600", source: rule}
-  Sec_f_0043Y0:
-    label_ko: "TIME 차이나AI테크액티브"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0043Y0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "TIME 차이나AI테크액티브", source: rule}
-  Sec_f_0044K0:
+  Sec_kr_0044K0:
     label_ko: "삼성스팩10호"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0044K0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "삼성스팩10호", source: rule}
@@ -35832,38 +35770,21 @@ nodes:
     ambiguous_names: "매일유업"   # 이름이 다른 종목과 겹쳐 alias 제외 — 키(ticker/cusip)로만 매칭
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "005990", source: rule}
-  Sec_f_0060H0:
+  Sec_kr_0060H0:
     label_ko: "TIGER 토탈월드스탁액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0060H0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 토탈월드스탁액티브", source: rule}
-  Sec_f_00680K:
-    label_ko: "미래에셋증권2우B"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "00680K", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "미래에셋증권2우B", source: rule}
-  Sec_f_0069M0:
+  Sec_kr_0069M0:
     label_ko: "1Q 미국나스닥100"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0069M0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "1Q 미국나스닥100", source: rule}
-  Sec_f_0072R0:
-    label_ko: "TIGER KRX금현물"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0072R0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER KRX금현물", source: rule}
-  Sec_f_0072Z0:
+  Sec_kr_0072Z0:
     label_ko: "KB제33호스팩"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0072Z0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KB제33호스팩", source: rule}
@@ -35879,10 +35800,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "007820", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "에스엠코어", source: rule}
-  Sec_f_0079X0:
+  Sec_kr_0079X0:
     label_ko: "ACE BYD밸류체인액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0079X0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE BYD밸류체인액티브", source: rule}
@@ -35892,51 +35812,33 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "008000", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "도레이케미칼", source: rule}
-  Sec_f_0082N0:
-    label_ko: "카나프테라퓨틱스"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0082N0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "카나프테라퓨틱스", source: rule}
   Sec_kr_008560:
     label_ko: "메리츠종금증권"
     status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "008560", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "메리츠종금증권", source: rule}
-  Sec_f_0087F0:
+  Sec_kr_0087F0:
     label_ko: "ACE 차이나AI빅테크TOP2+액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0087F0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 차이나AI빅테크TOP2+액티브", source: rule}
-  Sec_f_0088M0:
-    label_ko: "메쥬"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0088M0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "메쥬", source: rule}
-  Sec_f_0088N0:
+  Sec_kr_0088N0:
     label_ko: "WON K-글로벌수급상위"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0088N0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "WON K-글로벌수급상위", source: rule}
-  Sec_f_0101C0:
+  Sec_kr_0101C0:
     label_ko: "하나36호스팩"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0101C0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "하나36호스팩", source: rule}
-  Sec_f_0105E0:
+  Sec_kr_0105E0:
     label_ko: "SOL 코리아고배당"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0105E0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "SOL 코리아고배당", source: rule}
@@ -35947,17 +35849,9 @@ nodes:
       - {table: ext_fund_holdings, column: isin, raw: "010620", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "HD현대미포", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "현대미포조선", source: rule}
-  Sec_f_0112X0:
-    label_ko: "마이티 200TR"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0112X0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "마이티 200TR", source: rule}
-  Sec_f_0120X0:
+  Sec_kr_0120X0:
     label_ko: "유진 챔피언중단기크레딧 X클래스"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0120X0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "유진 챔피언중단기크레딧 X클래스", source: rule}
@@ -35973,31 +35867,27 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "012700", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "리드코프", source: rule}
-  Sec_f_0127M0:
+  Sec_kr_0127M0:
     label_ko: "ACE 미국대형가치주액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0127M0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 미국대형가치주액티브", source: rule}
-  Sec_f_0127P0:
+  Sec_kr_0127P0:
     label_ko: "ACE 미국대형성장주액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0127P0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 미국대형성장주액티브", source: rule}
-  Sec_f_0127R0:
+  Sec_kr_0127R0:
     label_ko: "RISE 미국AI클라우드인프라"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0127R0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 미국AI클라우드인프라", source: rule}
-  Sec_f_0148J0:
+  Sec_kr_0148J0:
     label_ko: "TIGER 코리아휴머노이드로봇산업"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0148J0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 코리아휴머노이드로봇산업", source: rule}
@@ -36007,59 +35897,45 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "016170", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "로엔", source: rule}
-  Sec_f_0162Z0:
+  Sec_kr_0162Z0:
     label_ko: "RISE 삼성전자SK하이닉스채권혼합50"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0162Z0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 삼성전자SK하이닉스채권혼합50", source: rule}
-  Sec_f_0164G0:
+  Sec_kr_0164G0:
     label_ko: "RISE 차이나AI반도체TOP4Plus"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0164G0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 차이나AI반도체TOP4Plus", source: rule}
-  Sec_f_0166S0:
-    label_ko: "PLUS K제조업핵심기업액티브"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0166S0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "PLUS K제조업핵심기업액티브", source: rule}
-  Sec_f_0167A0:
+  Sec_kr_0167A0:
     label_ko: "SOL AI반도체TOP2플러스"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0167A0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "SOL AI반도체TOP2플러스", source: rule}
-  Sec_f_0168K0:
+  Sec_kr_0168K0:
     label_ko: "TIGER 기술이전바이오액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0168K0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 기술이전바이오액티브", source: rule}
-  Sec_f_0173Y0:
+  Sec_kr_0173Y0:
     label_ko: "KODEX 미국AI광통신네트워크"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0173Y0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 미국AI광통신네트워크", source: rule}
-  Sec_f_0176E0:
+  Sec_kr_0176E0:
     label_ko: "RISE 미국AI전력인프라액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0176E0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 미국AI전력인프라액티브", source: rule}
-  Sec_f_0180V0:
+  Sec_kr_0180V0:
     label_ko: "ACE 미국우주테크액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0180V0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 미국우주테크액티브", source: rule}
@@ -36069,31 +35945,15 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "018310", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "삼목에스폼", source: rule}
-  Sec_f_0184V0:
+  Sec_kr_0184V0:
     label_ko: "UNICORN 코스닥바이오액티브"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0184V0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "UNICORN 코스닥바이오액티브", source: rule}
-  Sec_f_0192L0:
-    label_ko: "RISE SK하이닉스단일종목레버리지"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0192L0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "RISE SK하이닉스단일종목레버리지", source: rule}
-  Sec_f_0192M0:
-    label_ko: "RISE 삼성전자단일종목레버리지"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "0192M0", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 삼성전자단일종목레버리지", source: rule}
-  Sec_f_0193W0:
+  Sec_kr_0193W0:
     label_ko: "KODEX 삼성전자단일종목레버리지"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0193W0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 삼성전자단일종목레버리지", source: rule}
@@ -36103,10 +35963,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "019440", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "세아특수강", source: rule}
-  Sec_f_0195S0:
+  Sec_kr_0195S0:
     label_ko: "TIGER SK하이닉스단일종목레버리지"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "0195S0", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER SK하이닉스단일종목레버리지", source: rule}
@@ -36122,13 +35981,6 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "028150", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "GS홈쇼핑", source: rule}
-  Sec_f_02826K:
-    label_ko: "삼성물산우B"
-    status: fund_isin
-    note: "asset_type=주식"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "02826K", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "삼성물산우B", source: rule}
   Sec_kr_031440:
     label_ko: "신세계푸드"
     status: kr_ticker
@@ -36141,10 +35993,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "033290", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "코웰패션", source: rule}
-  Sec_f_03473K:
+  Sec_kr_03473K:
     label_ko: "SK우"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "03473K", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "SK우", source: rule}
@@ -36993,10 +36844,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "371150", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 차이나항셍테크", source: rule}
-  Sec_f_37550L:
+  Sec_kr_37550L:
     label_ko: "DL이앤씨2우(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "37550L", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "DL이앤씨2우(전환)", source: rule}
@@ -57087,53 +56937,27 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR6493981F57", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "뉴스타이천제일차 1(사모/콜/강제)", source: rule}
-  Sec_f_KR70000Y0004:
-    label_ko: "HK 26-12 회사채(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70000Y0004", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "HK 26-12 회사채(AA-이상)액티브", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "흥국HK26-12회사채(AA-이상)액티브증권상장", source: rule}
-  Sec_f_KR70007F0000:
-    label_ko: "KODEX 27-12 회사채(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70007F0000", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 27-12 회사채(AA-이상)액티브", source: rule}
-  Sec_f_KR70016X0007:
+  Sec_kr_0016X0:
     label_ko: "SOL 중단기회사채(A-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70016X0007", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "SOL 중단기회사채(A-이상)액티브", source: rule}
-  Sec_f_KR70017Y0005:
+  Sec_kr_0017Y0:
     label_ko: "1Q 종합채권(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70017Y0005", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "1Q 종합채권(AA-이상)액티브", source: rule}
-  Sec_f_KR70043B0000:
-    label_ko: "TIGER 머니마켓액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70043B0000", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 머니마켓액티브", source: rule}
-  Sec_f_KR70052T0008:
+  Sec_kr_0052T0:
     label_ko: "1Q 중단기회사채(A-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70052T0008", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "1Q 중단기회사채(A-이상)액티브", source: rule}
-  Sec_f_KR70061Z0009:
+  Sec_kr_0061Z0:
     label_ko: "RISE 단기특수은행채액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70061Z0009", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 단기특수은행채액티브", source: rule}
@@ -57144,84 +56968,36 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR700680000R", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "미래에셋증권[합병]", source: rule}
-  Sec_f_KR70085N0005:
+  Sec_kr_0085N0:
     label_ko: "ACE 미국10년국채액티브(H)"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70085N0005", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 미국10년국채액티브(H)", source: rule}
-  Sec_f_KR70091C0000:
+  Sec_kr_0091C0:
     label_ko: "KODEX 미국10년국채액티브(H)"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70091C0000", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 미국10년국채액티브(H)", source: rule}
-  Sec_f_KR70092C0009:
+  Sec_kr_0092C0:
     label_ko: "SOL 27-12 회사채(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70092C0009", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "SOL 27-12 회사채(AA-이상)액티브", source: rule}
-  Sec_f_KR70094K0007:
-    label_ko: "TIGER 28-04 회사채(A+이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70094K0007", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 28-04 회사채(A+이상)액티브", source: rule}
-  Sec_f_KR70099L0001:
+  Sec_kr_0099L0:
     label_ko: "ACE 우량회사채(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70099L0001", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 우량회사채(AA-이상)액티브", source: rule}
-  Sec_f_KR70119H0003:
-    label_ko: "KODEX28-12회사채(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70119H0003", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX28-12회사채(AA-이상)액티브", source: rule}
-  Sec_f_KR70131W0008:
-    label_ko: "1Q 단기특수은행채액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70131W0008", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "1Q 단기특수은행채액티브", source: rule}
-  Sec_f_KR70135Y0002:
-    label_ko: "IBK 중기종합채권(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70135Y0002", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "IBK 중기종합채권(AA-이상)액티브", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "IBK 중기종합채권(AA-이상)액티브증권", source: rule}
-  Sec_f_KR70139F0001:
+  Sec_kr_0139F0:
     label_ko: "TIGER 12월자동연장금융채(AA-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR70139F0001", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 12월자동연장금융채(AA-이상)액티브", source: rule}
-  Sec_f_KR70162M0002:
-    label_ko: "KODEX금융채1~2년(AA-이상)PLUS액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70162M0002", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX금융채1~2년(AA-이상)PLUS액티브", source: rule}
-  Sec_f_KR70192Z0001:
-    label_ko: "TIGER 중기종합채권(A-이상)액티브"
-    status: fund_isin
-    note: "asset_type=채권"
-    aliases:
-      - {table: ext_fund_holdings, column: isin, raw: "KR70192Z0001", source: rule}
-      - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 중기종합채권(A-이상)액티브", source: rule}
   Sec_kr_148070:
     label_ko: "KIWOOM 국고채10년"
     status: kr_ticker
@@ -57235,10 +57011,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR7152380002", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "KODEX 국채선물10년", source: rule}
-  Sec_f_KR722695K037:
+  Sec_kr_22695K:
     label_ko: "올릭스3우선주(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR722695K037", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "올릭스3우선주(전환)", source: rule}
@@ -57248,10 +57023,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR7272910001", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 중장기국공채액티브", source: rule}
-  Sec_f_KR730436K010:
+  Sec_kr_30436K:
     label_ko: "에스바이오메딕스10우선주(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR730436K010", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "에스바이오메딕스10우선주(전환)", source: rule}
@@ -57273,10 +57047,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR7336160007", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "RISE 금융채액티브", source: rule}
-  Sec_f_KR733668K015:
+  Sec_kr_33668K:
     label_ko: "탑런토탈솔루션1우선주(전환상환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR733668K015", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "탑런토탈솔루션1우선주(전환상환)", source: rule}
@@ -57305,10 +57078,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR7365780006", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 국고채10년", source: rule}
-  Sec_f_KR738055K176:
+  Sec_kr_38055K:
     label_ko: "뉴로핏17우선주(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR738055K176", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "뉴로핏17우선주(전환)", source: rule}
@@ -57369,10 +57141,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR7440640001", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "ACE 단기채권알파액티브", source: rule}
-  Sec_f_KR744127K019:
+  Sec_kr_44127K:
     label_ko: "파인엠텍1우선주(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR744127K019", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "파인엠텍1우선주(전환)", source: rule}
@@ -57394,10 +57165,9 @@ nodes:
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR7451530000", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "TIGER 국고채30년스트립액티브", source: rule}
-  Sec_f_KR745616K200:
+  Sec_kr_45616K:
     label_ko: "지투지바이오20우선주(전환)"
-    status: fund_isin
-    note: "asset_type=주식"
+    status: kr_ticker
     aliases:
       - {table: ext_fund_holdings, column: isin, raw: "KR745616K200", source: rule}
       - {table: ext_fund_holdings, column: holding_nm, raw: "지투지바이오20우선주(전환)", source: rule}

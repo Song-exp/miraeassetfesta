@@ -254,6 +254,30 @@ nodes:
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G105:
+    label_ko: 근로자우대
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G105
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_G108:
+    label_ko: 퇴직신탁
+    axis: G
+    axis_name: 세제특례·연금상품
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: G108
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
   FundAttr_G110:
     label_ko: 연금저축
     axis: G
@@ -482,6 +506,18 @@ nodes:
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_M115:
+    label_ko: 정부공공기금풀(개별)
+    axis: M
+    axis_name: 펀드구조(모자/종류형/FoFs 등)
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: M115
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
   FundAttr_M119:
     label_ko: MoM
     axis: M
@@ -539,6 +575,18 @@ nodes:
     - table: public_funds
       column: prfd_attr_cds
       raw: N102
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N104:
+    label_ko: BIG7 그룹주
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 2
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N104
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
@@ -671,6 +719,18 @@ nodes:
     - table: public_funds
       column: prfd_attr_cds
       raw: N116
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N117:
+    label_ko: 물
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N117
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
@@ -962,6 +1022,18 @@ nodes:
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N151:
+    label_ko: 조선(해운/선박)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N151
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
   FundAttr_N152:
     label_ko: 방위산업
     axis: N
@@ -1019,6 +1091,18 @@ nodes:
     - table: public_funds
       column: prfd_attr_cds
       raw: N156
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_N158:
+    label_ko: 에너지(수소)
+    axis: N
+    axis_name: 테마·컨셉
+    n_rows_selling: 2
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: N158
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
@@ -1190,6 +1274,18 @@ nodes:
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_O108:
+    label_ko: 자동차&부품 제조
+    axis: O
+    axis_name: 섹터
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: O108
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
   FundAttr_O117:
     label_ko: 헬스케어섹터
     axis: O
@@ -1322,6 +1418,18 @@ nodes:
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_P111:
+    label_ko: Dur 3~4
+    axis: P
+    axis_name: 투자스타일·채권듀레이션
+    n_rows_selling: 4
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: P111
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
   FundAttr_P120:
     label_ko: 만기매칭
     axis: P
@@ -1406,6 +1514,18 @@ nodes:
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R103:
+    label_ko: 코스닥
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R103
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
   FundAttr_R105:
     label_ko: 공모주(혼합)
     axis: R
@@ -1439,6 +1559,18 @@ nodes:
     - table: public_funds
       column: prfd_attr_cds
       raw: R107
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_R108:
+    label_ko: CBO
+    axis: R
+    axis_name: 특수자산·전략자산
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: R108
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
@@ -1523,6 +1655,18 @@ nodes:
     - table: public_funds
       column: prfd_attr_cds
       raw: S104
+      match: token
+      source: codebook
+      evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)
+  FundAttr_S106:
+    label_ko: (인핸스드인덱스)
+    axis: S
+    axis_name: 운용전략
+    n_rows_selling: 1
+    aliases:
+    - table: public_funds
+      column: prfd_attr_cds
+      raw: S106
       match: token
       source: codebook
       evidence: fund_attr_code/fund_country_tag.csv (prfd_attr_search_text 인접쌍 도출, zrin_attr_nms 검증)

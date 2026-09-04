@@ -6827,93 +6827,93 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 3행
   Org_fund_00130001:
-    label_ko: 피델리티펀드유로
+    label_ko: 피델리티
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130001'
       source: rule
-      evidence: asset_manager.csv derived · 47행
+      evidence: asset_manager.csv brand_observed · 47행
   Org_fund_00130002:
-    label_ko: 템플턴글로벌본드
+    label_ko: 템플턴
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130002'
       source: rule
-      evidence: asset_manager.csv derived · 9행
+      evidence: asset_manager.csv brand_observed · 9행
   Org_fund_00130003:
-    label_ko: 슈로더이머징유럽
+    label_ko: 슈로더
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130003'
       source: rule
-      evidence: asset_manager.csv derived · 13행
+      evidence: asset_manager.csv brand_observed · 13행
   Org_fund_00130004:
     label_ko: AB
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130004'
       source: rule
-      evidence: asset_manager.csv derived · 10행
+      evidence: asset_manager.csv brand_observed · 10행
   Org_fund_00130005:
-    label_ko: 북미펀드
+    label_ko: '00130005'
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=unknown — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130005'
       source: rule
-      evidence: asset_manager.csv derived · 11행
+      evidence: asset_manager.csv unknown · 11행
   Org_fund_00130006:
-    label_ko: 미래에셋차이나업
+    label_ko: 미래에셋
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130006'
       source: rule
-      evidence: asset_manager.csv derived · 8행
+      evidence: asset_manager.csv brand_observed · 8행
   Org_fund_00130009:
     label_ko: 젬스
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: 00130009
       source: rule
-      evidence: asset_manager.csv derived · 3행
+      evidence: asset_manager.csv brand_observed · 3행
   Org_fund_00130012:
     label_ko: 골드만삭스
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130012'
       source: rule
-      evidence: asset_manager.csv derived · 1행
+      evidence: asset_manager.csv brand_observed · 1행
   Org_fund_00130013:
     label_ko: 밀레니윰
     role: manager
@@ -6970,16 +6970,16 @@ nodes:
       source: rule
       evidence: asset_manager.csv derived · 1행
   Org_fund_00130026:
-    label_ko: 블랙록월드광업주
+    label_ko: 블랙록
     role: manager
     auto: true
-    note: asset_manager.csv status=derived — 법인명 미확정(브랜드/코드 라벨)
+    note: asset_manager.csv status=brand_observed — 법인명 미확정(브랜드/코드 라벨)
     aliases:
     - table: public_funds
       column: or_co_xtn_itt_cd
       raw: '00130026'
       source: rule
-      evidence: asset_manager.csv derived · 8행
+      evidence: asset_manager.csv brand_observed · 8행
   Org_fund_00040106:
     label_ko: '00040106'
     role: manager

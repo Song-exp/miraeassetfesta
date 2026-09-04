@@ -242,7 +242,7 @@
  "V3": {
   "route": "public_funds",
   "nodes": [
-   "Idx_a_fa21f0fb15"
+   "Idx_KOSPI200"
   ],
   "where": "REPLACE(itm_nm,' ','') LIKE '%삼성KOSPI2002배레버리지%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr3_ern_r IS NOT NULL AND fd_yr3_ern_r <> 0",
   "assembler": "개별 조회 답변 기계 조립",

@@ -16,8 +16,14 @@
   · std_itm_no: 묶음당 1종 11,366 / 2종+ 1,635 — 클래스 하위 식별자, 노드 키 아님.
   · M111(종류형 클래스펀드) 10,510행 = 3,954 묶음, 그중 1,659 묶음이 클래스 ≥2 — 클래스 → 묶음(classOf) 은
     마스터 컬럼(rptt_ksd_itm_no) 이 이미 담고 있어 edge 로 만들지 않는다.
-  · 모펀드: ext_fund_page.mother_fund_names_raw 4,185행(전부 마스터 조인) 에서 '모투자신탁/모투자회사' 명 추출.
-    마스터 itm_nm 과 정규화 완전일치는 3건뿐 → 모펀드는 마스터 밖 개체(MotherFund_*) 로 생성하고 feedsInto 로 잇는다.
+  · 모펀드: 🔴 2026-09-04 — **노드를 만들지 않는다.** ext_fund_page.mother_fund_names_raw 에서 뽑은 이름이
+    마스터 itm_nm 과 완전일치하는 경우가 **0건**이라(2차 데이터), 만들면 alias 를 붙일 값이 없다.
+    Fund 노드의 계약은 '라벨(정식명)로 맞히고 alias(rptt 코드)로 조회한다' 인데 모펀드는 후반부를 지킬 수 없다 —
+    맞혀도 SQL 에 실을 값이 없어 Ground 가 소비만 하고 끝난다. 실측(2026-09-04 78문항·17R 239문항)에서
+    MotherFund 매핑 0건, feedsInto 는 런타임이 적재조차 하지 않는다(loader 는 subsidiaryOf 만 읽는다).
+    모자형 질의 3종은 KG 없이 SQL 로 답한다 — ① 모펀드명: ext_fund_page 조회(2026-09-04 KG-010 ✅)
+    ② 모자형 여부: itm_nm '자투자신탁' 7,693행 · 태그 M109 6,984행 ③ 같은 모펀드 묶음: ext_fund_page GROUP BY(538묶음).
+    마스터에 일치하는 이름이 생기면(dst 가 실제 Fund 노드가 되면) 그때는 edge 를 만든다 — 아래 분기가 그 자리다.
   · M112 FoFs 2,052행: 편입 대상 펀드 식별 불가(텍스트 없음) → 노드 속성 structure=FoFs 만.
 """
 import csv, hashlib, os, re, sqlite3, sys, collections
@@ -139,7 +145,7 @@ def main():
     itm2rp = dict(zip(p.itm_no, p.rp))
     master_norm = {norm_name(n): rp for n, rp in zip(p.itm_nm, p.rp)}
     mother_nodes, seen_pairs = {}, set()
-    cand_total = matched_master = 0
+    cand_total = matched_master = skipped_no_master = 0
     for itm, raw in zip(e.itm_no, e.m):
         rp = itm2rp.get(itm)
         if not rp:
@@ -150,14 +156,13 @@ def main():
                 continue
             cand_total += 1
             key = norm_name(t)
-            if key in master_norm:              # 마스터 안에 있는 모펀드 (드묾)
-                matched_master += 1
-                dst = fund_id[master_norm[key]]
-            else:
-                dst = sid("MotherFund_", key)
-                if dst not in mother_nodes:
-                    mother_nodes[dst] = {"label_ko": t, "auto": True, "role": "mother",
-                                         "note": "마스터 밖 — 간이투자설명서 텍스트(ext_fund_page.mother_fund_names_raw)에서 추출"}
+            if key not in master_norm:
+                # 🔴 마스터 밖 이름은 노드를 만들지 않는다 — alias 로 실을 코드가 없어 조회에 쓸 수 없다.
+                #    (docstring '모펀드' 항 참조. 2026-09-04 현재 이 분기가 후보 전량)
+                skipped_no_master += 1
+                continue
+            matched_master += 1
+            dst = fund_id[master_norm[key]]
             pair = (fund_id[rp], dst)
             if pair in seen_pairs or pair[0] == pair[1]:
                 continue
@@ -174,11 +179,11 @@ def main():
         "# 키 구조 실측·설계 근거는 생성 스크립트 상단 docstring 참조.",
         f"# Fund 노드 {stat['fund']} (rptt_ksd_itm_no 단위 · all_closed {stat['all_closed']} · 복수클래스 {stat['multi_class']} · FoFs {stat['fofs']} · 자펀드 {stat['child']})",
         f"# 제외: rptt 위장결측('KR0000000000'·'000000000000') {excluded}행 — 대표펀드 정보 없음, 노드 없음 (클래스 단독 조회는 마스터로)",
-        f"# MotherFund 노드 {len(mother_nodes)} · feedsInto edge {len(edges)} (모펀드 후보 {cand_total} · 마스터 내 매칭 {matched_master})",
+        f"# 모펀드: 후보 {cand_total} 중 마스터 일치 {matched_master} 만 feedsInto edge {len(edges)} 로 생성 — 마스터 밖 {skipped_no_master} 건은 노드를 만들지 않는다(alias 로 실을 코드가 없다. docstring 참조)",
         "# classOf(클래스→묶음) 는 edge 로 만들지 않는다 — public_funds.rptt_ksd_itm_no 컬럼이 그 관계 자체.",
         "# representedBy 는 만들 수 없다 — 대표 클래스가 마스터 행인 경우 0.1%. rptt 가 노드 키로 그 역할을 흡수.",
         "entity: Fund",
-        "description: 공모펀드 묶음(대표펀드 KSD 코드 단위) 및 모펀드 — 클래스 행(itm_no)은 rptt_ksd_itm_no 로 이 노드에 매달린다",
+        "description: 공모펀드 묶음(대표펀드 KSD 코드 단위) — 이름으로 맞히고 rptt 코드로 조회하는 개체. 클래스 행(itm_no)은 rptt_ksd_itm_no 로 이 노드에 매달린다. 모펀드는 마스터 밖이라 노드로 만들지 않는다",
         "property: belongsToFund",
         "generated: true",
         f"source: {q(SRC)}", f"as_of: '{AS_OF}'",
@@ -204,7 +209,7 @@ def main():
     with open(OUT, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(L) + "\n")
     print(f"Fund 노드 {stat['fund']} (all_closed {stat['all_closed']} · multi_class {stat['multi_class']} · FoFs {stat['fofs']} · 자펀드 {stat['child']}) · 위장결측 제외 {excluded}행")
-    print(f"MotherFund 노드 {len(mother_nodes)} · feedsInto {len(edges)} · 모펀드 후보 {cand_total} · 마스터 내 매칭 {matched_master}")
+    print(f"모펀드 후보 {cand_total} · 마스터 일치 {matched_master} (edge {len(edges)}) · 마스터 밖 {skipped_no_master} 건 노드 미생성")
     # 라벨 품질 표본
     sample = [(n["label_ko"], n["n_classes"]) for n in list(nodes.values()) if n.get("n_classes", 0) >= 4][:8]
     print("라벨 표본(클래스≥4):", sample)

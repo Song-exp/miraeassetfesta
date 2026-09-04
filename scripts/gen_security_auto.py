@@ -6,7 +6,8 @@
     해외는 이름 LIKE 로 잡으면 'SAMSUNG ELECTRONICS' 와 'SAMSUNG ELECTRO-MECHANICS'(삼성전기)가 같이 걸린다.
 
 원천·키 (2026-08-25 실측):
-  ext_etf_holdings.ticker      6자리 KRX 티커('005930') — 국내 종목 키. 6자리가 아닌 값('000001 C2' = 중국 A주 등)은 별도 키
+  ext_etf_holdings.ticker      **영숫자 6자리** KRX 티커('005930'·'0001A0'·'00104K') — 국내 종목 키.
+                               그 꼴이 아닌 값('000001 C2' = 중국 A주 등)은 별도 키
   ext_fund_holdings.isin       🔴 컬럼명은 isin 이지만 국내 주식은 6자리 티커('005930') — 국내 ETF 티커와 그대로 조인.
                                해외 종목은 진짜 ISIN(CNE1000041R8·US4…). 파생/ETF(asset_type) 는 종목 alias 에서 제외
   ext_ovs_etf_holdings.cusip   9자리. 결측 18%·'000000000' 플레이스홀더 多 / lei: 법인 식별자 (삼성전자 LEI 1개 ← cusip 7종·표기 8종)
@@ -102,8 +103,12 @@ def main():
     kr_ids = {}
     for tk, nm, n in dom:
         tk = tk.strip()
-        if re.fullmatch(r"\d{6}", tk):
-            nid = f"Sec_kr_{tk}"; node(nid, label_ko=nm.strip(), status="kr_ticker")
+        # 🔴 2026-09-04 — 국내 티커는 **영숫자 6자리**다. `\d{6}` 만 보면 신주·전환 등으로 영문이 섞인 코드
+        #    ('0001A0' 덕양에너젠 · '00104K' CJ4우(전환))가 Sec_d_ 해시로 빠져, 같은 종목을 펀드 쪽
+        #    Sec_f_0001A0 과 남남으로 만든다(실측 17건). 펀드 분기(아래 2번)와 판정을 맞춘다.
+        m_kr7 = re.fullmatch(r"KR7([0-9A-Z]{6})\d{3}", tk)   # ETF 쪽엔 KR7 변환이 없었다 — 펀드 분기와 비대칭
+        if re.fullmatch(r"[0-9A-Z]{6}", tk) or m_kr7:
+            nid = f"Sec_kr_{m_kr7.group(1) if m_kr7 else tk}"; node(nid, label_ko=nm.strip(), status="kr_ticker")
         else:
             nid = f"Sec_d_{sha(tk)}"; node(nid, label_en=nm.strip(), status="dom_foreign_ticker", note=f"ticker={tk}")
         nn = nodes[nid]; alias(nn, "ext_etf_holdings", "ticker", tk); alias(nn, "ext_etf_holdings", "constituent", nm)
@@ -120,10 +125,11 @@ def main():
     n_kr7 = 0
     for isin, nm, at in fund:
         isin = isin.strip()
-        m_kr7 = re.fullmatch(r"KR7(\d{6})\d{3}", isin)   # 진짜 KR ISIN 표기 → 6자리 티커 노드에 병합 (같은 종목이 두 표기로 옴: KR7285130001 / 285130)
+        m_kr7 = re.fullmatch(r"KR7([0-9A-Z]{6})\d{3}", isin)   # 진짜 KR ISIN 표기 → 6자리 티커 노드에 병합 (같은 종목이 두 표기로 옴: KR7285130001 / 285130)
         if m_kr7:
             n_kr7 += 1
-        if re.fullmatch(r"\d{6}", isin) or m_kr7:
+        # 🔴 2026-09-04 — 영숫자 6자리 허용 (ETF 분기와 대칭). 컬럼명은 isin 이지만 국내는 티커가 온다.
+        if re.fullmatch(r"[0-9A-Z]{6}", isin) or m_kr7:
             nid = f"Sec_kr_{m_kr7.group(1) if m_kr7 else isin}"
             if nid not in nodes: n_fund_new += 1
             node(nid, label_ko=nm.strip(), status="kr_ticker")

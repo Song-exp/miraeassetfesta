@@ -26,12 +26,14 @@ property: hasManager
 nodes:
   Org_00080008:
     label_ko: 미래에셋
+    former_names: [미래에셋맵스자산운용]   # 합병 잔재 — 2026-09-04 ext_fund_page.mgmt_co_nm 실측: 판매중·공모 1,943클래스 중 '미래에셋맵스자산운용' 2건
     # codebook evidence A · 접두점유 0.993 · 2852종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00080008", source: codebook_v1, evidence: "codebook evidence A · 접두점유 0.993 · 2852종목"}
       - {table: domestic_etfs, column: cu_fund_mgmt_co, raw: "미래에셋", source: rule, evidence: "브랜드=ETF 약칭 완전일치 자동연결"}
   Org_00040010:
     label_ko: 삼성
+    former_names: [삼성액티브자산운용]   # 같은 코드 안의 별개 법인 — 2026-09-04 실측: 812클래스 중 '삼성액티브자산운용' 1건. 코드가 법인과 1:1 이 아님을 표시
     # codebook evidence A · 접두점유 0.998 · 908종목
     aliases:
       - {table: public_funds, column: or_co_xtn_itt_cd, raw: "00040010", source: codebook_v1, evidence: "codebook evidence A · 접두점유 0.998 · 908종목"}

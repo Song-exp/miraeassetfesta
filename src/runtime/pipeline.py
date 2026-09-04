@@ -1404,6 +1404,40 @@ def ensure_fund_unit_subcount(sql: str) -> tuple[str, bool]:
     return out, fixed
 
 
+_ORG_ASK = re.compile(r"운용사|운용회사|위탁회사|수탁사|수탁회사|수탁은행")
+_COUNT_ASK = re.compile(r"몇\s*(?:개|곳|건)|개수|상위\s*\d|랭킹|순위|가장\s*많")
+
+
+def ensure_fund_org_lookup(sql: str, question: str, name_token: str | None) -> tuple[str, bool]:
+    """개별 펀드의 **운용사·수탁사** 조회를 확정식으로 세운다. (SQL, 세웠는지)
+
+    2026-09-04 KG-006 실측("미래에셋코어테크 펀드의 운용사와 수탁사는 어디야?") — 펀드 질문 중
+    가장 기본인데 두 회차 모두 완전 실패했다. 이 질의는 **SQL 만으로 풀 수 없다**:
+
+        운용사 이름   ext_fund_page.mgmt_co_nm (65종)
+        수탁사 이름   🔴 **어느 컬럼에도 없다** — 마스터엔 코드(trusc_xtn_itt_cd)뿐이고 이름은 KG 에만
+
+    그래서 HCX 는 매번 없는 컬럼을 지어냈다(`mtco_nm`·`trusc_nm` → 스키마 기각 → 재생성도 같은
+    실수 → 오거절). 답은 **코드를 고르고 답변 층이 KG 이름으로 옮기는 것**이고, 그 옮기는 장치는
+    이미 있다(`[Answer] 기관 코드·이름 확정 표기` → `신한은행(00020088)`).
+
+    조치: 두 코드 컬럼을 실은 개별 조회 템플릿으로 SQL 을 세운다. 모수 조건은 붙이지 않는다 —
+    enforce 슬롯(BASEPOP·FUNDUNIT)이 뒤이어 붙이므로 이 가드는 **슬롯보다 앞**에 둔다.
+    발동: ① 상품 고유명이 잡혔다(개별 조회) ② 질문이 운용사·수탁사를 묻는다 ③ 개수·랭킹 질의가
+    아니다(`KG-008` "가장 많이 수탁하는 수탁사 상위 3개" 는 집계라 불개입).
+    """
+    if not name_token or not _ORG_ASK.search(question) or _COUNT_ASK.search(question):
+        return sql, False
+    nm = name_token.replace(" ", "").replace("'", "''")
+    tpl = ("SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS \"클래스수\", "
+           "MAX(or_co_xtn_itt_cd) AS 운용사코드, MAX(trusc_xtn_itt_cd) AS 수탁사코드 "
+           "FROM public_funds "
+           f"WHERE REPLACE(itm_nm,' ','') LIKE '%{nm}%' "
+           f"GROUP BY {guard.FUND_KEY_EXPR} "
+           "ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC LIMIT 30")
+    return (sql, False) if tpl == sql else (tpl, True)
+
+
 def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
     """펀드단위 랭킹의 대표행을 기계 보정한다. (보정된 SQL, 보정했는지)
 
@@ -7649,6 +7683,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 절차는 "체인 맨 앞" 이라 적었지만 **방언 치환·OR 재괄호화 뒤**에 둔다 — 그 둘은 보정이 아니라
     #    정규화이고, `SELECT TOP n`(비-SQLite) 상태에서 WHERE 를 끼우면 실행조차 안 돼 대조가 불가능하다
     #    (섀도 X2 실측). 의미를 고치는 가드들보다는 여전히 앞이다.
+    # 🔴 enforce 슬롯보다 **앞** — 이 가드는 SQL 을 통째로 세우므로, 모수(BASEPOP)·펀드단위(FUNDUNIT)를
+    #    뒤에서 받아야 한다. 개별 펀드의 운용사·수탁사는 SQL 만으로 못 푸는 질의다(수탁사 이름이 KG 에만 있다).
+    sql, org_lk = ensure_fund_org_lookup(sql, q, name_token)
+    if org_lk:
+        step("[Guard] 기관 조회 확정식 — 개별 펀드의 운용사·수탁사는 코드 컬럼으로 세우고 이름은 KG 가 옮긴다 "
+             "(2026-09-04 KG-006 실측: 수탁사 이름은 어느 컬럼에도 없어 HCX 가 mtco_nm·trusc_nm 을 매번 지어냈다)")
     if tables:
         sql, enf_fired = guard.apply_enforce(sql, q, list(tables), set(), ctx)
         for mark in enf_fired:

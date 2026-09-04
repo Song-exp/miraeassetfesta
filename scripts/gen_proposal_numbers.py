@@ -151,20 +151,43 @@ n_cur000, n_dur99, n_mat0 = b("curr_cd='000'"), b("dur >= 90"), b("mat_dt IS NUL
 n_dirty_nz = b("dirty IS NOT NULL AND dirty <> 0")
 n_dirty_copy = b("dirty IS NOT NULL AND dirty <> 0 AND dirty = eval_price")
 n_srfc0 = b("srfc_irt = 0")
+# ── 결측 블록 — 결측이 컬럼별로 흩어진 것이 아니라 **행 단위로 정보 묶음이 통째로 없다** (2026-09-04 전수 실측).
+#    이 사실이 ②③ 의 실체다: 컬럼 하나가 빈 것이 아니라 판매/평가 정보가 서랍째 없다.
+SALE13 = ["buy_yield", "after_tax_yield", "corp_pretax_yield", "corp_after_tax_yield", "pref_tax_yield",
+          "depo_equiv_yield_154", "depo_equiv_yield_495", "avg_annual_tax_yield", "trade_price",
+          "buyable_quantity", "bdbns_abl_chnl_nm", "bdbns_abl_chnl_tcd", "sale_yield_base_dt"]
+EVAL8 = ["dur", "cov", "dirty", "ndy_dur", "ndy_cov", "ndy_dirty", "ndy_eval_price", "ndy_applied_yield"]
+_all = lambda cs: b(" AND ".join(f"{c} IS NULL" for c in cs))
+_any = lambda cs: b(" OR ".join(f"{c} IS NULL" for c in cs))
+n_sale_all, n_sale_any = _all(SALE13), _any(SALE13)
+n_eval_all, n_eval_any = _all(EVAL8), _any(EVAL8)
+n_sale_otc = b("buy_yield IS NOT NULL AND TRIM(pd_exg_mkt)='장외'")
+n_eval_matured = b("dur IS NULL AND mat_dt IS NOT NULL AND mat_dt < 20260824")
+n_eval_dup = b("dur IS NULL AND pd_no IN (select pd_no from domestic_bonds group by pd_no having count(*)>=2)")
 L.append("#### 국내채권 결측 유형 표 (2차 재실측) — 1차 EDA 7유형 대비")
 L.append("")
 L.append("| # | 유형 | 2차 실측 | 1차 EDA(7/11) | 판정 · 선언 자리 |")
 L.append("| :-: | :-- | :-- | :-- | :-- |")
 L.append(f"| ① | 구조적 부재 — 국공채 신용등급 (해당없음) | 국공채 {n_gov:,}행 중 결측 {n_gov_nog:,} (완벽 대응) / 전체 결측 {n_nog:,} | 16,044 | `crd_grd.missing_reason: not_applicable` · `answer_policy` |")
 L.append(f"| ①′ | 같은 컬럼의 미수록 — 특수채·회사채 등급 결측 | {_mc.get('특수채',0):,} + {_mc.get('회사채',0):,} = {_mc.get('특수채',0)+_mc.get('회사채',0):,} | (미분리) | 같은 NULL 을 '미수록' 으로 따로 답함 |")
-L.append(f"| ② | 상태 표현 — 매수수익률 없음 = 지금 매물 아님 | `buy_yield` NULL {n_buy_null:,} / 있음 {n_buy_has:,} (`buyable_quantity`>0 {n_bq_pos:,}) | 41,513 / 881 | `buyable_quantity` 무효 · 규칙 `구매가능` 은 만기로 판정 |")
-L.append(f"| ③ | 미산출 — 만기 경과분의 듀레이션·잔존일수 | `dur` NULL {n_dur_null:,} · `remaining_days` NULL {n_rd_null:,} · 만기 경과(<8/24) {n_matured:,} | 13,376 / 10,645 | 2차는 만기 도래분이 빠져 사실상 소멸 — 규칙 `듀레이션정상` |")
+L.append(f"| ② | 상태 표현 — 판매정보 **{len(SALE13)}컬럼이 한 덩어리로** 없음 = 지금 매물 아님 | {len(SALE13)}컬럼 동시 NULL {n_sale_all:,} = 하나라도 NULL {n_sale_any:,} (완전 일치) · 값 있는 {n_buy_has:,}행은 전부 장외 {n_sale_otc:,} (`buyable_quantity`>0 {n_bq_pos:,}) | 41,513 / 881 | `buyable_quantity` 무효 · 규칙 `구매가능` 은 만기로 판정 · 규칙 `판매행` · `answer_rules` 모수 고지 |")
+L.append(f"| ③ | 미산출 — 평가정보 **{len(EVAL8)}컬럼이 한 덩어리로** 없음 | {len(EVAL8)}컬럼 동시 NULL {n_eval_all:,} = 하나라도 NULL {n_eval_any:,} (완전 일치) · 전부 장외 · 그중 중복종목의 장외행 {n_eval_dup:,} · **만기 경과와 교집합 {n_eval_matured:,}** (별건: 만기 경과 {n_matured:,}행) · `remaining_days` NULL {n_rd_null:,}(= 만기일 미수록분) | 13,376 / 10,645 | 규칙 `듀레이션정상` — 🔴 1차의 '만기 경과분 미산출' 이라는 유형 이름은 2차에 맞지 않는다(그 16행은 만기가 미래다) |")
 L.append(f"| ④ | 복구 가능 — 평가사 등급 컬럼 병합 | {'컬럼 없음 → 소멸' if 'pd_evco_crd_grd' not in _cols else '컬럼 실재'} | 1,600 | 2차 스키마에서 유형 소멸 |")
 L.append(f"| ⑤ | 센티넬·위장 결측 | `avg_annual_tax_yield` 0·NULL {n_tax0:,}(전량) · `curr_cd`='000' {n_cur000:,} · `dur`≥90 {n_dur99:,} · `mat_dt` 0 {n_mat0:,} | 전량 0 · 99 · 99991231 | `zero_as_missing` 11컬럼 · 게이트 `curr_cd` 상수 · 규칙 `외화채없음` |")
 L.append(f"| ⑥ | 복사 위장 — `dirty` = `eval_price` | {n_dirty_copy:,} / {n_dirty_nz:,} | 27,430 | 금지 컬럼 (조립기 숨김) |")
 L.append(f"| ⑦ | 정상값 오해 — 비어 보이지만 값 | `srfc_irt`=0 {n_srfc0:,} (할인채·주식연계) · `pd_risk_gcd`='00' {n_r00:,} | 2,758 | 규칙 `무이자질의` · `range_by_table` 0~6 |")
 L.append("")
 L.append("> 1차 열은 `docs/eda/domestic_bonds_notes.md` §B.2 의 42,394행 기준 값(재실측 아님) — 비교용으로만 싣는다. 판정 순서: ⑦ 정상값인가 → ⑤⑥ 위장인가 → ④ 복구 가능한가 → ①②③ 어떤 부재인가.")
+L.append("")
+
+L.append("#### 국내채권 결측 블록 (2026-09-04 전수 실측) — 결측의 단위는 컬럼이 아니라 행")
+L.append("")
+L.append("| 블록 | 컬럼 수 | 통째로 빈 행 | 값이 있는 행 | 검증 |")
+L.append("| :-- | --: | --: | :-- | :-- |")
+L.append(f"| 판매정보 (`buy_yield`·세후·법인·예금환산·매매단가·판매채널·판매기준일…) | {len(SALE13)} | {n_sale_all:,} | {n_buy_has:,} (전부 장외 LOT) | 동시 NULL = 하나라도 NULL ({n_sale_all:,} = {n_sale_any:,}) |")
+L.append(f"| 평가정보 (`dur`·`cov`·`dirty`·`ndy_*` 5) | {len(EVAL8)} | {n_eval_all:,} | {n_b-n_eval_all:,} | 동시 NULL = 하나라도 NULL ({n_eval_all:,} = {n_eval_any:,}) · 만기 경과와 교집합 {n_eval_matured:,} |")
+L.append("")
+L.append(f"> 판정: 이 {len(SALE13)}+{len(EVAL8)}컬럼의 NULL 은 컬럼 {len(SALE13)+len(EVAL8)}개의 결함이 아니라 **사실 두 개**다 — '지금 파는 물건이 아니다' 와 '장외 평가정보가 없다'. 그래서 답변 정책도 컬럼별이 아니라 블록별로 하나씩이다: 판매 축 질의는 모수 {n_buy_has:,}/{n_b:,} 를 밝히고, 평가 축 질의는 규칙 `듀레이션정상` 이 {n_eval_all:,}행을 정렬에서 뺀다.")
 L.append("")
 
 L.append("## 2. 외부 수집 (L2)")

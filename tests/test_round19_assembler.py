@@ -53,14 +53,31 @@ def test_fee_conversion_is_idempotent():
     2026-09-04 서버 실측: `MIN(ROUND((…)/10.0, 4)) AS "총보수_퍼센트"` 위에 조립기가 또 ÷10 해서
     0.0015% 가 0.0002% 로 나갔다(100배). 값이 아니라 **누가 이미 나눴는지**를 봐야 한다."""
     assert _fee_pct(0.0015, already_percent=True) == "0.0015"
-    # 별칭이 퍼센트를 말하면 이미 % 다
-    assert _fee_is_percent("SELECT a FROM t", "총보수_퍼센트", 0) is True
+    # 별칭 이름은 **자리를 못 찾을 때만** 쓰는 마지막 단서다 (test_lying_percent_alias_is_not_trusted)
+    assert _fee_is_percent("SELECT a FROM t", "총보수_퍼센트", None) is True
     # SQL 이 /10 을 했으면 이미 % 다
     div = 'SELECT itm_no, ROUND((or_co_rwrd_r + sale_co_rwrd_r)/10.0, 4) AS x FROM public_funds'
     assert _fee_is_percent(div, "x", 1) is True
     # 원값(‰)이면 아니다
     raw = "SELECT itm_no, MIN(or_co_rwrd_r + sale_co_rwrd_r) as total_commission FROM public_funds"
     assert _fee_is_percent(raw, "total_commission", 1) is False
+
+
+def test_lying_percent_alias_is_not_trusted():
+    """🔴 별칭 이름을 믿으면 안 된다 — 2026-09-04 DOM-06 서버 실측.
+
+        SELECT or_co_rwrd_r + sale_co_rwrd_r + … AS "총보수_퍼센트"  →  14.35
+
+    별칭은 '퍼센트' 라 말하는데 ÷10 이 없어 값은 ‰ 다(=1.435%). 이름을 신뢰하면 조립기가
+    환산을 건너뛰어 10배 틀린다. 판정 기준은 **식이 실제로 나눴는가** 하나여야 한다."""
+    lie = ('SELECT itm_no, TRIM(itm_nm), '
+           'MIN(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) AS "총보수_퍼센트", '
+           'COUNT(*) AS "클래스수" FROM public_funds ORDER BY 3')
+    assert _fee_is_percent(lie, "총보수_퍼센트", 2) is False, "거짓 별칭을 믿었다"
+    assert _fee_pct(14.35, _fee_is_percent(lie, "총보수_퍼센트", 2)) == "1.435"
+    # 자리를 못 찾을 때만 이름을 마지막 단서로 쓴다
+    honest = 'SELECT itm_no, MIN(ROUND((or_co_rwrd_r + sale_co_rwrd_r)/10.0, 4)) AS "총보수_퍼센트" FROM public_funds'
+    assert _fee_is_percent(honest, "총보수_퍼센트", None) is True
 
 
 def test_order_by_position_resolves_alias():

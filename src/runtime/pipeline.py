@@ -2342,14 +2342,23 @@ def _fee_pct(v: float, already_percent: bool = False) -> str:
 
 
 def _fee_is_percent(sql: str, header: str, pos: int | None) -> bool:
-    """그 값 열이 **이미 %** 인가 — SQL 이 ÷10 을 했거나 별칭이 퍼센트를 말하면 조립기는 더 나누지 않는다."""
-    if re.search(r"퍼센트|percent|%", header or "", re.I):
-        return True
+    """그 값 열이 **이미 %** 인가 — 판정 기준은 **SQL 이 실제로 ÷10 을 했는가** 하나다.
+
+    🔴 별칭 이름을 믿으면 안 된다. 2026-09-04 DOM-06 서버 실측:
+
+        SELECT or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r AS "총보수_퍼센트"
+        → 14.35                                            ↑ ÷10 이 없다. 값은 ‰ 다(=1.435%)
+
+    별칭은 '퍼센트' 라고 말하는데 값은 천분율이다. 이름을 신뢰하면 조립기가 환산을 건너뛰어
+    10배 틀린다. 그래서 **식을 본다** — 그 자리의 SELECT 항목이 10 으로 나눴을 때만 이미 % 다.
+    자리를 못 찾을 때만(부질의·CTE 등) 별칭 이름을 마지막 단서로 쓴다.
+    """
     frm = re.search(r"\bfrom\b", sql, re.I)
-    if frm is None or pos is None:
-        return False
-    items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I))
-    return 0 <= pos < len(items) and re.search(r"/\s*10(?:\.0*)?\b", items[pos]) is not None
+    if frm is not None and pos is not None:
+        items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I))
+        if 0 <= pos < len(items):
+            return re.search(r"/\s*10(?:\.0*)?\b", items[pos]) is not None
+    return bool(re.search(r"퍼센트|percent|%", header or "", re.I))
 
 
 def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,

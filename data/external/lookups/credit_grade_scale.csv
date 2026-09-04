@@ -1,0 +1,31 @@
+# 신용등급 서열·의미 코드북 (채권 yaml §11 #5·#6 근거 자료)
+# 등급 정의 출처: 한국기업평가(Korea Ratings) 등급정의안내 — 회사채(장기) AAA~D 10개 등급, AA~B 구간에 +/- 부호로 동일 등급 내 우열 표시
+# 투자등급/투기등급 경계: BBB(BBB-)까지 투자등급, BB(BB+) 이하 투기등급
+# DB 표기 규칙: 중간값은 0 접미(예: AA0 = 표준표기 AA). DB 실측 20종 전량 매핑.
+# 주의: CC0/C0 는 +/- 세분 대상 구간(AA~B)이 아니지만 DB 가 0 접미로 표기한 것 — 표준표기 CC/C 로 정규화.
+# 주의: DB 의 'C0'와 'C'는 동일 표준등급 C 로 판정(rank 동일 19) — 원천 표기 편차로 추정, 승격 전 원천 데이터 재확인 권장.
+# 주의: D 행(rank 20)은 2026-08-30 에 이 표로 옮겨 적었으나 as_of 는 원천 발행일 2026-08-20 이다 —
+#       같은 등급정의 페이지가 AAA~D 10등급을 정의한다. 코드북 as_of 규약은 '출처 발행·유효 시점'이지
+#       옮겨 적은 날짜가 아니며(codebooks/README.md), 외부자료 기준일 2026-08-24 규정도 이 값으로 지켜진다.
+grade_db,grade_std,rank,band,definition,source_url,as_of
+AAA,AAA,1,투자,"원리금 지급확실성이 최고 수준이며, 예측 가능한 장래의 환경변화에 영향을 받지 않을 만큼 안정적이다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+AA+,AA+,2,투자,"원리금 지급확실성이 매우 높으며, 예측 가능한 장래의 환경변화에 영향을 받을 가능성이 낮다. (AA 내 상위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+AA0,AA,3,투자,"원리금 지급확실성이 매우 높으며, 예측 가능한 장래의 환경변화에 영향을 받을 가능성이 낮다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+AA-,AA-,4,투자,"원리금 지급확실성이 매우 높으며, 예측 가능한 장래의 환경변화에 영향을 받을 가능성이 낮다. (AA 내 하위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+A+,A+,5,투자,"원리금 지급확실성이 높지만, 장래의 환경변화에 영향을 받을 가능성이 상위 등급에 비해서는 높다. (A 내 상위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+A0,A,6,투자,"원리금 지급확실성이 높지만, 장래의 환경변화에 영향을 받을 가능성이 상위 등급에 비해서는 높다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+A-,A-,7,투자,"원리금 지급확실성이 높지만, 장래의 환경변화에 영향을 받을 가능성이 상위 등급에 비해서는 높다. (A 내 하위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+BBB+,BBB+,8,투자,"원리금 지급확실성은 있으나, 장래의 환경변화에 따라 지급확실성이 저하될 가능성이 내포되어 있다. (BBB 내 상위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+BBB0,BBB,9,투자,"원리금 지급확실성은 있으나, 장래의 환경변화에 따라 지급확실성이 저하될 가능성이 내포되어 있다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+BBB-,BBB-,10,투자,"원리금 지급확실성은 있으나, 장래의 환경변화에 따라 지급확실성이 저하될 가능성이 내포되어 있다. (투자등급 최하단)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+BB+,BB+,11,투기,"최소한의 원리금 지급확실성은 인정되나, 장래의 안정성면에서는 투기적 요소가 내포되어 있다. (투기등급 최상단)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+BB0,BB,12,투기,"최소한의 원리금 지급확실성은 인정되나, 장래의 안정성면에서는 투기적 요소가 내포되어 있다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+BB-,BB-,13,투기,"최소한의 원리금 지급확실성은 인정되나, 장래의 안정성면에서는 투기적 요소가 내포되어 있다. (BB 내 하위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+B+,B+,14,투기,"원리금 지급확실성이 부족하며, 그 안정성이 가변적이어서 매우 투기적이다. (B 내 상위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+B0,B,15,투기,"원리금 지급확실성이 부족하며, 그 안정성이 가변적이어서 매우 투기적이다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+B-,B-,16,투기,"원리금 지급확실성이 부족하며, 그 안정성이 가변적이어서 매우 투기적이다. (B 내 하위)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+CCC,CCC,17,투기,"채무불이행이 발생할 가능성이 높다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+CC0,CC,18,투기,"채무불이행이 발생할 가능성이 매우 높다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+C0,C,19,투기,"채무불이행이 발생할 가능성이 극히 높고, 합리적인 예측 범위내에서 채무불이행 발생이 불가피하다.",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+C,C,19,투기,"채무불이행이 발생할 가능성이 극히 높고, 합리적인 예측 범위내에서 채무불이행 발생이 불가피하다. (DB 표기 편차: 'C0'와 동일 등급으로 판정)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20
+D,D,20,투기,"채무불이행 상태이다. (표준 등급표 10등급의 최하단 — 2차 데이터 0건)",https://www.korearatings.com/cms/frCmnCon/index.do?MENU_ID=240,2026-08-20

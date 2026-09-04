@@ -1302,6 +1302,47 @@ def _order_by_select_pos(sql: str) -> int | None:
     return i if 0 <= i < len(_split_select_items(sel)) else None
 
 
+_FUND_CNT_KEY = re.compile(r"COUNT\s*\(\s*DISTINCT\s+(.+?)\s*\)\s+AS\s+\"펀드수\"", re.I | re.S)
+_SUM_CASE = re.compile(r"SUM\s*\(\s*CASE\s+WHEN\s+(.+?)\s+THEN\s+1\s+ELSE\s+0\s+END\s*\)"
+                       r"(?:\s+AS\s+(?:\"([^\"]+)\"|([A-Za-z_]\w*)))?", re.I | re.S)
+
+
+def ensure_fund_unit_subcount(sql: str) -> tuple[str, bool]:
+    """펀드 단위 집계에 딸린 **부가 조건 집계**도 펀드 단위로 세고, 단위를 별칭에 굽는다. (SQL, 고쳤는지)
+
+    2026-09-04 KG-005 실측 — "이름이 삼성으로 시작하는 공모펀드는 몇 개고, **그중 삼성자산운용이
+    운용하는 건 몇 개**야?" 의 SQL 이 이랬다:
+
+        COUNT(DISTINCT <펀드키>) AS "펀드수", COUNT(*) AS "클래스수",
+        SUM(CASE WHEN mgmt_co_nm LIKE '삼성%' THEN 1 ELSE 0 END) as samsung_mgt_cnt
+        → 215 | 868 | 868
+
+    앞의 두 열은 펀드/클래스를 구분하는데 **세 번째만 행(=클래스)을 센다.** 별칭도 단위를 말하지
+    않아, 답변이 "삼성자산운용이 운용하는 펀드는 **868개**" 로 나갔다 — 클래스를 펀드로 답하는
+    15R 최다 오답의 재발이고, 통과 조건이 명시적으로 금지한 자리다.
+
+    조치: 같은 조건의 **펀드 단위 쌍을 함께 낸다.** 펀드키는 SQL 에 이미 있는 `"펀드수"` 열에서
+    그대로 떼어 쓴다 — JOIN 이 있어도 테이블 수식이 어긋나지 않는다.
+    불개입: `"펀드수"` 열이 없음(펀드 단위 질의가 아니다) · `SUM(CASE …)` 가 없음.
+    """
+    m_key = _FUND_CNT_KEY.search(sql)
+    if not m_key:
+        return sql, False
+    key = m_key.group(1).strip()
+    out, fixed, seen = sql, False, 0
+    for m in list(_SUM_CASE.finditer(sql)):
+        cond, alias = m.group(1).strip(), (m.group(2) or m.group(3) or "").strip()
+        if not cond or "펀드수" in (alias or ""):
+            continue
+        base = alias or f"조건{seen + 1}"
+        seen += 1
+        rep = (f'COUNT(DISTINCT CASE WHEN {cond} THEN {key} END) AS "{base}_펀드수", '
+               f'SUM(CASE WHEN {cond} THEN 1 ELSE 0 END) AS "{base}_클래스수"')
+        out = out.replace(m.group(0), rep, 1)
+        fixed = True
+    return out, fixed
+
+
 def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
     """펀드단위 랭킹의 대표행을 기계 보정한다. (보정된 SQL, 보정했는지)
 
@@ -7624,6 +7665,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if attr_fixed:
         step("[Guard] 속성 태그 확정식 — 설정형태 어휘(개방형·폐쇄형·단위형·추가형)를 KG FundAttribute 토큰 canon 으로 주입, 같은 낱말의 타 컬럼 절 제거 "
              "(KG-017 han_clas_policies LIKE '%폐쇄형%' → 0행 '0개' · KG-018 직교 축 폐기)")
+    sql, subc_fixed = ensure_fund_unit_subcount(sql)
+    if subc_fixed:
+        step("[Guard] 부가 집계 펀드 단위 병기 — 조건 집계(SUM CASE)를 펀드수·클래스수로 갈라 별칭에 단위를 굽는다 "
+             "(2026-09-04 KG-005 실측: '삼성자산운용이 운용하는 펀드는 868개' — 868 은 클래스 수다. "
+             "클래스를 펀드로 답하는 15R 최다 오답의 재발)")
     sql, fcnt_fixed = ensure_fund_distinct_count(sql, q)
     if fcnt_fixed:
         step("[Guard] 펀드단위 집계 교체 — 펀드 개수 질의의 COUNT(*) 를 COUNT(DISTINCT 펀드키)+클래스수 병기로 "

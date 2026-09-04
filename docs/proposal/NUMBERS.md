@@ -106,8 +106,8 @@
 
 | 항목 | 값 |
 | :-- | --: |
-| `kg_node` | 41,581 |
-| `kg_alias` | 66,592 |
+| `kg_node` | 41,580 |
+| `kg_alias` | 66,591 |
 | `kg_edge` | 7,414 |
 | `kg_closure` | 9,966 |
 
@@ -118,7 +118,7 @@
 | Security | 27,996 |
 | Fund | 7,584 |
 | Index | 3,172 |
-| Organization | 2,527 |
+| Organization | 2,526 |
 | FundAttribute | 179 |
 | Region | 60 |
 | CreditGrade | 22 |

@@ -164,7 +164,7 @@ nodes:
     rank: 20
     parent: CG_Speculative
     aliases:
-      - {table: domestic_bonds, column: crd_grd, raw: "D", source: codebook, evidence: "credit_grade_scale.csv rank 20 (as_of 2026-08-30 추가)", status: pending}
+      - {table: domestic_bonds, column: crd_grd, raw: "D", source: codebook, evidence: "credit_grade_scale.csv rank 20 (as_of 2026-08-20 — 출처 발행일. 이 표로 옮겨 적은 날짜는 2026-08-30 이나 코드북 as_of 규약은 출처 발행·유효 시점이다)", status: pending}
 
 absent_in:
   domestic_etfs: "신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음. 위험등급(RiskGrade)과 별개 축"

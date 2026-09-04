@@ -1126,6 +1126,11 @@ def _ref_mgmt_of(lit: str) -> str | None:
     return str(row[0]).strip() if row and row[0] else None
 
 
+_MGMT_TAIL_SEG = re.compile(
+    r"((?<![A-Za-z_])(?:GROUP\s+BY|ORDER\s+BY|HAVING)(?![A-Za-z_]))"
+    r"(.*?)(?=(?<![A-Za-z_])(?:GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|UNION)(?![A-Za-z_])|$)", re.I | re.S)
+
+
 def ensure_etf_mgmt_canon(sql: str) -> tuple[str, bool]:
     """국내 ETF 운용사 절을 `ref_fund_mgmt_co` **정확일치**로 정본화. (SQL, 교체했는지)
 
@@ -1156,9 +1161,17 @@ def ensure_etf_mgmt_canon(sql: str) -> tuple[str, bool]:
                 else "ref_fund_mgmt_co IN (" + ", ".join(f"'{n}'" for n in uniq) + ")")
         out.append(sql[at:m.start()] + " " + _GUARD_MARK + cond)
         at = m.end()
-    if not out:
-        return sql, sel_fixed
-    return "".join(out) + sql[at:], True
+    if out:
+        sql, sel_fixed = "".join(out) + sql[at:], True
+    # 🔴 GROUP BY 도 정본으로 바꾼다 — 서버 실측 2026-09-04 FIN-06: SELECT 만 고쳐진
+    #    `SELECT ref_fund_mgmt_co, COUNT(*) … GROUP BY cu_fund_mgmt_co` 가 나가 **개수가 틀렸다.**
+    #    오염 컬럼은 같은 운용사를 브랜드별로 쪼갠다(집계 그룹 84 vs 정본 28) — 삼성 240→224,
+    #    미래에셋 230→188, 한화 85→81. SQLite 는 bare column 을 허용해 오류 없이 조용히 틀린다.
+    tail = _MGMT_TAIL_SEG.sub(
+        lambda m: m.group(1) + re.sub(r"\bcu_fund_mgmt_co\b", "ref_fund_mgmt_co", m.group(2), flags=re.I), sql)
+    if tail != sql:
+        sql, sel_fixed = tail, True
+    return sql, sel_fixed
 
 
 @lru_cache(maxsize=1)
@@ -6390,7 +6403,13 @@ def build_grounding(
     """
     target = list(tables) or list(TABLES)
     if cross:
-        target += [t for t in EXT_TABLES if t not in target]
+        # 🔴 짝이 맞는 ext_* 만 싣는다 — 검사기가 허용하는 집합(validate 의 `라우팅 대상 + 짝 ext_*`)과 같게.
+        #    서버 실측 2026-09-04 FIN-05 "삼성전자를 편입한 국내 ETF와 공모펀드는 각각 몇 개야?" 가 **답변 실패**했다:
+        #    라우팅은 domestic_etfs·public_funds 인데 근거문서 첫 줄에 `ext_ovs_etf_holdings.holding_name` 의
+        #    영문 표기 6종이 실렸고, HCX 가 그 값들로 서브쿼리를 짜 검사기에 기각 → 재생성 → 재기각으로 끝났다.
+        #    라우팅 대상 밖 테이블의 매핑은 근거가 아니라 **오답 유도**다.
+        paired = [t for t in EXT_TABLES if _EXT_PAIR.get(t) in target]
+        target += [t for t in (paired or EXT_TABLES) if t not in target]
 
     parts: list[str] = []
     mapping = _mapping_block(ctx, hits, set(target), _asks_subsidiaries(question))
@@ -6428,6 +6447,20 @@ def build_grounding(
             "#        JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd\n"
             "#        WHERE f.holding_nm='…'\n"
             "#    정렬·LIMIT 은 UNION 전체를 감싼 바깥에서 한 번만 건다. 답변에는 구분 열을 함께 밝힌다.\n"
+            "# 🔴 ext_ 테이블에는 **마스터의 컬럼 이름이 없다.** 조인 키 줄의 왼쪽 이름을 그대로 쓴다 —\n"
+            "#    ext_etf_holdings 의 ETF 식별자는 `etf_code` 이지 `pd_itm_no` 가 아니다\n"
+            "#    (서버 실측 2026-09-04: `IN (SELECT pd_itm_no FROM ext_etf_holdings …)` 가 '없는 컬럼' 으로 기각).\n"
+            "# 🔴 **개수를 세는 교차질의도 JOIN 형식으로 쓴다** — 서브쿼리로 풀지 말 것. 형식:\n"
+            "#      SELECT '국내ETF' AS 구분, COUNT(DISTINCT e.pd_itm_no) AS 개수\n"
+            "#        FROM domestic_etfs e JOIN ext_etf_holdings h ON h.etf_code = e.pd_itm_no\n"
+            "#        WHERE h.constituent = '…' AND e.pd_grp_no = 'ETF'\n"
+            "#      UNION ALL\n"
+            "#      SELECT '공모펀드', COUNT(DISTINCT p.mtco_itm_no || '/' || p.or_co_xtn_itt_cd)\n"
+            "#        FROM public_funds p JOIN ext_fund_holdings f\n"
+            "#          ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd\n"
+            "#        WHERE f.holding_nm = '…' AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모'\n"
+            "#    🔴 두 테이블에 같은 이름의 컬럼(itm_no)이 있으므로 **모든 컬럼에 별칭을 붙인다** —\n"
+            "#    한정하지 않으면 'ambiguous column name' 으로 실행 전에 죽는다.\n"
             + "\n".join(f"- {k}" for t, k in JOIN_KEYS if t in target)
         )
     # R-2: triggered 규칙은 질문 어휘가 있을 때만. RULES_MODE=full 이면 종전처럼 전부 (eval/run_paired.py 의 대조군)

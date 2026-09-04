@@ -19,3 +19,12 @@ fp:expenseRatio a owl:DatatypeProperty ;
 fp:OverseasETF rdfs:comment "hasCreditGrade 속성 없음: 신용등급 컬럼 없음"@ko .
 # ABSENT: fp:OverseasETF 에는 fp:hasRiskGrade 없음 — 위험등급 컬럼 자체 없음 → '위험등급 낮은 해외ETF' 질의는 HCX 호출 0회로 기각
 fp:OverseasETF rdfs:comment "hasRiskGrade 속성 없음: 위험등급 컬럼 자체 없음 → '위험등급 낮은 해외ETF' 질의는 HCX 호출 0회로 기각"@ko .
+# ABSENT: fp:OverseasETF 에는 fp:hasPeriodReturn 없음 — 해외 ETF 는 1일 수익률(du_er_1d)만 수록되어 있고 1개월·3개월·6개월·1년 등 기간 수익률은 수록되어 있지 않습니다. (대체: du_er_1d)
+fp:OverseasETF rdfs:comment "hasPeriodReturn 속성 없음: 해외 ETF 는 1일 수익률(du_er_1d)만 수록되어 있고 1개월·3개월·6개월·1년 등 기간 수익률은 수록되어 있지 않습니다."@ko .
+# ABSENT: fp:OverseasETF 에는 fp:hasTrackingError 없음 — 해외 ETF 는 추적오차(du_chas_errt)가 수록되어 있지 않습니다. 국내 ETF 에만 있는 컬럼입니다. (대체: du_diff_rt)
+fp:OverseasETF rdfs:comment "hasTrackingError 속성 없음: 해외 ETF 는 추적오차(du_chas_errt)가 수록되어 있지 않습니다. 국내 ETF 에만 있는 컬럼입니다."@ko .
+# ABSENT: fp:OverseasETF 에는 fp:hasDividendYield 없음 — 해외 ETF 는 분배율·분배주기가 수록되어 있지 않습니다. 국내 ETF 에만 있는 컬럼입니다. (대체: pd_nm)
+fp:OverseasETF rdfs:comment "hasDividendYield 속성 없음: 해외 ETF 는 분배율·분배주기가 수록되어 있지 않습니다. 국내 ETF 에만 있는 컬럼입니다."@ko .
+# ABSENT: fp:OverseasETF 에는 fp:hasPensionEligibility 없음 — 해외 ETF 는 연금계좌 거래가능 여부가 수록되어 있지 않습니다. 국내 ETF 에만 있는 컬럼입니다.
+fp:OverseasETF rdfs:comment "hasPensionEligibility 속성 없음: 해외 ETF 는 연금계좌 거래가능 여부가 수록되어 있지 않습니다. 국내 ETF 에만 있는 컬럼입니다."@ko .
+

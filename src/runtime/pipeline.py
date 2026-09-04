@@ -935,7 +935,11 @@ def marked_conjuncts(sql: str) -> list[str]:
 
 _ETF_TBL = re.compile(r"\bfrom\s+(?:domestic_etfs|overseas_etfs)\b", re.I)
 _ETN_Q = re.compile(r"ETN|상장지수증권", re.I)
-_ETF_WIDEN = ("판매완료", "판매 완료", "판매중단", "판매 중단", "판매종료", "상장폐지", "전체 ETF", "모든 ETF")
+# 🔴 2026-09-05 변형 보강 — "상장폐지" 는 막혔는데 "폐지 예정인 ETF" 는 뚫렸다(로컬 실측).
+#    폐지 예정 ETF 71건은 **전건 pd_sale_yn=0** 이라 기본모수를 주입하면 반드시 0행이 된다 —
+#    주입 가드 자체가 과잉 필터가 되는 유일한 자리라 어휘를 넉넉히 잡는다.
+_ETF_WIDEN = ("판매완료", "판매 완료", "판매중단", "판매 중단", "판매종료", "상장폐지", "상장 폐지",
+              "폐지", "상폐", "거래정지", "거래 정지", "전체 ETF", "모든 ETF")
 _ETF_BASE_STRICT = {"pd_grp_no": "pd_grp_no = 'ETF'", "pd_sale_yn": "pd_sale_yn = 1"}
 _ETF_NAME_FILTER = re.compile(r"\b(?:\w+\.)?(?:pd_nm|pd_abrv_nm|etf_name)\b\s*\)?\s*(?:LIKE|GLOB|=)", re.I)
 _KO_CHUNK = re.compile(r"[가-힣]{2,}")

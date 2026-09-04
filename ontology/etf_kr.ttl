@@ -29,6 +29,6 @@ fp:riskGradeValue_DomesticETF rdfs:subPropertyOf fp:riskGradeValue ;
 
 # ABSENT: fp:DomesticETF 에는 fp:hasHoldingsHistory 없음 — ETF 구성종목은 수집 기준일 1시점(ext_etf_holdings)만 있고 시계열(변화·추이)은 수록되어 있지 않습니다. (대체: ext_etf_holdings)
 fp:DomesticETF rdfs:comment "hasHoldingsHistory 속성 없음: ETF 구성종목은 수집 기준일 1시점(ext_etf_holdings)만 있고 시계열(변화·추이)은 수록되어 있지 않습니다."@ko .
-# ABSENT: fp:DomesticETF 에는 fp:hasNavHistory 없음 — ETF 시세·기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동)은 수록되어 있지 않습니다.
+# ABSENT: fp:DomesticETF 에는 fp:hasNavHistory 없음 — ETF 시세·기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동)은 수록되어 있지 않습니다. (대체: du_last_aum)
 fp:DomesticETF rdfs:comment "hasNavHistory 속성 없음: ETF 시세·기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동)은 수록되어 있지 않습니다."@ko .
 

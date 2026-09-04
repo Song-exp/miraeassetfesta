@@ -600,6 +600,16 @@ def emit_ttl(shared, con=None, enums=None):
         C.append("")
 
     # ── 부재 속성(enums/*.yaml absent_properties) → 해당 도메인 ttl ABSENT (KG 1R S5 — 선언이 곧 게이트 어휘) ──
+    # 🔴 2026-09-05 — shared/*.yaml 의 absent_in 이 같은 (클래스, 속성)을 이미 냈으면 다시 내지 않는다.
+    #    선언 자리가 둘인 것은 의도된 설계다(개체축 absent_in / 컬럼축 absent_properties). 다만 게이트가
+    #    읽는 경로가 서로 달라서, 확실히 잡으려면 absent_properties 쪽에도 적어야 한다 —
+    #    그때 ttl 에 같은 줄이 두 번 나가던 것을 여기서 막는다.
+    emitted_absent = {
+        (TABLE_CLASS[t], (d.get("property") or "").strip())
+        for _, d in sorted((shared or {}).items())
+        for t in (d.get("absent_in") or {})
+        if t in TABLE_CLASS and d.get("property")
+    }
     for _, doc in sorted((enums or {}).items()):
         table = doc.get("domain")
         if table not in TABLE_TTL:
@@ -607,6 +617,8 @@ def emit_ttl(shared, con=None, enums=None):
         D = F[TABLE_TTL[table]]
         for item in doc.get("absent_properties") or []:
             prop, why = item.get("property"), item.get("why", "")
+            if (TABLE_CLASS[table], (prop or "").strip()) in emitted_absent:
+                continue   # shared/absent_in 이 이미 같은 줄을 냈다
             sub = (item.get("substitute") or {}).get("column")
             D.append(f"# ABSENT: fp:{TABLE_CLASS[table]} 에는 fp:{prop} 없음 — {why}" + (f" (대체: {sub})" if sub else ""))
             D.append(f"fp:{TABLE_CLASS[table]} rdfs:comment \"{ttl_str(f'{prop} 속성 없음: {why}')}\"@ko .")

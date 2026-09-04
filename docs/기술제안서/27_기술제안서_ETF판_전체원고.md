@@ -23,7 +23,7 @@
 | :-- | :-- | :-- | --: |
 | **1층 값 사전** | 사용자의 표기 → 데이터의 실제 리터럴 | `kg_alias` · `kg_closure` | ETF 관련 별칭 **44,681행** |
 | **2층 규칙 문서** | 이 컬럼은 이렇게 써야 한다 | `enums/*.yaml` `query_rules`·`answer_rules` | 국내 54+31 · 해외 27+25 |
-| **3층 게이트** | 아예 못 하게 막는다 | `absent_properties` · `range_by_table` · 상수 컬럼 | ABSENT 선언 4건 (ETF) |
+| **3층 게이트** | 아예 못 하게 막는다 | `absent_properties` · `range_by_table` · 상수 컬럼 | ABSENT 선언 **9건** (국내 3 · 해외 6) |
 
 ## 0.2 제출물 위치
 
@@ -246,7 +246,7 @@ EDA 에서 가장 뼈아픈 발견은 "이 컬럼의 값이 이상하다"가 아
 | `product_group` | 4 | — | ETF ⟂ ETN 축 |
 | `normalization` | 3 | 3 | 공백 처리·0을 결측으로 볼 컬럼 |
 | `derivation_rules` | 2 | 2 | 컬럼을 만들지 않고 규칙으로 유도 |
-| `absent_properties` | 2 | 2 | **없는 것 선언** |
+| `absent_properties` | **3** | **6** | **없는 것 선언** |
 | `axis_derivation` | 2 | — | 축 유도 |
 | `clarify` | 2 | 2 | 애매하면 되묻기 |
 | `external_join` | 1 | 1 | 외부 데이터 조인 계약 |
@@ -330,6 +330,13 @@ ETN 은 자산운용사가 만드는 펀드가 아니라 증권사가 발행하�
 ```
 
 "위험등급 낮은 해외 ETF" 가 들어오면 게이트가 **LLM 을 한 번도 부르지 않고** 기각하고, 대신 자산군·레버리지 여부로 답할 수 있다고 안내한다. 없는 것을 없다고 말하는 데 생성 모델이 필요하지 않다.
+
+> **이 선언이 실제로 작동하는지 9월 5일에 확인했고, 절반만 작동하고 있었다.** 부재를 읽는 경로가 둘인데
+> (개체축 `shared/absent_in` · 컬럼축 `enums/absent_properties`) 앞쪽은 **질의가 테이블 하나로 좁혀질 때만** 돈다.
+> "신용등급 A 이상인 ETF" 는 국내·해외 두 테이블로 라우팅돼 그 검사를 건너뛰었고, 생성된 SQL 이 신용등급을
+> **위험등급으로 바꿔 해석**했다. `pd_risk_nm` 값이 전부 한글이라 0행이 되어 결과적으로는 살았지만, 우연이다.
+> **ttl 에는 선언이 있는데 런타임이 그것을 쓰지 않는 상태**였다 — 제출물과 실행이 어긋난 사례다.
+> 조치는 컬럼축 선언을 채우는 것이었다(해외 0 → 6건, 국내 2 → 3건). 이쪽은 라우팅 조건 없이 항상 검사한다.
 
 #### ③ 총보수 0 은 무료가 아니라 미입력 (2층)
 
@@ -595,14 +602,19 @@ HTTPS  →  FastAPI  /answer
 
 ## 부록 A — ttl 원문과 ABSENT 전수
 
-`etf_kr.ttl`(34줄)·`etf_gl.ttl`(21줄) 원문을 그대로 수록한다. ETF 도메인의 ABSENT 선언은 넷이다.
+`etf_kr.ttl`·`etf_gl.ttl` 원문을 그대로 수록한다. ETF 도메인의 ABSENT 선언은 **아홉**이다 — 국내 3 · 해외 6.
 
 | 클래스 | 없는 속성 | 사유 | 답변 처리 |
 | :-- | :-- | :-- | :-- |
 | `DomesticETF` | `hasCreditGrade` | 신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음 | 위험등급과 별개 축임을 설명 |
 | `DomesticETF` | `hasHoldingsHistory` | 구성종목은 수집 기준일 1시점만, 시계열 없음 | 스냅샷임을 밝힘 |
 | `DomesticETF` | `hasNavHistory` | 시세·기준가 단일 스냅샷, 추이 없음 | 추이 질의 기각 |
-| `OverseasETF` | `hasRiskGrade` | 위험등급 컬럼 자체 없음 | **HCX 0회 기각** + 대안 축 안내 |
+| `OverseasETF` | `hasRiskGrade` | 위험등급 컬럼 자체 없음 | **HCX 0회 기각** + 자산군·레버리지 축 안내 |
+| `OverseasETF` | `hasCreditGrade` | ETF 는 발행사 신용등급을 갖지 않음 | 대체 축 없음 — 자산군으로만 |
+| `OverseasETF` | `hasPeriodReturn` | 해외는 `du_er_1d`(1일)만 있고 1개월~1년 수익률 없음 | 1일 수익률로 안내 |
+| `OverseasETF` | `hasTrackingError` | 추적오차는 국내 전용 컬럼 | 괴리율은 3건뿐이고 다른 지표임을 밝힘 |
+| `OverseasETF` | `hasDividendYield` | 분배율·분배주기는 국내 전용 | 상품명으로만 |
+| `OverseasETF` | `hasPensionEligibility` | 연금거래 가능 여부는 국내 전용 | 국내 ETF 로 안내 |
 
 값 범위 선언도 함께 나간다 — `fp:DomesticETF` 의 `riskGradeValue` 는 **1~6**(0등급 없음).
 

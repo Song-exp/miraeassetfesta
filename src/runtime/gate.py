@@ -22,16 +22,20 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-from .loader import RuntimeContext
+from .loader import RuntimeContext, dataset_scope
 
-DATA_CUTOFF = "2026-08-24"   # 🔄 리드 결정 2026-09-02: 답변 표기·판정 기준일을 8/24 로 통일 (데이터 스냅샷 info_base_dt 8/21 · 주최 공지 as-of 8/22 는 데이터 설명에만)
+# 🔴 세 날짜의 원천은 선언이다 — ontology/shared/dataset.yaml `dates` (2026-09-04).
+#    코드에 박아 두면 서비스로 옮길 때(‘오늘’ 이 매일 바뀔 때) 코드를 고쳐야 한다. 선언이 없거나 깨지면 아래 값으로 물러선다.
+_DATES = (dataset_scope().get("dates") or {})
+
+DATA_CUTOFF = _DATES.get("decision") or "2026-08-24"   # 🔄 리드 결정 2026-09-02: 답변 표기·판정 기준일을 8/24 로 통일 (데이터 스냅샷 info_base_dt 8/21 · 주최 공지 as-of 8/22 는 데이터 설명에만)
 # 🔴 구매가능(만기 경과) 판정 기준일 — 데이터 as-of(8/22 토, info_base_dt 8/21) 와 다르다. 리드 결정 2026-09-02:
 #    평가·서비스 시점은 8/24(월, 2차 배포일) 이므로 mat_dt < 20260824 는 전부 '만기 경과' 로 제외한다.
 #    8/22·8/23(주말) 만기 14종목은 as-of 기준으론 살아 있지만 8/24 에는 결제 불가 → 모수 밖. 답변의 '기준일' 표기도 8/24(DATA_CUTOFF) — 두 상수는 같은 값이지만 역할(표기 vs 만기 판정)이 달라 분리 유지.
-BUYABLE_CUTOFF = "2026-08-24"
+BUYABLE_CUTOFF = _DATES.get("decision") or "2026-08-24"
 # 데이터 스냅샷 종가일 — 전 행 info_base_dt=20260821(금). remaining_days·가격·수익률은 이 날 기준으로 산출돼 있다.
 # 답변에서 잔존일수를 보일 때 이 날짜를 병기한다(질문 시점 8/24 와 3일 차이 — 오늘 만기 채권의 잔존일수가 3 으로 적혀 있다).
-SNAPSHOT_DATE = "2026-08-21"
+SNAPSHOT_DATE = _DATES.get("snapshot") or "2026-08-21"
 
 # 교차질의 힌트 — 구성종목 보유 조건은 외부 Holdings 테이블(ext_*)을 함께 본다는 신호.
 # 테이블을 "하나 고르기"가 아니라 "해당하는 전부"로 라우팅한다 (주최 8/24: 교차질의는 한 호출에서 복수 상품군).

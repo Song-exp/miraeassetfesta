@@ -35,7 +35,17 @@ def chk(id_, claim, sql, exp, tol=0):
 
 
 doc = yaml.safe_load(open("ontology/enums/domestic_bonds.yaml", encoding="utf-8"))
-qr = doc["query_rules"]
+
+
+def _rule(v):
+    """규칙 본문 — 2026-09-04 이후 규칙은 {text: 지시, evidence: 근거} 형이다(문자열 형도 그대로 받는다).
+    감사는 지시와 근거를 모두 대조 대상으로 본다(둘 다 사람이 읽는 문장이고 숫자가 들어 있다)."""
+    if isinstance(v, dict):
+        return " ".join(str(v.get(k, "")) for k in ("text", "evidence") if v.get(k))
+    return v
+
+
+qr = {k: _rule(v) for k, v in doc["query_rules"].items()}
 G15 = ['AAA', 'AA+', 'AA0', 'AA-', 'A+', 'A0', 'A-', 'BBB+', 'BBB0', 'BBB-', 'BB0', 'BB-', 'B+', 'B-', 'C0']
 IN10 = ",".join(repr(g) for g in G15[:10])
 IN5 = ",".join(repr(g) for g in G15[10:])

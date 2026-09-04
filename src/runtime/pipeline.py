@@ -706,8 +706,22 @@ def raise_maturity_floor(sql: str, question: str) -> tuple[str, bool]:
     return new, changed
 
 
-_GRADE_SCALE = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
-                "BBB+", "BBB0", "BBB-", "BB0", "BB-", "B+", "B-", "C0"]
+def _grade_scale() -> list[str]:
+    """신용등급 서열(우량→하위) — 선언에서 온다. loader.grade_scale() = 표준표 rank 순 ∩ 값 사전 실재.
+
+    2026-09-04 — 종전엔 2차 데이터 실재 15종을 코드 상수로 적어 두었다(§B.3 한계 2). 그러면 표준표에
+    있는 등급(CCC·D…)이 새 데이터에 들어와도 서열이 못 늘고, 반대로 값 사전과 이원화된다.
+    순서는 코드북, 실재는 값 사전 — 코드는 둘을 합칠 뿐이다. 원천이 없으면 종전 목록으로 물러선다."""
+    try:
+        from .loader import grade_scale
+        scale = list(grade_scale())
+    except Exception:                                        # noqa: BLE001 — 원천 파손 시에도 가드는 살아 있어야 한다
+        scale = []
+    return scale or list(_GRADE_SCALE_FALLBACK)
+
+
+_GRADE_SCALE_FALLBACK = ("AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
+                         "BBB+", "BBB0", "BBB-", "BB0", "BB-", "B+", "B-", "C0")
 _Q_GRADE_CMP = re.compile(r"\b(AAA|AA|BBB|BB|A|B|C)\s*([+\-0])?\s*(?:등급|급)?\s*(이상|이하)", re.I)
 _SQL_GRADE_CMP = re.compile(r"(?:TRIM\(\s*)?crd_grd\s*\)?\s*(=|>=|<=|>|<)\s*'([^']*)'", re.I)
 _SQL_GRADE_IN = re.compile(r"crd_grd\s*\)?\s*(?:NOT\s+)?IN\s*\(", re.I)
@@ -4941,18 +4955,19 @@ def expand_grade_comparison(sql: str, question: str) -> tuple[str, bool]:
     hits = _Q_GRADE_CMP.findall(question)
     if len(hits) != 1:
         return sql, False
+    scale = _grade_scale()                       # 선언에서 온 서열 — 코드 상수 아님 (2026-09-04)
     letter, suffix, direction = hits[0]
     letter = letter.upper()
     if suffix:
         notch = letter + suffix
     elif direction == "이상":                    # 급 전체 포함 — 그 급의 최하단 표기부터
-        notch = next((g for g in reversed(_GRADE_SCALE) if g in (letter + "-", letter + "0", letter)), None)
+        notch = next((g for g in reversed(scale) if g in (letter + "-", letter + "0", letter)), None)
     else:                                        # 이하 — 그 급의 최상단 표기부터
-        notch = next((g for g in _GRADE_SCALE if g in (letter + "+", letter + "0", letter)), None)
-    if notch not in _GRADE_SCALE:
+        notch = next((g for g in scale if g in (letter + "+", letter + "0", letter)), None)
+    if notch not in scale:
         return sql, False
-    idx = _GRADE_SCALE.index(notch)
-    grades = _GRADE_SCALE[: idx + 1] if direction == "이상" else _GRADE_SCALE[idx:]
+    idx = scale.index(notch)
+    grades = scale[: idx + 1] if direction == "이상" else scale[idx:]
     repl = "TRIM(crd_grd) IN (" + ", ".join(f"'{g}'" for g in grades) + ")"
     preds = list(_SQL_GRADE_CMP.finditer(sql))
     ins = list(_SQL_GRADE_IN_FULL.finditer(sql))
@@ -5196,8 +5211,22 @@ _MCLS_IN = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\([^)]*'국공
 # 단독(290종목/371행)으로 나갔다. 확정식은 295종목/377행 — bd_knd='국고채권' 인데 소분류가 '물가채' 인
 # 물가연동국고채권 5종목이 빠진다. 이번 질문은 결론(등급 미부여)이 같았지만 '몇 종목' 이면 290 오답이다.
 _SCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_scls_nm\s*\)?\s*=\s*'국고채'", re.I)
-_KTB_FILTER = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
-               "AND TRIM(std_pd_scls_nm)='국고채'))")
+_KTB_FILTER_FALLBACK = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
+                        "AND TRIM(std_pd_scls_nm)='국고채'))")
+
+
+def _decl_kind_sql(token: str, fallback: str) -> str:
+    """종류 확정식 하나를 선언에서 꺼낸다 — enums `kind_filters.tokens`. 없으면 종전 상수 (2026-09-04)."""
+    try:
+        from .loader import kind_filter_decl
+        toks, _ = kind_filter_decl("domestic_bonds", "")
+        return next((sql for tok, sql in toks if tok == token), fallback)
+    except Exception:                                        # noqa: BLE001
+        return fallback
+
+
+# 국고채·국채 확정식 — 선언(종류필터 ①)이 원천. STRIPS 21행 포함 295종목
+_KTB_FILTER = _decl_kind_sql("국고채", _KTB_FILTER_FALLBACK)
 _KTB_PLAIN = "TRIM(bd_knd)='국고채권'"
 # STRIPS 인지 신호 — 이 낱말이 질문에 있으면 사용자가 그 개념을 알고 콕 집은 것: STRIPS 주입을 물린다.
 # '제외·빼고' 같은 일반 낱말은 신호로 쓰지 않는다 — '사모 빼고 국고채' 가 오폭당한다 (2026-08-31 리드 결정).
@@ -5304,7 +5333,7 @@ def ensure_trimmed_compare(sql: str) -> tuple[str, bool]:
     return sql, changed
 
 
-_KIND_FILTERS = [   # 질문 낱말(긴 것부터 소진 탐색) → 확정 필터. 같은 필터로 모이는 낱말은 dedupe
+_KIND_FILTERS_FALLBACK = [   # 질문 낱말(긴 것부터 소진 탐색) → 확정 필터. 같은 필터로 모이는 낱말은 dedupe
     ("일반회사채", "TRIM(bd_knd)='일반회사채'"),
     ("일반은행채", "TRIM(bd_knd)='일반은행채'"),
     ("특수은행채", "TRIM(bd_knd)='특수은행채'"),
@@ -5324,7 +5353,7 @@ _KIND_FILTERS = [   # 질문 낱말(긴 것부터 소진 탐색) → 확정 필�
 
 
 _P = r"[가이은는의에서들\s]{0,4}발행"       # 조사 + '발행' — '~가 발행한 채권' 서술형
-_KIND_PARAPHRASES = [   # 발행 주체를 풀어 쓴 질의 (2026-08-31 리드 지적: '회사채' 낱말 없이 '회사에서 발행한 채권').
+_KIND_PARAPHRASES_FALLBACK = [   # 발행 주체를 풀어 쓴 질의 (2026-08-31 리드 지적: '회사채' 낱말 없이 '회사에서 발행한 채권').
     # 🔴 순서 = 소진 순서 — '한국은행이 발행' 이 '은행이 발행' 으로, '카드회사가 발행' 이 '회사가 발행' 으로 잡히지 않게 구체적인 것 먼저
     (re.compile(r"한국은행" + _P), "TRIM(bd_knd)='통화안정채권'"),
     (re.compile(r"(?:지자체|지방자치단체|지방\s*정부)" + _P), "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')"),
@@ -5338,17 +5367,30 @@ _KIND_PARAPHRASES = [   # 발행 주체를 풀어 쓴 질의 (2026-08-31 리드 
 ]
 
 
+
+def _kind_filters() -> tuple[list[tuple[str, str]], list[tuple[re.Pattern, str]]]:
+    """종류 낱말·서술형 → 확정 필터식. 원천은 선언(enums/domestic_bonds.yaml `kind_filters`)이다.
+
+    2026-09-04 — 종전엔 같은 표가 여기 코드 상수로도 있어 이원화돼 있었다(query_rules.종류필터 는 사람용 설명,
+    이 표는 기계용). 새 종류(전단채·CP·해외채…)를 붙일 때 yaml 한 줄이면 되게 선언으로 옮긴다.
+    선언이 없거나 깨지면 종전 표로 물러선다 — 가드가 죽는 것보다 낫다."""
+    try:
+        from .loader import kind_filter_decl
+        toks, paras = kind_filter_decl("domestic_bonds", _P)
+    except Exception:                                        # noqa: BLE001
+        toks, paras = [], []
+    return (toks or list(_KIND_FILTERS_FALLBACK)), (paras or list(_KIND_PARAPHRASES_FALLBACK))
+
+
 def _question_kind_filters(question: str) -> set[str]:
     q = question
     found = set()
-    for tok, flt in _KIND_FILTERS:
+    kinds, paraphrases = _kind_filters()
+    for tok, flt in kinds:
         if tok in q:
             found.add(flt)
             q = q.replace(tok, "◌")        # 긴 낱말 소진 — '일반은행채' 뒤에 '은행채' 가 또 걸리지 않게
-    if re.search(r"(?<![가-힣])국채", q):   # 단독 '국채' 만 — 미국채·한국채권 등 합성어 제외
-        found.add(_KTB_FILTER)
-        q = re.sub(r"(?<![가-힣])국채", "◌", q)
-    for pat, flt in _KIND_PARAPHRASES:      # 서술형은 낱말 소진 뒤에 — '회사채' 가 이미 잡혔으면 중복 무해(같은 필터로 dedupe)
+    for pat, flt in paraphrases:           # 서술형은 낱말 소진 뒤에 — '회사채' 가 이미 잡혔으면 중복 무해(같은 필터로 dedupe)
         if pat.search(q):
             found.add(flt)
             q = pat.sub("◌", q)
@@ -5396,16 +5438,27 @@ _TOP_SAFE_Q = re.compile(
 _TOP_RISK_Q = re.compile(                                # 반대 방향 최상급 — 동반되면 비교 질의라 불개입
     rf"{_SUP}\s*위험한|{_RISKW}\s*(?:{_SUP}|매우|아주)\s*높|{_SUP}\s*안\s*좋")
 _YIELD_DEMAND_Q = re.compile(r"[\d.]+\s*(?:%|퍼센트|프로)\s*(?:이상|넘|초과)")
-_SAFE16_KINDS = {   # 6등급(매우낮은위험)이 실존하는 종류 확정식 — 2026-08-31 전수 실측 (구매가능 모수 기준 16등급 행수)
-    _KTB_FILTER,                                                   # 377 (전부 16)
-    "TRIM(std_pd_mcls_nm)='국공채'",                                # 2,838
-    "TRIM(std_pd_mcls_nm)='특수채'",                                # 6,077
-    "TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채')",        # 2,239 (전부 16)
-    "TRIM(bd_knd)='통화안정채권'",                                   # 33 (전부 16)
-    "TRIM(bd_knd)='MBS'",                                          # 1,394
-    "TRIM(bd_knd) IN ('일반은행채','특수은행채')",                     # 1,241 (특수은행채 몫 — '가장 안전한 은행채' 는 16 강제가 맞다)
-    "TRIM(bd_knd)='특수은행채'",                                     # 1,241
-}   # 밖에 남는 것(16 = 0 실측): 회사채·일반회사채·일반은행채·신용카드채·할부금융채·보험회사채·투자매매.중개채
+# 6등급(매우낮은위험)이 그 종류에 실존하는가 — **열거하지 않고 데이터에 묻는다** (2026-09-04).
+#   종전엔 8개 확정식을 코드에 적어 두었다(2026-08-31 전수 실측분). 종류가 늘거나 데이터가 바뀌면 그 목록이 조용히 틀린다.
+#   지금은 종류 확정식 하나로 "이 종류에 16등급 구매가능 행이 있나" 를 1회 조회해 캐시한다 — 선언(kind_filters)이 종류를 정하고,
+#   존재 여부는 데이터가 답한다. 조회 실패(파일 없음 등)면 '있다' 로 보수적으로 답해 종전 동작(16 단독 유지)을 지킨다.
+@lru_cache(maxsize=64)
+def _kind_has_safe_grade(kind_sql: str) -> bool:
+    try:
+        with connect_readonly() as con:
+            row = con.execute(
+                f"SELECT 1 FROM domestic_bonds WHERE ({kind_sql}) AND pd_risk_gcd='16' "
+                f"AND mat_dt >= {BUYABLE_INT} LIMIT 1").fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return True
+
+
+def _kinds_without_safe_grade(question: str) -> set[str]:
+    """질문이 지목한 종류 중 6등급이 하나도 없는 것들 — 있으면 '16' 단독 강제를 IN ('15','16') 으로 완화한다."""
+    return {f for f in _question_kind_filters(question) if not _kind_has_safe_grade(f)}
+
+
 _RISK_POS = re.compile(r"pd_risk_gcd\s*(?:IN\s*\(([^)]*)\)|=\s*'(\d+)')", re.I)
 
 
@@ -5431,7 +5484,7 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     tail = _WHERE_TAIL.search(sql, lo)
     m = _RISK_POS.search(sql, lo, tail.start() if tail else len(sql))
     vals = set(re.findall(r"\d+", m.group(1) or m.group(2))) if m else None
-    if _question_kind_filters(question) - _SAFE16_KINDS:
+    if _kinds_without_safe_grade(question):
         # 6등급이 없는 종류(회사채·카드채 등)를 지목 — '16' 단독이면 폴백 IN ('15','16') 으로 완화.
         # 2026-08-31 밤 서버 실측: '가장 안전한 회사채 3개' 에 HCX 가 = '16' 을 내 0행 '확인 불가' 오답
         # (16 단독 규칙은 따랐는데 폴백 조항을 놓침 — 정답은 5등급 3종 + '6등급엔 회사채 없음' 명시).

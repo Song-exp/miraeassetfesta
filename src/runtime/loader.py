@@ -249,6 +249,15 @@ def load_context() -> RuntimeContext:
         if doc.get("domain"):
             ctx.enums[doc["domain"]] = doc
             for item in doc.get("gate_constants") or []:
+                # 🔴 상수인지 아닌지는 **스코프 선언**이 정한다 (2026-09-04). `scope_key` 가 달린 항목은
+                #    enums `scope` 의 값이 하나일 때만 상수 게이트로 산다 — 값이 둘 이상이면(외화채가 적재되면)
+                #    더 이상 상수가 아니므로 게이트에서 뺀다. 1차엔 USD·JPY·EUR 가 있었다: 한 번 변한 축이다.
+                key = item.get("scope_key")
+                if key:
+                    vals = scope_values(doc["domain"], key)
+                    if len(vals) != 1:
+                        continue
+                    item = dict(item, value=vals[0])
                 ctx.gate_constants.setdefault(doc["domain"], []).append(item)
             for item in doc.get("absent_properties") or []:
                 ctx.absent_props.setdefault(doc["domain"], []).append(item)
@@ -412,6 +421,79 @@ def _build_value_index(con: sqlite3.Connection, ctx: RuntimeContext) -> dict:
         index[(t, c)] = {str(v).strip().casefold() for v in values}
         index[("_raw", t, c)] = list(values)
     return index
+
+
+@lru_cache(maxsize=1)
+def dataset_scope() -> dict:
+    """이 적재분의 범위·기준일 선언 — shared/dataset.yaml. 없으면 빈 dict(호출자가 종전 상수로 물러선다).
+
+    날짜를 코드 상수로 두면 서비스로 옮길 때(‘오늘’ 이 매일 바뀔 때) 코드를 고쳐야 한다.
+    선언에서 읽으면 배포 설정만 바뀐다 (2026-09-04)."""
+    p = SHARED_DIR / "dataset.yaml"
+    return _load_yaml(p) if p.exists() else {}
+
+
+@lru_cache(maxsize=4)
+def kind_filter_decl(table: str, particle: str) -> tuple[tuple, tuple]:
+    """상품 종류 확정식 선언 — enums/<table>.yaml `kind_filters`.
+
+    반환: (낱말 목록[(token, sql), …], 서술형 목록[(compiled_pattern, sql), …]).
+    낱말 항목의 `regex` 는 별칭 정규식('국채' 처럼 합성어를 걸러야 하는 통칭)이고, 서술형의 `{P}` 는
+    호출자가 넘긴 조사+'발행' 정규식으로 채운다. 종류를 늘리는 일이 코드 수정이 아니라 선언 한 줄이 되게 한다."""
+    p = ENUMS_DIR / f"{table}.yaml"
+    decl = (_load_yaml(p) if p.exists() else {}).get("kind_filters") or {}
+    toks, alias = [], []
+    for item in decl.get("tokens") or []:
+        tok, sql = item.get("token"), item.get("sql")
+        if not tok or not sql:
+            continue
+        toks.append((tok, sql))
+        if item.get("regex"):
+            alias.append((re.compile(item["regex"]), sql))
+    paras = [(re.compile(str(i["pattern"]).replace("{P}", particle)), i["sql"])
+             for i in (decl.get("paraphrases") or []) if i.get("pattern") and i.get("sql")]
+    return tuple(toks), tuple(alias + paras)
+
+
+def scope_values(table: str, key: str) -> list:
+    """테이블 스코프의 한 축(통화·발행국 …)에 담긴 값 목록 — enums/<table>.yaml `scope`.
+
+    값이 하나면 '이 적재분에서는 상수', 여럿이면 더 이상 상수가 아니다. 게이트 상수(gate_constants)가
+    이 판정을 참조하므로, 데이터 범위가 넓어지면 게이트가 자동으로 막지 않는다."""
+    p = ENUMS_DIR / f"{table}.yaml"
+    doc = _load_yaml(p) if p.exists() else {}
+    v = ((doc.get("scope") or {}).get(key) or {})
+    vals = v.get("values") if isinstance(v, dict) else v
+    return list(vals or [])
+
+
+@lru_cache(maxsize=4)
+def grade_scale(table: str = "domestic_bonds", column: str = "crd_grd") -> tuple[str, ...]:
+    """신용등급 서열 — 표준표(rank 순)에 **이 데이터에 실재하는 표기만** 남긴 DB 표기 목록(우량→하위).
+
+    두 원천을 각자의 자리에서 읽는다 — 코드에 등급 목록을 적지 않는다.
+      · 순서·경계(무엇이 무엇보다 위인가) = 표준표 코드북 credit_grade_scale.csv (= shared/credit_grade.yaml 노드의 원천)
+      · 실재 여부(무엇이 이 적재분에 있는가) = 값 사전 enums/<table>.yaml columns.<column>.value_semantics
+    새 데이터에 CCC·D 가 들어오면 값 사전만 갱신되고 서열 확장은 코드 수정 없이 따라온다.
+    반대로 표준표에 없는 표기는 서열에 못 들어온다(등급 아닌 문자열이 IN 목록에 섞이는 것을 막는다).
+    표준표가 없으면 값 사전 순서를 그대로, 값 사전이 없으면 표준표 전체를 돌려준다."""
+    ranked: list[tuple[int, str]] = []
+    if GRADE_SCALE_CSV.exists():
+        with open(GRADE_SCALE_CSV, encoding="utf-8") as f:
+            for r in csv.DictReader(line for line in f if not line.startswith("#")):
+                tok, rank = (r.get("grade_db") or "").strip(), (r.get("rank") or "").strip()
+                if tok and rank.isdigit():
+                    ranked.append((int(rank), tok))
+    std = [tok for _, tok in sorted(ranked)]
+    doc = _load_yaml(ENUMS_DIR / f"{table}.yaml") if (ENUMS_DIR / f"{table}.yaml").exists() else {}
+    cols = {str(k).lower(): v for k, v in (doc.get("columns") or {}).items()}
+    observed = list((cols.get(column) or {}).get("value_semantics") or {})
+    if not std:
+        return tuple(observed)
+    if not observed:
+        return tuple(std)
+    seen = {o.strip() for o in observed}
+    return tuple(tok for tok in std if tok in seen)
 
 
 def _load_std_grades() -> set:

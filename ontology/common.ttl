@@ -63,7 +63,7 @@ fp:CreditGrade a owl:Class .
 fp:hasCreditGrade a owl:ObjectProperty ;
     rdfs:domain [ owl:unionOf ( fp:DomesticBond ) ] ;
     rdfs:range fp:CreditGrade ;
-    rdfs:comment "신용등급 (AAA 최상위 ~ C, BBB-/BB+ 경계가 투자/투기) | scale: rank 1(AAA) ~ 19(C) | direction: rank 낮을수록 우량"@ko .
+    rdfs:comment "신용등급 (AAA 최상위 ~ C, BBB-/BB+ 경계가 투자/투기) | scale: rank 1(AAA) ~ 20(D) | direction: rank 낮을수록 우량"@ko .
 fp:CG_Investment a fp:CreditGrade ; skos:prefLabel "투자등급"@ko, "Investment grade"@en .
 fp:CG_Speculative a fp:CreditGrade ; skos:prefLabel "투기등급"@ko, "Speculative grade"@en .
 fp:CG_AAA a fp:CreditGrade ; skos:prefLabel "AAA"@ko, "AAA"@en .
@@ -104,6 +104,8 @@ fp:CG_CC a fp:CreditGrade ; skos:prefLabel "CC"@ko, "CC"@en .
 fp:CG_CC skos:broader fp:CG_Speculative .
 fp:CG_C a fp:CreditGrade ; skos:prefLabel "C"@ko, "C"@en .
 fp:CG_C skos:broader fp:CG_Speculative .
+fp:CG_D a fp:CreditGrade ; skos:prefLabel "D"@ko, "D"@en .
+fp:CG_D skos:broader fp:CG_Speculative .
 
 # ── Currency (shared/currency.yaml) ──
 fp:Currency a owl:Class .

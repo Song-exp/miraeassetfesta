@@ -2,12 +2,15 @@
 # 원천: data/external/lookups/credit_grade_scale.csv (한국기업평가 등급정의, 2026-08-20) → 2026-08-25 노드화.
 # 서열(rank)·밴드(parent) 를 closure 로 풀어 "AA- 이상" 같은 서열 질의를 SQL CASE 없이 답한다.
 # DB 표기: 중간값은 0 접미(AA0=AA) · C0 와 C 는 같은 표준등급 C (재검증 2026-08-25 DB distinct 15종 + 1차 표기 수용).
+# 🔴 표준표는 이 적재분에 값이 있든 없든 **전 등급(AAA~D)** 을 노드로 둔다 — 데이터에 없는 등급의 alias 는 status: pending.
+#    '실재하는가' 는 값 사전(enums/domestic_bonds.yaml crd_grd.value_semantics)이, '무엇이 위인가' 는 이 파일이 답한다.
+#    런타임 서열 확장은 loader.grade_scale() 이 둘을 교집합해 만든다 — 코드에 등급 목록을 적지 않는다 (2026-09-04).
 # 🔴 게이트 enum 화이트리스트의 원천은 여전히 enums/domestic_bonds.yaml crd_grd.value_semantics (loader.py) — 이 파일은 KG 용.
 
 entity: CreditGrade
 description: 신용등급 (AAA 최상위 ~ C, BBB-/BB+ 경계가 투자/투기)
 property: hasCreditGrade
-scale: "rank 1(AAA) ~ 19(C)"
+scale: "rank 1(AAA) ~ 20(D)"   # 표준표 전체를 노드로 둔다 — 이 적재분 실재 여부와 무관(실재는 값 사전이 판정)
 direction: "rank 낮을수록 우량"
 
 nodes:
@@ -19,7 +22,7 @@ nodes:
   CG_Speculative:
     label_ko: 투기등급
     label_en: Speculative grade
-    note: BB+ 이하 (rank 11~19)
+    note: BB+ 이하 (rank 11~20)
     aliases: []
   CG_AAA:
     label_ko: AAA
@@ -155,6 +158,13 @@ nodes:
     aliases:
       - {table: domestic_bonds, column: crd_grd, raw: "C0", source: codebook, evidence: "credit_grade_scale.csv rank 19"}
       - {table: domestic_bonds, column: crd_grd, raw: "C", source: codebook, evidence: "credit_grade_scale.csv rank 19", status: pending}
+  CG_D:
+    label_ko: D
+    label_en: D
+    rank: 20
+    parent: CG_Speculative
+    aliases:
+      - {table: domestic_bonds, column: crd_grd, raw: "D", source: codebook, evidence: "credit_grade_scale.csv rank 20 (as_of 2026-08-30 추가)", status: pending}
 
 absent_in:
   domestic_etfs: "신용등급 컬럼 없음 — ETF 는 발행사 신용등급을 갖지 않음. 위험등급(RiskGrade)과 별개 축"

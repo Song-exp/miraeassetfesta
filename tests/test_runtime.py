@@ -1675,3 +1675,117 @@ def test_bond_list_warning_basis_is_yield():
     hi = "pd_no | pd_nm | srfc_irt | applied_yield\nKR1 | 엠캐피탈358-3 | 7.164 | 6.758"
     assert "원금을 돌려받지 못할" not in _bond_list_answer(sql, low, 1, q)
     assert "원금을 돌려받지 못할" in _bond_list_answer(sql, hi, 1, q)
+
+
+# ── 확장성 — 선언이 원천인가 (코드 상수 제거 회귀) ─────────────────────────
+
+def test_grade_scale_comes_from_declarations():
+    """등급 서열은 코드 상수가 아니라 '표준표 rank ∩ 값 사전' 이다 (2026-09-04).
+
+    표준 체계(무엇이 무엇보다 위인가)는 코드북, 실재 여부(이 적재분에 있는가)는 값 사전이 답한다.
+    새 데이터에 CCC·D 가 들어오면 값 사전만 갱신되고 서열은 코드 수정 없이 따라온다.
+    """
+    import yaml as _yaml
+    from src.runtime.loader import PROJECT_ROOT, grade_scale
+    from src.runtime.pipeline import _grade_scale, expand_grade_comparison
+
+    scale = list(grade_scale())
+    assert _grade_scale() == scale
+
+    # ① 순서는 코드북 rank 그대로
+    import csv as _csv
+    with open(PROJECT_ROOT / "data/external/lookups/credit_grade_scale.csv", encoding="utf-8") as f:
+        rows = [r for r in _csv.DictReader(line for line in f if not line.startswith("#"))]
+    std = [r["grade_db"].strip() for r in sorted(rows, key=lambda r: int(r["rank"]))]
+    assert [g for g in std if g in scale] == scale, "서열 순서가 표준표 rank 와 다르다"
+
+    # ② 실재 여부는 값 사전이 판정 — 데이터에 없는 표준등급(CCC·D)은 IN 목록에 넣지 않는다
+    doc = _yaml.safe_load((PROJECT_ROOT / "ontology/enums/domestic_bonds.yaml").read_text(encoding="utf-8"))
+    observed = set((doc["columns"]["crd_grd"]["value_semantics"] or {}))
+    assert set(scale) == observed
+    assert "D" not in scale and "CCC" not in scale
+
+    # ③ 그런데 KG 에는 표준 20등급이 다 있다 — 새 데이터가 들어오면 알아본다
+    cg = _yaml.safe_load((PROJECT_ROOT / "ontology/shared/credit_grade.yaml").read_text(encoding="utf-8"))
+    ranks = {n["rank"] for n in cg["nodes"].values() if isinstance(n, dict) and "rank" in n}
+    assert ranks == set(range(1, 21)), f"표준등급 20 전체가 노드여야 한다: {sorted(ranks)}"
+
+    # ④ 서열 확장이 이 목록을 쓴다
+    sql = "SELECT pd_nm FROM domestic_bonds WHERE crd_grd = 'A-' LIMIT 5"
+    fixed, changed = expand_grade_comparison(sql, "A등급 이상 채권 알려줘")
+    assert changed and all(f"'{g}'" in fixed for g in scale[:scale.index("A-") + 1])
+
+
+def test_scope_declaration_drives_gate_constant(monkeypatch):
+    """'외화채는 없다' 가 아니라 '지금 스코프가 원화뿐' 이다 (2026-09-04).
+
+    1차 데이터엔 USD 19·JPY 1·EUR 1 이 있었다 — 한 번 변한 축을 상수로 못박으면 데이터가 바뀔 때
+    자신 있게 오답한다. 스코프에 통화가 하나면 게이트 상수로 살고, 둘 이상이면 로더가 스스로 뺀다.
+    """
+    from src.runtime import loader
+
+    assert loader.scope_values("domestic_bonds", "currency") == ["KRW"]
+    ctx = loader.load_context()
+    curr = [g for g in ctx.gate_constants.get("domestic_bonds", []) if g["column"] == "curr_cd"]
+    assert curr and curr[0]["value"] == "KRW" and curr[0].get("scope_key") == "currency"
+    assert "수록 범위" in curr[0]["answer"]          # '없습니다' 단정이 아니라 범위 표기
+
+    # 스코프가 넓어지면(외화채 적재) 게이트는 저절로 꺼진다 — 규칙·코드는 그대로다
+    monkeypatch.setattr(loader, "scope_values", lambda t, k: ["KRW", "USD"])
+    loader.load_context.cache_clear()
+    try:
+        widened = loader.load_context()
+        assert not [g for g in widened.gate_constants.get("domestic_bonds", []) if g["column"] == "curr_cd"]
+    finally:
+        loader.load_context.cache_clear()
+
+
+def test_dataset_dates_come_from_declaration():
+    """기준일 세 개(스냅샷·as-of·질문 시점)의 원천은 shared/dataset.yaml — 코드 상수가 아니다."""
+    from src.runtime import gate
+    from src.runtime.loader import dataset_scope
+
+    dates = dataset_scope()["dates"]
+    assert gate.DATA_CUTOFF == dates["decision"] == gate.BUYABLE_CUTOFF
+    assert gate.SNAPSHOT_DATE == dates["snapshot"]
+    assert dates["as_of"] != dates["decision"]        # as-of(8/22 토)와 판정일(8/24 월)은 다르다
+
+
+def test_kind_filters_come_from_declaration():
+    """종류 확정식의 원천은 enums `kind_filters` 다 — 코드 상수 표가 아니다 (2026-09-04).
+
+    새 종류(전단채·CP·해외채)를 붙이는 일이 코드 수정이 아니라 선언 한 줄이어야 한다.
+    """
+    import yaml as _yaml
+    from src.runtime.loader import PROJECT_ROOT, kind_filter_decl
+    from src.runtime.pipeline import _KTB_FILTER, _P, _question_kind_filters
+
+    decl = _yaml.safe_load((PROJECT_ROOT / "ontology/enums/domestic_bonds.yaml").read_text(encoding="utf-8"))["kind_filters"]
+    toks, paras = kind_filter_decl("domestic_bonds", _P)
+    assert len(toks) == len(decl["tokens"]) and len(paras) >= len(decl["paraphrases"])
+
+    # 확정식이 선언 그대로 쓰인다 — 국고채는 STRIPS 포함형
+    ktb = next(t["sql"] for t in decl["tokens"] if t["token"] == "국고채")
+    assert _KTB_FILTER == ktb and "std_pd_scls_nm" in ktb
+    assert _question_kind_filters("국고채 몇 종목이야?") == {ktb}
+    assert _question_kind_filters("국채는 몇 종목이야?") == {ktb}      # 별칭 정규식도 선언에서
+    assert _question_kind_filters("미국채 금리 알려줘") == set()        # 합성어 불개입
+    assert _question_kind_filters("은행이 발행한 채권") == {"TRIM(bd_knd) IN ('일반은행채','특수은행채')"}
+
+
+def test_safe_grade_presence_is_measured_not_listed():
+    """'그 종류에 6등급이 있나' 는 열거가 아니라 DB 조회다 (2026-09-04 — 종전 _SAFE16_KINDS 8종 하드코딩)."""
+    from src.runtime.pipeline import _kind_has_safe_grade, _kinds_without_safe_grade, ensure_top_safety
+
+    assert _kind_has_safe_grade("TRIM(std_pd_mcls_nm)='국공채'")
+    assert not _kind_has_safe_grade("TRIM(std_pd_mcls_nm)='회사채'")
+    assert _kinds_without_safe_grade("가장 안전한 회사채 3개 추천해줘")     # 6등급 0 → 완화 대상
+    assert not _kinds_without_safe_grade("가장 안전한 채권 3개 추천해줘")   # 종류 지목 없음
+
+    # 회사채는 '16' 단독이 0행이라 IN ('15','16') 폴백, 종류 지목이 없으면 '16' 단독 유지
+    s16 = "SELECT pd_no FROM domestic_bonds WHERE pd_risk_gcd = '16' AND TRIM(std_pd_mcls_nm)='회사채' ORDER BY applied_yield DESC LIMIT 3"
+    fixed, changed = ensure_top_safety(s16, "가장 안전한 회사채 3개 추천해줘")
+    assert changed and "IN ('15','16')" in fixed
+    plain = "SELECT pd_no FROM domestic_bonds WHERE curr_cd='KRW' ORDER BY applied_yield DESC LIMIT 3"
+    f2, c2 = ensure_top_safety(plain, "가장 안전한 채권 3개 추천해줘")
+    assert c2 and "pd_risk_gcd = '16'" in f2

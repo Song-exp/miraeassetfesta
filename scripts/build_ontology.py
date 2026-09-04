@@ -209,8 +209,13 @@ def validate(con, enums, shared, codebooks):
         else:
             present = nraw in distinct(t, c)
         if not present:
-            msg = f"[V1] 죽은 alias — DB distinct 에 없는 값: {where}"
-            (warnings if status == "pending" else errors).append(msg)
+            if status == "pending":
+                # 표준 체계에는 있으나 이 적재분에 값이 없는 것 — 오류가 아니라 **선언된 부재**다.
+                # (신용등급 CCC·D, 통화 USD·JPY·EUR 처럼 1차엔 있었거나 표준표에만 있는 값)
+                # 표준표를 데이터에 맞춰 잘라내면 새 데이터가 들어왔을 때 조용히 못 알아본다 (2026-09-04).
+                warnings.append(f"[V1p] 표준 선언 · 이 적재분 미실재(pending): {where}")
+            else:
+                errors.append(f"[V1] 죽은 alias — DB distinct 에 없는 값: {where}")
         if al.get("source") == "rule_component":
             # 복합 벤치마크 성분 부착(2026-08-31) — 한 raw 를 성분 노드 여럿에 다는 **의도적** 다중 매핑.
             # V1(실존)·V5(컬럼)는 위에서 이미 검사했고, V2(판정 충돌)만 면제한다.

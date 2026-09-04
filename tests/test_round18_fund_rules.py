@@ -83,6 +83,7 @@ def test_negation_rule_is_triggered_only_when_asked(ctx):
 # ── answer_rules 4줄 (DOM-11 · T13 · 2단 질문 · OFFICIAL-002) ────────────────────
 @pytest.mark.parametrize("needle", [
     "질문이 두 부분이면",          # KG-005 · X22 · KG-031 · DOM-07
+    "신규 가입만 중단된 상태",      # DOM-07 뒷부분에 댈 근거 — 위 규칙의 짝
     "0건일 때 그것이",             # DOM-11 — 0 이 정상인지 결손인지
     "두 축으로 셀 수 있는",         # T13 — domestic_etfs 섹터테마질의 횡전개
     "항목 자체를 서술하지 않는다",   # OFFICIAL-002 — 부인·단정 공존 금지
@@ -95,3 +96,12 @@ def test_int_dvd_note_no_longer_says_it_is_filterable(ctx):
     """구 note 는 '공모·판매중 한정하면 필터 축으로 쓸 수 있다' 는 반대 방향이었다."""
     note = str((ctx.enums["public_funds"]["columns"]["int_dvd_desc"]).get("note", ""))
     assert "전건 '배당' = 상수 컬럼" in note
+
+
+# ── 복합질의 · answer_rules 의 플래너 쪽 짝 ────────────────────────────────────
+def test_compound_query_rule_reaches_the_planner(ctx):
+    """조립기는 SQL 이 안 가져온 수를 만들 수 없다 — 두 부분 질의는 플래너에도 실려야 한다."""
+    on = ctx.planner_context(FUNDS, "이름이 삼성으로 시작하는 공모펀드는 몇 개고, 그중 삼성자산운용이 운용하는 건 몇 개야?")
+    off = ctx.planner_context(FUNDS, "KB자산운용 공모펀드 순자산 알려줘")
+    assert "복합질의" in on
+    assert "복합질의" not in off

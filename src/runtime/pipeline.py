@@ -6540,6 +6540,16 @@ JOIN_KEYS: list[tuple[str, str]] = [
 ]
 
 
+# 🔴 근거문서에 싣지 않는 식별자 컬럼 (2026-09-04 온톨로지 사용 감사).
+#    kg_alias 에는 남긴다 — 개체 동일성의 근거이고 값 사전 규모의 일부다. 다만 **프롬프트에 실을 이유가 없다**:
+#    ① 사람이 CUSIP·LEI 로 상품을 묻지 않는다(평가 질의는 상담형이다)
+#    ② ETF yaml 규칙 109개 컬럼 중 이 둘을 쓰는 규칙이 **하나도 없다** — 조회 경로가 아예 없다
+#    ③ 실측 해악: '삼성전자' 질의에서 cusip 7종·lei 1종이 매핑 블록에 실렸고, 그 목록이
+#       "여럿이면 IN 으로 모두" 안내와 겹쳐 없는 표기 17종 창작(239→259)의 재료가 됐다(9/4 FIN-05 계열).
+#    합계 17,362행(alias 의 26%)이 이 두 컬럼이다.
+_OPAQUE_ID_COLS = frozenset({"cusip", "lei"})
+
+
 def _mapping_block(ctx: RuntimeContext, hits: list, target: set, relations: bool = False) -> str:
     """플래너에 넘길 개체 매핑 — **DB 실제 값만** 싣는다.
 
@@ -6552,6 +6562,8 @@ def _mapping_block(ctx: RuntimeContext, hits: list, target: set, relations: bool
         name = node.label_ko or node.label_en or node.node_id
         groups: dict[tuple[str, str], list[str]] = {}
         for t, c, raw in _demote_product_name_raws(node, target_aliases(ctx, node, target, relations)):
+            if c in _OPAQUE_ID_COLS:
+                continue                    # 사람이 그 값으로 묻지 않는 식별자 — 아래 주석
             groups.setdefault((t, c), []).append(raw)
         for (t, c), vals in groups.items():
             uniq = sorted(set(vals), key=lambda v: (len(v), v))

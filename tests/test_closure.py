@@ -76,12 +76,24 @@ def test_fund_cambricon_via_closure(ctx):
 # ── ETF — 분신 합집합 · 자회사 관계 ─────────────────────────────────────
 
 def test_etf_nvidia_union_of_split_nodes(ctx):
-    """'엔비디아' 는 정본 1 + 실물 3(CUSIP 주식·회사채·LEI) 으로 갈려 있다 — 전부 합쳐 실린다."""
+    """'엔비디아' 는 정본 1 + 실물 3(CUSIP 주식·회사채·LEI) 으로 갈려 있다 — 노드는 전부 합치되
+    **조회에 쓸 수 있는 값만** 싣는다.
+
+    🔴 2026-09-04 온톨로지 사용 감사 — cusip·lei 는 근거문서에서 뺐다(`_OPAQUE_ID_COLS`).
+       kg_alias 에는 남아 있고 계층 합치기도 그대로지만, 값 목록을 프롬프트에 싣지 않는다:
+       ① 실측상 **재현율이 이름보다 낮다** — 엔비디아 cusip 309 ETF vs 이름 356 ETF,
+          cusip 만 잡는 ETF 0 · 이름만 잡는 ETF 47. 삼성전자 lei 82 vs 이름 84, lei 만 잡는 것 0.
+       ② ETF yaml 규칙 109개 컬럼 중 이 둘을 쓰는 규칙이 하나도 없다 — 조회 경로가 없다.
+       ③ 실측 해악 — 값 목록이 "여럿이면 IN 으로 모두" 안내와 겹쳐 없는 표기 창작의 재료가 됐다.
+    """
     trace, grounding = _grounding(ctx, "엔비디아를 편입한 해외 ETF 알려줘")
     assert "'NVIDIA CORPORATION'" in grounding          # 정본 자체 alias
-    assert "'NVIDIA Corp'" in grounding                 # Sec_o_67066G104
-    assert "ext_ovs_etf_holdings.cusip" in grounding and "'67066G104'" in grounding
-    assert "'549300S4KLFTLO7GSQ80'" in grounding        # Sec_lei_*
+    assert "'NVIDIA Corp'" in grounding                 # Sec_o_67066G104 — 노드는 합쳐졌다
+    assert "ext_ovs_etf_holdings.holding_name" in grounding
+    # 불투명 식별자는 값도 컬럼명도 매핑 블록에 나오지 않는다 (스키마 줄에는 남는다)
+    mapping = grounding.split("# 교차질의")[0]
+    assert "cusip" not in mapping and "lei" not in mapping
+    assert "'67066G104'" not in grounding and "'549300S4KLFTLO7GSQ80'" not in grounding
 
 
 def test_etf_subsidiary_expansion(ctx):

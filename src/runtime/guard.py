@@ -268,6 +268,33 @@ def nearest_enum_value(index: dict, table: str, column: str, literal: str) -> st
     return next(iter(cands)) if len(cands) == 1 else None
 
 
+_MASTER_FROM = re.compile(r"\bfrom\s+(" + "|".join(TABLES) + r")\b", re.I)
+_INNER_EXT_JOIN = re.compile(r"\b(?<!left )(?<!outer )(?:inner\s+)?join\s+(" + "|".join(EXT_TABLES) + r")\b", re.I)
+
+
+def ensure_ext_left_join(sql: str) -> tuple[str, list[str]]:
+    """마스터가 FROM 인데 `ext_*` 를 **INNER** 로 붙인 것을 LEFT 로 바꾼다. (SQL, 바꾼 테이블)
+
+    2026-09-04 KG-005 실측 — `ext_fund_page` 커버리지는 판매중·공모 **8,408/8,969 = 93.7%** 다.
+    INNER JOIN 이면 나머지 **561클래스가 조용히 사라진다**. 실제로 "이름이 삼성으로 시작하는
+    공모펀드" 가 217펀드/906클래스인데 217→**215**, 906→**868** 로 줄어든 채 답이 나갔다.
+    모수가 깎인 것을 답변 어디에도 밝히지 않으므로 사용자는 알 수 없다.
+
+    🔴 안전성: ext 컬럼이 WHERE 에 조건으로 있으면 LEFT 로 바꿔도 **결과가 같다** — 짝이 없는
+       행은 그 컬럼이 NULL 이라 어떤 비교도 통과하지 못한다(실측 확인: 868행 = 868행).
+       조건이 없을 때만 달라지고, 그때는 **마스터 모수를 지키는 LEFT 가 옳다.**
+    불개입: FROM 이 마스터가 아님 · 이미 LEFT · ext_* 가 아닌 조인.
+    """
+    if not _MASTER_FROM.search(sql):
+        return sql, []
+    changed: list[str] = []
+    out = sql
+    for m in list(_INNER_EXT_JOIN.finditer(sql)):
+        out = out.replace(m.group(0), "LEFT JOIN " + m.group(1), 1)
+        changed.append(m.group(1))
+    return out, changed
+
+
 def prune_dead_in_literals(sql: str, ctx: RuntimeContext) -> tuple[str, list[str]]:
     """IN 목록에서 **그 컬럼에 없는 값**만 걷어낸다. (보정된 SQL, 걷어낸 값 목록)
 

@@ -7665,6 +7665,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if attr_fixed:
         step("[Guard] 속성 태그 확정식 — 설정형태 어휘(개방형·폐쇄형·단위형·추가형)를 KG FundAttribute 토큰 canon 으로 주입, 같은 낱말의 타 컬럼 절 제거 "
              "(KG-017 han_clas_policies LIKE '%폐쇄형%' → 0행 '0개' · KG-018 직교 축 폐기)")
+    # 🔴 부가 집계 병기보다 앞 — 모수를 먼저 되돌려야 그 위에서 센 수가 맞다.
+    sql, ext_left = guard.ensure_ext_left_join(sql)
+    if ext_left:
+        step("[Guard] 외부표 LEFT 전환 — " + "·".join(ext_left) + " 을 INNER 에서 LEFT 로 "
+             "(커버리지 93.7% — INNER 면 짝 없는 561클래스가 조용히 사라진다. ext 조건이 WHERE 에 "
+             "있으면 결과 동일 · 2026-09-04 KG-005 실측)")
     sql, subc_fixed = ensure_fund_unit_subcount(sql)
     if subc_fixed:
         step("[Guard] 부가 집계 펀드 단위 병기 — 조건 집계(SUM CASE)를 펀드수·클래스수로 갈라 별칭에 단위를 굽는다 "

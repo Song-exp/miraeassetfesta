@@ -6,7 +6,7 @@
 > - **`[리드 검토]` 5곳**: §2.1 해외 ABSENT 가 shared `absent_in` 에서 오는 서술 · §5.4 V1·V2 의 ETF 실례 2건 · §6.2 해외 위험등급 기각의 서버 trace 원문 부재.
 > - **얇은 절**: §5.3 은 ETF 몫만의 노드 수가 NUMBERS 에 없어 전체 노드 수 + 원천 컬럼 값 수로 대체했다. §6.2 는 흐름만 있고 trace 원문이 없다 — 서버에서 한 번 받아 붙이면 된다.
 > - **해외 총보수 0값은 05 의 419건을 썼다.** DB 직접 집계는 368(0값만, NULL 제외) — 정의 차이. 조판 전 05 에서 정의를 명시.
-> - **ETF 담당이 할 일**: answer_rules 26/28 확정 · §6.2 trace 붙이기 · 05·17 과 어긋나는 문장은 이 문서를 고친다.
+> - **ETF 담당 처리 완료(9/4)**: answer_rules **28 확정**(yaml 실측 — 17 의 26 은 낡은 값, 17 을 고침) · §6.2 trace 원문 삽입 · absent_in·V1·V2 서술 확인.
 
 > 한 줄: 이 문서는 "원본 데이터 → yaml → 외부 수집 → yaml 완성 → 온톨로지·KG → 질의 답변" 순서로 ETF 도메인이 어떻게 만들어졌는지 적는다. 정본 원고는 `05_도메인_ETF.md`·`16_ETF_본문원고.md`, 판정 실례는 `17_구축과정_ETF.md`(병철). 이 문서는 17 의 재료를 흐름 순서로 재배열한 것이다.
 >
@@ -86,7 +86,7 @@
 | `derivation_rules` | 컬럼을 만들지 않고 파생 판정을 규칙으로 | `inverse_direction`·`leverage_multiple` | — | Plan |
 | `external_join` | 외부 테이블 조인 계약(키·기준일·커버리지·금지 키) | `ext_etf_holdings` | `ext_ovs_etf_holdings` | Gate 교차질의 판정 |
 | `gate_constants` | 상수 컬럼 위반 질의를 HCX 0회로 기각 | `cu_charge_etc_rt`=0 | `pd_trd_ccy`=USD · `pd_mkt_id`=US | Gate |
-| `absent_properties` | 속성 부재 선언 → ttl ABSENT + 게이트 어휘 | `hasHoldingsHistory`·`hasNavHistory` | (shared `absent_in` 으로 선언) [리드 검토] | build + Gate |
+| `absent_properties` | 속성 부재 선언 → ttl ABSENT + 게이트 어휘 | `hasHoldingsHistory`·`hasNavHistory` | shared `absent_in` 으로 선언 ✅(asset_class·credit_grade 등 shared 각 파일 실재 · §6.2 기각 trace 로 작동 확인) | build + Gate |
 | `clarify` · `synonyms` · `name_encoding` | 되묻기 · 통칭 · 이름 규약 | 5 / 61 / — (17 §1) | | Ground · Plan |
 
 값 범위(`range`)는 shared 쪽에 있다 — `shared/risk_grade.yaml` 이 `domestic_etfs` 위험등급 1~6 을 선언하고 빌드가 `etf_kr.ttl` 의 `owl:withRestrictions` 로 옮긴다.
@@ -245,8 +245,8 @@ ttl 은 스키마다. 인스턴스(어느 표기가 어느 노드인지)는 ttl 
 
 | 검증 | 잡는 것 | ETF 에서 |
 | :-- | :-- | :-- |
-| V1 | 죽은 alias — DB distinct 에 없는 값 | 2차 데이터 전환 때 1차 값 alias 정리 [리드 검토] |
-| V2 | 한 raw 값이 두 노드에 매달림 | 이름 병합 금지 원칙의 기계 검사 (삼성전자↔삼성전기) [리드 검토] |
+| V1 | 죽은 alias — DB distinct 에 없는 값 | 빌더 212행 실재 ✅ · 현 빌드 경고는 채권·통화 몫뿐(ETF 0건 = 정리 완료 상태) |
+| V2 | 한 raw 값이 두 노드에 매달림 | 빌더 223행 실재 ✅ — "raw 값 충돌" 검사가 이름 병합 금지 원칙의 기계판 |
 | V3 | `kg_entity` 포인터가 shared 에 없음 | 해외 `wu_inv_rgn`·`wu_inv_ast_type`·`pd_trd_ccy` 는 08-25 에 stub 포인터로 등록 |
 | V4 | 코드북 `source`·`as_of ≤ 2026-08-24` | `security_alias_manual.csv` 행마다 source·as_of 필수 |
 | V6 | ABSENT 선언인데 컬럼이 실재 | 해외 `hasRiskGrade` 선언이 "살아 있는지" 매 빌드 확인 |
@@ -281,7 +281,20 @@ ttl 은 스키마다. 인스턴스(어느 표기가 어느 노드인지)는 ttl 
 
 ### 6.2 답변불가 예
 
-**게이트 기각 — 해외 위험등급 부재 (17 실례 ③, §4.2-2).** "위험등급 낮은 해외 ETF 알려줘" → Route 가 `overseas_etfs` 단독 → Gate 가 `hasRiskGrade` ABSENT 어휘에 걸려 **HCX 0회** 기각 + "국내 ETF 는 위험등급 조회 가능" 대체 안내. 1층이 비는 순간부터 3층이 받는다 — "없는 것을 찾으러 가지 않는다". 서버 원문 trace 는 05·10 에 없다 [리드 검토].
+**게이트 기각 — 해외 위험등급 부재 (17 실례 ③, §4.2-2).** 실측 trace 원문(2026-09-04, 로컬 파이프라인 — 이 구간은 HCX 0회라 서버와 동일 경로. HCX 가 호출되면 실패하는 스텁을 물려 0회를 검증했다):
+
+```
+1. [Normalize] 질의 정규화 — 길이 18
+2. [Route] 상품군 — overseas_etfs · 근거: 머리명사 ETF
+3. [Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)
+4. [Gate] 기각 — 온톨로지상 overseas_etfs 클래스에 hasRiskGrade 속성이 정의되어 있지 않음
+   — 위험등급 컬럼 자체 없음 → '위험등급 낮은 해외ETF' 질의는 HCX 호출 0회로 기각
+5. [Decision] HCX 호출 없이 종료 (근거는 Gate 단계)
+
+answer: 해당 상품군에는 요청하신 속성이 제공되지 않습니다. (위험등급 컬럼 자체 없음)
+```
+
+1층이 비는 순간부터 3층이 받는다 — "없는 것을 찾으러 가지 않는다".
 
 **정확일치 0 → 되묻기 — "KODEX AI로봇 ETF 정보 알려줘" (10 §4.4).** SQL `TRIM(pd_abrv_nm) = 'KODEX AI로봇'` 0행 → `clarify.존재하지_않는_개체` 가 유사 후보 4건(KODEX AI반도체TOP2플러스 · AI전력핵심설비 · 미국AI전력핵심인프라 · 로봇액티브)을 되묻는다. 부분일치(`KODEX`·`AI`)로 엉뚱한 종목을 답하지 않는다. 2.1초 · HCX 1회(SQL). 되묻기는 답변불가 문항의 정답 형태 중 하나다(주최 8/25).
 

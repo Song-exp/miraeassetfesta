@@ -24,7 +24,7 @@
 | :-- | :-- | :-- |
 | `enums/domestic_etfs.yaml` `columns:` | 컬럼별 뜻 — 결측 사유, 0의 의미, 함정, answer_policy | 98컬럼 판정 |
 | 〃 `query_rules:` | 질의 조립 규칙 — 조건식 + 근거 + 반례 + 실측 사례 | 44개 (해외 23) |
-| 〃 `answer_rules:` | 답변 어투 규칙 — 모수 명시, 금지 표현 | 26개 (해외 24) |
+| 〃 `answer_rules:` | 답변 어투 규칙 — 모수 명시, 금지 표현 | 28개 (해외 24) |
 | 〃 `synonyms:` `clarify:` `derivation_rules:` `external_join:` | 통칭, 되묻기, 파생 판정, 조인 계약 | 61 / 5 / 1 / 1 |
 | `shared/*.yaml` | 도메인 공통 개체 — 지역 계층, 등급, 지수 정본 | 11종 |
 | `codebooks/*.csv` | 외부 지식을 값이 아니라 사전으로 — 종목 티커, 운용사 정식명 | 3종 |

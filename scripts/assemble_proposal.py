@@ -61,7 +61,7 @@ doc13 = f"""# 2.1 특화 데이터 수집·정제 — 통합본 (생성 {TODAY} 
 | :-- | :-- | :-- | :-- | :-- |
 | **L0 마스터** (주최 v2_20260824) | 채권·국내ETF·해외ETF·펀드 4테이블 | 53,375행 · 280컬럼 · 기준일 2026-08-22 | 모든 답변의 기준 | **항상 우선** |
 | **L1 판정** (온톨로지·KG) | `enums/*.yaml`·`shared/*.yaml`·`codebooks/*.csv` → ttl 5분할 + `kg_*` 4테이블 | 노드 41,580 · alias 66,592 · edge 7,414 · closure 9,965 | 결측·0·센티넬의 **의미**, 표기↔정본, 질의 규칙 | 값을 바꾸지 않음 — 배제·해석만 |
-| **L2 외부 보강** | 국내 KRX 공시 · 해외 SEC EDGAR NPORT-P · 펀드 설명서·미래에셋 웹 | 구성종목 982,707 + 펀드 59,206 + 웹 10,565 | 마스터에 없는 사실(구성종목·설정일·환매규칙) | 마스터 non-null 우선, 출처·기준일 병기 |
+| **L2 외부 보강** | 국내 KRX 공시 · 해외 SEC EDGAR NPORT-P · 펀드 미래에셋증권 웹 | 구성종목 982,707 + 펀드 59,206 + 웹 10,565 | 마스터에 없는 사실(구성종목·설정일·환매규칙) | 마스터 non-null 우선, 출처·기준일 병기 |
 
 원칙 셋: ① 값을 고치지 않고 **배제·판정**한다(주최 8/24 "0·결측은 의도된 내용") ② 모수를 답변에 밝힌다 ③ 시계열이 어긋나는 값은 적재하지 않는다(펀드 웹 수집분 실례 — §2.1.1 펀드).
 
@@ -79,7 +79,7 @@ doc13 = f"""# 2.1 특화 데이터 수집·정제 — 통합본 (생성 {TODAY} 
 python scripts/fetch_etf_holdings.py        # 국내 ETF 구성종목 (KRX 공시) → 75,859행
 python scripts/fetch_overseas_holdings.py   # 해외 ETF 구성종목 (SEC EDGAR NPORT-P) → 906,848행
 python scripts/load_external_holdings.py    # ext_etf_holdings · ext_ovs_etf_holdings 적재
-python scripts/load_external_web.py         # 펀드 설명서·웹 → ext_fund_holdings · ext_fund_page
+python scripts/load_external_web.py         # 펀드 미래에셋증권 웹(mks4116) → ext_fund_holdings · ext_fund_page
 python scripts/build_db.py                  # 마스터 4테이블 적재
 python scripts/build_ontology.py            # yaml → ttl 5분할 + kg_* 4테이블 + V1~V7 검증 + coverage report
 ```

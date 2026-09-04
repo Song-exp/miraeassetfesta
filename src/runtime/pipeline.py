@@ -1738,19 +1738,28 @@ def forbidden_column_use(sql: str) -> str | None:
 # 2026-09-03 서버 실측: '달러로 발행된 채권 알려줘' → `curr_cd = '000'` — 값 사전에는 있으나(오염값 1행 실재) 규칙
 #   외화채없음이 '사용 불가' 로 못 박은 리터럴. 값 검사가 통과시키므로 사용 금지 컬럼과 같은 자리에서 기각한다.
 #   어휘 층(yaml gate_constants curr_cd)이 먼저 받고, 이 가드는 어휘를 비켜 간 SQL 의 뒷문이다.
+# 🔴 2026-09-04 DOM-03 — **테이블을 함께 못 박는다.** 두 규칙 다 `domestic_bonds` 의 사실인데
+#    테이블을 안 보고 컬럼명만 봐서 `public_funds` 의 정상 SQL 을 기각했다:
+#    펀드 curr_cd 는 기본모수에 USD 152·EUR 29·JPY 4·SEK 1·AUD 1(비원화 187클래스/131펀드)이 실재하고
+#    `curr_cd != 'KRW'` 가 정답 SQL 이다. 채권(KRW·000 뿐)과 컬럼명만 같고 사실이 정반대인 자리다.
+#    부류: 여러 도메인이 같은 컬럼명을 쓰면 컬럼 단위 가드는 반드시 테이블로 한정한다.
 _FORBIDDEN_LITERALS = [
-    (re.compile(r"curr_cd\s*(?:=|<>|!=)\s*'000'", re.I),
+    ("domestic_bonds", re.compile(r"curr_cd\s*(?:=|<>|!=)\s*'000'", re.I),
      "curr_cd='000' 은 통화 미수록 오염값 1행(BAC)이라 조건으로 쓸 수 없다 — 국내채권은 원화(KRW)만 수록, "
      "달러·외화 채권은 '수록되어 있지 않다' 로 답한다(통화 조건은 curr_cd='KRW' 만)"),
-    (re.compile(r"curr_cd\s*(?:<>|!=)\s*'KRW'", re.I),
+    ("domestic_bonds", re.compile(r"curr_cd\s*(?:<>|!=)\s*'KRW'", re.I),
      "curr_cd <> 'KRW' 는 오염값 '000' 1행만 남긴다 — 외화 채권은 수록 없음, 원화 외 통화 조건을 만들지 않는다"),
 ]
 
 
 def forbidden_literal_use(sql: str) -> str | None:
-    """사용 금지 리터럴(오염값)을 조건으로 쓴 SQL 의 기각 사유 — 없으면 None."""
-    for pat, why in _FORBIDDEN_LITERALS:
-        if pat.search(sql):
+    """사용 금지 리터럴(오염값)을 조건으로 쓴 SQL 의 기각 사유 — 없으면 None.
+
+    🔴 규칙마다 소유 테이블이 있다. SQL 이 그 테이블을 쓰지 않으면 발동하지 않는다 — 같은 컬럼명이
+    다른 도메인에서 정반대 사실을 가질 수 있다(2026-09-04 DOM-03: 채권용 curr_cd 규칙이 펀드를 기각)."""
+    tables = set(guard.sql_tables(sql))
+    for owner, pat, why in _FORBIDDEN_LITERALS:
+        if owner in tables and pat.search(sql):
             return why
     return None
 

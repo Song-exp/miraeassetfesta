@@ -169,3 +169,28 @@ def test_subcategory_and_join_direction(ctx):
     assert "인도주식" in pc, "Z10 — 소분류 값이 플래너에 없으면 리터럴을 지어낸다"
     pc2 = ctx.planner_context(FUNDS, "미래에셋코어테크 펀드의 설정일과 모펀드 알려줘")
     assert "ext_fund_page 를 FROM 에 두지 않는다" in pc2, "KG-006"
+
+
+# ── DOM-03 · 도메인 간 컬럼명 충돌 — 컬럼 단위 가드는 테이블로 한정한다 ──────────────
+def test_forbidden_literal_guard_is_table_scoped():
+    """채권용 curr_cd 규칙이 펀드 SQL 을 기각했다(DOM-03). 두 테이블의 사실이 정반대다.
+
+    domestic_bonds.curr_cd = KRW·000 뿐 → 외화 조건 금지가 맞다.
+    public_funds.curr_cd  = 기본모수에 USD 152·EUR 29·JPY 4·SEK 1·AUD 1 → `!= 'KRW'` 가 정답 SQL 이다.
+    """
+    from src.runtime.pipeline import forbidden_literal_use as f
+    assert f("SELECT pd_nm FROM domestic_bonds WHERE curr_cd <> 'KRW' LIMIT 30"), "채권 규칙은 살아 있어야 한다"
+    assert f("SELECT pd_nm FROM domestic_bonds WHERE curr_cd = '000' LIMIT 30")
+    assert f("SELECT itm_nm FROM public_funds WHERE curr_cd != 'KRW' LIMIT 30") is None
+    assert f("SELECT itm_nm FROM public_funds WHERE curr_cd <> 'KRW' LIMIT 30") is None
+
+
+def test_dom03_non_krw_counts():
+    """가드 통과 뒤 실제로 gold(131펀드/187클래스)가 나오는가."""
+    con = sqlite3.connect(f"file:{db_path()}?mode=ro", uri=True)
+    n = con.execute(
+        "SELECT COUNT(*) FROM public_funds "
+        "WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND curr_cd != 'KRW'"
+    ).fetchone()[0]
+    con.close()
+    assert n == 187, f"비원화 클래스 수가 바뀌었다: {n}"

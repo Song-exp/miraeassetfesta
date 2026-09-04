@@ -8,7 +8,8 @@ DOM-10 은 UNION 라벨 가지가 0행이라 헤더만 남았고 답변기가 �
 import pytest
 
 from src.runtime.loader import db_path, load_context
-from src.runtime.pipeline import _fee_pct, _order_by_select_pos, _restore_empty_label_rows, answer_question
+from src.runtime.pipeline import (_fee_is_percent, _fee_pct, _order_by_select_pos,
+                                  _restore_empty_label_rows, answer_question)
 
 pytestmark = pytest.mark.skipif(not db_path().exists(), reason="DB 없음")
 
@@ -46,6 +47,22 @@ def test_fee_pct_permille_to_percent():
     assert _fee_pct(0.4) == "0.04"
 
 
+def test_fee_conversion_is_idempotent():
+    """🔴 환산은 한 번만. 같은 yaml 규칙을 읽은 HCX 가 SQL 에서 이미 ÷10 하면 조립기는 손대지 않는다.
+
+    2026-09-04 서버 실측: `MIN(ROUND((…)/10.0, 4)) AS "총보수_퍼센트"` 위에 조립기가 또 ÷10 해서
+    0.0015% 가 0.0002% 로 나갔다(100배). 값이 아니라 **누가 이미 나눴는지**를 봐야 한다."""
+    assert _fee_pct(0.0015, already_percent=True) == "0.0015"
+    # 별칭이 퍼센트를 말하면 이미 % 다
+    assert _fee_is_percent("SELECT a FROM t", "총보수_퍼센트", 0) is True
+    # SQL 이 /10 을 했으면 이미 % 다
+    div = 'SELECT itm_no, ROUND((or_co_rwrd_r + sale_co_rwrd_r)/10.0, 4) AS x FROM public_funds'
+    assert _fee_is_percent(div, "x", 1) is True
+    # 원값(‰)이면 아니다
+    raw = "SELECT itm_no, MIN(or_co_rwrd_r + sale_co_rwrd_r) as total_commission FROM public_funds"
+    assert _fee_is_percent(raw, "total_commission", 1) is False
+
+
 def test_order_by_position_resolves_alias():
     assert _order_by_select_pos(FEE_SQL) == 2          # ORDER BY 3 → 0-기반 2 = total_commission
     assert _order_by_select_pos("SELECT a, b FROM t ORDER BY a") is None
@@ -62,6 +79,26 @@ def test_fee_ranking_is_machine_assembled(ctx):
     for l in lines:
         assert "클래스" in l, f"항목마다 클래스수를 병기해야 한다: {l}"
     assert "0.0015%" in (r.answer or ""), "‰→% 환산이 안 됐다 (0.015 를 그대로 적으면 10배 오류)"
+
+
+PCT_SQL = FEE_SQL.replace(
+    "MIN(or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) as total_commission, fd_daily_bas_dt",
+    'ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)/10.0, 4) AS "총보수_퍼센트"',
+)
+
+
+class _NoHCXPct(_NoHCX):
+    def plan_sql(self, q, g):
+        return PCT_SQL
+
+
+def test_fee_ranking_same_answer_whichever_side_converts(ctx):
+    """SQL 이 환산하든 조립기가 환산하든 답은 같아야 한다 — 100배 사고가 난 자리."""
+    a = answer_question("FND-005", "총보수가 가장 낮은 공모펀드 5개 알려줘", planner=_NoHCX(), ctx=ctx).answer
+    b = answer_question("FND-005", "총보수가 가장 낮은 공모펀드 5개 알려줘", planner=_NoHCXPct(), ctx=ctx).answer
+    for ans in (a, b):
+        assert "HCX-CALLED" not in (ans or "")
+        assert "0.0015%" in (ans or ""), f"환산이 어긋났다: {ans}"
 
 
 def test_empty_union_label_branch_becomes_zero():

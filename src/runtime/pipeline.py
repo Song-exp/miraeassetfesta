@@ -2330,13 +2330,26 @@ def _pct(v: str) -> str:
     return s
 
 
-def _fee_pct(v: float) -> str:
-    """보수 ‰ 값을 % 로 옮긴다 — 마스터 보수 4종은 천분율 선언이라 값÷10 이 %.
+def _fee_pct(v: float, already_percent: bool = False) -> str:
+    """보수 값을 % 문자열로. ‰ 이면 ÷10 한다 — 마스터 보수 4종은 천분율 선언이다.
 
-    2026-09-04 FND-005 실측: `0.015` 를 그대로 `0.015%` 로 적어 10배 틀렸다. yaml `보수단위` 규칙과
-    answer_rules 두 곳에 이미 적혀 있었는데도 답변기가 안 지켰다 — 말이 아니라 조립기가 환산해야 한다.
-    `_pct` 는 소수 2자리라 0.0015 가 '0' 으로 뭉개진다. 보수는 4자리로 남긴다."""
-    return f"{v / 10.0:.4f}".rstrip("0").rstrip(".") or "0"
+    2026-09-04 FND-005 실측: `0.015`(‰) 를 그대로 `0.015%` 로 적어 10배 틀렸다. yaml `보수단위` 규칙과
+    answer_rules 두 곳에 적혀 있었는데도 답변기가 안 지켰다 — 말이 아니라 조립기가 환산해야 한다.
+    🔴 다만 **환산은 한 번만** 일어나야 한다. 같은 규칙을 읽은 HCX 가 SQL 에서 이미
+    `ROUND((…)/10.0, 4) AS "총보수_퍼센트"` 를 내면 조립기가 또 나눠 100배 작아진다(같은 날 서버 실측).
+    `_pct` 는 소수 2자리라 0.0015 가 '0' 으로 뭉개진다 — 보수는 4자리로 남긴다."""
+    return f"{v if already_percent else v / 10.0:.4f}".rstrip("0").rstrip(".") or "0"
+
+
+def _fee_is_percent(sql: str, header: str, pos: int | None) -> bool:
+    """그 값 열이 **이미 %** 인가 — SQL 이 ÷10 을 했거나 별칭이 퍼센트를 말하면 조립기는 더 나누지 않는다."""
+    if re.search(r"퍼센트|percent|%", header or "", re.I):
+        return True
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if frm is None or pos is None:
+        return False
+    items = _split_select_items(re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I))
+    return 0 <= pos < len(items) and re.search(r"/\s*10(?:\.0*)?\b", items[pos]) is not None
 
 
 def _lookup_answer(sql: str, rows: str, n: int, name_token: str | None = None,
@@ -2619,6 +2632,7 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
     scope = ("·".join(basis + _rank_filter_labels(sql)) + " 기준, " if (basis or _rank_filter_labels(sql)) else "") + \
         f"펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, {label} = {axis}, 기준일 {gate.DATA_CUTOFF}"
     out = [f"{label} {'상위' if direction == 'DESC' else '하위'} {n}개 {pop}입니다 ({scope}).", ""]
+    fee_pct_already = col in _FUND_FEE_COLS and _fee_is_percent(sql, cols[val_i], val_i)
     extreme = False
     for i, ln in enumerate(lines[1:], 1):
         parts = [p.strip() for p in ln.split(" | ")]
@@ -2630,7 +2644,7 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
             val = f"{int(num):,}억원" if num.lstrip("-").isdigit() else (raw or "미수록")
         elif col in _FUND_FEE_COLS:
             try:
-                val = f"{_fee_pct(float(raw))}%"
+                val = f"{_fee_pct(float(raw), fee_pct_already)}%"
             except ValueError:
                 return None
         else:

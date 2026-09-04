@@ -1789,3 +1789,18 @@ def test_safe_grade_presence_is_measured_not_listed():
     plain = "SELECT pd_no FROM domestic_bonds WHERE curr_cd='KRW' ORDER BY applied_yield DESC LIMIT 3"
     f2, c2 = ensure_top_safety(plain, "가장 안전한 채권 3개 추천해줘")
     assert c2 and "pd_risk_gcd = '16'" in f2
+
+
+def test_grade_span_follows_the_standard_table():
+    """'유효 등급은 AAA~D' 문구도 표준표에서 만든다 — 표가 늘면 문구가 따라온다 (2026-09-04)."""
+    from src.runtime.gate import _grade_span
+    from src.runtime.loader import load_context
+
+    ctx = load_context()
+    assert _grade_span(ctx) == "AAA~D"          # D 등급 노드 추가 후
+    r = answer_question("T-grade-span", "신용등급 AAAA인 채권 알려줘", ctx=ctx)
+    assert "AAA~D" in r.answer and "존재하지 않는" in r.answer
+    # 표준표에 있으나 이 적재분에 없는 등급은 '없는 등급' 이 아니라 '해당 채권 없음'
+    for tok in ("D", "CCC"):
+        a = answer_question("T-nodata", f"신용등급 {tok}인 채권 알려줘", ctx=ctx).answer
+        assert "체계에 있으나" in a and "없습니다" in a

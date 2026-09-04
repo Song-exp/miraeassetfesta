@@ -260,6 +260,19 @@ def sql_uses_as_maturity(sql: str, tokens: list[str]) -> bool:
 
 # ── ② enum — 신용등급 판정 ──────────────────────────────────────────────
 
+def _grade_span(ctx: RuntimeContext) -> str:
+    """'AAA~D' — 표준표의 최상·최하 등급으로 만든 유효 범위 문구 (표가 늘면 문구도 따라온다)."""
+    from .loader import GRADE_SCALE_CSV, grade_scale
+
+    std = [g for g in ctx.std_grades if g and g[0].isalpha()]
+    if not std:
+        return "AAA~C"
+    scale = grade_scale() if GRADE_SCALE_CSV.exists() else ()
+    top = scale[0] if scale else "AAA"
+    worst = max(std, key=lambda g: (g[0], len(g)))          # 알파벳이 뒤일수록 하위 등급
+    return f"{top.rstrip('0')}~{worst.rstrip('0')}"
+
+
 def classify_grade_token(tok: str, ctx: RuntimeContext) -> str:
     """'not_grade'(등급 모양 아님 — 무시) · 'unknown'(표준표에 없음 — 존재하지 않는 등급) ·
     'no_data'(표준 등급이나 2차 데이터 0건) · 'ok'."""
@@ -312,7 +325,8 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                 return GateResult(
                     rejected=True,
                     reason=f"'{tok}' 는 신용등급 표준표({len(ctx.std_grades) or len(ctx.crd_grades)}종)에 없음 — 존재하지 않는 등급",
-                    answer=f"'{tok}'는 존재하지 않는 신용등급이라 확인할 수 없습니다. 유효 등급은 AAA~C 체계입니다.",
+                    # 유효 범위 문구도 표준표에서 만든다 — 코드에 'AAA~C' 를 적어 두면 표가 늘어도 문구가 안 따라온다 (2026-09-04, D 등급 노드 추가)
+                    answer=f"'{tok}'는 존재하지 않는 신용등급이라 확인할 수 없습니다. 유효 등급은 {_grade_span(ctx)} 체계입니다.",
                 )
             if kind == "no_data":
                 # 기각이 아니라 DB 근거의 즉답 — 표준 등급이지만 2차 데이터에 해당 채권이 없다 (등급서열 규칙)

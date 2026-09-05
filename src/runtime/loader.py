@@ -91,6 +91,11 @@ class RuntimeContext:
     absent_props: dict = field(default_factory=dict)   # KG 1R S5 — table -> [{property, why, vocab[], substitute}] 부재 속성 선언 (enums yaml absent_properties → ttl ABSENT + 게이트 어휘)
     similarity_axes: dict = field(default_factory=dict) # 2026-09-05 #73 — table -> {default[], axes{col: {vocab, kind, …}}, same_kind[], buckets, exclude_issuer_vocab} '비슷한 상품' 확정식의 축 표 (enums yaml similarity_axes)
 
+    # 2026-09-05 #78 — table -> {column: 재생성 사유}. 컬럼 정책이 "사용 금지" 로 못 박은 컬럼을 쓴 SQL 은
+    # 기각해 재생성 사유로 돌려준다(pipeline.forbidden_column_use). 🔴 반드시 **테이블 단위**다 — 같은
+    # 컬럼명이 다른 도메인에서 정반대 사실을 가질 수 있다(2026-09-04 DOM-03: 채권용 curr_cd 규칙이 펀드를 기각).
+    forbidden_cols: dict = field(default_factory=dict)
+
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
 
@@ -264,6 +269,9 @@ def load_context() -> RuntimeContext:
                 ctx.absent_props.setdefault(doc["domain"], []).append(item)
             if doc.get("similarity_axes"):
                 ctx.similarity_axes[doc["domain"]] = doc["similarity_axes"]
+            if doc.get("forbidden_columns"):
+                ctx.forbidden_cols[doc["domain"]] = {
+                    str(c): " ".join(str(why).split()) for c, why in doc["forbidden_columns"].items()}
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
         doc = _load_yaml(p, header_only_if_big=True)

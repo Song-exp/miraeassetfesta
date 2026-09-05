@@ -378,7 +378,7 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool, question: str =
     # 🔴 10R gold N2 — **위반을 전부 모아 한 번에 돌려준다.** 첫 사유에서 return 하면 재생성 1회가 사유 하나만
     #    고치고 다음 가드에 다시 걸려 예산이 소진된다(OFFICIAL-004 실측: 1차 괄호 가드 · 2차 테이블 참조로
     #    서로 다른 두 가드가 재생성 1회를 나눠 쓰고 무응답). 가드를 늘릴수록 이 곱셈이 나빠진다.
-    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql), forbidden_literal_use(sql),
+    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql, ctx), forbidden_literal_use(sql),
                         fabricated_name_literal_use(sql, question, ctx) if question else None) if e]
     agg = where_window_or_aggregate(sql)
     if agg:
@@ -2148,8 +2148,23 @@ _FORBIDDEN_COLS = {
 }
 
 
-def forbidden_column_use(sql: str) -> str | None:
-    """사용 금지 컬럼을 쓴 SQL 의 기각 사유 — 없으면 None."""
+def forbidden_column_use(sql: str, ctx=None) -> str | None:
+    """사용 금지 컬럼을 쓴 SQL 의 기각 사유 — 없으면 None.
+
+    두 원천을 본다. ① yaml 선언 `forbidden_columns`(테이블 단위 · ctx 가 있을 때) ② 아래 코드 상수
+    `_FORBIDDEN_COLS`(펀드 2컬럼, 아직 이관 전). 2026-09-05 #78 로 채권 4컬럼이 ①로 들어왔고,
+    펀드 몫은 다음 라운드에 옮긴다 — 그때까지 두 원천이 공존한다(guard_to_yaml_migration 섀도 단계).
+
+    🔴 yaml 쪽은 **SQL 이 그 테이블을 실제로 읽을 때만** 발동한다. 컬럼명만 보고 기각하면 같은 이름이
+    다른 도메인에서 정상인 자리를 깨뜨린다(2026-09-04 DOM-03: 채권 curr_cd 규칙이 펀드 SQL 을 기각)."""
+    if ctx is not None and getattr(ctx, "forbidden_cols", None):
+        in_sql = set(guard.sql_tables(sql))
+        for table, cols in ctx.forbidden_cols.items():
+            if table not in in_sql:
+                continue
+            for col, why in cols.items():
+                if re.search(rf"\b{col}\b", sql, re.I):
+                    return why
     for col, why in _FORBIDDEN_COLS.items():
         if re.search(rf"\b{col}\b", sql, re.I):
             return why
@@ -3487,9 +3502,17 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             bits.append(f"잔존 {r['remaining_days']}")
         if "pd_pbcm" in cols and r.get("pd_pbcm"):
             bits.append(f"발행사 {r['pd_pbcm']}")
+        # 🔴 장내종가는 **기준일과 한 덩어리로만** 적는다 (규칙 `장내종가`·`가격축`). 유효 1,270행의 종가 기준일은
+        #    2019~2026년에 흩어져 있고 구매가능 모수 1,262 중 2026년치는 150(12%)뿐이라, 기준일 없이 적으면
+        #    사용자는 오늘 시세로 읽는다. 기준일 컬럼은 _BOND_HIDE 라 아래 일반 루프가 못 싣는다 — 여기서 짝지어 낸다.
+        if "exg_close_price" in cols and r.get("exg_close_price"):
+            _bd = r.get("exg_close_price_base_dt")
+            _bd = _fmt_ymd(_bd) if _bd and _bd.strip() else None
+            bits.append(f"장내종가 {r['exg_close_price']}" + (f"(종가 기준일 {_bd})" if _bd else ""))
         # SELECT * 는 58컬럼 전부가 오므로 위 핵심 항목만 보이고 나머지는 옮기지 않는다(2026-09-03 BAC 행 실측)
         for c in ([] if star else cols):
-            if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm") or c in _BOND_YIELD_COLS:
+            if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm",
+                                        "exg_close_price") or c in _BOND_YIELD_COLS:
                 continue
             if r.get(c):
                 bits.append(f"{_BOND_COL_KO.get(c, c)} {_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c]}")
@@ -3659,6 +3682,12 @@ def fix_permille_symbol(answer: str, sql: str) -> tuple:
     return (out, True) if out != answer else (answer, False)
 
 
+# 예산 문형 — "100만원으로·5천만원 정도·1억 가지고·예산". 🔴 금액 뒤의 **조사**를 요구한다: 그것이 없는
+# '발행잔액 1000억 이상' 은 채권의 규모지 사용자의 예산이 아니다 (2026-09-05 #78 오폭 점검).
+_BUDGET_Q = re.compile(r"\d[\d,]*\s*(?:억|천만|백만|만)\s*원?\s*(?:짜리|어치|으로|로(?![가-힣])|정도|가지고|들고|안에서|내에서|이내로)"
+                       r"|예산|여유\s*자금|투자할\s*(?:돈|금액)|목돈")
+
+
 def domain_caveats(sql: str, rows: str, question: str = "") -> list:
     """숫자만으로는 오해되는 자리에 **도메인 한 문장**을 붙인다.
 
@@ -3684,6 +3713,18 @@ def domain_caveats(sql: str, rows: str, question: str = "") -> list:
         out.append("※ 총보수만 비교한 값입니다. **A 계열은 가입 시 선취 수수료를 따로 뗍니다**(금액은 이 데이터에 "
                    "없습니다) — 그래서 유불리는 투자 기간에 달려 있습니다: **길게 보유하면 A, 짧게 보유하면 C** 가 "
                    "유리한 것이 일반적입니다.")
+    # ④ 예산으로 좁힌 척하지 않는다 (`#78`) — "100만원으로 살 수 있는 채권" 에 HCX 가 buyable_quantity(매수가능수량)를
+    #    예산으로 잘못 쓰고, 모수가 20,431 → 280 종목으로 줄어든 사실을 답변이 밝히지 않았다. 금지 컬럼 선언이
+    #    그 절을 기각하므로 조회는 전 모수로 돌아오지만, **왜 금액으로 안 좁혔는지**는 조립기가 말해야 한다.
+    if "domestic_bonds" in sql and _BUDGET_Q.search(question):
+        out.append("※ 투자 **금액으로는 좁히지 않았습니다** — 최소투자금액·최소매수단위가 이 데이터에 수록되어 "
+                   f"있지 않습니다. 만기가 지나지 않은 채권은 모두 매수 가능 범위로 보고 조회했습니다"
+                   f"(기준일 {gate.DATA_CUTOFF}). 금액에 맞춘 수량은 창구·앱의 실제 호가로 확인해 주세요.")
+    # ⑤ 장내 종가는 오늘 시세가 아니다 (`#79`) — 유효 1,270행의 종가 기준일이 2019~2026년에 흩어져 있고
+    #    구매가능 모수 1,262 중 2026년 체결분은 150(12%)뿐이다. 행마다 기준일을 붙이지만 총평도 한 줄 붙인다.
+    if re.search(r"\bexg_close_price\b", sql, re.I):
+        out.append("※ 장내 종가는 그 종목이 **마지막으로 체결된 날의 가격**입니다 — 종목마다 기준일이 다르고 "
+                   "오늘 시세가 아닙니다. 장내 거래가 한 번도 없는 종목은 조회 대상에서 빠집니다.")
     return out
 
 
@@ -6096,18 +6137,45 @@ def _select_add_col(sql: str, col: str) -> str:
 # 종전엔 '표면금리 → srfc_irt' 한 쌍만 코드에 박혀 있었다. "SK 계열 발행잔액 큰 3개" 가 ORDER BY MAX(bd_tisu_a)(총발행액)
 # 로 나가 발행잔액(isu_bal_amt · 전 행 수록)을 두고 축을 바꿨다 — 구매가능 모수에서 두 값이 다른 종목 2,216, 전체 상위
 # 5위부터 순위가 갈린다(yaml columns.isu_bal_amt: "발행 규모" = 총발행, "현재 유통 규모" = 잔액). 같은 부류라 표로 편다:
-# (축 이름, 질문 낱말, 정본 컬럼, 함께 말하면 불개입할 다른 축, '낮은/적은 순' 낱말, 바꿔치기 대상(혼동쌍) 컬럼, ASC 때 양수 조건)
+# (축 이름, 질문 낱말, 정본 컬럼, 함께 말하면 불개입할 다른 축, '낮은/적은 순' 낱말, 바꿔치기 대상(혼동쌍) 컬럼,
+#  양수 조건, 양수 조건을 방향과 무관하게 항상 붙이는가, 함께 SELECT 할 동반 컬럼)
 # 🔴 교체 대상은 **혼동쌍만** — '표면금리 5% 넘는 것 중 만기 짧은 순' 의 ORDER BY mat_dt 를 srfc_irt 로 바꾸면 안 된다.
+#
+# 🔴 2026-09-05 밤 사고 #79 — **가격은 한 축이 아니라 셋이다.** '장내에서 실제 거래된 가격이 가장 비싼 채권' 이
+#    ORDER BY eval_price(민평 평가단가)로 나갔다. 답이 낸 1위 산금채07신복2000-0528-2 의 exg_close_price 는
+#    0.0 = **장내 거래가 없는 종목**이다 — 질문이 '실제 거래된' 을 명시했는데 거래 이력이 0인 행을 1위로 냈다.
+#    모수 머리줄도 틀렸다: 답의 17,689종목은 '장내 등록 + 평가가>0' 이고, 장내 종가가 실재하는 것은 1,262종목뿐이다.
+#    yaml 규칙 `장내종가`·`가격축` 과 clarify.다의어.가격 이 셋을 이미 갈라 놨는데 강제하는 기계가 없었다.
+#    앞선 두 쌍과 같은 부류(혼동쌍에서 정본으로)라 표에 행을 얹는다 — 코드 가드를 새로 세우지 않는다.
+# 🔴 `always_positive` 를 이 축에만 켜는 이유 — 금액 축의 0 은 '미기입' 이라 DESC 면 바닥에 깔려 무해하지만,
+#    장내종가·매매단가의 0/NULL 은 **거래가 없었다는 사실**이라 모수 자체에서 빠져야 한다. 방향과 무관하게
+#    `> 0` 을 붙이지 않으면 순위는 맞아도 답변의 '전체 N종목' 이 거짓말이 된다 (17,689 vs 1,262).
 _BAL_Q = re.compile(r"발행\s*잔액|(?<![가-힣])잔액")
 _TISU_Q = re.compile(r"총\s*발행|발행\s*(?:액|규모|금액|총액|량)")
 _AMT_LOW_Q = re.compile(r"적은\s*순|(?:가장|제일|젤)\s*적|최소|작은\s*순|낮은\s*순|(?:가장|제일|젤)\s*작")
+# 🔴 두 시장 어휘가 한 질문에 겹치면 `len(hits) != 1` 로 통째로 불개입이 된다 — 그러면 '장외에서 실제 거래된
+#    가격' 이 아무 가드도 못 받는다. 그래서 시장을 안 밝힌 일반 어휘 가지는 **질문에 '장외' 가 없을 때만**
+#    켜지도록 \A 앵커 + 부정 선읽기로 스스로를 잠근다. '장내' 를 밝힌 가지는 그 잠금 없이 그대로 산다.
+_EXG_Q = re.compile(r"장내[^.?!]{0,12}(?:거래|체결|가격|단가|시세|종가)"
+                    r"|\A(?![\s\S]*장외)[\s\S]*?(?:거래(?:된|되는|하는)?\s*가격|실\s*거래가|체결\s*(?:가격|단가)|시장가)")
+_OTC_Q = re.compile(r"장외[^.?!]{0,12}(?:거래|체결|가격|단가|시세)|매매\s*단가")
+_EVAL_Q = re.compile(r"평가\s*(?:가|단가|가격)|민평")
+_PRICE_LOW_Q = re.compile(r"싼|저렴|낮은\s*순|(?:가장|제일|젤)\s*(?:싼|낮)")
 _SORT_AXES = (
     ("표면금리", _SRFC_Q, "srfc_irt", _YIELD_AXIS_Q, _SRFC_LOW_Q,
-     ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield"), None),
+     ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield"), None, False, ()),
     ("발행잔액", _BAL_Q, "isu_bal_amt", re.compile(_TISU_Q.pattern + "|" + _YIELD_AXIS_Q.pattern), _AMT_LOW_Q,
-     ("bd_tisu_a",), "isu_bal_amt > 0"),            # 0 = 잔액 없음/미기입 259행 — 적은 순에서 1위로 오면 안 된다
+     ("bd_tisu_a",), "isu_bal_amt > 0", False, ()),  # 0 = 잔액 없음/미기입 259행 — 적은 순에서 1위로 오면 안 된다
     ("총발행액", _TISU_Q, "bd_tisu_a", re.compile(_BAL_Q.pattern + "|" + _YIELD_AXIS_Q.pattern), _AMT_LOW_Q,
-     ("isu_bal_amt",), "bd_tisu_a > 0"),
+     ("isu_bal_amt",), "bd_tisu_a > 0", False, ()),
+    # 장내 종가 — 유효 1,270행(0 = 거래 없음 16,476 · 장외 4,136 은 NULL). 기준일 병기가 규칙이라 동반 컬럼으로 끌고 온다
+    ("장내거래가", _EXG_Q, "exg_close_price",
+     re.compile(_EVAL_Q.pattern + "|" + _OTC_Q.pattern + "|" + _YIELD_AXIS_Q.pattern), _PRICE_LOW_Q,
+     ("eval_price", "trade_price"), "exg_close_price > 0", True, ("exg_close_price_base_dt",)),
+    # 장외 매매단가 — 판매 조건이 수록된 634행(전부 장외 LOT)에만 있다. 장내 행은 전건 NULL
+    ("장외매매단가", _OTC_Q, "trade_price",
+     re.compile(_EVAL_Q.pattern + "|" + _YIELD_AXIS_Q.pattern), _PRICE_LOW_Q,
+     ("eval_price", "exg_close_price"), "trade_price > 0", True, ()),
 )
 
 
@@ -6130,14 +6198,16 @@ def ensure_sort_axis(sql: str, question: str) -> tuple[str, bool]:
     hits = [ax for ax in _SORT_AXES if ax[1].search(question)]
     if len(hits) != 1:
         return sql, False
-    name, _q, col, other_q, low_q, confusable, positive = hits[0]
+    name, _q, col, other_q, low_q, confusable, positive, always_pos, companion = hits[0]
     if other_q.search(question):
         return sql, False
     m = re.compile(rf"(ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*)(?:{'|'.join(confusable)})\b", re.I).search(sql)
     if m:                                        # ① 축 치환 — 방향(ASC/DESC)·MAX/MIN 감싸기는 그대로 둔다
         new = _select_add_col(sql[:m.start()] + m.group(1) + col + sql[m.end():], col)
-        if positive and re.search(rf"ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*{col}\s*\)?\s+ASC\b", new, re.I) \
-                and not re.search(rf"\b{col}\s*>", new):
+        for extra in companion:                  # 기준일 같은 동반 컬럼 — 정본 컬럼이 들어갔을 때만 따라간다
+            new = _select_add_col(new, extra)
+        asc = bool(re.search(rf"ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*{col}\s*\)?\s+ASC\b", new, re.I))
+        if positive and (always_pos or asc) and not re.search(rf"\b{col}\s*>", new):
             new, _ = _append_exclusions(new, [positive])
         return new, True
     if re.search(r"\bORDER\s+BY\b", sql, re.I) or not _RECO_Q.search(question):
@@ -6146,7 +6216,9 @@ def ensure_sort_axis(sql: str, question: str) -> tuple[str, bool]:
     sql = _select_add_col(sql, col)
     if not re.search(rf"\b{col}\b", sql):        # `*`·집계라 넣지 못했으면 정렬만 걸지 않는다
         return sql, False
-    if positive and direction == "ASC" and not re.search(rf"\b{col}\s*>", sql):
+    for extra in companion:
+        sql = _select_add_col(sql, extra)
+    if positive and (always_pos or direction == "ASC") and not re.search(rf"\b{col}\s*>", sql):
         sql, _ = _append_exclusions(sql, [positive])
     lm = re.search(r"\s*\bLIMIT\b", sql, re.I)
     pos = lm.start() if lm else len(sql)

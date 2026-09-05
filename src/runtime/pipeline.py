@@ -3112,7 +3112,20 @@ _BOND_AXIS_KO = {"applied_yield": ("수익률", "높은 순", "낮은 순"), "af
                  "corp_pretax_yield": ("법인 세전수익률", "높은 순", "낮은 순"), "srfc_irt": ("표면금리", "높은 순", "낮은 순"),
                  "buy_yield": ("매수수익률", "높은 순", "낮은 순"), "mat_dt": ("만기", "긴 순", "짧은 순"),
                  "remaining_days": ("잔존만기", "긴 순", "짧은 순"), "dur": ("듀레이션", "긴 순", "짧은 순"),
-                 "eval_price": ("평가가", "높은 순", "낮은 순"), "isu_bal_amt": ("발행잔액", "많은 순", "적은 순")}
+                 "eval_price": ("평가가", "높은 순", "낮은 순"), "isu_bal_amt": ("발행잔액", "많은 순", "적은 순"),
+                 "bd_tisu_a": ("총발행액", "많은 순", "적은 순")}
+_BOND_WON_COLS = ("bd_tisu_a", "isu_bal_amt")        # 원 단위 금액 — 답변엔 억원으로 (700000000000 → 7,000억원)
+
+
+def _fmt_won(raw: str) -> str:
+    try:
+        v = float(raw)
+    except ValueError:
+        return raw
+    if v == 0:
+        return "미수록"
+    eok = v / 1e8
+    return f"{int(eok):,}억원" if eok.is_integer() else f"{eok:,.1f}억원"
 # 2026-09-03 서버 실측: SELECT * 결과를 그대로 옮겨 dirty·ndy_*·코드값(exrt_grte_ern_r_tcd 04)·pd_std_info_update 까지 노출.
 #   사용 금지(dirty·ndy_dirty·avg_annual_tax_yield·buyable_quantity)·익일·내부 컬럼은 숨기고, 범주 컬럼은 한글 라벨로.
 _BOND_HIDE = {"pd_no", "pd_risk_gcd", "curr_cd", "info_base_dt", "info_seq", "pd_exg_mkt",
@@ -3240,6 +3253,12 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     win = _effective_mat_window(sql)
     if win:
         basis = f"만기 {win} · 질문 시점 {gate.DATA_CUTOFF} 기준"
+    # 발행사 약칭 양표기 확장(expand_issuer_acronym_prefix)이 든 목록 — 이름은 계열 소속의 대용물임을 밝힌다 (#70)
+    pfx = sorted({m.group(1) for m in _ISSUER_PFX_BRANCH.finditer(sql)})
+    if pfx:
+        k = _bond_issuer_count(sql)
+        basis += (f" · 발행사명이 {'/'.join(pfx)} 로 시작하는 발행사{f' {k}곳' if k else ''} 기준"
+                  f"(계열 소속 여부는 데이터에 없어 이름으로 판정)")
     if total and total > n:
         head = (f"조건에 해당하는 채권은 전체 {total:,}종목이며, {axis_txt + ' ' if axis_txt else ''}상위 {n}개는 다음과 같습니다 ({basis})."
                 if axis_txt else f"조건에 해당하는 채권은 전체 {total:,}종목이며, 그중 {n}개는 다음과 같습니다 ({basis}).")
@@ -3289,7 +3308,7 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm") or c in _BOND_YIELD_COLS:
                 continue
             if r.get(c):
-                bits.append(f"{_BOND_COL_KO.get(c, c)} {r[c]}")
+                bits.append(f"{_BOND_COL_KO.get(c, c)} {_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c]}")
         out.append(f"{i}. {r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
     tail = []
     if "remaining_days" in cols and any(r.get("remaining_days") for r in recs):
@@ -3505,6 +3524,23 @@ def _bond_coverage_counts(sql: str) -> tuple[int, int] | None:
     finally:
         con.close()
     return int(row[0]), int(row[1])
+
+
+def _bond_issuer_count(sql: str) -> int | None:
+    """채권 단순 목록의 발행사 수 — COUNT(DISTINCT TRIM(pd_pbcm)). 형이 맞지 않으면 None."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:union|having|join)\b|\(\s*select\b", sql, re.I):
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    con = connect_readonly()
+    try:
+        row = con.execute(f"SELECT COUNT(DISTINCT TRIM(pd_pbcm)) FROM {m.group(1).strip()}").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return int(row[0])
 
 
 def _hide_answer_columns(rows: str, sql: str = "") -> tuple[str, list[str]]:
@@ -5767,10 +5803,6 @@ def ensure_reco_sort(sql: str, question: str) -> tuple[str, bool]:
 _SRFC_Q = re.compile(r"표면\s*(?:금리|이자율|이율)|쿠폰\s*(?:금리|이자율|이율)?|coupon", re.I)
 _YIELD_AXIS_Q = re.compile(r"수익률|이자수익|연\s*환산")      # 두 축을 함께 말하면 불개입
 _SRFC_LOW_Q = re.compile(r"낮은\s*순|(?:가장|제일|젤)\s*낮|최저|작은\s*순")
-_ORDER_YIELD_COL = re.compile(
-    r"(ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*)(applied_yield|after_tax_yield|corp_pretax_yield|buy_yield)\b", re.I)
-
-
 _ROLLUP_HEAD = re.compile(r"\b(?:COUNT|AVG|SUM|GROUP_CONCAT)\s*\(", re.I)
 
 
@@ -5790,34 +5822,65 @@ def _select_add_col(sql: str, col: str) -> str:
     return head.rstrip() + ", " + col + " " + rest
 
 
+# ── 정렬 축 혼동쌍 표 (2026-09-05 일반화 · 사고 #71) ───────────────────────────────────────────
+# 종전엔 '표면금리 → srfc_irt' 한 쌍만 코드에 박혀 있었다. "SK 계열 발행잔액 큰 3개" 가 ORDER BY MAX(bd_tisu_a)(총발행액)
+# 로 나가 발행잔액(isu_bal_amt · 전 행 수록)을 두고 축을 바꿨다 — 구매가능 모수에서 두 값이 다른 종목 2,216, 전체 상위
+# 5위부터 순위가 갈린다(yaml columns.isu_bal_amt: "발행 규모" = 총발행, "현재 유통 규모" = 잔액). 같은 부류라 표로 편다:
+# (축 이름, 질문 낱말, 정본 컬럼, 함께 말하면 불개입할 다른 축, '낮은/적은 순' 낱말, 바꿔치기 대상(혼동쌍) 컬럼, ASC 때 양수 조건)
+# 🔴 교체 대상은 **혼동쌍만** — '표면금리 5% 넘는 것 중 만기 짧은 순' 의 ORDER BY mat_dt 를 srfc_irt 로 바꾸면 안 된다.
+_BAL_Q = re.compile(r"발행\s*잔액|(?<![가-힣])잔액")
+_TISU_Q = re.compile(r"총\s*발행|발행\s*(?:액|규모|금액|총액|량)")
+_AMT_LOW_Q = re.compile(r"적은\s*순|(?:가장|제일|젤)\s*적|최소|작은\s*순|낮은\s*순|(?:가장|제일|젤)\s*작")
+_SORT_AXES = (
+    ("표면금리", _SRFC_Q, "srfc_irt", _YIELD_AXIS_Q, _SRFC_LOW_Q,
+     ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield"), None),
+    ("발행잔액", _BAL_Q, "isu_bal_amt", re.compile(_TISU_Q.pattern + "|" + _YIELD_AXIS_Q.pattern), _AMT_LOW_Q,
+     ("bd_tisu_a",), "isu_bal_amt > 0"),            # 0 = 잔액 없음/미기입 259행 — 적은 순에서 1위로 오면 안 된다
+    ("총발행액", _TISU_Q, "bd_tisu_a", re.compile(_BAL_Q.pattern + "|" + _YIELD_AXIS_Q.pattern), _AMT_LOW_Q,
+     ("isu_bal_amt",), "bd_tisu_a > 0"),
+)
+
+
 def ensure_sort_axis(sql: str, question: str) -> tuple[str, bool]:
-    """'표면금리' 질의의 정렬 축을 srfc_irt 로 맞춘다. (보정된 SQL, 보정했는지)
+    """질문의 축 낱말(_SORT_AXES)에 맞춰 정렬 컬럼을 혼동쌍에서 정본으로 교체한다. (보정된 SQL, 보정했는지)
 
     2026-09-04 서버 실측: 'A등급 이상 회사채 중 표면금리 높은 순으로 5개' 가 ORDER BY MAX(applied_yield)
     로 나가 답변도 '수익률 높은 순' 으로 축을 바꿔 적었다 — 1·2위(스탠다드차타드 15-07·15-06)의 표면금리는
     7.1·3.0 으로 상위권이 아니다(정답 1위 우리금융캐피탈458 7.5). 값이 전부 실제 행이라 환각 검사에 안 걸린다.
     gold BND-D-012·BND-D-028 둘 다 ORDER BY srfc_irt 가 정본이다(정렬축 규칙).
+    2026-09-05 #71: 발행잔액(isu_bal_amt) ↔ 총발행액(bd_tisu_a) 쌍을 같은 표에 넣어 일반화.
     ② ORDER BY 자체가 없는 사각도 함께 받는다 — ensure_reco_sort 는 _OTHER_AXIS_Q('표면')에 걸려
     표면금리 질의에 정렬을 주입하지 않으므로, 그대로 두면 정렬 없는 임의 N행이 나간다.
-    발동 조건: ① domestic_bonds ② 질문에 표면금리 낱말 ③ 질문이 수익률 축을 함께 말하지 않음
+    발동 조건: ① domestic_bonds ② 질문의 축 낱말이 정확히 한 축 ③ 그 축과 겹치는 다른 축을 함께 말하지 않음
     (두 축 동시 언급은 불개입 — align_maturity_year 원칙) ④ 집계(COUNT) 아님.
-    모수를 바꾸지 않는 축 교정이라 조회·랭킹 어느 쪽에서도 안전하다(제외 절 주입은 이자유형분리 몫)."""
-    if "domestic_bonds" not in sql or not _SRFC_Q.search(question) or _YIELD_AXIS_Q.search(question):
+    모수를 바꾸지 않는 축 교정이라 조회·랭킹 어느 쪽에서도 안전하다(제외 절 주입은 이자유형분리 몫).
+    금액 축의 '적은 순'(ASC)만 `col > 0` 을 덧붙인다 — 0 은 미기입이라 순위가 아니다."""
+    if "domestic_bonds" not in sql or re.search(r"\bCOUNT\s*\(", sql, re.I):
         return sql, False
-    if re.search(r"\bCOUNT\s*\(", sql, re.I):
+    hits = [ax for ax in _SORT_AXES if ax[1].search(question)]
+    if len(hits) != 1:
         return sql, False
-    m = _ORDER_YIELD_COL.search(sql)
+    name, _q, col, other_q, low_q, confusable, positive = hits[0]
+    if other_q.search(question):
+        return sql, False
+    m = re.compile(rf"(ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*)(?:{'|'.join(confusable)})\b", re.I).search(sql)
     if m:                                        # ① 축 치환 — 방향(ASC/DESC)·MAX/MIN 감싸기는 그대로 둔다
-        return _select_add_col(sql[:m.start()] + m.group(1) + "srfc_irt" + sql[m.end():], "srfc_irt"), True
+        new = _select_add_col(sql[:m.start()] + m.group(1) + col + sql[m.end():], col)
+        if positive and re.search(rf"ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*{col}\s*\)?\s+ASC\b", new, re.I) \
+                and not re.search(rf"\b{col}\s*>", new):
+            new, _ = _append_exclusions(new, [positive])
+        return new, True
     if re.search(r"\bORDER\s+BY\b", sql, re.I) or not _RECO_Q.search(question):
         return sql, False
-    direction = "ASC" if _SRFC_LOW_Q.search(question) else "DESC"   # ② 정렬 부재 — 주입
-    sql = _select_add_col(sql, "srfc_irt")
-    if "srfc_irt" not in sql:                    # `*`·집계라 넣지 못했으면 정렬만 걸지 않는다
+    direction = "ASC" if low_q.search(question) else "DESC"   # ② 정렬 부재 — 주입
+    sql = _select_add_col(sql, col)
+    if not re.search(rf"\b{col}\b", sql):        # `*`·집계라 넣지 못했으면 정렬만 걸지 않는다
         return sql, False
+    if positive and direction == "ASC" and not re.search(rf"\b{col}\s*>", sql):
+        sql, _ = _append_exclusions(sql, [positive])
     lm = re.search(r"\s*\bLIMIT\b", sql, re.I)
     pos = lm.start() if lm else len(sql)
-    return sql[:pos].rstrip() + f" ORDER BY srfc_irt {direction}" + sql[pos:], True
+    return sql[:pos].rstrip() + f" ORDER BY {col} {direction}" + sql[pos:], True
 
 
 _ORDER_SRFC = re.compile(r"ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*srfc_irt\b", re.I)
@@ -6424,6 +6487,154 @@ def ensure_maturity_sort(sql: str, question: str) -> tuple[str, bool]:
         # >= — 당일 만기(잔존 1일)는 모수다. 0값·만기 경과 배제라는 원래 목적엔 >= 로 충분 (2026-09-01)
         new, _ = _append_exclusions(new, [f"mat_dt >= {BUYABLE_INT}"])
     return new, True
+
+
+# ── 질문이 정하지 않은 만기 상한 제거 (2026-09-05 어려운 난이도 실측 · 사고 #69) ──────────────────
+# "한국전력공사 채권 중에 만기가 제일 긴 걸 사면 뭐가 위험해?" — 질문에 연도·기간·시점 낱말이 하나도 없는데
+# HCX 가 부질의 안에 `mat_dt <= 20291231` 을 붙여 MAX(remaining_days) 모수를 2029년 이내로 잘랐다 →
+# 1013(2029-12-30) 오답. 실제 최장은 1184(2052-04-21 · 잔존 9,375일 · 듀레이션 15.1). 같은 질문이 08-31 엔
+# dur 정렬로 틀렸고(ensure_maturity_sort) 이번엔 상한 날조로 틀렸다 — 부류는 strip_fabricated_risk_filter 와 같은
+# "질문에 없는 축의 술어". 상대시점 창(enforce_relative_window)·연도 교정(align_maturity_year)은 둘 다 질문에
+# 시점 낱말이 **있을 때** 발동하므로, 시점 낱말이 **없을 때** 의 상한은 어느 가드도 보지 않았다.
+# 플래너 프롬프트의 예시(`mat_dt <= 20290822`)가 2029 상한을 유도했을 수 있어 예시도 함께 고쳤다(planner._SQL_SYSTEM).
+# 불개입(보수적): 질문에 숫자+기간 단위('3년'·'6개월'·'24일'·'삼년'·'한 해') · 시점 조사('이내·안에·까지·이전·이후')
+# · 장단기 낱말 · 연도 토큰(gate._FUTURE) · 상대시점 창 · 만기 경과 질의 · 발행 시점 질의 — 이 중 하나라도 있으면
+# 그 상한은 질문이 정한 것일 수 있으므로 손대지 않는다('10년 만기 채권' 의 10년은 창이 맞다).
+_TIME_VOCAB_Q = re.compile(
+    r"\d\s*(?:년|개월|달|주|일)"
+    r"|(?<![가-힣])(?:일|이|삼|사|오|육|칠|팔|구|십|한|두|세|네|다섯|열|반)\s*(?:년|개월|달|해)"
+    r"|이내|안에|내에|내로|까지|이전|이후|단기|중기|장기|년물|년짜리|올해|내년|후년|금년|연내|상반기|하반기|분기"
+)
+_MAT_CAP = re.compile(r"\bmat_dt\s*<=?\s*\d{8}(?:\.0)?\b", re.I)
+_REM_CAP = re.compile(r"\bremaining_days\s*<=?\s*\d+(?:\.\d+)?\b", re.I)
+_REM_BETWEEN = re.compile(r"\bremaining_days\s+BETWEEN\s+\d+(?:\.\d+)?\s+AND\s+\d+(?:\.\d+)?", re.I)
+
+
+def _drop_conjunct(sql: str, s: int, e: int) -> str | None:
+    """sql[s:e] 술어를 AND 결합에서 떼어낸다 — 앞 AND · 뒤 AND · WHERE 에 홀로 남은 꼴 순. 못 떼면 None."""
+    before, after = sql[:s], sql[e:]
+    m = re.search(r"\s+AND\s+$", before, re.I)
+    if m:
+        return before[:m.start()] + after
+    m = re.match(r"\s+AND\s+", after, re.I)
+    if m:
+        return before + after[m.end():]
+    m = re.search(r"\bWHERE\s+$", before, re.I)
+    if m and re.match(r"\s*(?:\)|GROUP\s+BY|ORDER\s+BY|LIMIT|$)", after, re.I):
+        return before[:m.start()].rstrip() + " " + after.lstrip()
+    return None
+
+
+def _or_nearby(sql: str, s: int, e: int) -> bool:
+    """sql[s:e] 술어가 속한 WHERE 본문(같은 괄호 깊이)에 OR 가 있는가 — 있으면 절 제거가 논리를 바꾼다."""
+    w = max((m.end() for m in re.finditer(r"\bWHERE\b", sql[:s], re.I)), default=0)
+    depth, end = 0, len(sql)
+    for i in range(e, len(sql)):
+        ch = sql[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth == 0:
+                end = i
+                break
+            depth -= 1
+    tail = _WHERE_TAIL.search(sql, e, end)
+    if tail:
+        end = tail.start()
+    return bool(re.search(r"\bOR\b", sql[w:s] + " " + sql[e:end], re.I))
+
+
+def strip_unasked_maturity_cap(sql: str, question: str) -> tuple[str, bool]:
+    """질문에 시점·기간 낱말이 없는데 SQL 에 있는 만기 상한(mat_dt/remaining_days <= · BETWEEN)을 걷어낸다. (보정된 SQL, 보정했는지)
+
+    BETWEEN lo AND hi 는 하한이 구매가능 판정일 이상이면 `mat_dt >= lo` 로 남기고 아니면 통째로 뗀다.
+    부질의 안의 술어도 본다(#69 의 상한은 부질의에 있었다). 같은 WHERE 본문에 OR 가 있으면 그 술어는 불개입.
+    떼고 나서 mat_dt 하한이 하나도 없으면 구매가능 하한을 넣는다(ensure_maturity_sort 와 같은 처방)."""
+    if "domestic_bonds" not in sql:
+        return sql, False
+    if (_TIME_VOCAB_Q.search(question) or gate.future_tokens(question) or gate.resolve_relative_window(question)
+            or _PAST_MATURITY_Q.search(question) or is_issuance_time_q(question)):
+        return sql, False
+    changed = False
+    for pat, keep_floor in ((_MAT_BETWEEN, True), (_REM_BETWEEN, False), (_MAT_CAP, False), (_REM_CAP, False)):
+        pos = 0
+        while True:
+            m = pat.search(sql, pos)
+            if not m:
+                break
+            if _or_nearby(sql, m.start(), m.end()):
+                pos = m.end()
+                continue
+            if keep_floor and int(m.group(1)) >= BUYABLE_INT:
+                sql = sql[:m.start()] + f"mat_dt >= {m.group(1)}" + sql[m.end():]
+                changed = True
+                pos = m.start() + 1
+                continue
+            new = _drop_conjunct(sql, m.start(), m.end())
+            if new is None:
+                pos = m.end()
+                continue
+            sql, changed = new, True
+            pos = m.start()
+    if changed and not re.search(r"mat_dt\s*>=?\s*\d", sql):
+        sql, _ = _append_exclusions(sql, [f"mat_dt >= {BUYABLE_INT}"])
+    return sql, changed
+
+
+# ── 발행사 로마자 약칭 ↔ 한글 음역 접두 확장 (2026-09-05 어려운 난이도 실측 · 사고 #70) ────────────────
+# "SK그룹 계열사가 발행한 채권 중에 발행잔액이 큰 3개" — HCX 의 `pd_pbcm LIKE '%SK%'` 가 한글 표기 발행사 16곳
+# (에스케이하이닉스·에스케이온·에스케이브로드밴드 …)을 놓쳐 모수 205 vs 실제 307, 1위 에스케이하이닉스224-2(7,800억)
+# 누락. 데이터의 발행사명은 같은 그룹 안에서도 로마자(SK이노베이션(주))와 한글 음역(에스케이온(주))이 섞여 있다.
+# 일반화: 특정 그룹 표가 아니라 **알파벳 26자의 한글 자모명 표**로 어떤 약칭이든 양방향 변환한다(DB 실측: SK↔에스케이 ·
+# LG↔엘지 · GS↔지에스 · CJ↔씨제이 · KT↔케이티 · DB↔디비 · HD↔에이치디 · DL↔디엘 전부 이 표와 일치).
+# 접두 매칭인 이유: 그룹 약칭은 발행사명 머리에 온다. 부분열 매칭은 'KDB생명'(DB) · '인디비제삼차'(디비) ·
+# '세아디비제오차'(디비) 같은 오탐을 만들고, 머리에 오지 않는 정탐은 법인 접두 '(주)LG유플러스' 꼴뿐이라 (주) 가지를 둔다
+# ('주식회사 ' 접두 발행사는 0곳 · '(주)' 접두 437곳). 남는 한계 — 이름은 계열 소속의 대용물이다(SK증권은 2018년 그룹
+# 이탈 · 케이티앤지는 KT 계열 아님): 데이터에 그룹 컬럼이 없으므로 답변 머리줄에 "발행사명 기준" 을 밝힌다(_bond_list_answer).
+_LATIN_KO = {"A": "에이", "B": "비", "C": "씨", "D": "디", "E": "이", "F": "에프", "G": "지", "H": "에이치", "I": "아이",
+             "J": "제이", "K": "케이", "L": "엘", "M": "엠", "N": "엔", "O": "오", "P": "피", "Q": "큐", "R": "알",
+             "S": "에스", "T": "티", "U": "유", "V": "브이", "W": "더블유", "X": "엑스", "Y": "와이", "Z": "제트"}
+_KO_LATIN = sorted(((v, k) for k, v in _LATIN_KO.items()), key=lambda t: -len(t[0]))
+_ISSUER_LIKE = re.compile(r"(?:TRIM\(\s*)?(?:\w+\.)?\bpd_pbcm\s*\)?\s+LIKE\s+'([^']*)'", re.I)
+_ISSUER_PFX_BRANCH = re.compile(r"TRIM\(pd_pbcm\) LIKE '\(주\)([^%']+)%'")
+
+
+def _ko_letters_to_latin(s: str) -> str | None:
+    """한글 자모명 나열('에스케이') → 로마자('SK'). 전부 자모명으로 쪼개지지 않으면 None('한국전력' 등)."""
+    out, i = [], 0
+    while i < len(s):
+        for ko, la in _KO_LATIN:
+            if s.startswith(ko, i):
+                out.append(la)
+                i += len(ko)
+                break
+        else:
+            return None
+    return "".join(out)
+
+
+def expand_issuer_acronym_prefix(sql: str) -> tuple[str, list[str]]:
+    """발행사 LIKE 의 약칭 리터럴(로마자 2~4자 · 또는 그 한글 음역)을 로마자·한글 양표기 접두 4가지 OR 로 넓힌다.
+    (보정된 SQL, 넓힌 '로마자|한글' 목록). 구체 발행사명('SK이노베이션')·와일드카드 섞인 리터럴은 손대지 않는다."""
+    fired: list[str] = []
+    for m in reversed(list(_ISSUER_LIKE.finditer(sql))):
+        lit = m.group(1).strip("%")
+        if not lit or "%" in lit or "_" in lit:
+            continue
+        if re.fullmatch(r"[A-Za-z]{2,4}", lit):
+            latin = lit.upper()
+            ko = "".join(_LATIN_KO[c] for c in latin)
+        elif re.fullmatch(r"[가-힣]{2,12}", lit):
+            latin = _ko_letters_to_latin(lit)
+            if not latin or not 2 <= len(latin) <= 4:
+                continue
+            ko = lit
+        else:
+            continue
+        branches = [f"TRIM(pd_pbcm) LIKE '{x}%'" for x in (latin, "(주)" + latin, ko, "(주)" + ko)]
+        sql = sql[:m.start()] + "(" + " OR ".join(branches) + ")" + sql[m.end():]
+        fired.append(f"{latin}|{ko}")
+    return sql, list(reversed(fired))
 
 
 _CHEAP_Q = re.compile(r"저렴|(?<![가-힣])비?[싸싼]")
@@ -8133,6 +8344,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
                  "(UNION 은 가지마다 독립 판정 — 코드 가드가 통째로 불개입하던 자리)")
         if fired_out is not None:
             fired_out.extend(enf_fired)
+    sql, pfx_fired = expand_issuer_acronym_prefix(sql)
+    if pfx_fired:
+        step(f"[Guard] 발행사 약칭 양표기 확장 — {' · '.join(pfx_fired)} 를 로마자·한글 음역 접두(법인 접두 (주) 포함) 4가지 OR 로 "
+             "(2026-09-05 실측 #70: 'SK그룹 계열사' 의 LIKE '%SK%' 가 에스케이하이닉스 등 한글 표기 16곳을 놓쳐 모수 205 vs 307 · 1위 누락. "
+             "접두 매칭이라 KDB생명·인디비제삼차 류 부분열 오탐은 없다 · 계열 소속은 데이터에 없어 답변에 '발행사명 기준' 을 밝힌다)")
     sql, future_dt = strip_future_basis_date(sql)
     if future_dt:
         step(f"[Guard] 기준일 이후 SQL 리터럴 제거 — '{future_dt}' (10R gold N8 · FND-R02 실측: HCX 가 기준일"
@@ -8362,8 +8578,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 추천 정렬 주입 — 추천 질의에 ORDER BY 가 없어 기본 정렬 applied_yield DESC 를 주입 (2026-09-01 서버 실측: '망하지 않을 회사 채권 골라줘' 가 정렬 없는 임의 5행 — 상위 수익률 누락)")
     sql, sortaxis_fixed = ensure_sort_axis(sql, q)
     if sortaxis_fixed:
-        step("[Guard] 정렬 축 교정 — '표면금리' 질의의 정렬을 srfc_irt 로 맞추고 SELECT 에 병기 "
-             "(2026-09-04 서버 실측: 'A등급 이상 회사채 표면금리 높은 순' 이 applied_yield 로 정렬돼 답변 축까지 '수익률' 로 바뀜 — 1·2위 표면금리 7.1·3.0)")
+        step("[Guard] 정렬 축 교정 — 질문의 축 낱말(표면금리·발행잔액·총발행액)에 맞춰 혼동쌍 정렬 컬럼을 정본으로 교체하고 SELECT 에 병기 "
+             "(2026-09-04 서버 실측: 'A등급 이상 회사채 표면금리 높은 순' 이 applied_yield 로 정렬돼 답변 축까지 '수익률' 로 바뀜 — 1·2위 표면금리 7.1·3.0 · "
+             "2026-09-05 #71: '발행잔액 큰 3개' 가 총발행액 bd_tisu_a 로 정렬)")
     sql, cpsplit_fixed = ensure_coupon_type_split(sql, q)
     if cpsplit_fixed:
         step("[Guard] 이자유형 분리 — 표면금리 랭킹에 고정금리 이표채 절 주입 (이자유형분리 규칙 · gold BND-D-012. 할인채는 srfc_irt 가 발행 할인율 · 조건검색에는 주입하지 않는다)")
@@ -8373,6 +8590,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, topsafe_fixed = ensure_top_safety(sql, q)
     if topsafe_fixed:
         step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
+    sql, cap_fixed = strip_unasked_maturity_cap(sql, q)
+    if cap_fixed:
+        step("[Guard] 무근거 만기 상한 제거 — 질문에 연도·기간·시점 낱말이 없는데 SQL 에 만기 상한(mat_dt/remaining_days <= · BETWEEN)이 있어 걷어냄 "
+             "(2026-09-05 실측 #69: '한전 채권 중 만기 제일 긴' 부질의에 mat_dt <= 20291231 날조 → 1013(2029-12-30) 오답, 실제 최장 1184(2052-04-21))")
     sql, matsort_fixed = ensure_maturity_sort(sql, q)
     if matsort_fixed:
         step("[Guard] 만기 정렬 교정 — '만기 가장 긴/짧은' 질의의 ORDER BY dur 를 mat_dt 로 교체 (2026-08-31 서버 실측: 한전 만기 최장이 dur 정렬로 2049년 채권 오답 — 실제 최장 2052년. 듀레이션·만기 순위는 이표율로 역전된다)")

@@ -270,3 +270,40 @@ def test_maturity_bucket_rule_partitions_buyable_universe():
 def test_scale_ambiguity_declared(ctx):
     d = ctx.enums[B]["clarify"]["다의어"]
     assert "규모" in d and "bd_tisu_a" in d["규모"] and "isu_bal_amt" in d["규모"]
+
+
+# ── ⑦ 09-06 밤 — 묶음 2~7 과적합 점검에서 나온 두 결함 ──────────────────────────────
+def test_speculative_grade_rule_uses_only_real_values(ctx):
+    """규칙 본문의 IN 리터럴은 값 검사를 통과해야 한다 — 표준표 11종을 다 적으면 6종이 기각당한다."""
+    from src.runtime import guard
+    rule = ctx.enums[B]["query_rules"]["투기등급"]["text"]
+    m = re.search(r"IN \(([^)]*)\)", rule)
+    assert m, "투기등급 규칙에 IN 리터럴이 없다"
+    sql = f"SELECT pd_nm FROM {B} WHERE TRIM(crd_grd) IN ({m.group(1)})"
+    assert guard.check_values(sql, ctx) == []
+    for dead in ("'CCC'", "'D'", "'B0'", "'BB+'"):
+        assert dead not in m.group(1)
+
+
+@pytest.mark.parametrize("question, clause", [
+    # 부정문 — 범주를 빼 달라는 것이므로 제외 절을 그대로 넣는다 (종전엔 사모·투기·부실까지 전부 우회됐다)
+    ("정크 말고 안전한 채권 추천해줘", "C0"),
+    ("하이일드는 빼고 수익률 높은 채권 5개", "C0"),
+    ("부실채 제외하고 수익률 높은 순", "C0"),
+    ("투기등급 아닌 채권 중 수익률 높은 5개", "C0"),
+    ("사모 빼고 추천해줘", "사모"),
+    ("위험 높은 채권 말고 안전한 것", "'11'"),
+])
+def test_negated_category_keeps_exclusion(question, clause):
+    from src.runtime.pipeline import _rank_exclusions
+    assert clause in " ".join(_rank_exclusions("SELECT pd_nm FROM domestic_bonds WHERE 1=1", question))
+
+
+@pytest.mark.parametrize("question, clause", [
+    ("사모 채권 추천해줘", "사모"),
+    ("위험 높은 채권 순위", "'11'"),
+    ("투기등급 채권 수익률 높은 순", "C0"),
+])
+def test_positive_category_still_bypasses(question, clause):
+    from src.runtime.pipeline import _rank_exclusions
+    assert clause not in " ".join(_rank_exclusions("SELECT pd_nm FROM domestic_bonds WHERE 1=1", question))

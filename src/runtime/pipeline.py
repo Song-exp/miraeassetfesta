@@ -6504,6 +6504,24 @@ def ensure_credit_backstop(sql: str, question: str) -> tuple[str, bool]:
 _PAST_MATURITY_Q = re.compile(r"만기\s*(?:가|이)?\s*(?:지난|경과|끝난|넘은|도래한)|과거\s*만기|상장\s*폐지|만기\s*된")
 
 
+# 범주 낱말 바로 뒤의 부정·배제 표지 — '정크 **말고**'·'사모 **빼고**'·'부실채 **제외하고**'·'투기등급 **아닌**'.
+# 사이에 조사·명사 하나(채권·등급·채·것)는 허용한다. 앞에 오는 부정('제외하고 투기등급')은 드물어 보지 않는다.
+_NEG_AFTER = re.compile(r"[은는이가을를도]?\s*(?:채권|등급|채|것|건)?\s*(?:말고|빼고|빼면|빼\s*주|제외|아닌|아니|않|없는|없이|대신|밖에)")
+
+
+def _mentions_positively(pat: str, question: str) -> bool:
+    """질문이 그 범주를 **달라고** 언급했는가 — 부정 표지가 바로 뒤에 오면 언급이 아니라 배제다.
+
+    🔴 2026-09-06 — 우회(범주 언급 = 제외 절 생략)가 부정문에도 발동하고 있었다: '정크 말고 안전한 채권
+    추천해줘' 가 C0 절을 풀어 728% 부실채가 **안전 추천** 상단에 오를 자리였고, '사모 빼고 추천' 은 사모를
+    포함시켰다. 새로 더한 낱말(하이일드·정크)만이 아니라 종전 사모·투기·부실도 같은 구멍이었다 — 부류 단위로
+    닫는다. 실측: 부정문 5/5 제외 유지 · 긍정문 4/4 우회 유지."""
+    for m in re.finditer(pat, question, re.I):
+        if not _NEG_AFTER.match(question, m.end()):
+            return True
+    return False
+
+
 def _rank_exclusions(sql: str, question: str) -> list[str]:
     """고위험제외·수익률정상 중 SQL 에 빠진 절 — 질문이 그 범주를 명시하면 그 절은 건너뛴다.
 
@@ -6517,13 +6535,14 @@ def _rank_exclusions(sql: str, question: str) -> list[str]:
     # 이 절을 쓴다(나머지 2개도 하한 있음). 질문이 만기 경과를 콕 집으면(범주 언급 = 우회) 건너뛴다.
     if not re.search(r"mat_dt\s*>=?\s*\d", sql) and not _PAST_MATURITY_Q.search(question):
         excl.append(f"mat_dt >= {BUYABLE_INT}")
-    if "'11'" not in sql and not re.search(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
+    # 🔴 우회는 **긍정 언급**일 때만 — 부정('말고·빼고·제외·아닌')은 배제 요청이라 절을 그대로 넣는다(_mentions_positively).
+    if "'11'" not in sql and not _mentions_positively(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
         excl.append("pd_risk_gcd <> '11'")
     # 🔄 2026-09-06 — 우회 어휘에 하이일드·정크·투자부적격이 없어 '하이일드 채권 알려줘' 가 126→23종목으로
     #    조용히 줄었다(규칙 투기등급). 낱말은 yaml query_rules.투기등급.triggers 와 같은 집합이어야 한다.
-    if "C0" not in sql and not re.search(r"C0|투기|부실|하이\s*일드|high\s*yield|정크|투자\s*부적격|투자등급\s*미만", question, re.I):
+    if "C0" not in sql and not _mentions_positively(r"C0|투기|부실|하이\s*일드|high\s*yield|정크|투자\s*부적격|투자등급\s*미만", question):
         excl.append("COALESCE(TRIM(crd_grd),'') <> 'C0'")
-    if "사모" not in sql and "사모" not in question:
+    if "사모" not in sql and not _mentions_positively(r"사모", question):
         excl.append("bd_ofr_tcd <> '사모'")
     return excl
 

@@ -8812,6 +8812,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 **조인 정리를 먼저 한다** — 뒤따르는 펀드 가드들은 `join|union` 이 보이면 통째로 비켜간다.
     #    ① INNER→LEFT: 커버리지 93.7% 라 INNER 면 짝 없는 561클래스가 조용히 사라진다(KG-005).
     #    ② 안 쓰는 조인 제거: 결과엔 무해하지만 남겨 두면 대표행 보정이 꺼진다(FND-007).
+    # 🔴 안 물은 값 제거 **앞** — 표기 변형은 질문이 부른 값과 같은 개념이라 먼저 되찾아야
+    #    뒤 가드가 "질문에 없는 값" 으로 오인해 걷어내지 않는다.
+    sql, spacing = guard.ensure_spacing_variants(sql, ctx)
+    if spacing:
+        step("[Guard] 표기 변형 합산 — 공백만 다른 같은 값 " + " · ".join(f"'{v}'" for v in spacing)
+             + " 을 함께 넣었다 (2026-09-05 KG-015 실측: '높은위험' 20클래스만 세고 '높은 위험' "
+               "2,974클래스를 놓쳤다 — 같은 등급의 두 표기다)")
     sql, unasked = guard.drop_unasked_enum_values(sql, q)
     if unasked:
         step("[Guard] 안 물은 값 제거 — 열거 조건에서 질문이 부르지 않은 " + " · ".join(f"'{v}'" for v in unasked)

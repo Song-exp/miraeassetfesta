@@ -390,6 +390,45 @@ def ensure_excluded_value(sql: str, question: str, ctx: RuntimeContext) -> tuple
     return re.sub(r"\s+", " ", out).strip(), token
 
 
+def ensure_spacing_variants(sql: str, ctx: RuntimeContext) -> tuple[str, list[str]]:
+    """거르는 값에 **공백만 다른 표기**가 실재하면 함께 넣는다. (SQL, 더한 값)
+
+    2026-09-05 KG-015 실측 — "위험등급이 '높은위험'인 공모펀드는 몇 개야?" 에서 HCX 가
+    `IN ('높은위험')` 만 썼다. DB 에는 `'높은 위험'` 2,974클래스 · `'높은위험'` 20클래스가
+    **같은 등급의 두 표기**로 들어 있어(보통 위험도 1,419 · 8) 합산해야 정답(2,994)이다.
+    4차엔 HCX 가 둘 다 넣어 맞혔고 5차엔 하나만 넣어 **20클래스**를 냈다 — 계획 변동이다.
+
+    🔴 넓히는 것이 아니다 — 같은 개념의 다른 표기를 되찾는 것이다. 판정 근거는 값 사전이고,
+       **공백을 지웠을 때 같은 값**만 더한다. 리포의 '공백 무시 매칭' 원칙과 같은 자리다.
+    불개입: 값 사전에 없는 컬럼 · 변형이 없는 값 · 이미 다 들어 있는 경우.
+    """
+    index = getattr(ctx, "value_index", None) or {}
+    if not index:
+        return sql, []
+    tables = sql_tables(sql)
+    added: list[str] = []
+    out = sql
+    for m in list(_EQ.finditer(sql)) + list(_IN.finditer(sql)):
+        col = (m.group(2) or "").lower()
+        t = next((x for x in ([m.group(1).lower()] if m.group(1) else tables)
+                  if ("_raw", x, col) in index), None)
+        if t is None:
+            continue
+        raws = {str(v).strip() for v in (index.get(("_raw", t, col)) or ()) if str(v).strip()}
+        lits = _LIT.findall(m.group(0))
+        want: list[str] = []
+        for lit in lits:
+            key = lit.replace(" ", "")
+            want += [v for v in raws if v.replace(" ", "") == key and v not in lits and v not in want]
+        if not want:
+            continue
+        added += want
+        allv = ", ".join("'" + v.replace("'", "''") + "'" for v in lits + want)
+        frag = f"{(m.group(1) + '.') if m.group(1) else ''}{m.group(2)} IN ({allv})"
+        out = out.replace(m.group(0), frag, 1)
+    return out, added
+
+
 def drop_unasked_enum_values(sql: str, question: str) -> tuple[str, list[str]]:
     """IN 목록에서 **질문이 부르지 않은 값**을 걷어낸다. (SQL, 걷어낸 값)
 

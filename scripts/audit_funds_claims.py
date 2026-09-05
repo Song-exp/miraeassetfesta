@@ -148,13 +148,28 @@ results.append(("VS-*", "value_semantics 키 실재", "누락 0", vs_missing or 
 # ── 6. query_rules 가 가리키는 컬럼 실존 + 순수 SQL 규칙 실행 ───────────────
 rule_text = "\n".join(str(v) for k, v in Y["query_rules"].items()) + "\n" + "\n".join(Y.get("answer_rules") or [])
 tokens = set(re.findall(r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b", rule_text))
+# 🔄 2026-09-06 — 선언 스키마의 **키 이름**도 이 정규식에 걸린다(answer_policy·inject_where·sql_union …).
+#    컬럼이 아니라 yaml 문법이므로 미실존 컬럼이 아니다. 뒤에 붙은 리팩터로 키가 늘 때마다 여기 더한다.
 known = set(COLS) | EXT_COLS | {"public_funds", "domestic_etfs", "ext_fund_holdings", "ext_fund_page", "zero_is_value", "zero_as_missing",
-                                "query_rules", "dummy_as_missing", "kg_alias", "or_co", "mtco", "pd_itm_no", "ref_base_index", "sale_co", "ofwk_trus"}
+                                "query_rules", "dummy_as_missing", "kg_alias", "or_co", "mtco", "pd_itm_no", "ref_base_index", "sale_co", "ofwk_trus",
+                                "answer_policy", "any_of_has", "class_cnt", "from_pattern", "fund_cnt", "fund_key", "inject_where",
+                                "mgmt_nm", "mtco_nm", "not_any", "replace_expr", "sql_union", "value_semantics"}
 unknown = sorted(t for t in tokens if t not in known and not re.fullmatch(r"fd_\w*_ern_r", t))
 results.append(("QR-cols", "query_rules·answer_rules 가 가리키는 컬럼이 전부 실존", "미실존 0", unknown or 0, not unknown))
-qr = Y["query_rules"]
+def _rule(v):
+    """규칙 본문 — 2026-09-04 이후 규칙은 {text: 지시, evidence: 근거} 형이다(문자열 형도 그대로 받는다).
+
+    🔴 2026-09-06 — 이 함수가 없어 이 스크립트는 그 리팩터 이후 **AttributeError 로 죽고 있었다**
+    (`qr['펀드단위'].strip()` → dict 에 strip 없음). 조건식 검사 7건이 한 번도 안 돌았다는 뜻이다.
+    채권판(audit_bonds_rules._rule)에는 같은 처리가 있다 — 규칙 형이 바뀔 때 감사 셋 중 하나만 고쳐졌다."""
+    if isinstance(v, dict):
+        return " ".join(str(v.get(k, "")) for k in ("text", "evidence") if v.get(k))
+    return str(v or "")
+
+
+qr = {k: _rule(v) for k, v in Y["query_rules"].items()}
 for name in ["판매중만", "구매가능", "공모만", "기본모수", "ETF제외", "자산군_주식형"]:
-    cond = str(qr[name]).split("#")[0].strip()
+    cond = qr[name].split("#")[0].strip()
     chk(f"QR-{name}", f"query_rules.{name} 조건식 실행 가능", f"SELECT COUNT(*) {F} WHERE {cond} LIMIT 1", None, tol=1e18)
     results[-1] = (results[-1][0], results[-1][1], "실행됨", results[-1][3], not str(results[-1][3]).startswith("ERR"))
 chk("QR-펀드단위", "펀드단위 GROUP BY 실행 가능", f"SELECT COUNT(*) FROM (SELECT 1 {F} WHERE {BASE} {qr['펀드단위'].strip()})", None, tol=1e18)
@@ -195,8 +210,13 @@ chk("KG-mgr", "운용사 노드 label 결손 — Org_ 노드 중 label_ko 없는
     "SELECT COUNT(*) FROM kg_node n WHERE node_type='Organization' AND EXISTS (SELECT 1 FROM kg_alias a WHERE a.node_id=n.node_id AND a.column_name='or_co_xtn_itt_cd') AND (label_ko IS NULL OR label_ko='')", 0)
 chk("KG-mirae", "Org_00080008 label 미래에셋(코드북 약칭), 펀드 alias 1 + ETF alias ≥ 40",
     "SELECT (SELECT label_ko FROM kg_node WHERE node_id='Org_00080008'), SUM(table_name='public_funds'), SUM(table_name='domestic_etfs') >= 40 FROM kg_alias WHERE node_id='Org_00080008'", ("미래에셋", 1, 1))
-chk("KG-mother", "MotherFund 717 · feedsInto 1,704 · ext_fund_page 모펀드명 보유 행",
-    "SELECT (SELECT COUNT(*) FROM kg_node WHERE node_id LIKE 'MotherFund_%'), (SELECT COUNT(*) FROM kg_edge WHERE predicate='feedsInto'), (SELECT COUNT(*) FROM ext_fund_page WHERE mother_fund_names_raw IS NOT NULL AND mother_fund_names_raw<>'') > 0", (717, 1704, 1))
+# 🔄 2026-09-06 — 기대값을 결정에 맞춘다. 2026-09-04 에 **모펀드 노드를 만들지 않기로** 했다
+#    (gen_fund_structure_auto.py 머리주석: ext_fund_page 의 모펀드명이 마스터 itm_nm 과 완전일치 0건이라
+#     alias 를 붙일 값이 없다 · 모자형 질의 3종은 KG 없이 SQL 로 답한다). 그런데 이 기대값은 결정 전
+#    수치(717·1,704)로 남아 있었고, 스크립트가 죽어 있어 아무도 어긋남을 못 봤다.
+#    이제 "결정대로 0인가" 를 검사한다 — 원천 데이터(ext_fund_page 4,185행)는 그대로 있다.
+chk("KG-mother", "모펀드는 노드로 만들지 않는다 (2026-09-04 결정) — MotherFund 0 · feedsInto 0 · 원천 ext_fund_page 는 보유",
+    "SELECT (SELECT COUNT(*) FROM kg_node WHERE node_id LIKE 'MotherFund_%'), (SELECT COUNT(*) FROM kg_edge WHERE predicate='feedsInto'), (SELECT COUNT(*) FROM ext_fund_page WHERE mother_fund_names_raw IS NOT NULL AND mother_fund_names_raw<>'') > 0", (0, 0, 1))
 chk("KG-risk", "RiskGrade alias 가 value_variants 표기('높은위험'·'보통위험')를 포함",
     "SELECT SUM(raw_value='높은위험'), SUM(raw_value='보통위험') FROM kg_alias WHERE table_name='public_funds' AND column_name='zrin_fd_ivst_risk_grd_nm'", (1, 1))
 

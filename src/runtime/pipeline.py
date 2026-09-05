@@ -1341,6 +1341,55 @@ def ensure_etf_listing_year(sql: str, question: str) -> tuple[str, bool]:
     return (sql2, True) if ok else (sql, False)
 
 
+_NUM_AXIS_COLS = (r"pd_dvid_yield|cu_charge_rt|du_er_\w+|du_last_aum|du_vlty_\w+|du_val_\w+|du_vol_\w+"
+                  r"|du_chas_errt|du_diff_rt|pd_net_tamt|du_clpr")
+_THRESH_CONJ = re.compile(
+    rf"^\(?\s*(?:ABS\()?\s*((?:\w+\.)?(?:{_NUM_AXIS_COLS}))\s*\)?\s*(>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)\s*\)?$", re.I)
+_THRESH_SANCTIONED = {"0", "0.0", "-100", "-100.0"}          # 규칙이 준 센티넬·미입력 제외식
+_LOW_AXIS_Q = re.compile(r"낮은|저렴|싼|작은|적은|나쁜|저조|손실|하락|저배당|저보수|저변동")
+
+
+def ensure_etf_no_invented_threshold(sql: str, question: str) -> tuple[str, bool]:
+    """질문에 숫자가 없는데 SQL 이 수치 축에 임계값을 걸었으면(`pd_dvid_yield > 5`) 그 절을 빼고 정렬로 바꾼다.
+
+    🔴 2026-09-06 #41 서버 실측 — "전기테마 etf중에 고배당은뭐있어": HCX 가 '고배당' 을 **`pd_dvid_yield > 5`** 로
+       옮겼다. 질문에 5 는 없다. 전기 테마 ETF 7개의 분배율 최고가 1.35% 라 0건 → "확인되지 않습니다". 정도 형용사
+       (고배당·저보수·고수익·큰)는 **임계가 아니라 정렬**이다 — 임계는 질문이 숫자를 줬을 때만.
+       규칙이 준 `> 0`(미입력 제외)·`> -100`(센티넬 제외)은 그대로 둔다. 질문에 숫자가 하나라도 있으면 불개입.
+    """
+    if not _ETF_TBL_ANY.search(sql) or not _single_select(sql) or re.search(r"\d", question):
+        return sql, False
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_w:
+        return sql, False
+    keep, dropped = [], []
+    for c in _flat_conjuncts(m_w.group(1)):
+        m = _THRESH_CONJ.match(c.strip())
+        if m and m.group(3) not in _THRESH_SANCTIONED and _GUARD_MARK not in c:
+            dropped.append(m.group(1))
+        else:
+            keep.append(c.strip())
+    if not dropped:
+        return sql, False
+    if keep:
+        new = sql[:m_w.start(1)] + " " + " AND ".join(keep) + " " + sql[m_w.end(1):]
+    else:
+        new = sql[:m_w.start()] + " " + sql[m_w.end(1):]
+    col = dropped[0]
+    is_count = re.match(r"^\s*select\s+count\s*\(", new, re.I) is not None
+    if not is_count:
+        if not re.search(r"\border\s+by\b", new, re.I):
+            direction = "ASC" if _LOW_AXIS_Q.search(question) else "DESC"
+            order = f"ORDER BY {col} {direction}"
+            new = re.sub(r"\blimit\b", order + " LIMIT", new, count=1, flags=re.I) \
+                if re.search(r"\blimit\b", new, re.I) else new.rstrip() + " " + order
+        head = re.split(r"\bfrom\b", new, 1, flags=re.I)[0]
+        if not re.search(rf"\b{re.escape(col.split('.')[-1])}\b", head, re.I):
+            new = re.sub(r"\s+from\b", f", {col} FROM", new, count=1, flags=re.I)
+    new = re.sub(r"\s{2,}", " ", new).strip()
+    return (new, True) if new != sql else (sql, False)
+
+
 def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
     """ETF 랭킹·집계 SQL 에 상품군 확정식을 기계 주입. (보정된 SQL, 보정했는지) — `ensure_fund_base_population` 의 ETF 판.
 
@@ -1420,7 +1469,12 @@ _ETF_INDEX_COL = re.compile(r"\b(?:\w+\.)?(?:cu_base_index|ref_base_index)\b", r
 _INDEX_SUFFIX_TOKENS = {"TR", "PR", "CR", "NR", "GR", "TRI", "INDEX"}   # 지수 이름이 아니라 수익유형 접미·일반어
 
 
-def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
+_INDEX_INTENT = re.compile(
+    r"추종|따르|지수|인덱스|기초|index|KOSPI|KOSDAQ|NASDAQ|S&P|다우|Dow|코스피|코스닥|나스닥|닛케이|니케이|Nikkei"
+    r"|항셍|HangSeng|Russell|러셀|MSCI|KRX|FnGuide|TR\b|PR\b", re.I)
+
+
+def ensure_etf_index_canon(sql: str, question: str = "") -> tuple[str, bool]:
     """국내 ETF 의 기초지수 절을 `ref_base_index` **순수추종 확정식**으로 교체. (SQL, 교체했는지)
 
     🔴 10R KG 부류 T — `cu_base_index` 는 오염 컬럼이다(DB 실측, `pd_grp_no='ETF'` 1,235행 중 **1,179행(95.5%)
@@ -1440,6 +1494,12 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
     # 🔴 슬롯은 **단일 등호 비교** 하나만 받는다. OR 가지·다중 리터럴·부정(NOT)이 섞인 꼴은
     #    여기 아래 로직이 계속 담당한다 — 섀도 실측 '가드만 발동' 1건이 그 자리다.
     if "M:IDXCANON" in sql:
+        return sql, False
+    # 🔴 2026-09-06 #41 로컬 실측 — "전기테마 ETF 중 고배당": 섹터테마질의 3축의 ② 지수명 가지
+    #    `ref_base_index LIKE '%Electric%'` 을 이 확정식이 "이름이 정확히 Electric 인 지수" 로 바꿔 그 축을 조용히 죽였다.
+    #    확정식은 **지수를 통째로 말한 질문**("KOSPI200 추종")에만 필요하다 — 질문에 지수 의도 낱말이 없으면 불개입.
+    #    (question 을 안 넘긴 옛 호출은 종전대로 개입한다 — 회귀 호환)
+    if question and not _INDEX_INTENT.search(question):
         return sql, False
     m_tbl = re.search(r"\b(?:from|join)\s+domestic_etfs\b(?:\s+(?:as\s+)?"
                       r"(?!(?:left|inner|outer|cross|join|where|group|order|limit|on|union)\b)(\w+))?", sql, re.I)
@@ -10393,7 +10453,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
     # 🔴 지수 확정식이 **모수 가드보다 먼저** 돌아야 한다 — 모수 가드의 날조 술어 제거가 오염 컬럼의
     #    지수 절을 '근거 없는 술어' 로 보고 지워 버린다(순서가 뒤면 지수 조건이 통째로 사라진다).
-    sql, idx_fixed = ensure_etf_index_canon(sql)
+    sql, idx_fixed = ensure_etf_index_canon(sql, q)
     sql, mgmt_fixed = ensure_etf_mgmt_canon(sql)
     if mgmt_fixed:
         step("[Guard] ETF 운용사 확정식 — 오염 컬럼 cu_fund_mgmt_co(판매사·브랜드·상품명 혼재: '삼성증권(주)' 70행 "
@@ -10432,6 +10492,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if lst_fixed:
         step("[Guard] 상장연도 확정식 — '20XX년 상장' 질문에 pd_lstg_dt 범위가 없어 주입·치환 "
              "(2026-09-05 #40 실측: `WHERE 20261231` 컬럼 없는 상수 → 전체 1,780행에서 임의 30행이 '2026년 상장' 으로 나감 · 정답 124)")
+    sql, thr_fixed = ensure_etf_no_invented_threshold(sql, q)
+    if thr_fixed:
+        step("[Guard] 창작 임계 제거 — 질문에 숫자가 없는데 수치 축에 임계값이 걸려 있어 절을 빼고 정렬로 (2026-09-06 #41 실측: "
+             "'전기테마 ETF 중 고배당' 을 pd_dvid_yield > 5 로 옮겨 0건 — 7개 중 최고 1.35% · 정도 형용사는 임계가 아니라 정렬)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "

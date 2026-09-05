@@ -95,8 +95,7 @@ def test_rank_axis_is_corrected():
     ("SELECT itm_no, fd_nast_suma FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%코어테크%' "
      "ORDER BY 1 LIMIT 3", "미래에셋코어테크 펀드 순자산 알려줘",
      "🔴 개별 조회엔 불개입 — 랭킹으로 읽히면 기점오류 제외가 끼어든다(고정선 R4·S3)"),
-    ("SELECT itm_no, COUNT(*) FROM public_funds ORDER BY 2 DESC LIMIT 3", "1년 수익률 높은 3개",
-     "지목한 축이 SELECT 에 없으면 정렬할 값이 없다"),
+    # (삭제 2026-09-05 밤) 'SELECT 에 없으면 물러남' 케이스 — U14 서버 원문 실측으로 뒤집혔다: 축 컬럼은 덧붙인다 (test_round25_axis_select)
 ])
 def test_rank_axis_no_touch(sql, q, why):
     assert ensure_fund_rank_axis(sql, q) == (sql, False), why

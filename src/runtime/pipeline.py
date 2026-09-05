@@ -1647,8 +1647,14 @@ def ensure_fund_rank_axis(sql: str, question: str) -> tuple[str, bool]:
     if not col:
         return sql, False
     frm = re.search(r"\bfrom\b", sql, re.I)
-    if not frm or not re.search(rf"\b{col}\b", sql[:frm.start()], re.I):
+    if not frm:
         return sql, False
+    if not re.search(rf"\b{col}\b", sql[:frm.start()], re.I):
+        # 🔴 2026-09-05 밤 U14 서버 원문(API 로그 raw=) 실측: `SELECT itm_no, TRIM(itm_nm), COUNT(*) … ORDER BY 3`
+        #    — 질문이 지목한 축 fd_yr1_ern_r 이 **SELECT 에 아예 없었다.** 종전엔 "없는 값을 정렬할 수 없다" 며
+        #    물러났고, 뒤의 근거컬럼 보강이 그 컬럼을 덧붙인 뒤에야 체인 끝 재확인이 섰다(로컬 재생은 보강된
+        #    SQL 을 넣어 늘 성공 — 서버에서만 나는 불발의 정체). 물러날 일이 아니라 **덧붙일 일**이다.
+        sql = sql[:frm.start()].rstrip() + f", {col} " + sql[frm.start():]
     direction = "ASC" if (_ASC_WORD.search(question) and not _DESC_WORD.search(question)) else "DESC"
     m = _ORDER_BY_ALL.search(sql)
     if not m:
@@ -8989,6 +8995,43 @@ def ensure_default_topn(sql: str, question: str) -> tuple[str, bool]:
     return f"{body} LIMIT {DEFAULT_TOPN}", True
 
 
+
+_ASKED_N = re.compile(r"(\d+)\s*(?:개|종목|곳|건|가지|펀드|종)(?![가-힣]*(?:년|월|일|개월|호|배|위|등급))")
+_KO_NUM = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10}
+_ASKED_N_KO = re.compile(r"(?<![가-힣])(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*(?:개|종목|곳|가지)")
+
+
+def ensure_asked_topn(sql: str, question: str) -> tuple[str, bool]:
+    """질문이 개수를 **명시**한 랭킹 질의의 LIMIT 을 그 수로 맞춘다. (SQL, 고쳤는지)
+
+    2026-09-05 밤 U14 서버 실측: '… 공모펀드 **3개**는 클래스가 몇 개씩이야?' 에 HCX 가 `LIMIT 5` —
+    답이 '상위 5개' 로 나갔다. 개수는 질문이 정한 것이라 SQL 이 따라야 한다.
+    발동: ① ORDER BY 존재 ② 질문에 개수 표현이 **하나**(둘이면 어느 것이 상한인지 모른다 → 불개입)
+          ③ SELECT 가 식별 컬럼 없는 단일 집계가 아님 ④ LIMIT 이 그 수와 다름.
+    """
+    if not re.search(r"\bORDER\s+BY\b", sql, re.I):
+        return sql, False
+    nums = [int(m.group(1)) for m in _ASKED_N.finditer(question)] + \
+           [_KO_NUM[m.group(1)] for m in _ASKED_N_KO.finditer(question)]
+    if len(nums) != 1 or not (1 <= nums[0] <= 30):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head = sql[:frm.start()]
+    if re.search(r"\b(?:COUNT|SUM)\s*\(", head, re.I) and not re.search(r"\b(?:itm_no|itm_nm|pd_nm|pd_no)\b", head, re.I):
+        return sql, False
+    # 🔴 마지막 LIMIT 의 숫자만 제자리에서 바꾼다 — 끝에 enforce 마커(`/*M:BONDPOP*/`)가 붙은 SQL 에
+    #    `LIMIT n$` 을 요구하면 못 찾고 LIMIT 을 덧붙여 `near "LIMIT": syntax error` 가 났다(테스트 4건 실측).
+    hits = list(re.finditer(r"\bLIMIT\s+(\d+)", sql, re.I))
+    if hits:
+        m = hits[-1]
+        if int(m.group(1)) == nums[0]:
+            return sql, False
+        return sql[:m.start(1)] + str(nums[0]) + sql[m.end(1):], True
+    return sql.rstrip().rstrip(";") + f" LIMIT {nums[0]}", True
+
+
 _UNION_OP = re.compile(r"\b(UNION\s+ALL|UNION|EXCEPT|INTERSECT)\b", re.I)
 
 
@@ -9649,6 +9692,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, topn_fixed = ensure_default_topn(sql, q)
     if topn_fixed:
         step(f"[Guard] 기본 TOP-N — 개수 없는 랭킹 질의의 LIMIT 을 {DEFAULT_TOPN} 으로 (2026-09-02 서버 실측: '한전 채권 수익률 낮은 순' 30행 전사 22.2초 — 리드 결정: 상위 5 + 전체 종목수 병기)")
+    sql, asked_n = ensure_asked_topn(sql, q)
+    if asked_n:
+        step("[Guard] 질문 개수 → LIMIT — 질문이 명시한 개수와 LIMIT 이 달라 질문의 수로 맞췄다 "
+             "(2026-09-05 밤 U14 서버 실측: '공모펀드 3개' 에 LIMIT 5 → '상위 5개')")
     sql, limited = ensure_limit(sql)
     if limited:
         step(f"[Guard] LIMIT 누락 — 상한 {MAX_ROWS} 로 보정 (검사기가 LIMIT 을 요구한다 — 집계 1행에도 붙이며 결과엔 무해)")

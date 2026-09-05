@@ -89,7 +89,7 @@ chk("구조-CB", "GLOB [0-9]CB OR (전환 = 389", f"SELECT SUM(pd_nm GLOB '*[0-9
 chk("구조-영구", "신종|영구 266 / 종목 237", f"SELECT SUM(pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%'), COUNT(DISTINCT CASE WHEN pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%' THEN pd_no END) {B}", (266, 237))
 chk("구조-EB/BW/분리/물가", "137 · 32 · 209 · 6", f"SELECT SUM(pd_nm GLOB '*[0-9]EB*'), SUM(pd_nm GLOB '*[0-9]BW*'), SUM(pd_nm LIKE '%분리채권%'), SUM(pd_nm LIKE '%물가%') {B}", (137, 32, 209, 6))
 chk("구조-분리채권", "분리채권 209 전부 6등급·대분류 국공채·할인채 (bd_knd 는 국고채권 188 + 장외 NULL 21)", f"SELECT SUM(pd_risk_gcd='16'), SUM(TRIM(std_pd_mcls_nm)='국공채'), SUM(TRIM(bd_intp_tcd)='할인채'), SUM(bd_knd IS NULL) {B} WHERE pd_nm LIKE '%분리채권%'", (209, 209, 209, 21))
-chk("구조-합집합", "구조 열 비어있지 않음 3,579행 / 3,519종목 (이름 11패턴 합집합 3,578 + 은행 자본성증권 컬럼 판정으로 1행 추가)", f"SELECT COUNT(*), COUNT(DISTINCT pd_no) {B} WHERE ({case_struct}) <> ''", (3579, 3519))
+chk("구조-합집합", "구조 열 비어있지 않음 3,581행 / 3,520종목 (이름 11패턴 합집합 3,578 + 은행 자본성증권 컬럼 판정 1행 + 2026-09-06 종류 결측 보완 2행)", f"SELECT COUNT(*), COUNT(DISTINCT pd_no) {B} WHERE ({case_struct}) <> ''", (3581, 3520))
 # ESG
 for lab, exp in (("녹", 356), ("사", 1984), ("지", 159)):
     chk(f"ESG-{lab}", f"4형 LIKE = {exp} = 정규식", f"SELECT SUM(pd_nm LIKE '%({lab})%' OR pd_nm LIKE '%({lab}/%' OR pd_nm LIKE '%/{lab})%' OR pd_nm LIKE '%/{lab}/%'), SUM(pd_nm REGEXP '[(/]{lab}[)/]') {B}", (exp, exp))

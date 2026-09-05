@@ -1661,6 +1661,18 @@ def test_risk_grade_range_by_table(ctx):
     assert g0.rejected and "0등급은 없습니다" in g0.answer and "NULL" in g0.answer
     assert not gate.check("위험등급 0등급 국내채권은 몇 개야?", ctx, ["domestic_bonds"]).rejected        # U25 — 미분류 '00' 답변 가능
     assert gate.check("위험등급 7등급 국내채권 알려줘", ctx, ["domestic_bonds"]).rejected
+    # ── 2026-09-05 사용자 테스트 "위험등급 7등급 채권만 보여줘" — ① 0 을 매우높은위험으로 라벨 ② 선언 note(개발자 근거)가 답변에 ──
+    #    채권만 고친다(펀드·ETF 는 종전 문구 유지 — 리드 지시). 사용자 문장은 선언 answer_hint, note 는 trace(reason) 로만.
+    gb = gate.check("위험등급 7등급 채권만 보여줘", ctx, ["domestic_bonds"])
+    assert gb.rejected and "국내채권 위험등급은 1(매우높은위험)~6(매우낮은위험) 범위로 정의되어 있어 7등급은 없습니다." in gb.answer
+    assert "0(매우높은위험)" not in gb.answer and "'해당없음'(미분류, 코드 0)" in gb.answer and "원하시는 등급을 말씀해" in gb.answer
+    for dev in ("pd_risk_gcd", "실재", "답변 가능", "19건"):
+        assert dev not in gb.answer
+    assert "선언 근거: 0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재" in gb.reason           # 근거는 trace 에만
+    rb = answer_question("T-RG7", "위험등급 7등급 채권만 보여줘", planner=None, ctx=ctx)
+    assert "[Gate] 기각" in rb.think_trace and "pd_risk_gcd" in rb.think_trace and "pd_risk_gcd" not in rb.answer
+    # 펀드·ETF 는 answer_hint 가 없어 종전 문구 그대로 (7등급 펀드 문구는 위에서 고정 · ETF 는 note 병기 유지)
+    assert "(0등급 없음)" in gate.check("위험등급 7등급 ETF 알려줘", ctx, ["domestic_etfs"]).answer
     assert gate.check("위험등급 0등급 ETF 알려줘", ctx, ["domestic_etfs"]).rejected
     assert not gate.check("위험등급 0등급 상품 알려줘", ctx, []).rejected                                # 미특정 = 합집합 0~6
     assert not gate.check("위험등급 2등급 공모펀드 알려줘", ctx, ["public_funds"]).rejected

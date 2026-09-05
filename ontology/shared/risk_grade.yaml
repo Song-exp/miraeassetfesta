@@ -25,7 +25,11 @@ value_property: riskGradeValue
 range_by_table:
   public_funds:   {min: 1, max: 6, label_min: "매우 높은 위험", label_max: "매우 낮은 위험", note: "0등급 없음 — 등급 미수록 클래스는 NULL(0 아님)"}
   domestic_etfs:  {min: 1, max: 6, label_min: "매우높은위험", label_max: "매우낮은위험", note: "0등급 없음"}
-  domestic_bonds: {min: 0, max: 6, label_min: "매우높은위험", label_max: "매우낮은위험", unclassified: 0, note: "0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재 — 답변 가능"}
+#    🔴 note 는 개발자 근거(ttl 주석·think_trace)다. 사용자 답변에 실을 문장은 answer_hint 에 따로 적는다 — 2026-09-05 사용자 테스트
+#    "위험등급 7등급 채권만 보여줘" 의 답변 끝에 "(0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재 — 답변 가능)" 이 그대로 나갔다.
+#    answer_hint 가 없는 테이블은 종전대로 note 를 붙인다(펀드·ETF 는 손대지 않는다 — 리드 지시 2026-09-05).
+#    unclassified 가 min 과 같으면 등급 구간 라벨(label_min)은 unclassified+1 부터다 — 0 은 '해당없음'(pd_risk_nm) 이지 매우높은위험이 아니다.
+  domestic_bonds: {min: 0, max: 6, label_min: "매우높은위험", label_max: "매우낮은위험", unclassified: 0, unclassified_label: "해당없음", note: "0 = 미분류 코드 '00'(pd_risk_gcd) 19건 실재 — 답변 가능", answer_hint: "그 밖에 위험등급 '해당없음'(미분류, 코드 0) 종목이 있어 0등급으로 조회할 수 있습니다. 가장 위험한 쪽은 1등급, 가장 안전한 쪽은 6등급이니 원하시는 등급을 말씀해 주시면 조회해 드립니다."}
 
 nodes:
   RiskGrade_1:

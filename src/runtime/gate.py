@@ -449,15 +449,27 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
             lo = min((r["min"] for r in specs.values()), default=0)
             hi = max((r["max"] for r in specs.values()), default=6)
             if not lo <= g <= hi:
+                note = ""
                 if len(tables) == 1 and tables[0] in specs:
                     r, name = specs[tables[0]], _TABLE_KO.get(tables[0], tables[0])
-                    answer = (f"{name} 위험등급은 {r['min']}({r.get('label_min', '')})~{r['max']}({r.get('label_max', '')}) "
-                              f"범위로 정의되어 있어 {g}등급은 없습니다." + (f" ({r['note']})" if r.get("note") else ""))
+                    # 🔴 2026-09-05 사용자 테스트 "위험등급 7등급 채권만 보여줘" — 답변이 "0(매우높은위험)~6(…) … (0 = 미분류 코드
+                    #    '00'(pd_risk_gcd) 19건 실재 — 답변 가능)" 로 나갔다. 두 결함: ① 미분류 코드(unclassified=min)에 등급 구간
+                    #    라벨을 붙였다 — 0 은 '해당없음' 이지 매우높은위험(1등급)이 아니다 ② 선언의 note(개발자 근거)를 사용자 답변에
+                    #    이었다. 사용자 문장은 선언의 answer_hint 다. answer_hint 가 없는 테이블은 종전대로(펀드·ETF 불변 — 리드 지시).
+                    gmin = r["min"] + 1 if r.get("unclassified") == r["min"] else r["min"]
+                    answer = (f"{name} 위험등급은 {gmin}({r.get('label_min', '')})~{r['max']}({r.get('label_max', '')}) "
+                              f"범위로 정의되어 있어 {g}등급은 없습니다.")
+                    note = r.get("note") or ""
+                    if r.get("answer_hint"):
+                        answer += " " + r["answer_hint"]
+                    elif note:
+                        answer += f" ({note})"
                 else:
                     answer = f"위험등급은 {lo}~{hi} 범위로 정의되어 있습니다. {g}등급은 존재하지 않습니다."
                 return GateResult(
                     rejected=True,
-                    reason=f"위험등급 {g} 는 정의 범위({lo}~{hi}, 테이블별 선언 range_by_table)를 벗어남",
+                    reason=f"위험등급 {g} 는 정의 범위({lo}~{hi}, 테이블별 선언 range_by_table)를 벗어남"
+                           + (f" · 선언 근거: {note}" if note else ""),
                     answer=answer,
                 )
 

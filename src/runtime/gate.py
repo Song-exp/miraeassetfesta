@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .loader import RuntimeContext, dataset_scope
+from .wording import customer_text, refusal
 
 # 🔴 세 날짜의 원천은 선언이다 — ontology/shared/dataset.yaml `dates` (2026-09-04).
 #    코드에 박아 두면 서비스로 옮길 때(‘오늘’ 이 매일 바뀔 때) 코드를 고쳐야 한다. 선언이 없거나 깨지면 아래 값으로 물러선다.
@@ -386,10 +387,11 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                 if hit:
                     sub = item.get("substitute") or {}
                     note = f" {sub['note']}" if sub.get("note") else ""
+                    # 고객 문장은 선언의 answer(결론→이유→대안). 없으면 why+note 로 폴백하되 컬럼명 괄호는 뗀다 (2026-09-05 wording)
                     return GateResult(
                         rejected=True,
                         reason=f"온톨로지 ABSENT — {tables[0]} 에 {item['property']} 속성 없음 · 질문의 '{hit.group(0)}' (enums absent_properties → HCX 0회)",
-                        answer=f"{item['why']}{note}",
+                        answer=customer_text(item.get("answer") or f"{item['why']}{note}"),
                     )
 
     # ① absent — 온톨로지 속성 부재 (질의가 특정 테이블 하나로 좁혀질 때만 기각)
@@ -401,7 +403,8 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                 return GateResult(
                     rejected=True,
                     reason=f"온톨로지상 {tables[0]} 클래스에 {prop} 속성이 정의되어 있지 않음 — {why}",
-                    answer=f"해당 상품군에는 요청하신 속성이 제공되지 않습니다. ({why.split('→')[0].strip()})",
+                    answer=refusal("요청하신 항목은 이 상품 유형의 데이터에 수록되어 있지 않아 확인할 수 없습니다",
+                                   why.split('→')[0].replace("컬럼 없음", "항목이 없습니다").replace(" — ", ". ").strip()),
                 )
 
     # ② enum — 신용등급 (채권 문맥 또는 '신용등급' 명시)
@@ -413,14 +416,17 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                     rejected=True,
                     reason=f"'{tok}' 는 신용등급 표준표({len(ctx.std_grades) or len(ctx.crd_grades)}종)에 없음 — 존재하지 않는 등급",
                     # 유효 범위 문구도 표준표에서 만든다 — 코드에 'AAA~C' 를 적어 두면 표가 늘어도 문구가 안 따라온다 (2026-09-04, D 등급 노드 추가)
-                    answer=f"'{tok}'는 존재하지 않는 신용등급이라 확인할 수 없습니다. 유효 등급은 {_grade_span(ctx)} 체계입니다.",
+                    answer=refusal(f"'{tok}'는 존재하지 않는 신용등급이라 확인할 수 없습니다",
+                                   f"채권 신용등급은 {_grade_span(ctx)} 범위 안에서 표기됩니다",
+                                   "유효한 등급으로 다시 질문해 주시면 조회해 드리겠습니다"),
                 )
             if kind == "no_data":
                 # 기각이 아니라 DB 근거의 즉답 — 표준 등급이지만 2차 데이터에 해당 채권이 없다 (등급서열 규칙)
                 return GateResult(
                     rejected=True,
                     reason=f"'{tok}' 는 표준 등급이나 2차 데이터에 0건 — HCX 없이 즉답 (등급서열 규칙)",
-                    answer=f"'{tok}' 등급은 신용등급 체계에 있으나, 기준일 {DATA_CUTOFF} 데이터에 해당 등급의 채권이 없습니다.",
+                    answer=refusal(f"'{tok}' 등급은 신용등급 체계에 있으나, 기준일 {DATA_CUTOFF} 데이터에 해당 등급의 채권이 없습니다",
+                                   "", "가까운 등급으로 범위를 넓혀 다시 질문해 주시면 조회해 드리겠습니다"),
                 )
 
     # ④ constant — 상수 컬럼 위반 (2026-08-30 R-5 ① 층). 그 테이블 하나로 라우팅됐을 때만. 규칙은 yaml gate_constants,

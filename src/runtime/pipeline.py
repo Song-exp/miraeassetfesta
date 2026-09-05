@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
-from . import gate, guard
+from . import gate, guard, wording
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly, load_context
 from .router import route
 
@@ -9164,7 +9164,7 @@ def answer_question(
             # SQL 이 없으면 해석을 검사할 수 없다 — 기준일 안내로 보수적으로 끝낸다
             step(f"[Decision] SQL 생성기 미연결 상태에서 기준일({gate.DATA_CUTOFF}) 이후 시점 질의 — 확인 불가")
             result.think_trace = "\n".join(trace)
-            result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+            result.answer = wording.after_cutoff(gate.DATA_CUTOFF)
             return result
         step("[Plan] SQL 생성기 미연결 — 답변 보류 (Ground·Gate 결과는 유효)")
         result.think_trace = "\n".join(trace)
@@ -9207,7 +9207,8 @@ def answer_question(
             step("[Guard] 면책 문구 제거(Refuse 경로) — 거절문도 같은 문형 가드를 탄다 (14R gold ③-17)")
         step("[Decision] 데이터 범위 밖 — HCX 답변 생성 없이 종료")
         result.think_trace = "\n".join(trace)
-        result.answer = f"요청하신 내용은 제공된 데이터(기준일 {gate.DATA_CUTOFF})로 확인할 수 없습니다. {why}"
+        # 플래너 사유는 고객 문장으로 — 컬럼명 괄호는 뗀다 (2026-09-05 wording)
+        result.answer = f"요청하신 내용은 제공된 데이터(기준일 {gate.DATA_CUTOFF})로 확인할 수 없습니다. {wording.customer_text(why)}"
         return result
 
     if raw_sql.strip().upper().startswith(CLARIFY_PREFIX):
@@ -9279,7 +9280,7 @@ def answer_question(
             result.sql = sql
             step("[Decision] HCX SQL 은 만들었으나 기준일 이후 근거가 DB 에 없어 종료")
             result.think_trace = "\n".join(trace)
-            result.answer = f"제공된 데이터의 기준일은 {gate.DATA_CUTOFF}입니다. 이후 시점의 정보는 확인할 수 없습니다."
+            result.answer = wording.after_cutoff(gate.DATA_CUTOFF)
             return result
 
     sql = _apply_sql_guards(sql, q, name_token, future, step, ctx, tables, mgmt_found,

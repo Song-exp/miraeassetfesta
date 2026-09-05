@@ -1633,8 +1633,9 @@ def test_absent_properties_gate(ctx):
     for q in ("최근 6개월 사이에 신용등급이 오른 채권들 정리해줘", "등급이 떨어진 채권 있어?",
               "최근에 등급 강등된 채권", "신용등급이 2단계 상승한 채권"):
         g = gate.check(q, ctx, ["domestic_bonds"])
-        assert g.rejected and "수록되어 있지 않습니다" in g.answer, q
-        assert "crd_grd_dt" in g.answer, q                       # substitute — 거절로 끝내지 않고 답할 수 있는 축을 준다
+        assert g.rejected and "확인할 수 없습니다" in g.answer, q
+        # substitute — 거절로 끝내지 않고 답할 수 있는 축(부여일·최근 발행)을 준다. 컬럼명은 고객 답변에 안 나간다 (2026-09-05 wording)
+        assert "부여일" in g.answer and "crd_grd_dt" not in g.answer, q
     for q in ("등급 낮은 채권", "신용등급 대비 수익률이 오른 채권", "신용등급 변동성이 큰 채권",
               "신용등급 AA- 이상 채권 알려줘", "가장 안전한 채권 3개 추천해줘"):
         assert not gate.check(q, ctx, ["domestic_bonds"]).rejected, q      # 대조군 — 이력 어휘 확장이 조회·되묻기를 먹지 않는다

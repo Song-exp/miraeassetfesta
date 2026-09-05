@@ -143,6 +143,19 @@ def validate_sql(sql: str) -> str | None:
         return "금지 키워드 포함"
     for seg_m in _WHERE_SEG.finditer(s):
         seg = re.sub(r"'[^']*'", "''", seg_m.group(1))   # 문자열 리터럴 안의 OR/AND 무시
+        # 🔴 2026-09-05 #40 실측 — "2026년에 상장한 ETF": HCX 가 `WHERE 20261231 LIMIT 30` 을 냈다. SQLite 는
+        #    컬럼 없는 상수를 **항상 참**으로 평가해 전체 1,780행(ETN 포함)이 나갔고 검사기는 통과시켰다.
+        #    최상위 피연산자가 맨 숫자·맨 문자열이면 기각해 재생성에 "어느 컬럼인지" 를 묻는다.
+        #    (BETWEEN a AND b 의 b 를 피연산자로 오인하지 않게 먼저 접는다.)
+        body = re.sub(r"\bBETWEEN\b\s+\S+\s+AND\s+\S+", " BETWEEN_X ", seg, flags=re.I)
+        prev_b = None
+        while prev_b != body:
+            prev_b, body = body, re.sub(r"\([^()]*\)", " ", body)
+        for piece in re.split(r"\s+(?:AND|OR)\s+", body.strip(), flags=re.I):
+            if re.fullmatch(r"(?:NOT\s+)?-?\d+(?:\.\d+)?|(?:NOT\s+)?''", piece.strip(), re.I):
+                errs.append(f"WHERE 에 컬럼 없는 상수 조건 `{piece.strip()}` — SQLite 는 이를 항상 참으로 평가해 "
+                            "전체 행이 나간다. 어느 컬럼과 비교하는지 써라 (예: 상장연도는 pd_lstg_dt BETWEEN 20260101 AND 20261231)")
+                break
         # (WHERE 의 윈도우·집계 함수 기각은 _sql_precheck 의 6R P 검사(_WHERE_AGG)가 담당 — 2026-09-02 병합 시 중복 검사 제거)
         prev = None
         while prev != seg:                                # 괄호 안쪽부터 반복 제거 → 최상위만 남긴다
@@ -1252,6 +1265,82 @@ def ensure_etf_return_sort(sql: str, question: str) -> tuple[str, bool]:
     return sql[:m_ob.start()].rstrip() + " " + new_ob + (" " + rest if rest else ""), True
 
 
+_ETF_TBL_ANY = re.compile(r"\bfrom\s+(?:domestic|overseas)_etfs\b", re.I)
+_AUM_Q = re.compile(r"순\s*자산|AUM|운용\s*규모|자산\s*규모|시가\s*총액|펀드\s*규모|설정\s*액", re.I)
+_AUM_THRESH = re.compile(
+    r"(?P<n>\d+(?:[.,]\d+)?)\s*(?P<u>조|천\s*억|백\s*억|억)\s*원?\s*(?:을|이|가|은|는)?\s*"
+    r"(?P<op>이상|넘|초과|보다\s*(?:큰|많|높)|이하|미만|아래|밑|보다\s*(?:작|적|낮))")
+_AUM_UNIT = {"조": 1_000_000_000_000, "천억": 100_000_000_000, "백억": 10_000_000_000, "억": 100_000_000}
+
+
+def ensure_etf_aum_threshold(sql: str, question: str) -> tuple[str, bool]:
+    """질문이 순자산 금액 임계(1조원 넘는·5천억 이상)를 말했는데 SQL 에 `du_last_aum` 이 없으면 주입한다.
+
+    🔴 2026-09-05 #37 실측 — "순자산 1조원 넘는 국내 ETF 몇 개": HCX 가 임계 절을 통째로 빼고 1,160 을 답함(정답 91).
+       질문 축이 SQL 에서 사라진 **네 번째** 사례(연금·환헤지·월배당·순자산). 국내만 — 해외 `du_last_aum` 통화 미확정.
+    """
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql) or re.search(r"\bdu_last_aum\b", sql, re.I):
+        return sql, False
+    if not _AUM_Q.search(question):
+        return sql, False
+    m = _AUM_THRESH.search(question)
+    if not m:
+        return sql, False
+    n = float(m.group("n").replace(",", "."))
+    unit = _AUM_UNIT[re.sub(r"\s+", "", m.group("u"))]
+    op_word = m.group("op")
+    if re.match(r"이상", op_word):
+        op = ">="
+    elif re.match(r"이하", op_word):
+        op = "<="
+    elif re.match(r"미만|아래|밑|보다\s*(?:작|적|낮)", op_word):
+        op = "<"
+    else:                                   # 넘·초과·보다 큰
+        op = ">"
+    thresh = int(round(n * unit))
+    sql2, ok = _append_exclusions(sql, [f"du_last_aum {op} {thresh}"])
+    return (sql2, True) if ok else (sql, False)
+
+
+_LIST_Q = re.compile(r"상장|출시|신규|나온|생긴|만들어진|런칭|설정된|등장")
+_LIST_YEAR = re.compile(r"(?P<y>20\d{2})\s*년(?:도)?")
+_LIST_THIS_YEAR = re.compile(r"올해|금년|이번\s*(?:년|연도|해)")
+_LIST_AFTER = re.compile(r"이후|부터|이래|이후로")
+_LIST_BEFORE = re.compile(r"이전|까지|전에")
+_BARE_DATE_CONJ = re.compile(r"(\bWHERE\s+|\bAND\s+)(\d{4}|\d{8})(?=\s+(?:AND|OR|GROUP|ORDER|LIMIT)\b|\s*$)", re.I)
+_SNAPSHOT_YEAR = 2026                        # 배포 v2_20260824 · 스냅샷 2026-08-22
+
+
+def ensure_etf_listing_year(sql: str, question: str) -> tuple[str, bool]:
+    """'20XX년(에) 상장한 ETF' 질문인데 SQL 에 `pd_lstg_dt` 가 없으면 연도 범위를 주입한다.
+
+    🔴 2026-09-05 #40 실측 — HCX 가 `WHERE 20261231 LIMIT 30` 을 냈다(컬럼 없는 날짜 상수 = 항상 참). 그 상수
+       자리를 범위식으로 **치환**하고, 상수가 없으면 범위식을 덧붙인다. 국내·해외 모두 `pd_lstg_dt`(YYYYMMDD 정수)가 있다.
+    """
+    if not _ETF_TBL_ANY.search(sql) or not _single_select(sql) or re.search(r"\bpd_lstg_dt\b", sql, re.I):
+        return sql, False
+    if not _LIST_Q.search(question):
+        return sql, False
+    m = _LIST_YEAR.search(question)
+    if m:
+        y = int(m.group("y"))
+    elif _LIST_THIS_YEAR.search(question):
+        y = _SNAPSHOT_YEAR
+    else:
+        return sql, False
+    tail = question[m.end():] if m else question
+    if _LIST_AFTER.search(tail):
+        cond = f"pd_lstg_dt >= {y}0101"
+    elif _LIST_BEFORE.search(tail):
+        cond = f"pd_lstg_dt <= {y}1231"
+    else:
+        cond = f"pd_lstg_dt BETWEEN {y}0101 AND {y}1231"
+    if _BARE_DATE_CONJ.search(sql):
+        return _BARE_DATE_CONJ.sub(lambda mm: mm.group(1) + cond, sql, count=1), True
+    sql2, ok = _append_exclusions(sql, [cond])
+    return (sql2, True) if ok else (sql, False)
+
+
 def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
     """ETF 랭킹·집계 SQL 에 상품군 확정식을 기계 주입. (보정된 SQL, 보정했는지) — `ensure_fund_base_population` 의 ETF 판.
 
@@ -1328,6 +1417,7 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
 #    docs/question_design_public_funds_2026-08-31.md §4. 프롬프트에 실려도 무시되는 규칙의 결정 층) ──
 _ETF_INDEX_COL = re.compile(r"\b(?:\w+\.)?(?:cu_base_index|ref_base_index)\b", re.I)
+_INDEX_SUFFIX_TOKENS = {"TR", "PR", "CR", "NR", "GR", "TRI", "INDEX"}   # 지수 이름이 아니라 수익유형 접미·일반어
 
 
 def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
@@ -1383,8 +1473,12 @@ def ensure_etf_index_canon(sql: str) -> tuple[str, bool]:
             lits = [x.strip("'").strip("%") for x in _SQL_LITERAL.findall(b) if len(x.strip("'").strip("% ")) >= 2]
             hit = re.sub(r"\s+", "", lits[-1]) if lits else ""
             owned = qual_rx.search(b) if mixed else _ETF_INDEX_COL.search(b)
+            # 🔴 2026-09-05 #36 실측 — "TR 지수 추종 ETF 몇 개": HCX 가 낸 `ref_base_index LIKE '%TR%'` 의
+            #    리터럴 'TR' 을 지수명으로 삼아 `GLOB 'TR' OR GLOB 'TR[CTP]R*'` 로 바꿨다 → 0건(정답 200).
+            #    수익유형 접미(TR·PR·CR·NR·GR)와 3자 미만 토큰은 지수 이름일 수 없다 — 그 가지는 그대로 둔다.
             if owned and hit and not re.search(r"\bNOT\b", b, re.I) \
-                    and not re.search(r"[*?\[\]]", hit):
+                    and not re.search(r"[*?\[\]]", hit) \
+                    and hit.upper() not in _INDEX_SUFFIX_TOKENS and len(hit) >= 3:
                 branches.append(_canon(hit))
                 hit_any = changed = True
             else:
@@ -10321,6 +10415,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if rsort_fixed:
         step("[Guard] 기간수익률 정렬 교정 — ORDER BY 가 그 기간 컬럼이 아니어서 교체 "
              "(2026-09-05 #12 실측: SELECT 에 배수를 더하자 서수 ORDER BY 3 이 배수를 가리켜 -52% 상품이 '3개월 수익률 상위' 로 나감)")
+    sql, aum_fixed = ensure_etf_aum_threshold(sql, q)
+    if aum_fixed:
+        step("[Guard] 순자산 임계 확정식 — 질문의 금액 임계(1조원 넘는 등)가 SQL 에 없어 du_last_aum 조건 주입 "
+             "(2026-09-05 #37 실측: '순자산 1조원 넘는 ETF 몇 개' 가 임계 없이 1,160 을 답함 · 정답 91 · 축 누락 네 번째)")
+    sql, lst_fixed = ensure_etf_listing_year(sql, q)
+    if lst_fixed:
+        step("[Guard] 상장연도 확정식 — '20XX년 상장' 질문에 pd_lstg_dt 범위가 없어 주입·치환 "
+             "(2026-09-05 #40 실측: `WHERE 20261231` 컬럼 없는 상수 → 전체 1,780행에서 임의 30행이 '2026년 상장' 으로 나감 · 정답 124)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "

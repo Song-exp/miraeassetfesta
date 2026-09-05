@@ -4771,7 +4771,10 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str], question
             if rows_b:
                 breakdown = "\n운용사 코드별: " + " · ".join(
                     f"{c} {n:,}개" + ("(역외)" if c.startswith(_OFFSHORE_CLASS) else "") for c, n in rows_b)
-    out = f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}." + breakdown
+    # 2026-09-05 밤 KG-018 — '…도 있어?' 존재 질의는 예/아니오를 먼저 말한다(개수는 그 근거).
+    exist = bool(question and _EXIST_Q.search(question))
+    out = (("네, 있습니다 — " if exist and funds > 0 else "아니요, 없습니다 — " if exist else "")
+           + f"{subject} {label}는 {funds:,}개(클래스 {classes:,}개)입니다{scope}." + breakdown)
     if funds == 0:
         # 0행 정책(6R F4): 세 갈래 — (a) 교집합 0 / (b) 기본모수 밖 / (c) 식별 실패 — 리터럴 검증으로 가른다
         out += "\n" + _zero_row_reason(sql)
@@ -4780,6 +4783,12 @@ def _count_answer(sql: str, rows: str, n: int, ground_lines: list[str], question
     offshore = _offshore_sibling_note(subject, used_codes, sql)
     if offshore:
         out += "\n" + offshore
+        # 2026-09-05 밤 KG-031 — 질문이 '역외까지 포함하면' 이라 물었으면 합산 수를 한 줄 더 준다. 두 수를 따로
+        #    말하고 이유를 댄 것은 맞지만, 물은 합계를 끝내 안 주면 답이 아니다. 별도 법인이라는 고지는 그대로 둔다.
+        m_off = re.search(r"역외펀드 ([\d,]+)개\(클래스 ([\d,]+)개", offshore)
+        if m_off and question and re.search(r"포함|합쳐|합치|더하", question):
+            f2, c2 = int(m_off.group(1).replace(",", "")), int(m_off.group(2).replace(",", ""))
+            out += f"\n역외펀드까지 포함하면 {funds + f2:,}개(클래스 {classes + c2:,}개)입니다."
     for note in ground_notes(ground_lines):
         out += "\n" + note                       # S1: 구상호·후계 법인 주석은 답에 그대로 병기
     return out
@@ -9435,6 +9444,62 @@ def ensure_grounded_org_name_predicate(sql: str, question: str, ctx) -> tuple[st
     return out, f"{off}→or_co_xtn_itt_cd='{code}'"
 
 
+def ensure_exist_count(sql: str, question: str) -> tuple[str, bool]:
+    """'…도 있어?' 존재 질의에 HCX 가 **목록 SELECT** 를 냈으면 같은 WHERE 의 펀드수·클래스수 집계로 바꾼다.
+
+    🔴 6~8차 KG-018 실측: 속성 태그 확정식이 정답 필터를 심었는데 SQL 이 클래스 목록이라 30행이 HCX 산문
+       (또는 목록 조립기의 클래스 나열)로 나갔다. 존재 질의의 답은 예/아니오 + 개수다 — 목록은 답의 형태가 아니다.
+    발동: public_funds 단독(JOIN·UNION 없음) · 질문에 존재 어미 · SELECT 에 펀드수 집계가 없다 · 랭킹(ORDER BY 랭킹 축) 아님.
+    """
+    if not question or not _EXIST_Q.search(question) or not _FUND_TBL.search(sql):
+        return sql, False
+    if re.search(r"\b(?:join|union)\b", sql, re.I) or re.search(r"펀드수|COUNT\s*\(\s*DISTINCT", sql, re.I):
+        return sql, False
+    if _fund_sort_target(sql):
+        return sql, False
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return sql, False
+    return (f'SELECT COUNT(DISTINCT {_FUND_KEY_EXPR}) AS "펀드수", COUNT(*) AS "클래스수" FROM'
+            + m.group(1).rstrip() + " LIMIT 30"), True
+
+
+def absent_period_value_note(question: str, ground_lines: list[str], reason: str) -> str | None:
+    """'연평균·연환산' 부재 즉답에, 질문이 상품과 기간을 특정했으면 **그 기간의 누적 수익률**을 붙인다. 아니면 None.
+
+    2026-09-05 DOM-13 실측: '미래에셋코어테크 펀드 3년 수익률을 연평균으로' — 연환산 미수록은 정확히 밝혔는데
+    있는 값(3년 누적)을 주지 않고 되물었다. 통과 조건은 '누적값 + 연환산 미수록' 이었다. 없는 것을 말할 때
+    있는 것을 함께 대는 자리(X22 부재의 근거와 같은 원칙). 클래스가 여럿이면 최소~최대로 준다.
+    """
+    if "연평균" not in reason and "연환산" not in reason:
+        return None
+    col = _axis_from_question(question)
+    if not col or col not in _FUND_RETURN_COLS:
+        return None
+    tok = residual_name_token(question, ground_lines)
+    if not tok:
+        return None
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            f"SELECT TRIM(itm_nm), MAX({col}), COUNT(*) FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE ? "
+            f"AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND {col} IS NOT NULL "
+            f"GROUP BY {_FUND_KEY_EXPR} ORDER BY 3 DESC LIMIT 3",
+            (f"%{tok.replace(' ', '')}%",)).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    if not rows:
+        return None
+    label = _RET_LABEL.get(col, col)
+    # 펀드 단위 · 대표 클래스(MAX) 기준 — 랭킹 조립기와 같은 규약. 이름이 두 펀드(코어테크·코어테크청년소득공제)를
+    # 물면 둘을 나란히 준다. 클래스별 최소~최대는 신설 클래스(-6.48%)가 섞여 오해를 부른다(2026-09-05 재생 실측).
+    parts = [f"{nm} {v:g}%(클래스 {n}개)" for nm, v, n in rows]
+    return (f"참고로 {label} 누적 수익률(대표 클래스 기준 MAX)은 " + " · ".join(parts)
+            + f" 입니다 (판매중·공모, 기준일 {gate.DATA_CUTOFF}).")
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None, fired_out: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -9712,6 +9777,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if lookup_fixed:
         step("[Guard] 개별 조회 펀드 묶기 — 이름 검색 결과를 펀드키 GROUP BY 로 묶어 클래스수·최고/최저값 병기 "
              "(2026-09-02 R4 재검: 6펀드 37클래스를 1클래스로 답함 3회째 · R6 LIMIT 1 이라 클래스수 병기 불가)")
+    sql, exist_cnt = ensure_exist_count(sql, q)
+    if exist_cnt:
+        step("[Guard] 존재 질의 → 개수 집계 — '…도 있어?' 에 목록 SELECT 가 와서 같은 조건의 펀드수·클래스수로 바꿨다 "
+             "(6~8차 KG-018 실측: 30행 클래스 나열 · 답은 예/아니오 + 개수다)")
     sql, flist_fixed = ensure_fund_list_grouping(sql, q)
     if flist_fixed:
         step("[Guard] 목록 펀드 묶기 — ORDER BY 없는 펀드 목록을 펀드키 GROUP BY + 순자산순 대표행으로 "
@@ -9986,9 +10055,13 @@ def answer_question(
                    grounded_entity=any(getattr(h, "node_type", "") in ("Organization", "Security") for h in hits))
     if g.rejected:
         step(f"[Gate] 기각 — {g.reason}")
+        extra = absent_period_value_note(q, ground_lines, g.reason)
+        if extra:
+            step("[Guard] 부재 즉답에 있는 값 병기 — 연환산은 없지만 물은 기간의 누적 수익률은 있다 "
+                 "(2026-09-05 DOM-13 실측: 미수록만 말하고 '기간을 지정해 다시 질문' 으로 넘겼다)")
         step("[Decision] HCX 호출 없이 종료 (근거는 Gate 단계)")
         result.think_trace = "\n".join(trace)
-        result.answer = g.answer
+        result.answer = g.answer + ((" " + extra) if extra else "")
         return result
     future = gate.future_tokens(q)
     step(f"[Gate] 통과 — 대상 테이블 {tables or '미특정'}"

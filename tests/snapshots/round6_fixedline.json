@@ -504,9 +504,9 @@
    "Country_TWN"
   ],
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,TWN,%' OR REPLACE(itm_nm,' ','') LIKE '%대만%')",
-  "assembler": "HCX",
+  "assembler": "개수 답변 기계 조립",
   "rows": 1,
-  "answer_head": ""
+  "answer_head": "네, 있습니다 — 조회 조건에 해당하는 공모펀드는 1개(클래스 1개)입니다 (판매중·공모 기준, 기준일 20"
  },
  "KG-027": {
   "gate": true,
@@ -560,9 +560,9 @@
    "Country_ESP"
   ],
   "where": "prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND (',' || prfd_attr_cds || ',' LIKE '%,ESP,%' OR REPLACE(itm_nm,' ','') LIKE '%스페인%')",
-  "assembler": "HCX",
-  "rows": 0,
-  "answer_head": ""
+  "assembler": "개수 답변 기계 조립",
+  "rows": 1,
+  "answer_head": "아니요, 없습니다 — 조회 조건에 해당하는 공모펀드는 0개(클래스 0개)입니다 (판매중·공모 기준, 기준일 "
  },
  "X23": {
   "gate": true,

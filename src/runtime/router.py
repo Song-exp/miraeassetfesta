@@ -86,12 +86,32 @@ def _canon(word: str) -> str:
     return word.upper() if word.upper() in PRODUCT else word
 
 
-def product_route(question: str) -> tuple[set[str], str, int]:
-    """① 문장 구조. (후보 테이블, 근거, 머리 명사 수). 상품 명사가 없으면 (∅, '', 0)."""
+def _inside_longer_value(pos: int, length: int, spans) -> bool:
+    """상품 명사가 **더 긴 온톨로지 값 안에 갇혀** 있는가 — 갇혀 있으면 머리 명사가 아니다.
+
+    🔴 2026-09-06 분류 전수조사(scripts/audit_bonds_taxonomy.py) — 상품 명사를 경계 검사 없이 부분
+    문자열로 잡아, 값 이름 안의 글자가 머리 명사로 승격되고 있었다. 전수 실측 255건:
+      · '부동산투자회사채'(채권 35종목)·'집합투자회사채'(7종목) → 안의 '투자회사' 가 머리 → public_funds.
+        실재하는 채권을 펀드 테이블에서 찾으니 "그런 상품 없습니다" 가 나간다.
+      · 'ACE종합채권(AA-이상)액티브 총보수 얼마야?' → 안의 '채권' 이 머리 → domestic_bonds.
+        총보수는 채권에 없는 컬럼이라 오거절하거나 없는 값을 지어낸다(ETF 상품명 142건·펀드 105건).
+    ①(문장 구조) 겹이 ②(온톨로지 값) 겹을 무조건 이기는 구조라 onto_route 의 상품명 직격 매치 면제
+    (2026-09-01)가 route() 에서 버려지고 있었다. 여기서 **긴 낱말 우선**을 ① 겹에도 적용한다 —
+    kind_filters 의 소진 탐색·PRODUCT 표의 길이 역순 정렬과 같은 원칙이고, 어휘 목록을 새로 쓰지 않는다.
+    """
+    return any(s <= pos and pos + length <= e and (e - s) > length for s, e in spans)
+
+
+def product_route(question: str, spans=()) -> tuple[set[str], str, int]:
+    """① 문장 구조. (후보 테이블, 근거, 머리 명사 수). 상품 명사가 없으면 (∅, '', 0).
+
+    spans — 질문 안에서 온톨로지 값이 차지하는 구간 (route() 가 ② 겹에서 넘긴다). 값 안에 갇힌
+    상품 명사는 머리에서 뺀다. 구간이 없으면 종전과 완전히 같게 동작한다."""
     # '채권형'·'주식형' 의 상품 명사는 수식어(유형)다 — 머리가 아니다 ("채권형 상품 추천" 은 채권이 아니라 채권형 펀드·ETF)
     # 매칭은 대소문자 무시로 하되, 표는 정본 표기(ETF·ETN)로 찾는다 — 한글 키는 upper() 가 항등이다
     hits = [(_canon(m.group(0)), m.start(), question[m.end(): m.end() + 1] == "형")
-            for m in _PRODUCT_TOKEN.finditer(question)]
+            for m in _PRODUCT_TOKEN.finditer(question)
+            if not _inside_longer_value(m.start(), m.end() - m.start(), spans)]
     toks = [(w, p) for w, p, is_qual in hits if not is_qual]
     # 🔴 'ETF형 상품' 은 ETF 를 뜻한다 — 다른 상품 명사가 없으면 이걸 머리로 쓴다.
     #    단 '채권형'·'주식형' 은 **자산 유형** 수식어라 여기 해당하지 않는다
@@ -150,6 +170,30 @@ def _bound_in(term: str, question: str, squeezed: str) -> bool:
     return len(term) >= _LONG_TERM and term in squeezed   # 긴 값(상품명)은 공백 무시 부분 일치 허용
 
 
+def value_spans(question: str, ctx: RuntimeContext) -> list[tuple[int, int]]:
+    """질문 안에서 온톨로지 값이 차지하는 구간 — ① 겹의 '갇힌 상품 명사' 판정에 쓴다.
+
+    ② 겹이 실제로 매치한 값만 본다 — 어휘 목록을 새로 쓰지 않는다. 어휘는 공백을 뗀 형태로 저장되는데
+    (loader._VOCAB_STRIP) 사람은 띄어서 쓰므로('KODEX 종합채권…' vs 어휘 'KODEX종합채권…') 공백 무시
+    매치도 원문 위치로 되돌린다 — 안 그러면 띄어 쓴 상품명 안의 '채권' 이 그대로 머리 명사가 된다."""
+    spans: list[tuple[int, int]] = []
+    squeezed = re.sub(r"\s+", "", question)
+    back = [i for i, ch in enumerate(question) if not ch.isspace()]   # 뗀 문자열 위치 → 원문 위치
+    for t in TABLES:
+        for term in (ctx.route_vocab.get(t) or {}):
+            if len(term) <= 2 or not _bound_in(term, question, squeezed):
+                continue
+            i = question.find(term)
+            while i >= 0:
+                spans.append((i, i + len(term)))
+                i = question.find(term, i + 1)
+            j = squeezed.find(term)
+            while j >= 0:
+                spans.append((back[j], back[j + len(term) - 1] + 1))
+                j = squeezed.find(term, j + 1)
+    return spans
+
+
 def onto_route(question: str, ctx: RuntimeContext) -> tuple[set[str], dict[str, float], dict[str, list[str]]]:
     """② 온톨로지 값 매칭. (테이블 집합, 테이블별 점수, 테이블별 걸린 값 상위 3)."""
     squeezed = re.sub(r"\s+", "", question)
@@ -176,8 +220,10 @@ def onto_route(question: str, ctx: RuntimeContext) -> tuple[set[str], dict[str, 
 
 
 def route(question: str, ctx: RuntimeContext) -> Route:
-    p, why, groups = product_route(question)
+    # ② 겹을 먼저 잰다 — ① 겹이 '값 안에 갇힌 상품 명사' 를 머리로 삼지 않게 구간을 넘기기 위해서다.
+    #    onto_route 는 순수 함수라 순서를 바꿔도 결과가 달라지지 않는다.
     o, score, hits = onto_route(question, ctx)
+    p, why, groups = product_route(question, value_spans(question, ctx))
     if p:
         tables = p
         # 상품 명사가 둘 이상 후보(ETF → 국내/해외)면 온톨로지 값으로 좁힌다.

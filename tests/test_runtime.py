@@ -218,6 +218,20 @@ def test_normalize_date_literals_quoted_and_noop():
     assert not changed2
 
 
+def test_normalize_date_literals_integer_arithmetic():
+    """2026-09-05 #68 — 덧셈판 산술폭탄: "지난달에 만기된 채권" 이 `mat_dt <= 20260824+90` 로 나갔다.
+    SQLite 정수 덧셈(20260914)으로 실행은 되지만 90일 뒤(20261122)가 아니다 — 달력 계산 리터럴로 치환한다."""
+    from src.runtime.pipeline import normalize_date_literals as f
+    fixed, changed = f("SELECT 1 FROM domestic_bonds WHERE mat_dt BETWEEN 20260824 AND 20260930 AND mat_dt <= 20260824+90 LIMIT 30")
+    assert changed and "mat_dt <= 20261122" in fixed and "+" not in fixed
+    assert "20270824" in f("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260824 + 10000 LIMIT 1")[0]    # 10000 = 1년
+    assert "20270224" in f("SELECT 1 FROM domestic_bonds WHERE mat_dt <= 20260824+600 LIMIT 1")[0]        # 600 = 6개월
+    assert "isu_dt >= 20260225" in f("SELECT 1 FROM domestic_bonds WHERE isu_dt >= 20260824-180 LIMIT 1")[0]   # 뺄셈·발행 축도
+    # 날짜 모양이 아닌 산술은 존중 · 소수점 붙은 리터럴 뒤의 숫자는 산술이 아니다
+    assert not f("SELECT 1 FROM domestic_bonds WHERE applied_yield > 5+1 LIMIT 1")[1]
+    assert not f("SELECT 1 FROM domestic_bonds WHERE mat_dt >= 20260824.0 LIMIT 1")[1]
+
+
 def test_maturity_lower_bound_injection():
     from src.runtime.pipeline import ensure_maturity_lower_bound
     fixed, changed = ensure_maturity_lower_bound("SELECT pd_nm FROM domestic_bonds WHERE mat_dt <= 20290824 LIMIT 5")

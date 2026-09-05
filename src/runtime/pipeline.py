@@ -503,7 +503,32 @@ def normalize_date_literals(sql: str) -> tuple[str, bool]:
             return m.group(0)                # 날짜 모양이 아니면 산술로 존중 (실데이터엔 없다)
         return f"{y}{mo:02d}{d:02d}"
     fixed = _DATE_LIT.sub(_to_int, sql)
+    fixed = _DATE_ARITH.sub(_date_arith_to_literal, fixed)
     return fixed, fixed != sql
+
+
+# 🔴 2026-09-05 #68 — 정수 날짜에 산술을 붙인 꼴: "지난달에 만기된 채권" 이 `mat_dt <= 20260824+90` 로 나갔다.
+#    SQLite 는 정수 덧셈(20260914)으로 계산하므로 실행은 되지만 뜻(90일 뒤 = 20261122)과 다르다 — 08-31 뺄셈 폭탄의 덧셈판.
+#    규칙 원문이 "판정일+N년"·"D+N개월" 표기로 산술을 시연하고 있었다(같은 커밋에서 리터럴 표기로 고침).
+_DATE_ARITH = re.compile(r"(?<![\d.])((?:19|20)\d{6})(?:\.0)?\s*([+-])\s*(\d{1,6})(?![\d.])")
+
+
+def _date_arith_to_literal(m: re.Match) -> str:
+    """`YYYYMMDD ± N` 을 달력 계산한 정수 리터럴로. N 이 10000 의 배수면 년, 100 의 배수(<10000)면 달, 그 외는 일."""
+    import datetime as _dt
+    base, sign, n = m.group(1), m.group(2), int(m.group(3))
+    try:
+        d = _dt.date(int(base[:4]), int(base[4:6]), int(base[6:]))
+    except ValueError:
+        return m.group(0)                    # 날짜 모양이 아니면 산술로 존중
+    k = -n if sign == "-" else n
+    if n % 10000 == 0:
+        out = gate._add_years(d, k // 10000)
+    elif n % 100 == 0 and n < 10000:
+        out = gate._add_months(d, k // 100)
+    else:
+        out = d + _dt.timedelta(days=k)
+    return f"{out.year:04d}{out.month:02d}{out.day:02d}"
 
 
 _BASIS_DT_COL = re.compile(r"\b(?:\w+\.)?\w*(?:_bas_dt|_base_dt)\b", re.I)

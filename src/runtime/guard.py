@@ -295,6 +295,39 @@ def ensure_ext_left_join(sql: str) -> tuple[str, list[str]]:
     return out, changed
 
 
+_EXT_JOIN_CLAUSE = re.compile(
+    r"\s+LEFT\s+JOIN\s+(" + "|".join(EXT_TABLES) + r")(?:\s+(?:AS\s+)?([A-Za-z_]\w*))?\s+ON\s+.*?"
+    r"(?=\s+(?:LEFT\s+JOIN|JOIN|WHERE|GROUP\s+BY|ORDER\s+BY|LIMIT)\b|$)", re.I | re.S)
+
+
+def drop_unused_ext_join(sql: str) -> tuple[str, list[str]]:
+    """쓰이지 않는 `ext_*` LEFT JOIN 을 걷어낸다. (SQL, 걷어낸 테이블)
+
+    2026-09-05 FND-007 실측 — HCX 가 조인만 걸고 **그 테이블 컬럼을 하나도 안 썼다**:
+
+        SELECT DISTINCT p.itm_no, …, p.fd_nast_suma  FROM public_funds p
+        LEFT JOIN ext_fund_page e ON p.itm_no = e.itm_no  WHERE … ORDER BY p.fd_nast_suma DESC
+
+    결과에는 영향이 없지만 **뒤따르는 가드가 통째로 비켜간다** — `ensure_fund_rank_representative`
+    는 `join|union` 이 보이면 무조건 빠진다. 그래서 GROUP BY 펀드키가 주입되지 않았고, 답변이
+    클래스명을 펀드명처럼 나열했다(`삼성MMF법인제1호 C 클래스`). 2차엔 조인이 없어 기계 조립이 탔다.
+
+    🔴 안전성: `ext_*` 는 `itm_no` **1:1**(ext_fund_page 10,565행 = distinct itm_no 10,565)이라
+       LEFT JOIN 이 행을 늘리지 않고, 컬럼을 안 쓰면 결과에 기여하지도 않는다 — 제거는 무해하다.
+       **INNER 는 대상이 아니다**(짝 없는 행을 거르므로 제거하면 모수가 넓어진다). 앞선
+       `ensure_ext_left_join` 이 INNER 를 LEFT 로 바꾼 **뒤에** 돌아야 한다.
+    """
+    dropped: list[str] = []
+    out = sql
+    for m in list(_EXT_JOIN_CLAUSE.finditer(sql)):
+        tbl, alias = m.group(1), m.group(2)
+        rest = out.replace(m.group(0), " ", 1)
+        if re.search(rf"\b{re.escape(alias or tbl)}\.\w+", rest, re.I):
+            continue
+        out, _ = rest, dropped.append(tbl)
+    return out, dropped
+
+
 def prune_dead_in_literals(sql: str, ctx: RuntimeContext) -> tuple[str, list[str]]:
     """IN 목록에서 **그 컬럼에 없는 값**만 걷어낸다. (보정된 SQL, 걷어낸 값 목록)
 

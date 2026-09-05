@@ -1325,26 +1325,40 @@ def _split_select_items(head: str) -> list[str]:
     return items
 
 
-def _fund_sort_target(sql: str) -> tuple[str, str] | None:
-    """ORDER BY 첫 키가 가리키는 펀드 랭킹 컬럼과 방향 — (컬럼, 'DESC'|'ASC') 또는 None.
+_ORDER_BY_ALL = re.compile(r"\border\s+by\s+(.*?)(?=\blimit\b|$)", re.I | re.S)
+_KEY_DIR = re.compile(r"^(.*?)(?:\s+(asc|desc))?$", re.I | re.S)
 
-    위치 표기(ORDER BY 3)는 SELECT 목록을 최상위 쉼표로 갈라 그 자리 항목에서 컬럼을 찾는다
-    (실측 SQL 두 건 모두 ORDER BY 3 위치 표기였다)."""
+
+def _fund_sort_target(sql: str) -> tuple[str, str] | None:
+    """ORDER BY 가 가리키는 펀드 랭킹 컬럼과 방향 — (컬럼, 'DESC'|'ASC') 또는 None.
+
+    위치 표기(ORDER BY 3)는 SELECT 목록을 최상위 쉼표로 갈라 그 자리 항목에서 컬럼을 찾는다.
+
+    🔴 2026-09-05 FND-001 실측 — 종전엔 **첫 키만** 봤다. HCX 가 `ORDER BY 4 ASC, 3 DESC` 를 내자
+       4번(위험등급명)이 랭킹 컬럼이 아니라 `None` 이 되고, 그러면 `ensure_fund_rank_representative`
+       가 통째로 비켜간다(무음 종료). 그 결과 GROUP BY 펀드키가 주입되지 않아 **클래스명을 펀드명처럼**
+       나열했다(`삼성MMF법인제1호 C 클래스`) — 2차엔 기계 조립이 탔던 자리다.
+       정렬 키를 **차례로** 훑어 처음 걸리는 랭킹 컬럼을 쓴다. 첫 키가 랭킹 컬럼이면 종전과 같다.
+    """
     frm = re.search(r"\bfrom\b", sql, re.I)
-    m = _ORDER_BY_HEAD.search(sql)
-    if not frm or not m:
+    m_all = _ORDER_BY_ALL.search(sql)
+    if not frm or not m_all:
         return None
-    expr, direction = m.group(1).strip(), (m.group(2) or "ASC").upper()
-    if expr.isdigit():
-        sel = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
-        items = _split_select_items(sel)
-        idx = int(expr) - 1
-        if not (0 <= idx < len(items)):
-            return None
-        expr = items[idx]
-    for col in _FUND_RANK_COLS:
-        if re.search(rf"\b{col}\b", expr, re.I):
-            return col, direction
+    sel_items = None
+    for raw in _split_select_items(m_all.group(1)):
+        mk = _KEY_DIR.match(raw.strip())
+        expr, direction = mk.group(1).strip(), (mk.group(2) or "ASC").upper()
+        if expr.isdigit():
+            if sel_items is None:
+                head = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+                sel_items = _split_select_items(head)
+            idx = int(expr) - 1
+            if not (0 <= idx < len(sel_items)):
+                continue
+            expr = sel_items[idx]
+        for col in _FUND_RANK_COLS:
+            if re.search(rf"\b{col}\b", expr, re.I):
+                return col, direction
     return None
 
 
@@ -1488,6 +1502,62 @@ def ensure_fund_org_lookup(sql: str, question: str, name_token: str | None) -> t
            f"GROUP BY {guard.FUND_KEY_EXPR} "
            "ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC LIMIT 30")
     return (sql, False) if tpl == sql else (tpl, True)
+
+
+_DESC_WORD = re.compile(r"높은|많은|큰|상위|좋은|best|top", re.I)
+_ASC_WORD = re.compile(r"낮은|적은|작은|나쁜|하위|최저|저조")
+
+
+def _axis_from_question(question: str) -> str | None:
+    """질문이 **이름으로 지목한** 펀드 랭킹 축. 없으면 None.
+
+    `_RET_LABEL`(컬럼→'1년')을 뒤집어 쓴다. 긴 라벨부터 봐야 '1년' 이 '1개월' 을 가리지 않는다.
+    """
+    q = question.replace(" ", "")
+    for col, label in sorted(_RET_LABEL.items(), key=lambda kv: -len(kv[1])):
+        if label in q and "수익률" in q:
+            return col
+    return "fd_nast_suma" if ("순자산" in q or "규모" in q) else None
+
+
+def ensure_fund_rank_axis(sql: str, question: str) -> tuple[str, bool]:
+    """ORDER BY 가 랭킹 축을 안 가리키면, **질문이 지목한 축**으로 정렬을 바로 세운다. (SQL, 고쳤는지)
+
+    2026-09-05 U14 실측("1년 수익률이 가장 높은 공모펀드 3개는 클래스가 몇 개씩이야?") — HCX 가
+
+        … COUNT(*), fd_yr1_ern_r … GROUP BY or_co_xtn_itt_cd HAVING COUNT(*) > 1 ORDER BY 3 DESC
+
+    를 냈다. **3번은 `COUNT(*)`** 라 `_fund_sort_target` 이 None 을 돌리고, 그러면 대표행 보정이
+    통째로 비켜간다(무음 종료). 3행을 받고도 "죄송합니다 … 정보를 찾을 수 없습니다" 로 끝났다.
+    2차엔 같은 문항이 기계 조립으로 완벽했다 — 계획이 흔들리면 조립기가 함께 꺼지는 구조였다.
+
+    조치: 정렬만 바로 세운다. 그러면 `_fund_sort_target` 이 축을 찾고, 대표행 보정의 **GROUP BY
+    교체 분기**(펀드 식별 컬럼만으로 된 축 → 정본 펀드키)가 이어서 일한다 — 그 분기의 주석이 바로
+    이 U14 사례다.
+
+    발동: ① 이미 축이 잡히면 불개입 ② 질문이 축을 **이름으로** 지목해야 한다 ③ 그 컬럼이 SELECT 에
+    실려 있어야 한다(없는 값을 정렬할 수는 없다) ④ public_funds 단독.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
+        return sql, False
+    # 🔴 개별 조회(이름·키로 이미 특정)엔 불개입 — 랭킹 가드들과 같은 배제다. 2026-09-05 고정선 실측:
+    #    이 조건이 없으면 R4·S3("… 펀드 1년 수익률") 이 랭킹으로 읽혀 기점오류 제외(3클래스 NOT IN)가
+    #    끼어들었다. 그 가드의 선언 자체가 "단기·개별 조회엔 미적용" 이다.
+    if _has_name_filter(sql) or _has_fund_key_pin(sql):
+        return sql, False
+    if _fund_sort_target(sql):
+        return sql, False
+    col = _axis_from_question(question)
+    if not col:
+        return sql, False
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm or not re.search(rf"\b{col}\b", sql[:frm.start()], re.I):
+        return sql, False
+    direction = "ASC" if (_ASC_WORD.search(question) and not _DESC_WORD.search(question)) else "DESC"
+    m = _ORDER_BY_ALL.search(sql)
+    if not m:
+        return sql, False
+    return sql[:m.start(1)] + f"{col} {direction} " + sql[m.end(1):], True
 
 
 def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
@@ -7795,6 +7865,24 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "
              "(2026-08-31 밤 FND-016 실측: 운용사 코드만 필터한 모수 1,512행에서 임의 1행이 답으로 나갔다)")
     had_group = bool(re.search(r"\bgroup\s+by\b", sql, re.I))
+    # 🔴 **조인 정리를 먼저 한다** — 뒤따르는 펀드 가드들은 `join|union` 이 보이면 통째로 비켜간다.
+    #    ① INNER→LEFT: 커버리지 93.7% 라 INNER 면 짝 없는 561클래스가 조용히 사라진다(KG-005).
+    #    ② 안 쓰는 조인 제거: 결과엔 무해하지만 남겨 두면 대표행 보정이 꺼진다(FND-007).
+    sql, ext_left = guard.ensure_ext_left_join(sql)
+    if ext_left:
+        step("[Guard] 외부표 LEFT 전환 — " + "·".join(ext_left) + " 을 INNER 에서 LEFT 로 "
+             "(커버리지 93.7% — INNER 면 짝 없는 561클래스가 조용히 사라진다. ext 조건이 WHERE 에 "
+             "있으면 결과 동일 · 2026-09-04 KG-005 실측)")
+    sql, ext_drop = guard.drop_unused_ext_join(sql)
+    if ext_drop:
+        step("[Guard] 안 쓰는 외부표 조인 제거 — " + "·".join(ext_drop) + " 을 걷어냈다 "
+             "(컬럼을 하나도 안 쓰는 1:1 LEFT JOIN 이라 결과 불변 · 남겨 두면 대표행 보정이 통째로 "
+             "비켜간다 · 2026-09-05 FND-007 실측)")
+    sql, axis_fixed = ensure_fund_rank_axis(sql, q)
+    if axis_fixed:
+        step("[Guard] 랭킹 정렬축 교정 — ORDER BY 가 랭킹 축을 안 가리켜 질문이 지목한 축으로 세웠다 "
+             "(2026-09-05 U14 실측: `ORDER BY 3` 이 COUNT(*) 를 가리켜 대표행 보정이 무음 종료 · "
+             "3행을 받고도 '정보를 찾을 수 없습니다')")
     sql, rank_fixed = ensure_fund_rank_representative(sql, q)
     if rank_fixed and had_group:
         step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")
@@ -7832,12 +7920,6 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if attr_fixed:
         step("[Guard] 속성 태그 확정식 — 설정형태 어휘(개방형·폐쇄형·단위형·추가형)를 KG FundAttribute 토큰 canon 으로 주입, 같은 낱말의 타 컬럼 절 제거 "
              "(KG-017 han_clas_policies LIKE '%폐쇄형%' → 0행 '0개' · KG-018 직교 축 폐기)")
-    # 🔴 부가 집계 병기보다 앞 — 모수를 먼저 되돌려야 그 위에서 센 수가 맞다.
-    sql, ext_left = guard.ensure_ext_left_join(sql)
-    if ext_left:
-        step("[Guard] 외부표 LEFT 전환 — " + "·".join(ext_left) + " 을 INNER 에서 LEFT 로 "
-             "(커버리지 93.7% — INNER 면 짝 없는 561클래스가 조용히 사라진다. ext 조건이 WHERE 에 "
-             "있으면 결과 동일 · 2026-09-04 KG-005 실측)")
     sql, subc_fixed = ensure_fund_unit_subcount(sql)
     if subc_fixed:
         step("[Guard] 부가 집계 펀드 단위 병기 — 조건 집계(SUM CASE)를 펀드수·클래스수로 갈라 별칭에 단위를 굽는다 "

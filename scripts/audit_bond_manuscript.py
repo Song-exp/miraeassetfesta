@@ -94,7 +94,7 @@ raw = io.open(YAML, encoding="utf-8").read()
 d = _yaml.safe_load(raw)
 n = lambda k: len(d.get(k) or [])
 
-chk(L, "yaml 줄 수", 1358, len(raw.splitlines()))
+chk(L, "yaml 줄 수", 1361, len(raw.splitlines()))
 chk(L, "columns", 58, n("columns"))
 chk(L, "query_rules", 49, n("query_rules"))
 chk(L, "answer_rules", 21, n("answer_rules"))

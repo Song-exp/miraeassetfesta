@@ -8,7 +8,7 @@
   <rect x="30" y="130" width="180" height="120" rx="6" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
   <text x="120" y="160" text-anchor="middle" font-weight="bold" font-size="14">yaml 선언 한 벌</text>
   <text x="120" y="182" text-anchor="middle" fill="#333" font-size="11">enums/domestic_bonds.yaml</text>
-  <text x="120" y="199" text-anchor="middle" fill="#333" font-size="11">1,358줄</text>
+  <text x="120" y="199" text-anchor="middle" fill="#333" font-size="11">1,361줄</text>
   <text x="120" y="220" text-anchor="middle" fill="#333" font-size="11">+ shared/*.yaml · 코드북 1장</text>
   <text x="120" y="240" text-anchor="middle" fill="#666" font-size="10">사람이 쓰는 유일한 자리</text>
 

@@ -106,20 +106,20 @@
 
 | 항목 | 값 |
 | :-- | --: |
-| `kg_node` | 41,580 |
-| `kg_alias` | 66,591 |
-| `kg_edge` | 7,414 |
-| `kg_closure` | 9,966 |
+| `kg_node` | 40,845 |
+| `kg_alias` | 66,603 |
+| `kg_edge` | 5,704 |
+| `kg_closure` | 9,969 |
 
 ### 개체 종류별 노드
 
 | 개체 | 노드 수 |
 | :-- | --: |
-| Security | 27,996 |
-| Fund | 7,584 |
-| Index | 3,172 |
+| Security | 27,969 |
+| Fund | 6,867 |
+| Index | 3,169 |
 | Organization | 2,526 |
-| FundAttribute | 179 |
+| FundAttribute | 191 |
 | Region | 60 |
 | CreditGrade | 22 |
 | Country | 17 |
@@ -127,22 +127,22 @@
 | Currency | 8 |
 | RiskGrade | 7 |
 
-> KG `Fund` 7,584 = `rptt_ksd_itm_no` 묶음 6,867 + 마스터 밖 MotherFund 717. 🔴 펀드단위 집계 키 `(or_co_xtn_itt_cd, mtco_itm_no)` 와는 **다른 축**이다 — 집계·순자산은 복합키, 개체 조회는 rptt.
+> KG `Fund` 6,867 = `rptt_ksd_itm_no` 묶음 6,867 + 마스터 밖 MotherFund 0. 🔴 펀드단위 집계 키 `(or_co_xtn_itt_cd, mtco_itm_no)` 와는 **다른 축**이다 — 집계·순자산은 복합키, 개체 조회는 rptt.
 
 ### 제출 ttl 5분할 (규격 p.9)
 
 | 파일 | 줄 |
 | :-- | --: |
-| `ontology/common.ttl` | 58,971 |
-| `ontology/bond_kr.ttl` | 36 |
+| `ontology/common.ttl` | 56,531 |
+| `ontology/bond_kr.ttl` | 42 |
 | `ontology/etf_kr.ttl` | 34 |
-| `ontology/etf_gl.ttl` | 21 |
+| `ontology/etf_gl.ttl` | 30 |
 | `ontology/fund_pub.ttl` | 36 |
 
 ## 4. 평가셋
 
 - `questions_cross_and_unanswerable.jsonl`: 9문항 (사람 검증 8)
-- `questions_domestic_bonds.jsonl`: 46문항 (사람 검증 46)
+- `questions_domestic_bonds.jsonl`: 50문항 (사람 검증 50)
 - `questions_domestic_etfs.jsonl`: 36문항 (사람 검증 31)
 - `questions_final30.jsonl`: 30문항 (사람 검증 0)
 - `questions_official_sample.jsonl`: 8문항 (사람 검증 6)
@@ -150,5 +150,5 @@
 - `questions_public_funds.jsonl`: 20문항 (사람 검증 0)
 - `questions_top_safety_probe.jsonl`: 10문항 (사람 검증 10)
 
-**합계 187문항 · 사람 검증 128건**
+**합계 191문항 · 사람 검증 132건**
 

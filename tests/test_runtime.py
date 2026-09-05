@@ -1483,6 +1483,9 @@ def test_enforce_relative_window():
     # 만기 질의는 하한만 있어도 종전대로 발동한다
     q7 = "3년 안에 만기되는 안전한 채권 몇 개만 골라줘"
     assert "mat_dt BETWEEN 20260824 AND 20290824" in enforce_relative_window(floor + " LIMIT 30", q7, gate.resolve_relative_window(q7))[0]
+    # '발행' 과 '만기' 를 함께 물으면 만기 축 판정은 살아 있다
+    q8 = "올해 발행된 채권 중 내년에 만기되는 것"
+    assert enforce_relative_window(floor + " LIMIT 30", q8, gate.resolve_relative_window(q8))[1] is None   # 창이 둘 → 불개입
 
 
 def test_effective_mat_window_header():
@@ -1501,9 +1504,6 @@ def test_effective_mat_window_header():
     assert w(f + "curr_cd='KRW' AND mat_dt >= 20260824 LIMIT 30") is None
     assert w(f + "(mat_dt >= 20260824 OR mat_dt = 0) LIMIT 30") is None
     assert w("SELECT pd_no FROM domestic_bonds LIMIT 30") is None
-    # '발행' 과 '만기' 를 함께 물으면 만기 축 판정은 살아 있다
-    q8 = "올해 발행된 채권 중 내년에 만기되는 것"
-    assert enforce_relative_window(floor + " LIMIT 30", q8, gate.resolve_relative_window(q8))[1] is None   # 창이 둘 → 불개입
 
 
 def test_issuance_time_q_not_issuer_q():

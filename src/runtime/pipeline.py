@@ -3317,6 +3317,60 @@ _ATTR_ASK = re.compile(r"보수|수수료|수익률|순자산|기준가|설정�
 _LIST_ASK = re.compile(r"몇\s*(?:개|곳|건)|개수|상위|하위|가장|순으로|순위|랭킹|목록|리스트|추천|있어|있나|있는지")
 
 
+_FLAG_EQ = re.compile(r"(?<![\w.])([a-z_]+_yn)\s*=\s*'([^']*)'", re.I)
+
+
+_TAG_AXIS = re.compile(r"prfd_attr_cds\b.{0,40}?'%,([A-Z]{2,4}),%'", re.S)
+
+
+def country_axis_note(sql: str, question: str) -> str | None:
+    """국가어 질의를 **어느 축으로** 셌는지 적는다. 아니면 None.
+
+    2026-09-05 T13("미국에 투자하는 공모펀드 알려줘") — 국가 태그(USA) 축으로 98펀드를 셌는데
+    답변에 그 말이 없다. '미국' 은 지역 대분류(`fd_ivst_rgn_desc` 북미 114펀드)로도 읽힌다 —
+    **두 축이 갈리는 질문**이라 어느 쪽을 썼는지 밝히지 않으면 수를 검증할 수 없다.
+    확정식 가드가 이미 축을 정해 놓았으므로, 그 사실을 답변에 옮기기만 하면 된다.
+    """
+    m = _TAG_AXIS.search(sql)
+    if not m or not _FUND_TBL.search(sql):
+        return None
+    return (f"※ 투자 **국가 태그**(`prfd_attr_cds` = {m.group(1)}) 축으로 셌습니다. "
+            "'투자 지역' 대분류로 세면 수가 달라집니다 — 그 축을 원하시면 말씀해 주세요.")
+
+
+def flag_missing_note(sql: str) -> str | None:
+    """Y/N 플래그로 세었는데 그 컬럼에 **미수록이 많으면** 그 사실을 적는다. 아니면 None.
+
+    2026-09-05 DOM-08("환헤지되는 공모펀드는 몇 개야?") — 1,328펀드(3,688클래스)는 정확한데
+    `exchdg_yn` 은 **판매중·공모의 39% 가 미수록**이다. Y 만 세고 그 말을 안 하면 *"나머지는
+    환헤지를 안 한다"* 로 읽힌다 — 실제로는 모르는 것이다.
+
+    결측률은 DB 에서 바로 센다(yaml `answer_policy` 는 HCX 에게 주는 지시문이라 사용자 문장이
+    아니다). 20% 를 넘을 때만 적는다 — 그 아래는 곁가지다.
+    """
+    if "public_funds" not in guard.sql_tables(sql):
+        return None
+    # 🔴 기본모수 컬럼(sale_yn)은 건너뛴다 — 모든 질의에 붙어 있어 항상 먼저 잡힌다(실측).
+    col = next((m.group(1).lower() for m in _FLAG_EQ.finditer(sql)
+                if m.group(1).lower() not in _BASE_STRICT and m.group(1).lower() in _fund_col_types()), None)
+    if not col:
+        return None
+    con = connect_readonly()
+    try:
+        tot, miss = con.execute(
+            f"SELECT COUNT(*), SUM(CASE WHEN {col} IS NULL OR TRIM({col})='' THEN 1 ELSE 0 END) "
+            "FROM public_funds WHERE sale_yn='판매중' AND prvo_pbff_desc='공모'").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    if not tot or not miss or miss * 5 < tot:
+        return None
+    ko = _fund_col_ko(col)
+    return (f"※ {ko} 항목은 판매중·공모 {tot:,}클래스 중 {int(miss):,}건({miss / tot:.0%})이 "
+            "미수록입니다 — 나머지가 모두 '아니오' 라는 뜻이 아닙니다.")
+
+
 def clarify_underspecified_lookup(question: str, name_token: str | None, funds: int) -> str | None:
     """속성값을 묻는데 **대상 상품이 특정되지 않았으면** 되묻는 문구. 아니면 None.
 
@@ -8711,6 +8765,11 @@ def answer_question(
     if cnt is not None:
         step("[Answer] 개수 답변 기계 조립 — 펀드수/클래스수 1행은 HCX 없이 옮긴다 "
              "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")
+        _fn = flag_missing_note(sql)
+        if _fn:
+            cnt += "\n\n" + _fn
+            step("[Answer] 결측 병기 — 플래그 컬럼의 미수록 비율을 적었다 "
+                 "(2026-09-05 DOM-08 실측: 환헤지 Y 만 세고 결측 39% 를 안 밝히면 '나머지는 안 한다' 로 읽힌다)")
         result.think_trace = "\n".join(trace)
         result.answer = cnt
         return result
@@ -8766,6 +8825,11 @@ def answer_question(
     if lst is not None:
         step("[Answer] 목록 답변 기계 조립 — 순자산순 펀드 목록 전 행 + 총량 머리줄 "
              "(2026-09-02 R3·S7: 30행 중 5·10행만 옮김 · S6: 총량 대신 '더 있을 수 있음')")
+        _an = country_axis_note(sql, q)
+        if _an:
+            lst += "\n\n" + _an
+            step("[Answer] 축 고지 — 국가어 질의를 어느 축으로 셌는지 적었다 "
+                 "(2026-09-05 T13 실측: 국가 태그 98펀드 vs 지역 대분류 114펀드 — 축을 밝히지 않으면 수를 검증할 수 없다)")
         result.think_trace = "\n".join(trace)
         result.answer = lst
         return result

@@ -9673,6 +9673,18 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 안 물은 개수 조건 제거 — 고유 식별자 묶음에 붙은 HAVING COUNT 는 항상 거짓이다 "
              "(2026-09-05 6차 KG-018 실측: 속성 태그를 정확히 걸어 놓고 `GROUP BY itm_no HAVING cnt > 1` "
              "을 덧붙여 0행 → '확인할 수 없음'. 질문은 개수를 물은 적이 없다)")
+    # 🔴 2026-09-05 6차 U14 — 랭킹 축을 **체인 끝에서 한 번 더** 본다. 서버 실측: 같은 SQL·같은 질문인데
+    #    로컬에선 정렬축 교정이 서고 서버에선 안 섰다 — 중간 가드가 SELECT 목록을 바꾸면 위치 표기
+    #    (`ORDER BY 3`)가 가리키는 항목이 옮겨 가서, 체인 앞머리에서 한 판정이 뒤에서는 더 이상 참이 아니다.
+    #    둘 다 이미 맞으면 불개입이라(축이 잡히면 즉시 반환) 다시 부르는 비용이 없다.
+    sql, axis_late = ensure_fund_rank_axis(sql, q)
+    if axis_late:
+        step("[Guard] 랭킹 정렬축 재확인 — 체인을 지나며 위치 표기가 가리키는 항목이 바뀌어 "
+             "질문이 지목한 축으로 다시 세웠다 (6차 U14 실측: `ORDER BY 3` 이 COUNT(*) 를 가리켜 "
+             "상위 3개가 임의 3행으로 나갔다)")
+        sql, rank_late = ensure_fund_rank_representative(sql, q)
+        if rank_late:
+            step("[Guard] 펀드 대표행 보정(후속) — 정렬축을 세운 뒤 bare 정렬 컬럼을 MAX/MIN 으로 감쌌다")
     return sql
 
 

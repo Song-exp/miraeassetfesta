@@ -1168,6 +1168,90 @@ def ensure_etf_charge_nullif(sql: str) -> tuple[str, bool]:
     return new_head + sql[frm.start():], True
 
 
+# 질문의 축 낱말 → 확정식. 질문에 있고 SQL 에 그 컬럼이 없으면 주입한다.
+# 🔴 2026-09-05 #1 실측 — "월배당 ETF 몇 개야?" 의 SQL 이 `WHERE pd_sale_yn=1 AND pd_grp_no='ETF'` 뿐이었다.
+#    Route 가 값 ['월배당'] 을 뽑고 규칙 `월분배: pd_dvid_cycl='M'`·동의어까지 프롬프트에 실렸는데 축이
+#    통째로 사라져 1,160(전체 ETF)을 답했다. 정답 196. 같은 모양이 #3 연금(9/4)·#9 환헤지(9/4)에서도 났다 —
+#    세 번째라 규칙이 아니라 표로 내린다. 축 낱말이 있는데 그 컬럼이 SQL 에 없으면 질문을 버린 것이다.
+_ETF_AXIS_FILTERS = (
+    (re.compile(r"월\s*배당|월\s*분배|매월\s*분배|월\s*지급|매달\s*(?:배당|분배)"),
+     re.compile(r"\bpd_dvid_cycl\b", re.I), "pd_dvid_cycl = 'M'"),
+    (re.compile(r"연금|IRP"),
+     re.compile(r"\bpd_pen_tr_yn\b", re.I), "pd_pen_tr_yn = 'Y'"),
+    (re.compile(r"환\s*헤지|환\s*헷지|헤지된|헷지된"),
+     re.compile(r"\(H\)|\(합성 H\)|Hedged", re.I),
+     "(pd_abrv_nm LIKE '%(H)%' OR pd_abrv_nm LIKE '%(합성 H)%' OR pd_nm LIKE '%(H)%')"),
+)
+
+
+def ensure_etf_axis_filter(sql: str, question: str) -> tuple[str, bool]:
+    """질문의 축 낱말(월배당·연금·환헤지)이 SQL 에 없으면 확정식을 주입한다. (보정된 SQL, 보정했는지)"""
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql):
+        return sql, False
+    changed = False
+    for q_rx, sql_rx, cond in _ETF_AXIS_FILTERS:
+        if q_rx.search(question) and not sql_rx.search(sql):
+            sql, ok = _append_exclusions(sql, [cond])
+            changed = changed or ok
+    return sql, changed
+
+
+_RET_Q = re.compile(r"수익률|성과|리턴|많이\s*오른|상승률|많이\s*내린|하락률")
+_RET_LOW_Q = re.compile(r"낮은|나쁜|내린|하락|손실|저조")
+_RET_PERIOD = (
+    (re.compile(r"1\s*개월|한\s*달"), "du_er_1m"),
+    (re.compile(r"3\s*개월|석\s*달"), "du_er_3m"),
+    (re.compile(r"6\s*개월|반\s*년"), "du_er_6m"),
+    (re.compile(r"1\s*년|12\s*개월|연간"), "du_er_1y"),
+    (re.compile(r"YTD|올해|연초", re.I), "du_er_ytd"),
+)
+
+
+def ensure_etf_return_sort(sql: str, question: str) -> tuple[str, bool]:
+    """기간수익률 질의의 ORDER BY 가 그 기간 컬럼을 가리키게 한다. (보정된 SQL, 보정했는지)
+
+    🔴 2026-09-05 #12 실측 — "최근 3개월 수익률 좋은 국내 ETF 5개": SELECT 는 `pd_abrv_nm, du_er_3m, cu_lev_fector`
+    로 옳았는데 `ORDER BY 3 DESC` — **3번은 배수(cu_lev_fector)** 다. 수익률상위질의 규칙이 배수를 SELECT 에
+    넣으라고 해서 항목이 하나 늘었고, HCX 가 서수를 옛 위치로 썼다. 결과는 배수 2.0 인 5개(수익률 -52%·-41% 포함),
+    답변은 "모든 ETF 의 3개월 수익률이 음수" — 2건은 양수였다. 서수 ORDER BY 는 항목 수가 바뀌면 조용히 틀린다.
+    발동: ① domestic_etfs 단일 SELECT ② 질문에 수익률 어휘 + 기간 하나 ③ SELECT 에 그 기간 컬럼이 있음
+    ④ ORDER BY 첫 항이(서수든 이름이든) 그 컬럼이 아님. 방향은 원문 유지, 없으면 낮은/하락 어휘면 ASC 아니면 DESC.
+    """
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql) or not _RET_Q.search(question):
+        return sql, False
+    cols = [c for rx, c in _RET_PERIOD if rx.search(question)]
+    if len(cols) != 1:
+        return sql, False
+    col = cols[0]
+    frm = _FROM_KW.search(sql)
+    m_sel = _SELECT_HEAD.match(sql)
+    m_ob = _ORDER_BY_TERMS.search(sql)
+    if not (frm and m_sel and m_ob) or m_ob.start() < frm.start():
+        return sql, False
+    items = _split_select_items(sql[m_sel.end():frm.start()])
+    if not any(re.search(rf"\b{col}\b", it) for it in items):
+        return sql, False
+    terms = [x.strip() for x in m_ob.group(1).split(",") if x.strip()]
+    if not terms:
+        return sql, False
+    parts = terms[0].split()
+    expr = parts[0]
+    if len(parts) > 1 and parts[1].upper() in ("ASC", "DESC"):
+        direction = parts[1].upper()
+    else:
+        direction = "ASC" if _RET_LOW_Q.search(question) else "DESC"
+    if expr.isdigit():
+        idx = int(expr) - 1
+        target = items[idx] if 0 <= idx < len(items) else ""
+    else:
+        target = expr
+    if re.search(rf"\b{col}\b", target):
+        return sql, False
+    rest = sql[m_ob.end():].lstrip()
+    new_ob = "ORDER BY " + ", ".join([f"{col} {direction}"] + terms[1:])
+    return sql[:m_ob.start()].rstrip() + " " + new_ob + (" " + rest if rest else ""), True
+
+
 def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
     """ETF 랭킹·집계 SQL 에 상품군 확정식을 기계 주입. (보정된 SQL, 보정했는지) — `ensure_fund_base_population` 의 ETF 판.
 
@@ -4495,6 +4579,28 @@ def _num_key(v: str) -> str:
     return v.rstrip("0").rstrip(".") if "." in v else v
 
 
+def _row_floats(rows: str) -> set:
+    """결과 문자열의 수치 셀을 float 집합으로 — 반올림 대조의 재료."""
+    out = set()
+    for v in _NUM_IN_ROWS.findall(rows or ""):
+        try:
+            out.add(float(v.replace(",", "")))
+        except ValueError:
+            pass
+    return out
+
+
+def _pct_rounds_to_row(v: str, have_f: set) -> bool:
+    """답변의 백분율 v 가 결과의 어느 수치를 **v 의 소수 자릿수로 반올림한 값**과 같은가."""
+    s = v.replace(",", "")
+    try:
+        x = float(s)
+    except ValueError:
+        return False
+    dec = len(s.split(".")[1]) if "." in s else 0
+    return any(round(r, dec) == x for r in have_f)
+
+
 def strip_unsourced_percent(answer: str, rows: str) -> tuple[str, list[str]]:
     """조회 결과에 없는 **백분율 수치**를 담은 문장을 제거한다. (답변, 제거한 값)
 
@@ -4504,10 +4610,15 @@ def strip_unsourced_percent(answer: str, rows: str) -> tuple[str, list[str]]:
     기계 조립 경로는 조기 반환이라 여기 오지 않는다(HCX 산문 경로 전용). 전부 지워지면 원문을 유지한다.
     """
     have = {_num_key(v) for v in _NUM_IN_ROWS.findall(rows or "")}
+    have_f = _row_floats(rows)
     out, dropped = [], []
     # 소수점을 문장 끝으로 오인하지 않는 분할 — 마침표 뒤에 공백이 와야 문장이 끝난다('24.95%' 는 한 덩어리)
     for sent in re.split(r"(?<=[.!?])(?=\s)|(?<=\n)", answer):
-        bad = [v for v in _PCT_IN_TEXT.findall(sent) if _num_key(v) not in have]
+        # 🔴 2026-09-05 #6 실측 — 이 가드가 **정답을 지웠다.** 결과 27.783191 을 답변이 27.78% 로 적었는데
+        #    문자열 키가 달라 '근거 밖 수치' 로 판정, 세 상품명·값이 통째로 사라져 "1.2.3." 만 남았다.
+        #    답변이 쓴 소수 자릿수로 결과값을 반올림해 같으면 근거 있는 값이다. 자체 산술(48.81%)은 여전히 걸린다.
+        bad = [v for v in _PCT_IN_TEXT.findall(sent)
+               if _num_key(v) not in have and not _pct_rounds_to_row(v, have_f)]
         if bad:
             dropped += bad
             continue
@@ -4613,6 +4724,11 @@ def ensure_etf_scope_note(answer: str, sql: str) -> tuple[str, bool]:
 _REFUSAL_ANSWER = re.compile(
     r"정보가?\s*(?:포함되어\s*있지\s*않|없)|답변(?:을|이)?\s*드릴\s*수\s*없|확인(?:할|이)\s*(?:수\s*)?(?:없|불가)|알\s*수\s*없")
 _EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
+_NUMERIC_CELL = re.compile(r"^-?[\d,]+(?:\.\d+)?\s*(?:%|억원|천억원|조원|백만\w*|원|주|USD|\$)?$")
+# 질문 전체를 거절하는 문형 — 부분 유보("그 외는 확인할 수 없습니다")와 구분한다 (2026-09-05 #35 · R10 회귀 둘 다 지킨다)
+_TOTAL_REFUSAL = re.compile(
+    r"답변(?:을|이)?\s*(?:드릴|제공할|해\s*드릴|할)\s*수\s*없|답변을\s*제공하(?:지\s*못|지\s*않)"
+    r"|질문에\s*(?:대한\s*)?답변|정보만\s*포함되어")
 
 
 _HEADER_SHELL = re.compile(r"^\s*(?:TRIM|CAST|ROUND|MAX|MIN|SUM|AVG|COUNT|TOTAL)\s*\(\s*(?:\w+\.)?(\w+)", re.I)
@@ -4657,7 +4773,14 @@ def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
         return answer, False
     cols = [c.strip() for c in lines[0].split(" | ")]
     body = [[v.strip() for v in ln.split(" | ")] for ln in lines[1:]]
-    if any(len(v) >= 2 and v in answer for r in body for v in r):
+    # 🔴 2026-09-05 #13 실측 — "KODEX 200 의 거래량 정보만 포함되어 … 답변을 드릴 수 없습니다": 1행(3.64조)을
+    #    받고 거절했는데 상품명 'KODEX 200' 이 거절문에 들어 있어 '값을 인용했다' 로 통과했다. 이름은 거절문에도
+    #    자연히 들어간다 — 인용으로 인정하는 것은 **수치 셀**(숫자·천단위·단위 접미)만.
+    #    다만 이름만 인용한 **부분 유보**("TIGER …는 환헤지 상품입니다. 그 외는 확인할 수 없습니다" — R10 회귀)는
+    #    그대로 둔다. 강제하는 것은 이름만 인용하고 **질문 전체를 거절**한 문장(_TOTAL_REFUSAL)뿐이다.
+    cited_num = any(_NUMERIC_CELL.match(v) and v in answer for r in body for v in r)
+    cited_any = any(len(v) >= 2 and v in answer for r in body for v in r)
+    if cited_num or (cited_any and not _TOTAL_REFUSAL.search(answer)):
         return answer, False
     # 🔴 11R gold ③-8 (부류 Y) — 전사는 **사람이 읽는 표**로 낸다. 종전엔 SQL 헤더 문자열을 그대로 써서
     #    `TRIM(itm_nm)`·`cu_lev_fector`·`fd_price_bas_dt` 가 사용자 화면에 나갔다(FND-R03·OFFICIAL-005).
@@ -9945,6 +10068,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, chg_null = ensure_etf_charge_nullif(sql)
     if chg_null:
         step("[Guard] 총보수 0→NULL — SELECT 의 맨 cu_charge_rt 를 NULLIF(…,0) 으로 (2026-09-05 실측: 0.0 을 '총보수는 없으며' 로 서술 · 0 은 미입력)")
+    sql, axis_fixed = ensure_etf_axis_filter(sql, q)
+    if axis_fixed:
+        step("[Guard] ETF 질문 축 확정식 — 월배당·연금·환헤지 낱말이 질문에 있는데 그 컬럼이 SQL 에 없어 주입 "
+             "(2026-09-05 #1 실측: '월배당 ETF 몇 개' 가 축 없이 전체 1,160 을 답함 · 정답 196 · 연금(9/4)·환헤지(9/4)와 같은 모양 세 번째)")
+    sql, rsort_fixed = ensure_etf_return_sort(sql, q)
+    if rsort_fixed:
+        step("[Guard] 기간수익률 정렬 교정 — ORDER BY 가 그 기간 컬럼이 아니어서 교체 "
+             "(2026-09-05 #12 실측: SELECT 에 배수를 더하자 서수 ORDER BY 3 이 배수를 가리켜 -52% 상품이 '3개월 수익률 상위' 로 나감)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "

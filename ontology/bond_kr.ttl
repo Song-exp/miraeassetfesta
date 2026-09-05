@@ -33,8 +33,8 @@ fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
 
 # ABSENT: fp:DomesticBond 에는 fp:hasCreditGradeHistory 없음 — 채권 신용등급은 기준일 현재 등급(crd_grd)만 있고 등급 추이·변동 이력(상향·하향)은 수록되어 있지 않습니다.
 fp:DomesticBond rdfs:comment "hasCreditGradeHistory 속성 없음: 채권 신용등급은 기준일 현재 등급(crd_grd)만 있고 등급 추이·변동 이력(상향·하향)은 수록되어 있지 않습니다."@ko .
-# ABSENT: fp:DomesticBond 에는 fp:hasYieldHistory 없음 — 채권 금리·수익률·가격은 데이터 산출 시점(8/21 스냅샷) 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다.
-fp:DomesticBond rdfs:comment "hasYieldHistory 속성 없음: 채권 금리·수익률·가격은 데이터 산출 시점(8/21 스냅샷) 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다."@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasYieldHistory 없음 — 채권 마스터는 종목당 관측이 1회다 — 수익률·가격·잔액·듀레이션 어느 축이든 기준일 현재 값 하나만 수록되어 있고 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 없다. 관측 시점 컬럼이 전부 단일값이다(info_base_dt·sale_yield_base_dt·pd_std_info_update distinct 1 · 2026-09-06 재확인). 예외는 발행 시점(isu_dt)으로, 이것만은 종목마다 달라 '발행연도별' 질의에는 답할 수 있다(규칙 발행시점축).
+fp:DomesticBond rdfs:comment "hasYieldHistory 속성 없음: 채권 마스터는 종목당 관측이 1회다 — 수익률·가격·잔액·듀레이션 어느 축이든 기준일 현재 값 하나만 수록되어 있고 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 없다. 관측 시점 컬럼이 전부 단일값이다(info_base_dt·sale_yield_base_dt·pd_std_info_update distinct 1 · 2026-09-06 재확인). 예외는 발행 시점(isu_dt)으로, 이것만은 종목마다 달라 '발행연도별' 질의에는 답할 수 있다(규칙 발행시점축)."@ko .
 # ABSENT: fp:DomesticBond 에는 fp:hasIndustrySector 없음 — 채권 마스터에는 발행사의 업종·산업·섹터·테마 분류 컬럼이 없다 — 발행사 이름(pd_pbcm)·채권 종류(bd_knd)·등급만 있다. 1차 외부 코드북 issuer_industry_map 은 2차 재검수에서 기각했고, 발행사→주식→ETF 구성종목 업종의 3-hop 유도는 58종목만 닿아 선언하지 않았다(2026-09-05 결정).
 fp:DomesticBond rdfs:comment "hasIndustrySector 속성 없음: 채권 마스터에는 발행사의 업종·산업·섹터·테마 분류 컬럼이 없다 — 발행사 이름(pd_pbcm)·채권 종류(bd_knd)·등급만 있다. 1차 외부 코드북 issuer_industry_map 은 2차 재검수에서 기각했고, 발행사→주식→ETF 구성종목 업종의 3-hop 유도는 58종목만 닿아 선언하지 않았다(2026-09-05 결정)."@ko .
 # ABSENT: fp:DomesticBond 에는 fp:hasCouponFrequency 없음 — 채권 마스터에는 이자지급 방식(bd_intp_tcd — 이표/복리/할인/단리)과 금리구분(bd_inrt_tcd), 표면금리(srfc_irt)만 있고, 이표채가 몇 개월마다 이자를 주는지(3개월·6개월·연 1회)와 이자지급일은 컬럼이 없다. 58컬럼 전수 확인(2026-09-05).
@@ -43,4 +43,8 @@ fp:DomesticBond rdfs:comment "hasCouponFrequency 속성 없음: 채권 마스터
 fp:DomesticBond rdfs:comment "hasTradingVolume 속성 없음: 채권 마스터 58컬럼에 거래량·거래대금·체결건수·회전율 컬럼이 없다(2026-09-06 전수 확인). 거래의 흔적은 장내 종가(exg_close_price)와 그 기준일뿐이고 그마저 값이 0 이 아닌 행은 1,270행(장내 17,746행 중 · 나머지 16,476행은 거래 없음)이다. 매수가능수량(buyable_quantity)은 주최 공지(8/24)로 무효 확정이라 유동성 대용으로도 쓸 수 없다(forbidden_columns)."@ko .
 # ABSENT: fp:DomesticBond 에는 fp:hasMinimumInvestment 없음 — 채권 마스터 58컬럼에 최소투자금액·최소매수단위·매매수량단위 컬럼이 없다(2026-09-06 전수 확인 · #78 에서 같은 결론). 금액으로 종목을 좁힐 근거가 데이터에 없다.
 fp:DomesticBond rdfs:comment "hasMinimumInvestment 속성 없음: 채권 마스터 58컬럼에 최소투자금액·최소매수단위·매매수량단위 컬럼이 없다(2026-09-06 전수 확인 · #78 에서 같은 결론). 금액으로 종목을 좁힐 근거가 데이터에 없다."@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasFee 없음 — 채권 마스터 58컬럼에 매매수수료·판매보수·운용보수 컬럼이 없다(2026-09-06 전수 확인 — fee·comm·charge 어느 이름으로도 0개). 채권은 펀드·ETF 와 달리 보수 구조 자체가 상품 속성이 아니고, 매매 비용은 판매사·계좌 조건에서 정해져 이 데이터에 담기지 않는다.
+fp:DomesticBond rdfs:comment "hasFee 속성 없음: 채권 마스터 58컬럼에 매매수수료·판매보수·운용보수 컬럼이 없다(2026-09-06 전수 확인 — fee·comm·charge 어느 이름으로도 0개). 채권은 펀드·ETF 와 달리 보수 구조 자체가 상품 속성이 아니고, 매매 비용은 판매사·계좌 조건에서 정해져 이 데이터에 담기지 않는다."@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasIssuerFinancials 없음 — 채권 마스터에는 발행사의 이름(pd_pbcm)만 있고 재무제표·부채비율·자기자본·매출·영업이익·신용전망 같은 발행사 재무 정보가 없다(2026-09-06 전수 확인 — debt·equity·asset·profit·revenue 어느 이름으로도 0개). 발행사의 상환 능력에 대해 이 데이터가 말할 수 있는 것은 채권에 부여된 신용등급(crd_grd)과 투자위험등급뿐이다.
+fp:DomesticBond rdfs:comment "hasIssuerFinancials 속성 없음: 채권 마스터에는 발행사의 이름(pd_pbcm)만 있고 재무제표·부채비율·자기자본·매출·영업이익·신용전망 같은 발행사 재무 정보가 없다(2026-09-06 전수 확인 — debt·equity·asset·profit·revenue 어느 이름으로도 0개). 발행사의 상환 능력에 대해 이 데이터가 말할 수 있는 것은 채권에 부여된 신용등급(crd_grd)과 투자위험등급뿐이다."@ko .
 

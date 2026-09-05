@@ -141,3 +141,58 @@ def test_axis_alias_confession_rejects(ctx, label, sql):
 def test_axis_alias_confession_does_not_overreach(ctx, label, sql):
     from src.runtime.pipeline import axis_alias_confession
     assert axis_alias_confession(sql, ctx) is None, f"정상 별칭을 기각: {label}"
+
+
+# ── ⑤ 2차 (09-06 저녁) — 부재축 어휘의 {AXIS} 확장 · 수수료/발행주체 선언 · 세금은 선언 안 함 ────
+@pytest.mark.parametrize("question, prop", [
+    # {AXIS} 확장 — 시계열 선언이 금리·수익률·가격 밖의 축에도 붙는다 (종전엔 통과했다)
+    ("발행잔액이 어떻게 변했어?", "hasYieldHistory"),
+    ("듀레이션 추이 알려줘", "hasYieldHistory"),
+    ("잔존일수가 줄었나", "hasYieldHistory"),
+    ("컨벡시티 변화 알려줘", "hasYieldHistory"),
+    # 손 어휘를 지우지 않았으므로 종전 차단은 그대로다
+    ("한전 채권 금리가 요즘 어떻게 움직였어?", "hasYieldHistory"),
+    # 신설 두 건
+    ("채권 살 때 수수료 얼마야", "hasFee"),
+    ("한국전력 재무상태 어때", "hasIssuerFinancials"),
+    ("이 발행사 부채비율 알려줘", "hasIssuerFinancials"),
+    ("이 회사 망할 가능성 있어?", "hasIssuerFinancials"),
+])
+def test_axis_expanded_declarations_reject(ctx, question, prop):
+    r = gate.check(question, ctx, [B])
+    assert r.rejected and prop in r.reason
+
+
+@pytest.mark.parametrize("question", [
+    # 발행 시점은 축이 실재한다 (#66) — 시계열 확장이 여기를 삼키면 안 된다
+    "최근 6개월 안에 새로 발행된 회사채 중에 표면금리 높은 5개 알려줘",
+    "발행연도별 표면금리 알려줘",
+    # 조건형·비율·변동금리 — 종전 오폭 방어가 {AXIS} 확장 뒤에도 유지된다
+    "금리가 오르면 어떤 채권이 유리해?",
+    "변동금리 채권 몇 종목?",
+    "수익률 변동성 큰 채권",
+    "신용등급 대비 수익률이 오른 채권",
+    # 축 이름 + 정렬은 시계열이 아니다
+    "발행잔액이 큰 채권 3개",
+    "듀레이션 낮은 채권 추천",
+    # 🔴 세금은 부재축이 아니다 — 세후 수익률 4종·예금환산 2종이 634행에 실재한다
+    "세후 수익률 얼마야?",
+    "채권 이자에 세금 얼마나 떼?",
+    # 신용등급·위험등급은 발행주체 상태 선언이 삼키면 안 된다
+    "한국전력 채권 신용등급 뭐야",
+    "망하지 않을 회사가 발행한 채권만 골라줘",
+])
+def test_axis_expanded_declarations_do_not_overreach(ctx, question):
+    r = gate.check(question, ctx, [B])
+    assert not (r.rejected and any(p in r.reason for p in ("hasYieldHistory", "hasFee", "hasIssuerFinancials")))
+
+
+def test_axis_placeholder_expanded_from_declarations(ctx):
+    """{AXIS} 는 로더가 스키마·yaml korean_name·synonyms 에서 채운다 — 프롬프트·게이트에 자리표시자가 남으면 안 된다."""
+    for item in ctx.absent_props[B]:
+        for pat in item.get("vocab") or []:
+            assert "{AXIS}" not in pat
+    ys = next(it for it in ctx.absent_props[B] if it["property"] == "hasYieldHistory")
+    joined = " ".join(ys["vocab"])
+    for axis in ("발행잔액", "듀레이션", "잔존일수", "표면금리"):
+        assert axis in joined

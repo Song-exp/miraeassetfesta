@@ -236,6 +236,49 @@ def _strip_annotations(obj):
     return obj
 
 
+_AXIS_PLACEHOLDER = "{AXIS}"
+_AXIS_SPLIT = re.compile(r"[/(),·\s]+")
+
+
+def _axis_alternation(table: str, doc: dict, ctx: "RuntimeContext") -> str:
+    """이 테이블의 **수록 축 이름** 정규식 대안 — 선언에서 자동 생성한다(손 목록 0).
+
+    🔴 2026-09-06. 부재축 어휘가 축 이름을 손으로 적고 있어, 같은 부류인데 축이 다르면 샜다:
+    "한전 금리가 어떻게 움직였어?" 는 막히는데 "발행잔액이 어떻게 변했어?" 는 통과했다 —
+    시계열이 없다는 사실은 축과 무관한데 어휘가 금리·수익률·가격에만 묶여 있었기 때문이다
+    (사고 #72 가 금리로 났다는 이유뿐, 데이터가 그래서가 아니다). 축은 유한하니 세어서 붙인다.
+
+    🔴 **합집합이지 교체가 아니다.** 스키마·yaml 의 korean_name 은 '민평수익률'·'표면이자율' 같은
+    장부 표기라 사람이 쓰는 '금리'·'가격'·'시세' 가 없다. 선언에 손으로 적힌 축 어휘를 지우고
+    이것으로 갈아끼우면 지금 막히는 문항이 도로 뚫린다(2026-09-06 실측: #72 가 통과로 돌아섰다).
+    그래서 이 함수의 결과는 기존 어휘 **옆에** 붙는다 — 선언은 `(?:금리|수익률|{AXIS})` 꼴로 쓴다.
+    """
+    axes: set[str] = set()
+    for _col, ko, typ in (ctx.schema.get(table) or []):
+        if "text" in (typ or "").lower():          # 식별자·코드값은 축이 아니다
+            continue
+        axes |= {w for w in _AXIS_SPLIT.split(ko or "") if len(w) >= 2}
+    for spec in (doc.get("columns") or {}).values():
+        if isinstance(spec, dict):
+            axes |= {w for w in _AXIS_SPLIT.split(spec.get("korean_name") or "") if len(w) >= 2}
+    axes |= {str(k) for k in (doc.get("synonyms") or {}) if len(str(k)) >= 2}
+    # 영문·숫자만인 조각(Clean·Price·15.4)은 한글 문형에 안 쓰인다 — 넣으면 오탐만 는다
+    axes = {a for a in axes if not re.fullmatch(r"[A-Za-z0-9.]+", a)}
+    return "|".join(re.escape(a) for a in sorted(axes, key=len, reverse=True))
+
+
+def _expand_axis(item: dict, table: str, doc: dict, ctx: "RuntimeContext") -> dict:
+    """부재축 선언의 `{AXIS}` 자리표시자를 수록 축 대안으로 채운다 (kind_filters 의 `{P}` 와 같은 방식)."""
+    keys = [k for k in ("vocab", "vocab_ungrounded") if item.get(k)]
+    if not any(_AXIS_PLACEHOLDER in str(p) for k in keys for p in item[k]):
+        return item
+    alt = _axis_alternation(table, doc, ctx)
+    out = dict(item)
+    for k in keys:
+        out[k] = [str(p).replace(_AXIS_PLACEHOLDER, alt) for p in item[k]]
+    return out
+
+
 @lru_cache(maxsize=1)
 def load_context() -> RuntimeContext:
     ctx = RuntimeContext()
@@ -339,6 +382,11 @@ def load_context() -> RuntimeContext:
     # (ctx 를 못 받는 순수 함수라 모듈 캐시로 준다 — 2026-08-31 'domestic_etfs.weight_pct' 실측)
     from .pipeline import set_column_index
     set_column_index(ctx.schema)
+    # 부재축 어휘의 `{AXIS}` 확장 — 스키마(schema_metadata)를 읽고 나서야 축 이름을 알 수 있으므로
+    # enums 를 읽던 자리가 아니라 여기서 채운다.
+    for table, items in ctx.absent_props.items():
+        doc = ctx.enums.get(table) or {}
+        ctx.absent_props[table] = [_expand_axis(it, table, doc, ctx) for it in items]
     validate_enforce(ctx)
     return ctx
 

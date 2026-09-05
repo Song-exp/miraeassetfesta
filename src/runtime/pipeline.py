@@ -1141,6 +1141,11 @@ def ensure_etf_safe_grade(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     if _GRADE_NUM_Q.search(question):
         return sql, False
+    # 🔴 2026-09-06 #38 로컬 실측 — "연금계좌에서 살 수 있는 **안전자산** ETF 몇 개" 의 '안전' 은 위험등급이 아니라
+    #    연금 분류 컬럼(pd_pen_risk_nm)의 값이다. 여기서 6·5등급을 주입하면 서버가 맞힌 218 이 **111** 로 깨진다.
+    #    가드가 정답을 훼손한 다섯 번째 — 배포 전에 로컬 단계 추적으로 잡았다. 불개입: 질문에 '안전자산' 또는 SQL 에 연금 분류 컬럼.
+    if re.search(r"안전\s*자산", question) or re.search(r"\bpd_pen_risk_nm\b", sql, re.I):
+        return sql, False
     m = _etf_risk_high_match(sql)
     if m:                                   # 뒤집힘 — 1·2등급을 5·6등급으로
         return sql[:m.start()] + _ETF_SAFE_COND + sql[m.end():], True
@@ -10544,7 +10549,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 외부표 LEFT 전환 — " + "·".join(ext_left) + " 을 INNER 에서 LEFT 로 "
              "(커버리지 93.7% — INNER 면 짝 없는 561클래스가 조용히 사라진다. ext 조건이 WHERE 에 "
              "있으면 결과 동일 · 2026-09-04 KG-005 실측)")
-    sql, ext_drop = guard.drop_unused_ext_join(sql)
+    sql, ext_drop = guard.drop_unused_ext_join(sql, getattr(ctx, "schema", None))
     if ext_drop:
         step("[Guard] 안 쓰는 외부표 조인 제거 — " + "·".join(ext_drop) + " 을 걷어냈다 "
              "(컬럼을 하나도 안 쓰는 1:1 LEFT JOIN 이라 결과 불변 · 남겨 두면 대표행 보정이 통째로 "

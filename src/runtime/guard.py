@@ -464,8 +464,42 @@ def drop_unasked_enum_values(sql: str, question: str) -> tuple[str, list[str]]:
     return out, dropped
 
 
-def drop_unused_ext_join(sql: str) -> tuple[str, list[str]]:
+def _schema_cols(schema: dict, table: str) -> set[str]:
+    """ctx.schema[table] 의 컬럼명 집합(소문자). 항목이 튜플(컬럼, 한글명, 타입)이든 dict 든 문자열이든 받는다."""
+    rows = schema.get(table) or schema.get(table.lower()) or []
+    out: set[str] = set()
+    for r in rows:
+        if isinstance(r, (list, tuple)):
+            out.add(str(r[0]).lower())
+        elif isinstance(r, dict):
+            out.add(str(r.get("column") or r.get("name") or "").lower())
+        else:
+            out.add(str(r).lower())
+    return {c for c in out if c}
+
+
+def _bare_ext_column_used(rest: str, tbl: str, schema: dict) -> bool:
+    """JOIN 절을 뺀 나머지 문장이 그 ext 테이블 **고유** 컬럼을 한정자 없이 참조하는가 (`SUM(weight_pct)`)."""
+    ext_cols = _schema_cols(schema, tbl)
+    if not ext_cols:
+        return False
+    master_cols: set[str] = set()
+    for t in schema:
+        if t.lower() != tbl.lower() and not t.lower().startswith("ext_"):
+            master_cols |= _schema_cols(schema, t)
+    body = re.sub(r"'(?:[^']|'')*'", "''", rest)
+    return any(re.search(rf"(?<![\w.]){re.escape(c)}\b", body, re.I) for c in ext_cols - master_cols)
+
+
+def drop_unused_ext_join(sql: str, schema: dict | None = None) -> tuple[str, list[str]]:
     """쓰이지 않는 `ext_*` LEFT JOIN 을 걷어낸다. (SQL, 걷어낸 테이블)
+
+    🔴 2026-09-06 #42 서버 실측 — "미래에셋 ETF 중 삼성전자 지분이 가장 많은 것": HCX 가
+       `LEFT JOIN ext_etf_holdings … SELECT SUM(weight_pct)` 를 냈는데 `weight_pct` 가 **한정자 없이** 쓰여
+       이 가드가 "컬럼을 하나도 안 쓴다" 며 JOIN 을 걷어냈다 → 뒤 가드가 weight_pct 를 환각 열로 지우고 →
+       재생성도 같은 길 → `no such column: weight_pct` 실행 실패. **가드가 정답을 부순 네 번째 사고.**
+       `schema`(ctx.schema)를 받으면 그 ext 테이블 고유 컬럼의 맨 참조도 '사용' 으로 본다.
+       ⚠️ 아래 "1:1" 안전성 논거는 ext_fund_page 에만 맞다 — ext_etf_holdings·ext_fund_holdings 는 **1:N** 이다.
 
     2026-09-05 FND-007 실측 — HCX 가 조인만 걸고 **그 테이블 컬럼을 하나도 안 썼다**:
 
@@ -488,6 +522,8 @@ def drop_unused_ext_join(sql: str) -> tuple[str, list[str]]:
         rest = out.replace(m.group(0), " ", 1)
         if re.search(rf"\b{re.escape(alias or tbl)}\.\w+", rest, re.I):
             continue
+        if schema and _bare_ext_column_used(rest, tbl, schema):
+            continue                                     # 맨 컬럼으로 쓰고 있다 — 걷어내면 고아 컬럼이 된다
         out, _ = rest, dropped.append(tbl)
     return out, dropped
 

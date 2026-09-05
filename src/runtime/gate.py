@@ -373,8 +373,12 @@ def classify_grade_token(tok: str, ctx: RuntimeContext) -> str:
     return "no_data" if ctx.std_grades else "unknown"    # 표준표가 없으면 종전대로 데이터 값만으로 판정
 
 
-def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
-    """`tables` 는 라우터가 정한 테이블(미특정이면 빈 목록)."""
+def check(question: str, ctx: RuntimeContext, tables: list[str], grounded_entity: bool = False) -> GateResult:
+    """`tables` 는 라우터가 정한 테이블(미특정이면 빈 목록).
+
+    `grounded_entity` — Ground 가 발행사(Organization)·종목(Security) 노드를 하나라도 잡았는가. absent_properties 의
+    `vocab_ungrounded` 문형("○○ 관련 발행사")은 ○○ 이 개체로 접지되면 업종 질의가 아니라 발행사 조회라 이때만 본다
+    (2026-09-05 난이도 상 #3: '우주항공 관련 발행사' 는 미접지 → 업종 ABSENT · '한화에어로스페이스 관련 채권' 은 접지 → 통과)."""
     entities = detect_entities(question)
 
     # ①-0 absent_properties — 속성 자체가 없는 부류(좌수·운용역·기준가 시계열…): enums yaml 선언(= ttl ABSENT)이 곧
@@ -382,7 +386,10 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
     #    (2026-09-02 KG-027: 설정유형코드 '10' 을 "10좌" 로 6펀드 단언). 대체 안내는 선언의 substitute 만.
     if len(tables) == 1:
         for item in ctx.absent_props.get(tables[0], []):
-            for pat in item.get("vocab") or []:
+            pats = list(item.get("vocab") or [])
+            if not grounded_entity:
+                pats += list(item.get("vocab_ungrounded") or [])
+            for pat in pats:
                 hit = re.search(pat, question)
                 if hit:
                     sub = item.get("substitute") or {}

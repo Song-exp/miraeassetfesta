@@ -9181,7 +9181,9 @@ def answer_question(
             hits, ground_lines = _ground(q, ctx, tables, cross)
 
     # Gate — HCX 호출 0회 기각 경로
-    g = gate.check(q, ctx, tables)
+    #   grounded_entity: 발행사·종목 개체가 접지됐는가 — absent_properties.vocab_ungrounded("○○ 관련 발행사") 판정에 쓴다 (2026-09-05 #3)
+    g = gate.check(q, ctx, tables,
+                   grounded_entity=any(getattr(h, "node_type", "") in ("Organization", "Security") for h in hits))
     if g.rejected:
         step(f"[Gate] 기각 — {g.reason}")
         step("[Decision] HCX 호출 없이 종료 (근거는 Gate 단계)")

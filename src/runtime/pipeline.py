@@ -1671,23 +1671,68 @@ def ensure_fund_rank_axis(sql: str, question: str) -> tuple[str, bool]:
 
 _HAVING_COUNT = re.compile(r"\bhaving\b\s+(?:\w+|count\s*\([^)]*\))\s*(?:>|>=)\s*\d+\s*", re.I | re.S)
 _MULTIPLICITY_Q = re.compile(r"이상|이하|초과|미만|중복|(?:둘|두|여러|복수|\d+)\s*(?:개|건|종)")
+# 🔴 분포를 물은 질문 — 이때 GROUP BY 는 **답의 축**이라 그 위의 HAVING 도 사람이 고를 몫이다(24R `분포_묶음에는_불개입`).
+#    축 이름을 열거하지 않고 `○○별` 꼴로 잡는다(앞이 2자 이상 — '개별·차별·특별·성별' 은 한 글자라 비켜 간다).
+_DISTRIBUTION_Q = re.compile(r"[가-힣A-Za-z_]{2,}별(?![도자])|분포|각각|비중|비율|구성비|통계|현황|몇\s*(?:종류|가지)")
+_HAVING_CLAUSE = re.compile(r"\bhaving\b(.*?)(?=\border\s+by\b|\blimit\b|\bunion\b|$)", re.I | re.S)
+_COUNT_EXPR = re.compile(r"^count\s*\([^()]*\)$", re.I)
+_TERM_CMP = re.compile(r"^(.+?)\s*(?:>=|<=|<>|!=|>|<|=)\s*\d+(?:\.\d+)?$", re.S)
+_TERM_NULL = re.compile(r"^(?:\w+\.)?(\w+)\s+is\s+null$", re.I | re.S)
+_COUNT_ALIAS = re.compile(r"count\s*\([^()]*\)\s+as\s+(\w+)", re.I)
 
 
 def drop_unasked_count_having(sql: str, question: str) -> tuple[str, bool]:
-    """묶음 키가 **고유 식별자**인데 붙은 개수 조건(HAVING COUNT > n)을 걷는다. 질문이 물었으면 둔다.
+    """질문이 묻지 않은 **개수 조건(HAVING COUNT)** 을 걷는다. 물었으면 둔다.
 
     🔴 2026-09-05 6차 KG-018 실측: 재생성이 속성 태그 두 개를 정확히 걸어 놓고
        `GROUP BY itm_no HAVING cnt > 1` 을 덧붙여 **항상 0행**이 됐다(itm_no 는 클래스 고유키다).
        질문은 '단위형이면서 개방형인 공모펀드도 있어?' — 개수 조건을 물은 적이 없다.
        질문에 없는 제한은 붙이지 않는다(온톨로지 G5) · 물었으면(`2개 이상`) 그대로 둔다.
+
+    🔴 2026-09-05 밤 채권 확장(사고 #77 곁가지 ⓑ) — 묶음 키가 고유 식별자가 아니어도 같은 병이 난다.
+       "한국전력공사 채권은 이자를 몇 개월마다 줘?" 가 `GROUP BY bd_intp_tcd
+       HAVING COUNT(DISTINCT pd_no) > 1 OR bd_intp_tcd IS NULL` 로 나갔다. 한전은 이표채 한 범주뿐이라
+       티가 안 났지만 **(발행사×이자지급구분) 950 조합이 종목 1개**다 — BNP PARIBAS SA(복리채 1·이표채 1)로
+       같은 질문을 던지면 **0행 → "정보 없음"**(사실 왜곡). 종목이 하나뿐인 범주를 소리 없이 지우는 절이다.
+       🔴 **경계는 묶음 키의 종류가 아니라 질문이다** — '유형별로 알려줘' 처럼 분포를 물었으면 GROUP BY 가
+       답의 축이고 그 위의 HAVING 도 손대지 않는다(24R `분포_묶음에는_불개입` 유지). 분포 어휘가 없을 때만 걷는다.
+
+    걷는 조건: HAVING 절의 **모든 항**이 ① COUNT 비교이거나 ② 묶음 키의 `IS NULL` 이고, 그중 하나 이상이 ①.
+    하나라도 분류가 안 되면 불개입 — `MAX(col) > 5`(값 술어를 WHERE 에서 옮겨 온 형태 · `_insert_having`)나
+    `fd_yr1_ern_r = MAX(fd_yr1_ern_r)` 는 걷지 않는다. 절 전체를 걷으므로 `OR` 잔반이 남지 않는다
+    (종전 `_HAVING_COUNT` 단항 절삭은 `… > 1 OR x IS NULL` 에서 뒤 절을 매달아 둔 채 앞만 떼는 구멍이 있었다).
     """
     if _MULTIPLICITY_Q.search(question):
         return sql, False
+    if re.search(r"\(\s*select\b|\bunion\b", sql, re.I):
+        return sql, False                      # 하위질의·UNION 은 절 경계가 흔들린다 — 불개입
     m_grp = re.search(r"\bgroup\s+by\b(.*?)(?=\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-    if not m_grp or m_grp.group(1).strip().lower() not in _FUND_ID_COLS:
+    if not m_grp:
         return sql, False
-    m_hav = _HAVING_COUNT.search(sql)
-    if not m_hav or re.search(r"\b(?:and|or)\b", m_hav.group(0), re.I):
+    gexpr = m_grp.group(1).strip()
+    if gexpr.lower() not in _FUND_ID_COLS and _DISTRIBUTION_Q.search(question):
+        return sql, False                      # 분포 묶음의 HAVING 은 답의 축이다
+    gcols = {re.sub(r"^\w+\.", "", re.sub(r"^trim\s*\(|\)$", "", c.strip(), flags=re.I)).lower()
+             for c in gexpr.split(",")}
+    m_hav = _HAVING_CLAUSE.search(sql)
+    if not m_hav:
+        return sql, False
+    aliases = {a.lower() for a in _COUNT_ALIAS.findall(sql)}
+    counts = 0
+    for term in re.split(r"\s+(?:and|or)\s+", m_hav.group(1).strip(), flags=re.I):
+        term = term.strip()
+        m_cmp = _TERM_CMP.match(term)
+        if m_cmp:
+            lhs = m_cmp.group(1).strip()
+            if _COUNT_EXPR.match(lhs) or lhs.lower() in aliases:
+                counts += 1
+                continue
+            return sql, False                  # 값 술어 — 걷지 않는다
+        m_null = _TERM_NULL.match(term)
+        if m_null and m_null.group(1).lower() in gcols:
+            continue                           # 묶음 키 결측 포함 시도 — 개수 조건과 한 몸
+        return sql, False                      # 분류 불가 → 불개입
+    if not counts:
         return sql, False
     return sql[:m_hav.start()] + " " + sql[m_hav.end():], True
 
@@ -10028,9 +10073,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
              "allowed in the GROUP BY clause → 실행 실패. 묶을 키가 없어 걷어도 결과가 같다)")
     sql, hav_dropped = drop_unasked_count_having(sql, q)
     if hav_dropped:
-        step("[Guard] 안 물은 개수 조건 제거 — 고유 식별자 묶음에 붙은 HAVING COUNT 는 항상 거짓이다 "
-             "(2026-09-05 6차 KG-018 실측: 속성 태그를 정확히 걸어 놓고 `GROUP BY itm_no HAVING cnt > 1` "
-             "을 덧붙여 0행 → '확인할 수 없음'. 질문은 개수를 물은 적이 없다)")
+        step("[Guard] 안 물은 개수 조건 제거 — 질문이 개수를 묻지 않았는데 붙은 HAVING COUNT 는 "
+             "종목이 하나뿐인 범주를 소리 없이 지운다 (2026-09-05 6차 KG-018: 고유키 묶음 "
+             "`GROUP BY itm_no HAVING cnt > 1` 은 항상 0행 · 같은 날 밤 #77 ⓑ: 채권 속성 조회에 붙은 "
+             "`GROUP BY bd_intp_tcd HAVING COUNT(DISTINCT pd_no) > 1` 이 발행사×이자지급구분 950 조합을 "
+             "감춘다 — BNP PARIBAS SA 는 0행. 분포를 물었으면 묶음이 답의 축이라 손대지 않는다)")
     # 🔴 2026-09-05 6차 U14 — 랭킹 축을 **체인 끝에서 한 번 더** 본다. 서버 실측: 같은 SQL·같은 질문인데
     #    로컬에선 정렬축 교정이 서고 서버에선 안 섰다 — 중간 가드가 SELECT 목록을 바꾸면 위치 표기
     #    (`ORDER BY 3`)가 가리키는 항목이 옮겨 가서, 체인 앞머리에서 한 판정이 뒤에서는 더 이상 참이 아니다.

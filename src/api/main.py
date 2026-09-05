@@ -211,7 +211,9 @@ def answer(
     t0 = time.perf_counter()
     r = run_pipeline(question_id, question)
     dt = time.perf_counter() - t0
-    log.info("answer qid=%s dt=%.3fs sql=%r q=%r", question_id, dt, r.sql[:120], question[:80])
+    # raw = 가드 적용 전 HCX 원문 — 서버에서만 나는 가드 불발을 로컬에서 재생하는 유일한 단서(2026-09-05 U14)
+    log.info("answer qid=%s dt=%.3fs sql=%r raw=%r q=%r", question_id, dt, r.sql[:120],
+             (getattr(r, "raw_sql", "") or "")[:600], question[:80])
     _log_qa(build_record(r, dt, with_grounding=LOG_GROUNDING))
     return AnswerResponse(
         question_id=r.question_id,

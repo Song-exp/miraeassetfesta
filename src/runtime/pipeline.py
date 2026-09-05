@@ -9685,6 +9685,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         sql, rank_late = ensure_fund_rank_representative(sql, q)
         if rank_late:
             step("[Guard] 펀드 대표행 보정(후속) — 정렬축을 세운 뒤 bare 정렬 컬럼을 MAX/MIN 으로 감쌌다")
+        # 🔴 서버 실측(U14-v2): 축을 늦게 세우면 기점오류 제외도 함께 늦게 서야 한다 — 마이다스아시아리더스
+        #    Ce(KR5157450126) 1,436% 가 1위로 나갔다. 그 가드는 정렬축이 잡혀야 일하므로 여기서 다시 부른다.
+        sql, err_late = ensure_fund_return_error_exclusion(sql)
+        if err_late:
+            step("[Guard] 기점오류 제외 주입(후속) — 늦게 세운 수익률 축에 검증 3클래스 NOT IN 을 붙였다")
     return sql
 
 

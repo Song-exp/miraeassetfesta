@@ -1,0 +1,796 @@
+{
+ "R1": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12390
+ },
+ "S8": {
+  "nodes": [
+   "Org_00040035"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 'KB자산운용' → Org_00040035 (Organization) → public_funds.or_co_xtn_itt_cd='00040035'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13215
+ },
+ "V12": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 10929
+ },
+ "U14": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12696
+ },
+ "KG-030": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — 미특정 · 근거: 미특정 → 마스터 4테이블 (HCX 가 FROM 으로 판단)",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008' · domestic_etfs.ref_fund_mgmt_co='Mirae Asset Global Investments Co Ltd'",
+   "[Gate] 통과 — 대상 테이블 미특정",
+   "[Route] SQL 사후 보정 — FROM public_funds → 그 상품군의 답변 규칙·이름 필터 적용 · 재생성 문서도 그 상품군으로 (2026-09-02 R7 재검: 미특정 경로는 답변 규칙이 4도메인으로 희석되고 상품명 필터 가드가 꺼진다)",
+   "[Ground] 잔여 상품 고유명 '미래에셋차이나솔로몬' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (사후 보정 경로)"
+  ],
+  "doc": 0
+ },
+ "KG-029": {
+  "nodes": [
+   "Org_00040007"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '우리자산운용' → Org_00040007 (Organization) → public_funds.or_co_xtn_itt_cd='00040007'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11629
+ },
+ "FND-003": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11747
+ },
+ "S2": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11747
+ },
+ "Y4": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11747
+ },
+ "AA24": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11049
+ },
+ "FND-R02": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 기각 — fd_wk1_ern_r 은 전건 NULL — 1주일 수익률은 수록되지 않음. 다른 기간으로 말없이 치환하면 사용자는 질문이 바뀐 걸 모른다 → HCX 없이 즉답"
+  ],
+  "doc": 0
+ },
+ "FND-001": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11441
+ },
+ "FND-002": {
+  "nodes": [
+   "RiskGrade_1"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['매우높은위험']",
+   "[Ground] KG 개체 매핑 — '매우 높은 위험' → RiskGrade_1 (RiskGrade) → public_funds.zrin_fd_ivst_risk_gcd='1.0' · public_funds.zrin_fd_ivst_risk_grd_nm='매우 높은 위험'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12239
+ },
+ "FND-014": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12434
+ },
+ "KG-015": {
+  "nodes": [
+   "RiskGrade_2"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['높은위험']",
+   "[Ground] KG 개체 매핑 — '높은위험' → RiskGrade_2 (RiskGrade) → public_funds.zrin_fd_ivst_risk_gcd='2.0' · public_funds.zrin_fd_ivst_risk_grd_nm='높은 위험' · public_funds.zrin_fd_ivst_risk_grd_nm='높은위험'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12714
+ },
+ "KG-013": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 기각 — 위험등급 7 는 정의 범위(1~6, 테이블별 선언 range_by_table)를 벗어남 · 선언 근거: 0등급 없음 — 등급 미수록 클래스는 NULL(0 아님)"
+  ],
+  "doc": 0
+ },
+ "KG-016": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['채권혼합']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11917
+ },
+ "FND-006": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['MMF']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11958
+ },
+ "FND-007": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['MMF']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11917
+ },
+ "AA11": {
+  "nodes": [
+   "AssetClass_RealEstate"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '부동산' → AssetClass_RealEstate (AssetClass) → public_funds.zrin_btyp_nm='부동산형' · public_funds.zrin_btyp_nm='해외부동산형'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11852
+ },
+ "Z10": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['해외주식형']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13712
+ },
+ "FND-012": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11441
+ },
+ "Z12": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['판매중']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Ground] 운용사 코드 역조회 — '삼성' → 삼성자산운용(00040010) (11R KG ③-13: KG 미매핑 운용사에 HCX 가 매번 새 코드를 날조해 재생성 예산을 태웠다)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12410
+ },
+ "FND-013": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11917
+ },
+ "KG-031": {
+  "nodes": [
+   "Org_00080029"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '피델리티' → Org_00080029 (Organization, 정식명 피델리티자산운용) → public_funds.or_co_xtn_itt_cd='00080029'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13217
+ },
+ "KG-017": {
+  "nodes": [
+   "FundAttr_C104"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['폐쇄형']",
+   "[Ground] KG 개체 매핑 — '폐쇄형' → FundAttr_C104 (FundAttribute) → ',' || public_funds.prfd_attr_cds || ',' LIKE '%,C104,%'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12376
+ },
+ "KG-018": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11441
+ },
+ "T13": {
+  "nodes": [
+   "Country_USA"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미국' → Country_USA (Country) → ',' || public_funds.prfd_attr_cds || ',' LIKE '%,USA,%'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12328
+ },
+ "X21": {
+  "nodes": [
+   "Country_ESP"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '스페인' → Country_ESP (Country) → ',' || public_funds.prfd_attr_cds || ',' LIKE '%,ESP,%'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11893
+ },
+ "AA8": {
+  "nodes": [
+   "Region_Global"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['글로벌']",
+   "[Ground] KG 개체 매핑 — '글로벌' → Region_Global (Region) [+후손 57: Region_GlobalExUS, Region_Asia, Region_China …] → public_funds.fd_ivst_rgn_desc='글로벌' · public_funds.fd_ivst_rgn_desc='아시아' · public_funds.fd_ivst_rgn_desc='남미/북미' · public_funds.fd_ivst_rgn_desc='유럽' … 외 2종",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12530
+ },
+ "KG-012": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['해외주식형']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13712
+ },
+ "R2": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11525
+ },
+ "KG-001": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 'Mirae Asset' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13217
+ },
+ "KG-004": {
+  "nodes": [
+   "Org_00040024"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '한국 투자 신탁 운용' → Org_00040024 (Organization, 정식명 한국투자신탁운용) → public_funds.or_co_xtn_itt_cd='00040024' · public_funds.or_co_xtn_itt_cd='00040105'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13229
+ },
+ "KG-006": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 11817
+ },
+ "KG-008": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11747
+ },
+ "KG-009": {
+  "nodes": [
+   "Org_trustee_0016022"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋증권' → Org_trustee_0016022 (Organization) → public_funds.trusc_xtn_itt_cd='0016022'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12166
+ },
+ "X22": {
+  "nodes": [
+   "Org_00040035",
+   "Org_trustee_00020004"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 'KB자산운용' → Org_00040035 (Organization) → public_funds.or_co_xtn_itt_cd='00040035' / '국민은행' → Org_trustee_00020004 (Organization) → public_funds.trusc_xtn_itt_cd='00020004'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13285
+ },
+ "KG-010": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 14324
+ },
+ "X3": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 10743
+ },
+ "Z20": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 10743
+ },
+ "V11": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Ground] 운용사 코드 역조회 — '삼성' → 삼성자산운용(00040010) (11R KG ③-13: KG 미매핑 운용사에 HCX 가 매번 새 코드를 날조해 재생성 예산을 태웠다)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12410
+ },
+ "KG-005": {
+  "nodes": [
+   "Org_00040010"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '삼성자산운용' → Org_00040010 (Organization) → public_funds.or_co_xtn_itt_cd='00040010'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13215
+ },
+ "Y2": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펌드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 10331
+ },
+ "T3": {
+  "nodes": [
+   "Org_00040010"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '삼성자산운용' → Org_00040010 (Organization) → public_funds.or_co_xtn_itt_cd='00040010'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12739
+ },
+ "V5": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 운용사 표현 → 운용사 집계 정본 = 공모펀드 마스터(코드·순자산·펀드수 보유 유일 테이블)",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11219
+ },
+ "Z9": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 14324
+ },
+ "X19": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)"
+  ],
+  "doc": 14202
+ },
+ "KG-033": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)"
+  ],
+  "doc": 13726
+ },
+ "FND-005": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11914
+ },
+ "Z1": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 10929
+ },
+ "AA19": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 11235
+ },
+ "Z7": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 13214
+ },
+ "X23": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 기각 — 온톨로지 ABSENT — public_funds 에 hasFundManager 속성 없음 · 질문의 '운용역' (enums absent_properties → HCX 0회)"
+  ],
+  "doc": 0
+ },
+ "OFFICIAL-002": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '국민성장' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 11619
+ },
+ "KG-027": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 기각 — 온톨로지 ABSENT — public_funds 에 hasUnitsOutstanding 속성 없음 · 질문의 '좌수' (enums absent_properties → HCX 0회)"
+  ],
+  "doc": 0
+ },
+ "X24": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 기각 — 온톨로지 ABSENT — public_funds 에 hasNavHistory 속성 없음 · 질문의 '기준가 추이' (enums absent_properties → HCX 0회)"
+  ],
+  "doc": 0
+ },
+ "FND-R01": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 기각 — 온톨로지상 public_funds 클래스에 hasCreditGrade 속성이 정의되어 있지 않음 — 신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)"
+  ],
+  "doc": 0
+ },
+ "FND-R04": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 기준일 이후 시점 ['2027'] 포함 → SQL 의 mat_dt 사용 여부로 사후 판정"
+  ],
+  "doc": 11868
+ },
+ "KG-032": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 기준일 이후 시점 ['202609'] 포함 → SQL 의 mat_dt 사용 여부로 사후 판정"
+  ],
+  "doc": 11564
+ },
+ "OFFICIAL-NA-002": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — 미특정 · 근거: 미특정 → 마스터 4테이블 (HCX 가 FROM 으로 판단)",
+   "[Ground] KG 개체 매핑 — 매칭 없음",
+   "[Gate] 통과 — 대상 테이블 미특정",
+   "[Route] SQL 사후 보정 — FROM public_funds → 그 상품군의 답변 규칙·이름 필터 적용 · 재생성 문서도 그 상품군으로 (2026-09-02 R7 재검: 미특정 경로는 답변 규칙이 4도메인으로 희석되고 상품명 필터 가드가 꺼진다)"
+  ],
+  "doc": 0
+ },
+ "UNANS-006": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 10637
+ },
+ "FND-C01": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 10637
+ },
+ "FND-C02": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Ground] 운용사 코드 역조회 — '삼성' → 삼성자산운용(00040010) (11R KG ③-13: KG 미매핑 운용사에 HCX 가 매번 새 코드를 날조해 재생성 예산을 태웠다)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11297
+ },
+ "FND-R03": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 10637
+ },
+ "DOM-01": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['재간접']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12158
+ },
+ "DOM-02": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12130
+ },
+ "DOM-03": {
+  "nodes": [
+   "Curr_KRW"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함",
+   "[Ground] KG 개체 매핑 — '원화' → Curr_KRW (Currency) → public_funds.curr_cd='KRW'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds'] · 교차질의(복수 상품군/구성종목 조인 — ext_* 테이블 허용, 기준일 병기)"
+  ],
+  "doc": 15352
+ },
+ "DOM-04": {
+  "nodes": [
+   "Idx_KOSPI200"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['KOSPI200']",
+   "[Ground] KG 개체 매핑 — 'KOSPI200' → Idx_KOSPI200 (Index) → public_funds.bmrk_nm='KOSPI200' · public_funds.bmrk_nm='KOSPI200 10% + KIS종합채권 01Y 90%' · public_funds.bmrk_nm='KOSPI200 10% + 종합채권 01Y 90%' · public_funds.bmrk_nm='KOSPI200 12% + MSCI EM(USD) 6% + Rogers International Commodity TR 2% + KIS국공채3Y 80%' … 외 17종",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 13503
+ },
+ "DOM-05": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['파생상품']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12631
+ },
+ "DOM-06": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '미래에셋코어테크' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 11402
+ },
+ "DOM-07": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 11917
+ },
+ "DOM-08": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']"
+  ],
+  "doc": 12158
+ },
+ "DOM-09": {
+  "nodes": [
+   "Region_Korea"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '국내' → Region_Korea (Region) → public_funds.fd_ivst_rgn_desc='국내'",
+   "[Gate] 기각 — fd_estb_ctry_cd 는 판매중·공모 8,969 중 '000'(미기재) 8,561 = 95.4% — 설립국가로 국내/해외를 셀 수 없음 (투자지역 fd_ivst_rgn_desc 와 다른 축) → HCX 없이 즉답"
+  ],
+  "doc": 0
+ },
+ "DOM-10": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드/펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 기각 — int_dvd_desc 는 판매중·공모 8,969 전건 '배당' 인 상수 컬럼 — 이자/배당 구분이 성립하지 않음 (0개가 아니라 구분 불가) → HCX 없이 즉답"
+  ],
+  "doc": 0
+ },
+ "DOM-11": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 통과 — 대상 테이블 ['public_funds']",
+   "[Ground] 잔여 상품 고유명 '헤지펀드인' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 (2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)"
+  ],
+  "doc": 12920
+ },
+ "DOM-12": {
+  "nodes": [],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드 · 값 ['전문투자자']",
+   "[Ground] KG 개체 매핑 — 매칭 없음 (상품군 안에 해당 값 없음 → 규칙의 LIKE 조회로)",
+   "[Gate] 기각 — pfiv_sale_cntl_tcd(판매통제구분코드)는 코드 의미 미제공 — '00' 8,912 · '01' 45 · '02' 12 의 뜻을 알 수 없어 전문투자자 전용 여부를 판정할 수 없음 (query_rules.전문투자자코드금지 를 게이트로 승격) → HCX 없이 즉답"
+  ],
+  "doc": 0
+ },
+ "DOM-13": {
+  "nodes": [
+   "Org_00080008"
+  ],
+  "steps": [
+   "[Route] 상품군 — public_funds · 근거: 머리명사 펀드",
+   "[Ground] KG 개체 매핑 — '미래에셋' → Org_00080008 (Organization, 정식명 미래에셋자산운용) → public_funds.or_co_xtn_itt_cd='00080008'",
+   "[Gate] 기각 — 연평균·연환산 수익률은 데이터에 없음 — 수익률 8기간은 전부 누적(clarify.수익률) → HCX 없이 즉답"
+  ],
+  "doc": 0
+ }
+}

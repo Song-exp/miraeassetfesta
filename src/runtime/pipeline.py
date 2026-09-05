@@ -7954,6 +7954,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         if dead:
             step("[Guard] IN 목록 정리 — 그 컬럼에 없는 값 " + " · ".join(f"'{d}'" for d in dead)
                  + " 을 걷어냈다 (0행 매칭이라 결과 불변 · 유효값이 남을 때만 · 2026-09-04 KG-012)")
+    # 🔴 유형 축 주입·국가 태그 확정식 **뒤** — 그 가드들은 질문에 든 낱말을 긍정 조건으로 다시 넣는다.
+    #    "MMF를 제외하고" 의 'MMF' 도 그렇게 되돌아왔다(실측). 배제는 마지막에 못 박는다.
+    sql, excl = guard.ensure_excluded_value(sql, q, ctx)
+    if excl:
+        step(f"[Guard] 배제 조건 확정식 — 질문의 '{excl} 제외' 를 부정 조건으로 세우고 같은 낱말의 긍정 조건은 걷었다 "
+             "(배제 대상은 이름 축 전수에서 유도 · 2026-09-04·05 FND-006 실측: 'MMF를 제외하고' 가 "
+             "zrin_ptn_nm='MMF' 로 나가 세 회차 내리 정반대를 답했다)")
     sql, gnull_fixed = ensure_group_null_label(sql)
     if gnull_fixed:
         step("[Guard] 분포 결측 라벨 — GROUP BY 축의 NULL 에 '(미수록)' 이름 부여 "

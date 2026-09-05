@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from functools import lru_cache
 from dataclasses import dataclass
 
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly
@@ -302,6 +303,90 @@ _EXT_JOIN_CLAUSE = re.compile(
 
 # 질문이 값을 이름으로 부르는 축들 — 이 컬럼의 IN 목록만 좁힌다. 코드·이름 컬럼은 대상이 아니다.
 _NAMED_ENUM_COLS = ("or_attr_desc", "zrin_btyp_nm", "zrin_ptn_nm")
+
+
+_EXCLUDE_ASK = re.compile(r"([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]{0,18}?)\s*(?:은|는|을|를|이|가)?\s*"
+                          r"(?:제외하고|제외한|제외하면|제외|빼고|뺀|말고|아닌)")
+
+
+@lru_cache(maxsize=1)
+def _named_enum_domain() -> dict:
+    """이름 축들의 실제 값 — DB 실측. 값 사전(`value_index`)은 접지된 컬럼만 담아
+    `zrin_ptn_nm`(alias 0)이 통째로 비어 있다(2026-09-05 실측: _raw 0건)."""
+    con = connect_readonly()
+    try:
+        return {col: sorted({str(r[0]).strip() for r in
+                             con.execute(f"SELECT DISTINCT {col} FROM public_funds "
+                                         f"WHERE {col} IS NOT NULL AND TRIM({col}) <> ''")})
+                for col in _NAMED_ENUM_COLS}
+    finally:
+        con.close()
+
+
+def _enum_values_containing(ctx, token: str) -> dict:
+    """`token` 을 낱말로 품은 값들을 축별로 모은다 — 배제식을 **데이터에서 유도**한다.
+
+    하드코딩하지 않는 이유: 'MMF' 하나를 배제하려면 `zrin_ptn_nm` 의 'MMF'·'외화 MMF(USD)' 와
+    `zrin_btyp_nm` 의 'MMF'·'외화 MMF' 를 모두 걸어야 한다(2026-09-05 실측: 한 축만 걸면
+    한국투자법인용달러MMF 1.04조가 2위로 샌다). 축과 표기가 늘어도 코드는 그대로여야 한다.
+    """
+    out: dict = {}
+    pat = re.compile(rf"(?<![0-9A-Za-z]){re.escape(token)}(?![0-9A-Za-z])", re.I)
+    for col, vals in _named_enum_domain().items():
+        hits = [v for v in vals if pat.search(v.replace(" ", ""))]
+        if hits:
+            out[col] = hits
+    return out
+
+
+def ensure_excluded_value(sql: str, question: str, ctx: RuntimeContext) -> tuple[str, str | None]:
+    """질문의 **배제 낱말**을 부정 조건으로 세운다. (SQL, 배제한 낱말)
+
+    2026-09-04·05 FND-006 — "**MMF를 제외하고** 순자산이 가장 큰 공모펀드 5개" 가 세 회차 내리
+
+        WHERE zrin_ptn_nm = 'MMF' …        ← 정반대다
+
+    로 나갔다. 접지는 성공했고(MMF 를 찾았다) **연산자만 뒤집혔다.** 그래서 답이 MMF 목록이
+    되었는데 숫자가 그럴듯해 오답인 줄도 모른다 — 틀린 답을 자신 있게 내놓는 부류다.
+    `query_rules.부정조건` 이 문안까지 정확히 적어 두었는데도 세 회차 모두 안 지켜졌다.
+
+    조치: 배제 낱말이 가리키는 값을 **모든 이름 축에서** 유도해 `NOT IN` 으로 세우고, 같은
+    낱말의 **긍정 조건은 걷어낸다**. `COALESCE` 로 감싸 미수록(NULL) 행이 함께 사라지지 않게 한다.
+    불개입: 배제 낱말 없음 · 그 낱말이 어느 이름 축에도 없음 · public_funds 아님.
+    """
+    if "public_funds" not in sql_tables(sql):
+        return sql, None
+    m = _EXCLUDE_ASK.search(question)
+    if not m:
+        return sql, None
+    token = m.group(1).strip()
+    vals = _enum_values_containing(ctx, token)
+    if not vals:
+        return sql, None
+    lits = {v for vs in vals.values() for v in vs}
+    out = sql
+    # ① 같은 낱말의 긍정 조건을 걷어낸다 — 남으면 배제식과 교집합이 0 이 된다
+    for pat in (_EQ, _IN):
+        for mm in list(pat.finditer(out)):
+            col = (mm.group(2) or "").lower()
+            if col in _NAMED_ENUM_COLS and set(_LIT.findall(mm.group(0))) & lits:
+                out = re.sub(r"\s*(?:AND|OR)?\s*" + re.escape(mm.group(0)), " ", out, count=1, flags=re.I)
+    # 제거 뒤 남은 접속사를 정리한다 — `WHERE AND x` · `x AND AND y` 는 문법 오류다
+    out = re.sub(r"\s*\b(AND|OR)\s+\1\b", r" \1", out, flags=re.I)
+    out = re.sub(r"\bWHERE\s+(?:AND|OR)\b", "WHERE", out, flags=re.I)
+    out = re.sub(r"\s*\b(?:AND|OR)\s+(?=\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT)\b|$)", " ", out, flags=re.I)
+    cond = " AND ".join(f"COALESCE({c},'') NOT IN (" + ", ".join("'" + v.replace("'", "''") + "'" for v in vs) + ")"
+                        for c, vs in vals.items())
+    if cond in out:
+        return sql, None
+    m_w = re.search(r"\bwhere\b", out, re.I)
+    if m_w:
+        out = out[:m_w.end()] + " " + cond + " AND " + out[m_w.end():]
+    else:
+        m_t = re.search(r"\b(?:group\s+by|order\s+by|limit)\b", out, re.I)
+        cut = m_t.start() if m_t else len(out)
+        out = out[:cut] + " WHERE " + cond + " " + out[cut:]
+    return re.sub(r"\s+", " ", out).strip(), token
 
 
 def drop_unasked_enum_values(sql: str, question: str) -> tuple[str, list[str]]:

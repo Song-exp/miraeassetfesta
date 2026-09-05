@@ -3256,7 +3256,10 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     lines = rows.splitlines()
     if len(lines) != n + 1:
         return None
-    cols = [c.strip() for c in lines[0].split(" | ")]
+    # 🔴 2026-09-05 #74 — 문자열비교 규칙대로 HCX 가 SELECT 항목을 TRIM(…) 으로 감싸면 결과 헤더가 `TRIM(std_pd_mcls_nm)` 이 되어
+    #    라벨 사전(_BOND_COL_KO)에 안 걸리고 답변에 SQL 표현식이 그대로 새어 나갔다("TRIM(std_pd_mcls_nm) 회사채"). 감싼 표현식과
+    #    테이블 접두를 벗겨 원 컬럼명으로 되돌린다 — 별칭(AS)이 붙은 항목은 SQLite 가 별칭을 헤더로 주므로 손댈 것이 없다.
+    cols = [_bare_header(c) for c in lines[0].split(" | ")]
     if "pd_nm" not in cols:
         return None
     recs = []
@@ -3296,6 +3299,9 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         k = _bond_issuer_count(sql)
         basis += (f" · 발행사명이 {'/'.join(pfx)} 로 시작하는 발행사{f' {k}곳' if k else ''} 기준"
                   f"(계열 소속 여부는 데이터에 없어 이름으로 판정)")
+    sim = re.search(r"/\*SIM:(.*?)\*/", sql)
+    if sim:                                     # 유사채권 확정식(#73) — 기준 채권과 쓴 폭을 머리줄에 굽는다
+        basis += f" · {sim.group(1)}"
     if total and total > n:
         head = (f"조건에 해당하는 채권은 전체 {total:,}종목이며, {axis_txt + ' ' if axis_txt else ''}상위 {n}개는 다음과 같습니다 ({basis})."
                 if axis_txt else f"조건에 해당하는 채권은 전체 {total:,}종목이며, 그중 {n}개는 다음과 같습니다 ({basis}).")
@@ -3561,6 +3567,18 @@ def _bond_coverage_counts(sql: str) -> tuple[int, int] | None:
     finally:
         con.close()
     return int(row[0]), int(row[1])
+
+
+_HEADER_WRAP = re.compile(r"^(?:TRIM|UPPER|LOWER)\(\s*(?:\w+\.)?(\w+)\s*\)$", re.I)
+
+
+def _bare_header(h: str) -> str:
+    """결과 헤더 `TRIM(std_pd_mcls_nm)`·`domestic_bonds.pd_nm` → `std_pd_mcls_nm`·`pd_nm` (#74)."""
+    h = h.strip()
+    m = _HEADER_WRAP.match(h)
+    if m:
+        return m.group(1)
+    return h.split(".")[-1] if re.fullmatch(r"\w+\.\w+", h) else h
 
 
 def _bond_issuer_count(sql: str) -> int | None:
@@ -6590,8 +6608,8 @@ def strip_unasked_maturity_cap(sql: str, question: str) -> tuple[str, bool]:
     if "domestic_bonds" not in sql:
         return sql, False
     if (_TIME_VOCAB_Q.search(question) or gate.future_tokens(question) or gate.resolve_relative_window(question)
-            or _PAST_MATURITY_Q.search(question) or is_issuance_time_q(question)):
-        return sql, False
+            or _PAST_MATURITY_Q.search(question) or is_issuance_time_q(question) or _SIMILAR_Q.search(question)):
+        return sql, False                                       # 유사채권 창은 기준 채권이 정한다(#73)
     changed = False
     for pat, keep_floor in ((_MAT_BETWEEN, True), (_REM_BETWEEN, False), (_MAT_CAP, False), (_REM_CAP, False)):
         pos = 0
@@ -6672,6 +6690,201 @@ def expand_issuer_acronym_prefix(sql: str) -> tuple[str, list[str]]:
         sql = sql[:m.start()] + "(" + " OR ".join(branches) + ")" + sql[m.end():]
         fired.append(f"{latin}|{ko}")
     return sql, list(reversed(fired))
+
+
+# ── 유사채권 확정식 (2026-09-05 어려운 난이도 실측 · 사고 #73) ─────────────────────────────────
+# "포스코퓨처엠 채권이랑 신용등급·잔존만기가 비슷한 다른 회사채 추천해줘" — HCX 가 `(TRIM(pd_pbcm)='(주)포스코퓨처엠' OR
+# TRIM(std_pd_mcls_nm)='회사채')` 로 써 회사채 전체 10,222종목을 수익률순으로 냈다(1~5위 BBB- 유동화채 · 기준은 AA-).
+# '비슷하다' 는 두 단계 조회다 — ① 기준 채권의 속성을 DB 에서 읽고 ② 그 값 주변으로 후보를 거른다. HCX 한 문장으로는 못
+# 쓰므로 기관 조회 확정식(ensure_fund_org_lookup)과 같은 꼴로 결정층이 SQL 을 세운다.
+# 🔴 '비슷하다' 의 뜻(축·폭·구간)은 코드가 아니라 yaml `similarity_axes` 선언이 정한다 — 이 코드는 표만 읽으므로 펀드·ETF 도
+#    같은 키를 선언하면 같은 확정식을 탄다. 폭은 전부 결정 전 기본값(workshop): ±180일 같은 절대폭은 잔존 36일·1,608일에
+#    척도가 안 맞아 상대폭 ±25%(하한 ±90일)로(DB 실측: 기준 종목별 후보 142~992). 등급은 동일, 0행이면 ±1노치 폴백 후 밝힌다.
+# 기준 채권이 여럿이고 잔존 구간(단기/중기/장기)이 갈리면 되묻는다(similar_bond_clarify — 구매가능 발행사 1,817곳 중
+# 925곳은 채권이 1종목이라 그 경우는 바로 답한다). 되묻기는 HCX 앞, 확정식은 가드 체인 앞에서 돈다.
+_SIMILAR_Q = re.compile(r"비슷|유사한|유사채|닮은|같은\s*(?:신용)?등급|같은\s*(?:잔존)?만기|같은\s*잔존|대체할\s*만한|견줄")
+_SIM_COUNT_Q = re.compile(r"(\d{1,2})\s*(?:개|종목|가지|건)")
+_ANCHOR_COLS = ("pd_no", "pd_nm", "crd_grd", "remaining_days", "dur", "applied_yield", "srfc_irt",
+                "std_pd_mcls_nm", "bd_knd", "mat_dt", "bd_ofr_tcd")
+
+
+def _similarity_spec(ctx, table: str = "domestic_bonds") -> dict | None:
+    return (getattr(ctx, "similarity_axes", None) or {}).get(table)
+
+
+def _issuer_anchor(question: str, ctx) -> str | None:
+    """KG 가 매핑한 발행사 리터럴 — Ground 줄의 `pd_pbcm='…'` 를 읽는다(하드코딩 0)."""
+    _, lines = _ground(question, ctx, ["domestic_bonds"], False)
+    for ln in lines:
+        m = re.search(r"pd_pbcm\s*=\s*'([^']+)'", ln)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _anchor_bonds(issuer: str) -> list[dict]:
+    """기준 발행사의 구매가능 채권(종목 단위) — 축 값은 대표행 MAX(장외행 NULL 을 피한다)."""
+    con = connect_readonly()
+    try:
+        rows = con.execute(
+            "SELECT pd_no, MAX(pd_nm), MAX(TRIM(crd_grd)), MAX(remaining_days), MAX(dur), MAX(applied_yield), MAX(srfc_irt), "
+            "MAX(TRIM(std_pd_mcls_nm)), MAX(TRIM(bd_knd)), MAX(mat_dt), MAX(bd_ofr_tcd) FROM domestic_bonds "
+            f"WHERE TRIM(pd_pbcm) = ? AND mat_dt >= {BUYABLE_INT} AND curr_cd = 'KRW' GROUP BY pd_no ORDER BY MAX(remaining_days)",
+            (issuer.strip(),)).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+    return [dict(zip(_ANCHOR_COLS, r)) for r in rows]
+
+
+def _narrow_anchors_by_name(anchors: list[dict], question: str) -> list[dict]:
+    """질문이 종목명('포스코퓨처엠23-1')을 콕 집었으면 그 종목만 — 비교 키는 공백을 지운 문자열(14R ③-2)."""
+    sq = re.sub(r"\s+", "", question)
+    named = [a for a in anchors if a["pd_nm"] and re.sub(r"\s+", "", a["pd_nm"]) in sq]
+    return named or anchors
+
+
+def _sim_bucket(spec: dict, value) -> str | None:
+    b = spec.get("buckets") or {}
+    for lo, hi, label in b.get("edges") or []:
+        if value is not None and (lo is None or value >= lo) and (hi is None or value < hi):
+            return label
+    return None
+
+
+def _fmt_days(d) -> str:
+    try:
+        d = float(d)
+    except (TypeError, ValueError):
+        return "미수록"
+    return f"{int(d):,}일(약 {d / 365:.1f}년)" if d >= 365 else f"{int(d):,}일"
+
+
+def _sim_axes_asked(spec: dict, question: str) -> list[str]:
+    axes = spec.get("axes") or {}
+    asked = [c for c, a in axes.items() if a.get("vocab") and re.search(a["vocab"], question)]
+    return asked or list(spec.get("default") or [])
+
+
+def similar_bond_clarify(question: str, tables: list[str], ctx) -> str | None:
+    """기준 발행사의 채권이 여럿이고 잔존 구간이 갈리면 되묻는 문장, 아니면 None. HCX 0회."""
+    if tables != ["domestic_bonds"] or not _SIMILAR_Q.search(question):
+        return None
+    spec = _similarity_spec(ctx)
+    if not spec:
+        return None
+    issuer = _issuer_anchor(question, ctx)
+    if not issuer:
+        return None
+    anchors = _narrow_anchors_by_name(_anchor_bonds(issuer), question)
+    if len(anchors) <= 1:
+        return None
+    bcol = (spec.get("buckets") or {}).get("column", "remaining_days")
+    buckets = [_sim_bucket(spec, a.get(bcol)) for a in anchors]
+    if len({b for b in buckets if b}) <= 1:
+        return None
+    counts: dict[str, int] = {}
+    for b in buckets:
+        if b:
+            counts[b] = counts.get(b, 0) + 1
+    grades = sorted({a["crd_grd"] for a in anchors if a["crd_grd"]})
+    days = [a["remaining_days"] for a in anchors if a["remaining_days"] is not None]
+    edges = (spec.get("buckets") or {}).get("edges") or []
+    edge_txt = " / ".join(
+        f"{lab}(잔존 " + " ".join(x for x in (("" if lo in (None, 0) else f"{int(lo / 365)}년 이상"),
+                                            ("" if hi is None else f"{int(hi / 365)}년 미만")) if x) + ")"
+        for lo, hi, lab in edges) if edges else "단기/중기/장기"
+    ex = next((a["pd_nm"] for a in anchors if _sim_bucket(spec, a.get(bcol)) == "중기"), anchors[len(anchors) // 2]["pd_nm"])
+    return (f"{issuer.strip()} 의 구매가능 채권은 {len(anchors)}종목이고 신용등급은 {'·'.join(grades) or '미수록'}, "
+            f"잔존만기는 {_fmt_days(min(days))}~{_fmt_days(max(days))}에 걸쳐 있어({' · '.join(f'{k} {v}종목' for k, v in counts.items())}) "
+            f"'비슷한 잔존만기' 의 기준을 하나로 정할 수 없습니다. 어느 만기대({edge_txt}) 기준으로 찾을지, "
+            f"또는 어느 종목(예: {ex}) 기준으로 찾을지 알려주시면 같은 등급·비슷한 잔존만기의 채권을 추천해 드리겠습니다.")
+
+
+def ensure_similar_bond_query(sql: str, question: str, ctx) -> tuple[str, str | None]:
+    """'X 채권이랑 비슷한' 추천의 HCX SQL 을 확정식으로 통째 교체한다. (SQL, 기준 설명 | None)
+
+    기준 채권이 여럿이면 한 구간 안일 때만(구간이 갈리면 similar_bond_clarify 가 앞에서 받는다) — 축 값은 min~max 로 잡는다.
+    축·폭·같은 종류·발행사 제외는 yaml similarity_axes 선언 그대로. 추천이므로 고위험제외·수익률 내림차순·종목 단위."""
+    if "domestic_bonds" not in sql or not _SIMILAR_Q.search(question):
+        return sql, None
+    spec = _similarity_spec(ctx)
+    if not spec:
+        return sql, None
+    issuer = _issuer_anchor(question, ctx)
+    if not issuer:
+        return sql, None
+    anchors = _narrow_anchors_by_name(_anchor_bonds(issuer), question)
+    if not anchors:
+        return sql, None
+    bcol = (spec.get("buckets") or {}).get("column", "remaining_days")
+    if len({_sim_bucket(spec, a.get(bcol)) for a in anchors if _sim_bucket(spec, a.get(bcol))}) > 1:
+        return sql, None
+    axes = spec.get("axes") or {}
+    preds: list[str] = []
+    basis: list[str] = []
+    fallback_note = ""
+    for col in _sim_axes_asked(spec, question):
+        a = axes.get(col) or {}
+        vals = [x[col] for x in anchors if x.get(col) is not None]
+        if not vals:
+            continue
+        label = a.get("label", col)
+        if a.get("kind") == "equal":
+            lits = sorted({str(v) for v in vals})
+            preds.append(f"TRIM({col}) IN ({', '.join(repr(v) for v in lits)})")
+            basis.append(f"{label} {'·'.join(lits)} 동일")
+        elif a.get("kind") == "relative":
+            lo, hi = min(vals), max(vals)
+            tol_lo, tol_hi = max(float(a.get("floor", 0)), lo * float(a.get("pct", 0))), max(float(a.get("floor", 0)), hi * float(a.get("pct", 0)))
+            preds.append(f"{col} BETWEEN {lo - tol_lo:g} AND {hi + tol_hi:g}")
+            unit = a.get("unit", "")
+            basis.append(f"{label} {lo:g}{'~' + f'{hi:g}' if hi != lo else ''}{unit} ±{int(float(a.get('pct', 0)) * 100)}%(하한 ±{a.get('floor', 0):g}{unit})")
+        else:
+            lo, hi, w = min(vals), max(vals), float(a.get("width", 0))
+            preds.append(f"{col} BETWEEN {lo - w:g} AND {hi + w:g}")
+            basis.append(f"{label} {lo:g}{'~' + f'{hi:g}' if hi != lo else ''} ±{w:g}{a.get('unit', '')}")
+    if not preds:
+        return sql, None
+    for col in spec.get("same_kind") or []:
+        lits = sorted({str(x[col]) for x in anchors if x.get(col)})
+        if lits:
+            preds.append(f"TRIM({col}) IN ({', '.join(repr(v) for v in lits)})")
+    excl = spec.get("exclude_issuer_vocab")
+    if excl and re.search(excl, question):
+        preds.append(f"TRIM(pd_pbcm) <> {issuer.strip()!r}")
+    preds += [f"curr_cd = 'KRW'", f"mat_dt >= {BUYABLE_INT}", "applied_yield > 0",
+              "pd_risk_gcd <> '11'", "COALESCE(TRIM(crd_grd),'') <> 'C0'", "bd_ofr_tcd <> '사모'"]
+    m = _SIM_COUNT_Q.search(question)
+    limit = min(int(m.group(1)), MAX_ROWS) if m else 5
+    where = " AND ".join(preds)
+    con = connect_readonly()
+    try:
+        n = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE {where}").fetchone()[0]
+        if n == 0 and "crd_grd" in axes and (axes["crd_grd"].get("fallback_notches") or 0) > 0:
+            scale = _grade_scale()
+            k = int(axes["crd_grd"]["fallback_notches"])
+            widened: set[str] = set()
+            for g in {x["crd_grd"] for x in anchors if x.get("crd_grd")}:
+                if g in scale:
+                    i = scale.index(g)
+                    widened.update(scale[max(0, i - k):i + k + 1])
+            if widened:
+                preds = [p for p in preds if not p.startswith("TRIM(crd_grd) IN")]
+                preds.insert(0, f"TRIM(crd_grd) IN ({', '.join(repr(v) for v in sorted(widened, key=scale.index))})")
+                where = " AND ".join(preds)
+                fallback_note = f" · 같은 등급엔 후보가 없어 ±{k}노치({'·'.join(sorted(widened, key=scale.index))})까지 넓혔습니다"
+    except sqlite3.Error:
+        return sql, None
+    finally:
+        con.close()
+    anchor_txt = (anchors[0]["pd_nm"] if len(anchors) == 1 else f"{issuer.strip()} {len(anchors)}종목")
+    note = f"기준 {anchor_txt} · {' · '.join(basis)}{fallback_note}"
+    # 기준 설명은 FROM 뒤 주석으로 싣는다 — 문장 끝에 두면 기본 TOP-N 가드가 LIMIT 을 못 보고 하나 더 붙인다(로컬 실측 · 문법 오류)
+    new = ("SELECT pd_nm, pd_pbcm, crd_grd, MAX(applied_yield) AS applied_yield, mat_dt, remaining_days, dur, pd_risk_gcd, pd_risk_nm "
+           f"FROM domestic_bonds /*SIM:{note}*/ WHERE {where} GROUP BY pd_no ORDER BY MAX(applied_yield) DESC LIMIT {limit}")
+    return new, note
 
 
 _CHEAP_Q = re.compile(r"저렴|(?<![가-힣])비?[싸싼]")
@@ -8386,6 +8599,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
                  "(UNION 은 가지마다 독립 판정 — 코드 가드가 통째로 불개입하던 자리)")
         if fired_out is not None:
             fired_out.extend(enf_fired)
+    sql, sim_note = ensure_similar_bond_query(sql, q, ctx)
+    if sim_note:
+        step(f"[Guard] 유사채권 확정식 — HCX SQL 을 통째로 교체: {sim_note} · 축·폭은 yaml similarity_axes 선언 "
+             "(2026-09-05 #73: '비슷한' 은 두 단계 조회라 HCX 한 문장이 기준 발행사 OR 대분류 로 무너졌다 — 기관 조회 확정식과 같은 처방)")
     sql, pfx_fired = expand_issuer_acronym_prefix(sql)
     if pfx_fired:
         step(f"[Guard] 발행사 약칭 양표기 확장 — {' · '.join(pfx_fired)} 를 로마자·한글 음역 접두(법인 접두 (주) 포함) 4가지 OR 로 "
@@ -8822,6 +9039,15 @@ def answer_question(
              "(2026-09-02 서버 실측: 1등급+수익률 내림차순으로 단정해 신보 유동화 728% 5종목 답변) · 축 단서 낱말이 있으면 되묻지 않음")
         result.think_trace = "\n".join(trace)
         result.answer = ask_risk
+        return result
+
+    ask_sim = similar_bond_clarify(q, tables, ctx)
+    if ask_sim:
+        # 결정층 되묻기 — 기준 발행사의 채권이 여럿이고 잔존 구간(단기/중기/장기)이 갈리면 '비슷한 만기' 를 정할 수 없다 (#73 · clarify.사람의_선택.유사채권_기준)
+        step("[Clarify] 되묻기(결정층) — 유사채권의 기준 채권이 여럿이고 잔존만기 구간이 갈린다 → 만기대·종목을 되묻는다, HCX 0회 "
+             "(2026-09-05 #73: 포스코퓨처엠 AA- 10종목이 잔존 18일~4.4년 — HCX 는 '포스코퓨처엠 OR 회사채' 로 회사채 전체 10,222종목을 냈다)")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask_sim
         return result
 
     ask = price_ambiguity_clarify(q, tables)

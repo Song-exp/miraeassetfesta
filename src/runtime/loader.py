@@ -89,6 +89,7 @@ class RuntimeContext:
     gate_constants: dict = field(default_factory=dict) # R-5 ① 층 — table -> [{column, value, triggers[], answer}] 상수 컬럼 위반 (enums yaml gate_constants)
     grade_ranges: dict = field(default_factory=dict)   # KG 1R S6 — table -> {min,max,label_min,label_max,note} (shared/risk_grade.yaml range_by_table)
     absent_props: dict = field(default_factory=dict)   # KG 1R S5 — table -> [{property, why, vocab[], substitute}] 부재 속성 선언 (enums yaml absent_properties → ttl ABSENT + 게이트 어휘)
+    similarity_axes: dict = field(default_factory=dict) # 2026-09-05 #73 — table -> {default[], axes{col: {vocab, kind, …}}, same_kind[], buckets, exclude_issuer_vocab} '비슷한 상품' 확정식의 축 표 (enums yaml similarity_axes)
 
     def schema_text(self, tables: list[str] | tuple[str, ...] = ()) -> str:
         """플래너에 넘길 스키마 — "여기 없는 컬럼은 존재하지 않는다" 의 근거.
@@ -261,6 +262,8 @@ def load_context() -> RuntimeContext:
                 ctx.gate_constants.setdefault(doc["domain"], []).append(item)
             for item in doc.get("absent_properties") or []:
                 ctx.absent_props.setdefault(doc["domain"], []).append(item)
+            if doc.get("similarity_axes"):
+                ctx.similarity_axes[doc["domain"]] = doc["similarity_axes"]
 
     for p in sorted(SHARED_DIR.glob("*.yaml")):
         doc = _load_yaml(p, header_only_if_big=True)

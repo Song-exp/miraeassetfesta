@@ -3311,6 +3311,36 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, int | None, bool] | Non
     return int(row[0]), (int(row[1]) if fund_only else None), (int(row[2]) if fund_only else None), grouped
 
 
+# 속성값을 묻는 낱말 — 이게 있는데 대상 상품이 특정되지 않으면 목록을 쏟는 대신 되묻는다
+_ATTR_ASK = re.compile(r"보수|수수료|수익률|순자산|기준가|설정일|위험등급|규모가\s*얼마")
+# 어떤 상품인지를 묻는 낱말 — 목록이 정답이라 되묻지 않는다
+_LIST_ASK = re.compile(r"몇\s*(?:개|곳|건)|개수|상위|하위|가장|순으로|순위|랭킹|목록|리스트|추천|있어|있나|있는지")
+
+
+def clarify_underspecified_lookup(question: str, name_token: str | None, funds: int) -> str | None:
+    """속성값을 묻는데 **대상 상품이 특정되지 않았으면** 되묻는 문구. 아니면 None.
+
+    2026-09-04·05 FND-C02("삼성 펀드 보수 알려줘") — 1·2·3차 내리 ❌. 1차는 질문이 '보수' 인데
+    **순자산 목록 30개**를 냈고, 2·3차는 보수는 냈으나 **클래스 단위 목록을 쏟았다**. 어느 쪽도
+    사용자가 물은 답이 아니다 — '삼성' 이름 펀드는 204개다.
+
+    `clarify.펀드이름` 이 *"브랜드·운용사 이름만으로 '~펀드' 를 물으면 … CLARIFY 로 되묻는다"* 라고
+    문안까지 적어 뒀는데 세 회차 모두 무시됐다. 결정층에서 못 박는다.
+
+    발동: ① 질문에 속성 낱말이 있다(보수·수익률·순자산…) ② **상품 고유명이 없다**(브랜드·운용사뿐)
+          ③ 어떤 상품인지 묻는 질의가 아니다(목록·개수·랭킹은 목록이 정답이다) ④ 대상이 여럿이다.
+    """
+    if name_token or funds < _CLARIFY_MIN_FUNDS:
+        return None
+    if not _ATTR_ASK.search(question) or _LIST_ASK.search(question):
+        return None
+    return (f"이 조건에 해당하는 펀드가 {funds:,}개라 하나의 값으로 답할 수 없습니다. "
+            "특정 펀드명이나 유형(주식형·채권형·MMF 등)을 알려주시면 그 펀드의 값을 알려드리겠습니다.")
+
+
+_CLARIFY_MIN_FUNDS = 20
+
+
 def _explicit_limit_hit(sql: str, n: int) -> bool:
     """명시 LIMIT k(< 상한)가 있는 정렬 목록이 k 행을 꽉 채웠는가 — 상위 k 만 보인 '잘린 목록' 판정.
 
@@ -8714,6 +8744,17 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = ent
         return result
+    # 🔴 조립기들보다 **앞** — 목록 기계 조립기가 먼저 반환하면 되묻을 기회가 사라진다(실측).
+    #    속성값을 묻는데 대상 상품이 특정되지 않았으면 목록을 쏟지 않고 되묻는다.
+    if n >= MAX_ROWS:
+        _cov = _coverage_counts(sql)
+        _ask = clarify_underspecified_lookup(q, name_token, (_cov[1] or 0) if _cov else 0)
+        if _ask:
+            step(f"[Clarify] 대상 미특정 — 속성값 질의인데 후보가 {_cov[1]:,}펀드다. 목록을 쏟지 않고 되묻는다 "
+                 "(clarify.펀드이름 · 2026-09-05 FND-C02: 세 회차 내리 목록을 쏟았다)")
+            result.answer = _ask
+            result.think_trace = "\n".join(trace)
+            return result
     lk = _lookup_answer(sql, rows, n, name_token, ground_lines)
     if lk is not None:
         step("[Answer] 개별 조회 답변 기계 조립 — 대표명의 클래스 접미를 떼고 범위·클래스수·판매상태를 옮긴다 "

@@ -3489,6 +3489,32 @@ def country_axis_note(sql: str, question: str) -> str | None:
             "'투자 지역' 대분류로 세면 수가 달라집니다 — 그 축을 원하시면 말씀해 주세요.")
 
 
+_PERMILLE_NUM = re.compile(r"(\d[\d,.]*)\s*‰")
+
+
+def fix_permille_symbol(answer: str, sql: str) -> tuple:
+    """SQL 이 보수를 % 로 환산해 냈는데 답변이 ‰ 로 적었으면 바로잡는다. (답변, 고쳤는지)
+
+    2026-09-05 DOM-06 서버 실측 — 합계 열을 SQL 이 내게 하자 값은 3/3 정확해졌는데(1.435·1.755)
+    답변기가 **기호를 ‰ 로 바꿔** 적었다: "A클래스의 총보수는 1.435‰". 별칭이 `총보수_퍼센트`
+    인데도 그랬다. 값이 이미 % 이므로 ‰ 는 명백한 오기이고, 읽는 사람에게는 10배 차이다.
+
+    발동: SQL 이 보수를 환산해 냈을 때만(`총보수_퍼센트` 별칭 또는 보수식의 `/10`). 원값(‰)을
+    그대로 낸 SQL 에는 손대지 않는다 — 그때는 ‰ 가 맞다.
+    """
+    if "‰" not in (answer or ""):
+        return answer, False
+    frm = re.search(r"\bfrom\b", sql or "", re.I)
+    head = (sql or "")[:frm.start()] if frm else (sql or "")
+    converted = "총보수_퍼센트" in head or (
+        re.search(r"(?:" + "|".join(_FUND_FEE_COLS) + r")", head, re.I)
+        and re.search(r"/\s*10(?:\.0*)?\b", head))
+    if not converted:
+        return answer, False
+    out = _PERMILLE_NUM.sub(r"\1%", answer)
+    return (out, True) if out != answer else (answer, False)
+
+
 def domain_caveats(sql: str, rows: str, question: str = "") -> list:
     """숫자만으로는 오해되는 자리에 **도메인 한 문장**을 붙인다.
 
@@ -9653,6 +9679,10 @@ def answer_question(
         result.answer = (result.answer or "").rstrip() + "\n\n" + partial_absent
         step("[Answer] 부분 부재 고지 — 질문이 함께 물은 미수록 항목을 답변 끝에 기계로 적었다 "
              "(2026-09-04 OFFICIAL-002: 있는 것과 없는 것을 함께 묻는 질문을 쪼갤 구조가 없어 통째로 거절하던 자리)")
+    result.answer, _pm = fix_permille_symbol(result.answer, sql)
+    if _pm:
+        step("[Answer] 단위 기호 교정 — SQL 이 % 로 환산해 냈는데 답변이 ‰ 로 적었다 "
+             "(2026-09-05 DOM-06 실측: 값은 1.435 로 맞는데 '1.435‰' — 읽는 사람에겐 10배 차이)")
     for _c in domain_caveats(sql, rows, q):
         if _c[:20] not in (result.answer or ""):
             result.answer = (result.answer or "").rstrip() + "\n\n" + _c

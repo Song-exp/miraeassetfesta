@@ -111,3 +111,21 @@ def test_fee_total_column_is_injected_when_items_are_listed():
     # 이미 총보수 열이 있으면 손대지 않는다
     have = 'SELECT ROUND((or_co_rwrd_r + sale_co_rwrd_r)/10.0, 4) AS "총보수_퍼센트" FROM public_funds'
     assert ensure_fee_percent_select(have)[1] is False
+
+
+@pytest.mark.parametrize("answer, sql, expect, why", [
+    ("A클래스의 총보수는 1.435‰, C는 1.755‰입니다.",
+     'SELECT a, ROUND((or_co_rwrd_r + sale_co_rwrd_r)/10.0,4) AS "총보수_퍼센트" FROM public_funds',
+     "A클래스의 총보수는 1.435%, C는 1.755%입니다.",
+     "🔴 SQL 이 % 로 환산해 냈으면 답변의 ‰ 는 오기다 — 읽는 사람에겐 10배 차이"),
+    ("총보수는 14.35‰ 입니다.",
+     "SELECT or_co_rwrd_r + sale_co_rwrd_r AS total FROM public_funds",
+     "총보수는 14.35‰ 입니다.",
+     "원값(‰)을 그대로 낸 SQL 에는 손대지 않는다 — 그때는 ‰ 가 맞다"),
+    ("A클래스의 총보수는 1.435%입니다.",
+     'SELECT ROUND((or_co_rwrd_r)/10.0,4) AS "총보수_퍼센트" FROM public_funds',
+     "A클래스의 총보수는 1.435%입니다.", "‰ 가 없으면 할 일이 없다"),
+])
+def test_permille_symbol(answer, sql, expect, why):
+    from src.runtime.pipeline import fix_permille_symbol
+    assert fix_permille_symbol(answer, sql)[0] == expect, why

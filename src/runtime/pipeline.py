@@ -3882,7 +3882,8 @@ def _coverage_counts(sql: str) -> tuple[int, int | None, int | None, bool] | Non
 # 속성값을 묻는 낱말 — 이게 있는데 대상 상품이 특정되지 않으면 목록을 쏟는 대신 되묻는다
 _ATTR_ASK = re.compile(r"보수|수수료|수익률|순자산|기준가|설정일|위험등급|규모가\s*얼마")
 # 어떤 상품인지를 묻는 낱말 — 목록이 정답이라 되묻지 않는다
-_LIST_ASK = re.compile(r"몇\s*(?:개|곳|건)|개수|상위|하위|가장|순으로|순위|랭킹|목록|리스트|추천|있어|있나|있는지")
+_LIST_ASK = re.compile(r"몇\s*(?:개|곳|건)|개수|상위|하위|가장|순으로|순위|랭킹|목록|리스트|추천|있어|있나|있는지"
+                       r"|(?:종목|상품|펀드)(?:을|를|들)?\s*(?:알려|보여|정리|찾아)|이상인?\s|이하인?\s|등급인")   # 2026-09-06 FV-1a: 조건 + '종목 알려줘' 는 목록 질의
 
 
 _FLAG_EQ = re.compile(r"(?<![\w.])([a-z_]+_yn)\s*=\s*'([^']*)'", re.I)
@@ -6018,6 +6019,13 @@ def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
     if not val:
         return sql, False
     cond = f"zrin_btyp_nm = '{val}'"
+    # 2026-09-06 FV-3b 캠브리콘: '중국 주식형' 의 유형은 '해외주식형' 이다 — 국가 태그·해외 어휘가 있으면 대유형은
+    #    주식 계열(LIKE '%주식형')로 넓힌다. 지역은 태그·소분류가 정한다. 국내 명시(국내·한국)면 그대로 등호.
+    # 광역어(해외·글로벌·아시아·신흥)는 넓히지 않는다 — 16R 판정: '글로벌 주식형' 은 정확 일치 10펀드. 국가 태그·국가어만.
+    foreign = ((re.search(r"LIKE\s*'%,[A-Z]{3},%'", sql) or re.search(r"중국|미국|인도|일본|베트남|브라질|독일|영국|프랑스|대만|홍콩|호주|캐나다", q))
+               and not re.search(r"국내|한국", q))
+    if foreign and val in ("주식형", "채권형", "혼합형"):
+        cond = f"zrin_btyp_nm LIKE '%{val}'"
     # 🔴 10R 부류 Z + ③-4(축소) — 종전엔 유형 축 절이 **있기만 하면** 불개입이라, HCX 가 축을 넓게 쓰면
     #    (9R Y7 `zrin_btyp_nm IN ('주식형','해외주식형')`) 가드가 자기를 껐다. 질문에 열거값과 **정확히 일치하는
     #    낱말이 하나뿐**이면 그 값 하나가 확정식이고, 다른 btyp 절은 교체한다. 총칭어('주식 펀드')일 때는
@@ -6034,9 +6042,10 @@ def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
             return sql, False                                   # 축 절이 최상위에 없다(서브식 안) — 불개입
         m_q = re.search(r"\b(\w+\.)?zrin_btyp_nm\b", axis[0], re.I)
         qual = (m_q.group(1) or "") if m_q else ""
-        if len(axis) == 1 and re.fullmatch(rf"\(?\s*(?:{re.escape(qual)})?zrin_btyp_nm\s*=\s*'{re.escape(val)}'\s*\)?",
-                                           axis[0].strip(), re.I):
-            return sql, False                                   # 이미 확정식(한정자 포함) — 손대지 않는다
+        if len(axis) == 1 and re.fullmatch(rf"\(?\s*(?:{re.escape(qual)})?zrin_btyp_nm\s*(?:=\s*'{re.escape(val)}'|LIKE\s*'%{re.escape(val)}')\s*\)?",
+                                           axis[0].strip(), re.I) \
+                and ("LIKE" in axis[0].upper()) == ("LIKE" in cond):
+            return sql, False                                   # 이미 확정식(한정자 포함 · 등호/LIKE 형이 같다) — 손대지 않는다
         kept = [c for c in conjs if c not in axis]
         new = sql[:m_w.start(1)] + " " + " AND ".join([qual + cond] + kept) + " " + sql[m_w.end(1):]
         return (new, True) if new != sql else (sql, False)
@@ -9930,38 +9939,274 @@ def is_overview_question(question: str) -> bool:
 
 
 def _overview_answer(rows: str, name_token: str, partial_absent: str) -> str | None:
-    """`refusal_override_sql` 의 1행(대표_itm_no · itm_nm · 클래스수 · 운용사코드 · 유형 · 약관분류 · 위험등급 · fd_nast_suma)을
-    HCX 없이 개요 문장으로 조립한다. 모양이 다르면 None.
+    """`refusal_override_sql` 의 행(펀드 단위 · 대표_itm_no · itm_nm · 클래스수 · 운용사코드 · 유형 · 약관분류 · 위험등급 · fd_nast_suma)을
+    HCX 없이 개요 문장으로 조립한다. 모양이 다르면 None. 이름이 펀드 여럿에 걸리면(FV-2a 코어테크·코어테크청년소득공제)
+    이름이 짧은 순으로 최대 3개를 나란히 적는다.
 
     🔴 2026-09-06 핵심 34 재점검 — OFFICIAL-002(주최 공식 문항)가 세 번 중 한 번은 4행을 받고도 "정보를 제공할 수
        없습니다", 두 번은 "직접 확인할 데이터는 없다" 며 일부 사실을 뒤섞었다. 6차에 맞았던 답도 HCX 산문이었다 —
        공식 문항의 답을 HCX 에 맡길 수 없다. 마스터가 아는 것은 마스터 말로, 없는 것은 부재 고지로.
     """
     lines = rows.splitlines()
-    if len(lines) != 2:
+    if len(lines) < 2:
         return None
     cols = [c.strip() for c in lines[0].split(" | ")]
-    vals = [v.strip() for v in lines[1].split(" | ")]
     if "itm_nm" not in cols or "클래스수" not in cols:
         return None
-    rec = dict(zip(cols, vals))
     names = _org_names_by_code()
-    code = rec.get("운용사코드", "").strip()
-    org_names = names.get(code) or names.get(code.zfill(8)) or []
-    org = (sorted(org_names, key=len)[-1] if org_names else None)
-    org_txt = f"{org}({code})" if org else (f"코드 {code}(기관명 미수록)" if code else None)
-    try:
-        nast = f"{float(rec.get('fd_nast_suma', '') or 0) / 1e8:,.0f}억원"
-    except ValueError:
-        nast = None
-    items = [("상품명(대표 클래스)", rec.get("itm_nm")), ("클래스 수", f"{rec.get('클래스수')}개" if rec.get("클래스수") else None),
-             ("운용사", org_txt), ("유형", rec.get("유형")), ("약관 분류", rec.get("약관분류")),
-             ("위험등급", rec.get("위험등급")), ("순자산(대표 클래스 기준)", nast)]
-    body = "\n".join(f"- {k}: {v}" for k, v in items if v)
-    head = f"'{name_token}' 이름의 공모펀드가 마스터에 있습니다 (기준일 {gate.DATA_CUTOFF}). 수록된 구조 항목은 다음과 같습니다."
-    out = head + "\n\n" + body
+    blocks = []
+    for line in lines[1:4]:
+        rec = dict(zip(cols, [v.strip() for v in line.split(" | ")]))
+        code = rec.get("운용사코드", "").strip()
+        org_names = names.get(code) or names.get(code.zfill(8)) or []
+        org = (sorted(org_names, key=len)[-1] if org_names else None)
+        org_txt = f"{org}({code})" if org else (f"코드 {code}(기관명 미수록)" if code else None)
+        try:
+            nast = f"{float(rec.get('fd_nast_suma', '') or 0) / 1e8:,.0f}억원"
+        except ValueError:
+            nast = None
+        items = [("상품명(대표 클래스)", rec.get("itm_nm")), ("클래스 수", f"{rec.get('클래스수')}개" if rec.get("클래스수") else None),
+                 ("운용사", org_txt), ("유형", rec.get("유형")), ("약관 분류", rec.get("약관분류")),
+                 ("위험등급", rec.get("위험등급")), ("순자산(대표 클래스 기준)", nast)]
+        blocks.append("\n".join(f"- {k}: {v}" for k, v in items if v))
+    n_f = len(lines) - 1
+    head = (f"'{name_token}' 이름의 공모펀드가 마스터에 {n_f}개 있습니다 (기준일 {gate.DATA_CUTOFF}). "
+            + ("수록된 구조 항목은 다음과 같습니다." if n_f == 1 else f"이름이 짧은 순으로 {min(n_f, 3)}개의 수록 항목입니다."))
+    out = head + "\n\n" + "\n\n".join(blocks)
     if partial_absent:
         out += "\n\n" + partial_absent
+    return out
+
+
+_RISK_LOW_Q = re.compile(r"위험(?:등급)?(?:이|가)?\s*(?:낮은|적은|안전한)\s*(?:순|것|펀드|상품)|안전한\s*순|위험\s*낮은")
+_RISK_HIGH_Q = re.compile(r"위험(?:등급)?(?:이|가)?\s*(?:높은|큰|위험한)\s*(?:순|것|펀드|상품)|위험한\s*순")
+
+
+def ensure_risk_direction(sql: str, question: str) -> tuple[str, str | None]:
+    """위험등급 코드로 정렬할 때 질문의 방향을 코드의 방향(1=매우 높은 위험 … 6=매우 낮은 위험)으로 옮긴다. (SQL, 고친 방향)
+
+    🔴 2026-09-06 FV-1b '위험등급이 낮은 순으로' — HCX 가 `ORDER BY zrin_fd_ivst_risk_gcd ASC` 를 내 1등급(매우 높은 위험)이
+       맨 앞에 왔고, 그걸 본 HCX 산문은 "모두 매우 높은 위험이라 낮은 펀드를 찾을 수 없다" 고 거절했다.
+       숫자가 작을수록 위험이 **높다** — '낮은 순' 은 코드 DESC, '높은 순' 은 코드 ASC.
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, None
+    q = question.replace(" ", "")
+    want = "DESC" if _RISK_LOW_Q.search(q) else "ASC" if _RISK_HIGH_Q.search(q) else None
+    if not want:
+        return sql, None
+    m = re.search(r"\border\s+by\s+((?:\w+\.)?zrin_fd_ivst_risk_gcd)\s*(asc|desc)?", sql, re.I)
+    if not m:
+        return sql, None
+    cur = (m.group(2) or "ASC").upper()
+    if cur == want:
+        return sql, None
+    return sql[:m.start()] + f"ORDER BY CAST({m.group(1)} AS INTEGER) {want}" + sql[m.end():], want
+
+
+_HOLD_FUND_Q = re.compile(r"편입|담은|담고|보유한|포함한|투자한")
+_SUPER_NAST_Q = re.compile(r"순자산.{0,6}(?:가장|제일|최대|큰|많은)|(?:가장|제일)\s*(?:큰|규모)|상위\s*\d+|톱\s*\d+|top\s*\d+", re.I)
+
+
+def _holdings_subquery(ctx, hits) -> str | None:
+    """접지된 종목(Security) 노드들의 ext_fund_holdings 매핑(isin · holding_nm 전부)으로 펀드 키 부질의를 만든다."""
+    isins, names = set(), set()
+    for node in hits or []:
+        if getattr(node, "node_type", "") != "Security":
+            continue
+        for t, c, raw in target_aliases(ctx, node, {"ext_fund_holdings"}, True):
+            if t != "ext_fund_holdings" or not raw:
+                continue
+            (isins if c == "isin" else names if c == "holding_nm" else set()).add(raw.replace("'", "''"))
+    if not isins and not names:
+        return None
+    conds = []
+    if isins:
+        conds.append("h.isin IN (" + ", ".join(f"'{v}'" for v in sorted(isins)) + ")")
+    if names:
+        conds.append("UPPER(h.holding_nm) IN (" + ", ".join(f"'{v.upper()}'" for v in sorted(names)) + ")")
+    # 행값 IN `(mtco_itm_no, or_co_xtn_itt_cd) IN (SELECT …)` 은 검사기가 `or_co_xtn_itt_cd) IN ('005930'` 을 운용사 코드
+    # 리터럴로 오독해 기각했다(2026-09-06 FV-5b 재생). 상관 EXISTS 는 바깥 컬럼을 한정자 없이 참조한다 — 안쪽 표엔
+    # mtco_itm_no·or_co_xtn_itt_cd 가 없어 바깥으로 풀린다.
+    # 🔴 상관 부질의는 검사기가 거부한다 — 부질의 스코프에서 바깥 표 컬럼(mtco_itm_no)을 안쪽 표 컬럼으로 보고 기각
+    #    (한정자 public_funds. 를 붙여도 토큰만 본다). 행값 IN 도 `or_co_xtn_itt_cd) IN ('005930'` 을 코드 리터럴로 오독.
+    #    → **단일 값 IN**: 양쪽을 같은 식(8자리 운용사코드 || '/' || TRIM(모펀드번호))으로 만들면 안쪽엔 보유종목표 컬럼만 남는다.
+    #    printf/TRIM 은 마스터·보유종목표의 패딩·타입 차이를 지운다(JOIN 은 = 비교로 맞았지만 문자열 연결은 원문이 달라진다).
+    return ("(printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || TRIM(mtco_itm_no)) IN "
+            "(SELECT printf('%08d', CAST(h.or_co AS INTEGER)) || '/' || TRIM(h.grp) FROM ext_fund_holdings h WHERE CASE "
+            + " ".join(f"WHEN {c} THEN 1" for c in conds) + " ELSE 0 END = 1)")   # OR 대신 CASE — 검사기의 OR/AND 혼합 판정이 부질의 안까지 본다(FV-3b)
+
+
+_FUND_AXIS_PRED = re.compile(
+    r"(?<![\w.])(?:\w+\.)?(zrin_btyp_nm|zrin_ptn_nm|or_attr_desc|fd_ivst_rgn_desc|zrin_fd_ivst_risk_grd_nm|zrin_fd_ivst_risk_gcd)"
+    r"\s*(=\s*'(?:[^']|'')*'|IN\s*\((?:[^()]|'(?:[^']|'')*')*\)|LIKE\s*'(?:[^']|'')*')", re.I)
+_FUND_TOKEN_PRED = re.compile(r"','\s*\|\|\s*(?:\w+\.)?prfd_attr_cds\s*\|\|\s*','\s*LIKE\s*'%,[A-Z0-9]+,%'", re.I)
+
+
+def _salvage_fund_preds(sql: str) -> list[str]:
+    """HCX 원문 어디에 있든 펀드 축 컬럼의 단순 술어(유형·소분류·약관·지역·위험등급 · 속성 태그 토큰)만 건진다."""
+    out = [f"{m.group(1)} {m.group(2)}" for m in _FUND_AXIS_PRED.finditer(sql)]
+    # '주식형' 은 국내·해외의 상위 개념이다 — HCX 가 '중국 주식형' 을 zrin_btyp_nm='주식형' 으로 쓰면 해외주식형(중국주식)이
+    # 전부 빠진다(2026-09-06 FV-3b 캠브리콘 0행). 지역은 국가 태그·소분류가 결정하므로 대유형은 주식 계열로 넓힌다.
+    out = ["zrin_btyp_nm LIKE '%주식형'" if x.replace(" ", "").lower() == "zrin_btyp_nm='주식형'" else x for x in out]
+    out += [re.sub(r"(?<![\w.])\w+\.(?=prfd_attr_cds)", "", m.group(0)) for m in _FUND_TOKEN_PRED.finditer(sql)]
+    seen, uniq = set(), []
+    for x in out:
+        k = re.sub(r"\s+", " ", x).lower()
+        if k not in seen:
+            seen.add(k); uniq.append(x)
+    return uniq
+
+
+def _holdings_canonical_sql(where: str, question: str) -> str:
+    """편입 펀드 확정 형태 — 펀드 단위 · 순자산 대표(MAX) · 속성 열 · 최상급이면 N, 아니면 상위 30."""
+    q = question.replace(" ", "")
+    if _SUPER_NAST_Q.search(q):
+        m_n = _ASKED_N.search(question) or _ASKED_N_KO.search(question)
+        n = int(m_n.group(1)) if (m_n and m_n.group(1).isdigit()) else (_KO_NUM.get(m_n.group(1), 1) if m_n else 1)
+    else:
+        n = 30
+    fee = " + ".join(_FUND_FEE_COLS)
+    return (f'SELECT MIN(itm_no) AS itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", '
+            f'MAX(fd_nast_suma) AS fd_nast_suma, MAX(zrin_fd_ivst_risk_grd_nm) AS "위험등급", MAX(zrin_btyp_nm) AS "유형", '
+            f'MAX(or_attr_desc) AS "약관분류", MAX(zrin_attr_nms) AS "속성태그", MIN(ROUND(({fee}) / 10.0, 4)) AS "총보수_퍼센트", '
+            f'CAST(ROUND(MAX(fd_nast_suma) / 100000000.0) AS INTEGER) || \'억원\' AS "순자산_억원" '
+            f"FROM public_funds WHERE {where} GROUP BY {_FUND_GROUP_EXPR} ORDER BY fd_nast_suma DESC LIMIT {n}")
+
+
+def rewrite_holdings_join(sql: str, question: str, ctx, hits) -> tuple[str, str | None]:
+    """`public_funds … JOIN ext_fund_holdings` 를 **JOIN 없는** 펀드 키 IN-부질의로 바꾼다. (SQL, 메모)
+
+    🔴 2026-09-06 주최 예시 '상' 의 펀드 변형(FV-5a·5b) — HCX 가 보유종목표를 JOIN 으로 붙이면
+       ① 펀드 랭킹·대표행·보수 가드가 전부 비켜간다(JOIN 불개입 조건) ② 종목 행 수만큼 펀드 행이 뻥튀기돼 SUM 보수가
+       1,677% 가 됐다 ③ SELECT 에 설명서 수집 메타(retrieved_at·source)가 실렸다. 편입 조건은 **어느 펀드인가**를 고르는
+       술어라 부질의가 정확한 자리다 — 바꾸면 바깥 문장은 public_funds 단독이 되고 기존 가드가 전부 일한다.
+       종목 매핑은 HCX 리터럴이 아니라 KG 접지 전체(isin · 표기 변형 전부)로 만든다 — FV-3b 캠브리콘은 표기가 3종이다.
+    순자산 최상급 질의('… 중 순자산이 가장 큰 상품의 …')면 SELECT·GROUP BY·ORDER BY 를 확정 랭킹 형태로 세우고
+    HCX 의 WHERE(유형·지역 등 추가 조건)만 살린다 — 랭킹 조립기가 그 형태를 받아 HCX 0회로 답한다.
+    """
+    if not re.search(r"\bext_fund_holdings\b", sql, re.I) or re.search(r"\bunion\b", sql, re.I):
+        return sql, None
+    if not _HOLD_FUND_Q.search(question.replace(" ", "")):
+        return sql, None
+    sub = _holdings_subquery(ctx, hits)
+    if not sub:
+        return sql, None
+    if not _FUND_TBL.search(sql):
+        # 🔴 FV-3b 캠브리콘: HCX 가 `FROM ext_fund_holdings h WHERE h.itm_no = (SELECT … JOIN public_funds …)` 로 종목 행을
+        #    나열했다 — 질문은 **펀드**를 묻는다. 확정 목록 형태로 넘겨받고, 원문에 있던 펀드 축 조건(유형·지역 태그)만 건진다.
+        preds = _salvage_fund_preds(sql)
+        where = " AND ".join(["sale_yn = '판매중'", "prvo_pbff_desc = '공모'"] + preds + [sub])
+        return (_holdings_canonical_sql(where, question),
+                "보유종목 원문(FROM 보유종목표) → 펀드 확정 목록" + (f" · 건진 조건 {len(preds)}" if preds else ""))
+    m_from = re.search(r"\bfrom\s+public_funds(?:\s+(?:as\s+)?(?!(?:left|inner|join|where|group|order|limit)\b)(\w+))?", sql, re.I)
+    if not m_from:
+        return sql, None
+    p_alias = m_from.group(1)
+    m_j = re.search(r"\s+(?:left\s+|inner\s+)?(?:outer\s+)?join\s+ext_fund_holdings(?:\s+(?:as\s+)?(\w+))?\s+on\s+.*?(?=\s+(?:left\s+|inner\s+)?(?:outer\s+)?join\b|\s+where\b|\s+group\s+by\b|\s+order\s+by\b|\s+limit\b|$)",
+                    sql, re.I | re.S)
+    if not m_j:
+        return sql, None
+    h_alias = m_j.group(1) or "ext_fund_holdings"
+    out = sql[:m_j.start()] + sql[m_j.end():]
+    # 보유종목 별칭이 걸린 WHERE 술어와 SELECT 항목을 걷는다
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", out, re.I | re.S)
+    hold_ref = re.compile(rf"(?<![\w.])(?:{re.escape(h_alias)}|ext_fund_holdings)\.", re.I)
+    if m_w:
+        keep = [c for c in _flat_conjuncts(m_w.group(1)) if not hold_ref.search(c)]
+        new_where = " AND ".join(x.strip() for x in keep)
+        new_where = (new_where + " AND " if new_where else "") + sub
+        out = out[:m_w.start(1)] + " " + new_where + " " + out[m_w.end(1):]
+    else:
+        m_end = re.search(r"\bgroup\s+by\b|\border\s+by\b|\blimit\b", out, re.I)
+        pos = m_end.start() if m_end else len(out)
+        out = out[:pos].rstrip() + f" WHERE {sub} " + out[pos:]
+    m_sel = re.search(r"^\s*select\s+(distinct\s+)?(.*?)\bfrom\b", out, re.I | re.S)
+    if m_sel:
+        items = [x for x in _split_select_items(m_sel.group(2)) if not hold_ref.search(x)]
+        if items:
+            out = out[:m_sel.start(2)] + ", ".join(x.strip() for x in items) + " " + out[m_sel.end(2):]
+    if p_alias:
+        out = re.sub(rf"(?<![\w.]){re.escape(p_alias)}\.", "", out)
+    out = re.sub(r"(?<![\w.])public_funds\.", "", out)
+    out = re.sub(rf"\bfrom\s+public_funds\s+{re.escape(p_alias)}\b", "FROM public_funds", out, flags=re.I) if p_alias else out
+    note = "보유종목 JOIN → 펀드 키 IN-부질의"
+    if _SUPER_NAST_Q.search(question.replace(" ", "")):
+        m_w2 = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", out, re.I | re.S)
+        where = m_w2.group(1).strip() if m_w2 else sub
+        out = _holdings_canonical_sql(where, question)
+        note += " · 순자산 최상급 → 확정 랭킹 형태"
+    return out, note
+
+
+def holdings_rank_tail(rows: str, question: str) -> str | None:
+    """확정 랭킹 형태(위험등급·유형·약관분류·속성태그·총보수 열)의 행에서 속성 줄을 만든다 — 랭킹 조립기가 값 축만 옮기므로 덧붙인다."""
+    lines = rows.splitlines()
+    if len(lines) < 2:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if "위험등급" not in cols or "총보수_퍼센트" not in cols:
+        return None
+    out = []
+    for line in lines[1:]:
+        rec = dict(zip(cols, [v.strip() for v in line.split(" | ")]))
+        bits = [f"위험등급 {rec.get('위험등급')}" if rec.get("위험등급") else None,
+                f"유형 {rec.get('유형')}" if rec.get("유형") else None,
+                f"약관분류 {rec.get('약관분류')}" if rec.get("약관분류") else None,
+                f"속성 {rec.get('속성태그')}" if rec.get("속성태그") else None,
+                f"총보수(대표 클래스 최저) {_fee_pct(float(rec['총보수_퍼센트']), True)}%" if rec.get("총보수_퍼센트") not in (None, "") else None]
+        out.append(f"· {rec.get('itm_nm')}: " + " · ".join(b for b in bits if b))
+    tail = "\n".join(out)
+    if "위험요인" in question.replace(" ", ""):
+        tail += ("\n※ 위험요인 서술(투자설명서의 위험 항목 본문)은 마스터·설명서 수집분에 수록되어 있지 않습니다 — "
+                 "위험등급·유형·약관 분류·속성 태그가 수록된 위험 판단 재료입니다.")
+    return tail
+
+
+def holdings_answer(sql: str, rows: str, n: int, question: str, subject: str | None) -> str | None:
+    """편입 펀드 확정 형태의 답 — 전체 펀드 수(같은 WHERE 로 다시 셈) + 행별 순자산·클래스·위험등급·유형·약관·총보수. HCX 0회.
+
+    2026-09-06 FV-5b 재생: 목록 조립기가 LIMIT 1 행을 "전체 1개" 라 적었다(실제 924펀드) — 전체 수는 다시 세어 적는다.
+    위험요인을 물었으면 서술 본문 부재를 고지하고 위험 판단 재료(등급·유형·약관·속성)를 준다.
+    """
+    lines = rows.splitlines()
+    if n < 1 or len(lines) < 2:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    if "위험등급" not in cols or "총보수_퍼센트" not in cols or "itm_nm" not in cols:
+        return None
+    m_w = re.search(r"\bwhere\b(.*?)\bgroup\s+by\b", sql, re.I | re.S)
+    total = None
+    if m_w:
+        try:
+            total = _execute(f"SELECT COUNT(DISTINCT {_FUND_GROUP_EXPR}) AS n FROM public_funds WHERE {m_w.group(1).strip()} LIMIT 1")[0].splitlines()[1].strip()
+        except Exception:                                   # noqa: BLE001
+            total = None
+    q = question.replace(" ", "")
+    who = f"'{subject}' 을(를) 편입한" if subject else "해당 종목을 편입한"
+    head = f"{who} 공모펀드는 " + (f"전체 {int(float(total)):,}개" if total else f"{n}개 이상") + "입니다 (판매중·공모 기준, 기준일 " + gate.DATA_CUTOFF + ")."
+    if _SUPER_NAST_Q.search(q):
+        head += f" 그중 순자산이 큰 순으로 {n}개는 다음과 같습니다 (순자산 = 대표 클래스 기준 MAX)."
+    else:
+        head += f" 순자산 순으로 {n}개를 표시합니다."
+    body = []
+    for i, line in enumerate(lines[1:], 1):
+        rec = dict(zip(cols, [v.strip() for v in line.split(" | ")]))
+        try:
+            nast = f"{float(rec.get('fd_nast_suma') or 0) / 1e8:,.0f}억원"
+        except ValueError:
+            nast = rec.get("순자산_억원") or "-"
+        bits = [f"순자산 {nast}", f"클래스 {rec.get('클래스수')}개" if rec.get("클래스수") else None,
+                f"위험등급 {rec.get('위험등급')}" if rec.get("위험등급") else None,
+                f"유형 {rec.get('유형')}" if rec.get("유형") else None,
+                f"약관분류 {rec.get('약관분류')}" if rec.get("약관분류") else None,
+                f"속성 {rec.get('속성태그')}" if rec.get("속성태그") else None,
+                f"총보수(대표 클래스 최저) {_fee_pct(float(rec['총보수_퍼센트']), True)}%" if rec.get("총보수_퍼센트") not in (None, "") else None]
+        body.append(f"{i}. {re.sub(r'\s*(?:종류|클래스)\s*[A-Za-z0-9\-]+.*$', '', rec.get('itm_nm') or '')}: " + " · ".join(b for b in bits if b))
+    out = head + "\n\n" + "\n".join(body)
+    if "위험요인" in q:
+        out += ("\n\n※ 위험요인 서술(투자설명서의 위험 항목 본문)은 마스터·설명서 수집분에 수록되어 있지 않습니다 — "
+                "위험등급·유형·약관 분류·속성 태그가 수록된 위험 판단 재료입니다.")
     return out
 
 
@@ -10129,6 +10374,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if absent_from:
         step(f"[Guard] 부재 속성 컬럼 교정 — 질문이 이름 부른 속성의 컬럼으로 IS NULL 을 옮겼다({absent_from} → 위험등급명) "
              "(6차 FND-014 실측: 1년 수익률 부재를 세어 1,099펀드 — 참값 312)")
+    sql, risk_dir = ensure_risk_direction(sql, q)
+    if risk_dir:
+        step(f"[Guard] 위험등급 방향 교정 — 코드는 1=매우 높은 위험 … 6=매우 낮은 위험이라 질문의 방향을 코드 {risk_dir} 로 옮겼다 "
+             "(2026-09-06 FV-1b 실측: '낮은 순' 에 ASC 를 내 1등급이 맨 앞 → HCX 가 '모두 매우 높은 위험' 이라 거절)")
     sql, axis_fixed = ensure_fund_rank_axis(sql, q)
     if axis_fixed:
         step("[Guard] 랭킹 정렬축 교정 — ORDER BY 가 랭킹 축을 안 가리켜 질문이 지목한 축으로 세웠다 "
@@ -10623,6 +10872,12 @@ def answer_question(
     else:
         raw_sql = planner.plan_sql(q, grounding)
     result.raw_sql = raw_sql          # 가드 적용 전 원문 — 섀도 재생용(로그 전용)
+    holdings_note = None
+    if not raw_sql.strip().upper().startswith((REFUSE_PREFIX, CLARIFY_PREFIX)):
+        raw_sql, holdings_note = rewrite_holdings_join(raw_sql, q, ctx, hits)
+        if holdings_note:
+            step(f"[Guard] {holdings_note} — 편입 조건은 어느 펀드인가를 고르는 술어라 부질의로 옮기고 바깥 문장을 public_funds 단독으로 "
+                 "(2026-09-06 FV-5a·5b 실측: JOIN 이 남으면 펀드 가드가 전부 비켜가 행 뻥튀기·SUM 보수 1,677%·메타 컬럼 덤프)")
 
     partial_absent = absent_partial_note(q, ctx, tables) if overview else ""
     if raw_sql.strip().upper().startswith(REFUSE_PREFIX) and name_token and fund_exists(name_token):
@@ -10948,6 +11203,16 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = lk
         return result
+    if holdings_note and "확정" in holdings_note:
+        _subj = next((getattr(h_, "label_ko", None) or getattr(h_, "label_official", None) for h_ in (hits or [])
+                      if getattr(h_, "node_type", "") == "Security"), None)
+        ha = holdings_answer(sql, rows, n, q, _subj)
+        if ha is not None:
+            step("[Answer] 편입 펀드 답변 기계 조립 — 전체 펀드 수를 다시 세고 행별 순자산·위험등급·유형·약관·총보수를 옮긴다, HCX 0회 "
+                 "(2026-09-06 FV-5a·5b: 목록 조립기가 LIMIT 1 행을 '전체 1개' 로 · 억원 열이 임의 클래스 값 8억)")
+            result.think_trace = "\n".join(trace)
+            result.answer = ha
+            return result
     lst = _list_answer(sql, rows, n)
     if lst is not None:
         step("[Answer] 목록 답변 기계 조립 — 순자산순 펀드 목록 전 행 + 총량 머리줄 "
@@ -11017,7 +11282,7 @@ def answer_question(
             step(f"[Answer] 커버리지 병기 — LIMIT 도달, {scope} 를 답변 입력에 굽는다 (2026-09-02 R3 재검: 30행 중 5행 나열 + 총량 미고지)")
     rows_for_answer = f"{header}\n{answer_rows}"
     # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
-    ov = _overview_answer(rows, name_token, partial_absent) if overview and n == 1 else None
+    ov = _overview_answer(rows, name_token, partial_absent) if overview and n >= 1 else None
     if ov is not None:
         step("[Answer] 개요 답변 기계 조립 — 마스터 요약 1행을 HCX 없이 항목별로 옮기고 부재 항목을 함께 적는다 "
              "(2026-09-06 OFFICIAL-002: 같은 4행을 받고도 HCX 산문이 1/3 거절·2/3 사실 뒤섞임)")
@@ -11077,6 +11342,11 @@ def answer_question(
     if rows_forced:
         step("[Answer] 결과 전사 강제 — 1행 이상을 받고도 결과를 하나도 인용하지 않고 거절한 답변을 기계 전사로 교체 "
              "(10R gold N7 · OFFICIAL-005 실측: 1행을 받고도 '정보가 없습니다')")
+    if holdings_note and "확정" in holdings_note and n >= 1:
+        tail = holdings_rank_tail(rows, q)
+        if tail and tail[:30] not in (result.answer or ""):
+            result.answer = (result.answer or "").rstrip() + "\n\n" + tail
+            step("[Answer] 편입 펀드 속성 줄 — 위험등급·유형·약관분류·속성태그·총보수를 행에서 그대로 옮겼다 (위험요인 서술 부재는 고지)")
     if partial_absent and partial_absent[:24] not in (result.answer or ""):
         result.answer = (result.answer or "").rstrip() + "\n\n" + partial_absent
         step("[Answer] 부분 부재 고지 — 질문이 함께 물은 미수록 항목을 답변 끝에 기계로 적었다 "

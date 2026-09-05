@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300" viewBox="0 0 900 300" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker>
+  </defs>
+  <rect width="900" height="300" fill="#fff"/>
+  <text x="450" y="28" text-anchor="middle" font-weight="bold" font-size="14">비어 있는 칸을 만났을 때 — 판정 순서</text>
+  <text x="450" y="46" text-anchor="middle" fill="#666" font-size="11">IS NULL 로만 세면 ①②③을 통째로 놓친다 · 컬럼별로만 세면 행 단위 블록(⑤⑥)을 놓친다</text>
+
+  <!-- 4 단계 -->
+  <g>
+    <rect x="30" y="80" width="190" height="70" rx="6" fill="#fdf1e7" stroke="#c05621" stroke-width="1.5"/>
+    <text x="125" y="105" text-anchor="middle" font-weight="bold">① 정상값인가</text>
+    <text x="125" y="125" text-anchor="middle" fill="#333" font-size="12">비어 보이지만 값</text>
+    <text x="125" y="140" text-anchor="middle" fill="#666" font-size="11">srfc_irt=0 579 · 위험등급 '00' 19</text>
+  </g>
+  <path d="M220,115 L250,115" stroke="#555" stroke-width="1.5" marker-end="url(#a)"/>
+  <g>
+    <rect x="252" y="80" width="190" height="70" rx="6" fill="#fdf1e7" stroke="#c05621" stroke-width="1.5"/>
+    <text x="347" y="105" text-anchor="middle" font-weight="bold">② 위장인가</text>
+    <text x="347" y="125" text-anchor="middle" fill="#333" font-size="12">센티넬 · 복사</text>
+    <text x="347" y="140" text-anchor="middle" fill="#666" font-size="11">세후수익률 전량 0 · dirty=eval 99%</text>
+  </g>
+  <path d="M442,115 L472,115" stroke="#555" stroke-width="1.5" marker-end="url(#a)"/>
+  <g>
+    <rect x="474" y="80" width="190" height="70" rx="6" fill="#eef7ec" stroke="#2f855a" stroke-width="1.5"/>
+    <text x="569" y="105" text-anchor="middle" font-weight="bold">③ 복구 가능한가</text>
+    <text x="569" y="125" text-anchor="middle" fill="#333" font-size="12">다른 컬럼에서 되살림</text>
+    <text x="569" y="140" text-anchor="middle" fill="#666" font-size="11">평가사 등급 병합 — 2차에서 소멸</text>
+  </g>
+  <path d="M664,115 L694,115" stroke="#555" stroke-width="1.5" marker-end="url(#a)"/>
+  <g>
+    <rect x="696" y="80" width="180" height="70" rx="6" fill="#e8f1fb" stroke="#2b6cb0" stroke-width="1.5"/>
+    <text x="786" y="105" text-anchor="middle" font-weight="bold">④ 어떤 부재인가</text>
+    <text x="786" y="125" text-anchor="middle" fill="#333" font-size="12">아래 셋으로 갈린다</text>
+  </g>
+
+  <!-- 부재 3종 -->
+  <path d="M786,150 L786,175" stroke="#555" stroke-width="1.5" marker-end="url(#a)"/>
+  <g>
+    <rect x="200" y="180" width="210" height="95" rx="6" fill="#fff" stroke="#2b6cb0" stroke-width="1.2"/>
+    <text x="305" y="202" text-anchor="middle" font-weight="bold" fill="#1a4a7a">구조적 부재 · 미부여</text>
+    <text x="305" y="222" text-anchor="middle" fill="#333" font-size="12">국공채 신용등급 2,840</text>
+    <text x="305" y="240" text-anchor="middle" fill="#666" font-size="11">평가 대상이 아님 — 국가 신용도로 갈음</text>
+    <text x="305" y="258" text-anchor="middle" fill="#666" font-size="11">답: "미부여"</text>
+  </g>
+  <g>
+    <rect x="430" y="180" width="210" height="95" rx="6" fill="#fff" stroke="#2b6cb0" stroke-width="1.2"/>
+    <text x="535" y="202" text-anchor="middle" font-weight="bold" fill="#1a4a7a">같은 컬럼의 미수록</text>
+    <text x="535" y="222" text-anchor="middle" fill="#333" font-size="12">특수채 254 · 회사채 926</text>
+    <text x="535" y="240" text-anchor="middle" fill="#666" font-size="11">평가를 받았을 수도 있으나 데이터에 없음</text>
+    <text x="535" y="258" text-anchor="middle" fill="#666" font-size="11">답: "미수록"</text>
+  </g>
+  <g>
+    <rect x="660" y="180" width="216" height="95" rx="6" fill="#fff" stroke="#2b6cb0" stroke-width="1.2"/>
+    <text x="768" y="202" text-anchor="middle" font-weight="bold" fill="#1a4a7a">행 단위 블록 (상태 · 미산출)</text>
+    <text x="768" y="222" text-anchor="middle" fill="#333" font-size="12">판매정보 13컬럼 21,248행</text>
+    <text x="768" y="240" text-anchor="middle" fill="#333" font-size="12">평가정보 8컬럼 16행</text>
+    <text x="768" y="258" text-anchor="middle" fill="#666" font-size="11">답: "지금 파는 물건이 아니다" · 모수 고지</text>
+  </g>
+  <path d="M786,175 L305,180" stroke="#555" stroke-width="1" fill="none"/>
+  <path d="M786,175 L535,180" stroke="#555" stroke-width="1" fill="none"/>
+  <path d="M786,175 L768,180" stroke="#555" stroke-width="1" fill="none"/>
+</svg>

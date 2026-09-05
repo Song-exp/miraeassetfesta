@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="380" viewBox="0 0 900 380" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker>
+  </defs>
+  <rect width="900" height="380" fill="#fff"/>
+
+  <!-- 원천 -->
+  <rect x="30" y="130" width="180" height="120" rx="6" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="120" y="160" text-anchor="middle" font-weight="bold" font-size="14">yaml 선언 한 벌</text>
+  <text x="120" y="182" text-anchor="middle" fill="#333" font-size="11">enums/domestic_bonds.yaml</text>
+  <text x="120" y="199" text-anchor="middle" fill="#333" font-size="11">1,358줄</text>
+  <text x="120" y="220" text-anchor="middle" fill="#333" font-size="11">+ shared/*.yaml · 코드북 1장</text>
+  <text x="120" y="240" text-anchor="middle" fill="#666" font-size="10">사람이 쓰는 유일한 자리</text>
+
+  <!-- 빌드 라벨 -->
+  <text x="120" y="104" text-anchor="middle" fill="#555" font-size="10">↓ build_ontology.py 가 읽어</text>
+  <text x="120" y="117" text-anchor="middle" fill="#555" font-size="10">검증 7종 통과 시 오른쪽 셋을 생성</text>
+
+  <!-- 화살표 -->
+  <path d="M210,160 L290,80" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <path d="M210,190 L290,190" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <path d="M210,220 L290,300" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <!-- 1층 -->
+  <rect x="295" y="40" width="580" height="86" rx="6" fill="#e8f1fb" stroke="#2b6cb0" stroke-width="1.5"/>
+  <text x="310" y="63" font-weight="bold" font-size="14" fill="#1a4a7a">1층 값 사전 (KG)</text>
+  <text x="310" y="83" fill="#333" font-size="11">"이 컬럼 값이 어느 개체인가"</text>
+  <text x="310" y="113" fill="#666" font-size="10">Route · Ground · Verify 가 읽음</text>
+  <text x="520" y="63" fill="#333" font-size="11">발행사 alias 1,817 → 노드 1,816 · 신용등급 15 · 위험등급 7 · 통화 1</text>
+  <text x="520" y="83" fill="#333" font-size="11">합 alias 1,840 · 노드 1,839 · CreditGrade closure 20</text>
+  <text x="520" y="103" fill="#666" font-size="10">kg_node · kg_alias · kg_closure</text>
+
+  <!-- 2층 -->
+  <rect x="295" y="147" width="580" height="86" rx="6" fill="#eef7ec" stroke="#2f855a" stroke-width="1.5"/>
+  <text x="310" y="170" font-weight="bold" font-size="14" fill="#1f5c3a">2층 규칙 문서</text>
+  <text x="310" y="190" fill="#333" font-size="11">"그 값으로 무엇을 어떻게 묻는가"</text>
+  <text x="310" y="220" fill="#666" font-size="10">Plan · Answer 가 읽음</text>
+  <text x="520" y="170" fill="#333" font-size="11">질의 규칙 49 · 답변 규칙 21 · 되묻기 14</text>
+  <text x="520" y="190" fill="#333" font-size="11">매 질의 근거문서 25,750자로 프롬프트에 실림</text>
+  <text x="520" y="210" fill="#666" font-size="10">planner_context · answer_context</text>
+
+  <!-- 3층 -->
+  <rect x="295" y="254" width="580" height="86" rx="6" fill="#fdf1e7" stroke="#c05621" stroke-width="1.5"/>
+  <text x="310" y="277" font-weight="bold" font-size="14" fill="#7b3a12">3층 게이트 · 가드</text>
+  <text x="310" y="297" fill="#333" font-size="11">"생성 전에 막고, 생성 후에 고친다"</text>
+  <text x="310" y="327" fill="#666" font-size="10">Gate · Guard 가 읽음</text>
+  <text x="520" y="277" fill="#333" font-size="11">부재 선언 11 · 금지 컬럼 4 · 위험등급 범위 0~6</text>
+  <text x="520" y="297" fill="#333" font-size="11">결정층 가드 36</text>
+  <text x="520" y="317" fill="#666" font-size="10">gate.py · pipeline.py</text>
+
+  <text x="450" y="368" text-anchor="middle" fill="#666" font-size="10">같은 판정이 세 층에 동시에 나간다 — 위험등급 0~6 은 range_by_table 한 줄에서 ttl 제약과 게이트 상수가 함께 생성된다</text>
+</svg>

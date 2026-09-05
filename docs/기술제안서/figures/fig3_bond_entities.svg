@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2b6cb0"/></marker>
+  </defs>
+  <rect width="900" height="420" fill="#fff"/>
+
+  <!-- 중심 -->
+  <rect x="40" y="130" width="230" height="160" rx="8" fill="#f4f4f4" stroke="#333" stroke-width="2"/>
+  <text x="155" y="160" text-anchor="middle" font-weight="bold" font-size="15">fp:DomesticBond</text>
+  <text x="155" y="182" text-anchor="middle" fill="#333">21,882행 · 58컬럼</text>
+  <text x="155" y="200" text-anchor="middle" fill="#333">20,497종목</text>
+  <text x="155" y="225" text-anchor="middle" fill="#666" font-size="11">분류 축 두 층</text>
+  <text x="155" y="242" text-anchor="middle" fill="#666" font-size="11">대분류 std_pd_mcls_nm ⊃ 종류 bd_knd</text>
+  <text x="155" y="265" text-anchor="middle" fill="#666" font-size="11">규칙 49 · 답변 21 · 되묻기 14</text>
+
+  <!-- 닿는 개체 (실선) -->
+  <text x="560" y="40" text-anchor="middle" font-weight="bold" fill="#1a4a7a">닿는 개체 — 값 사전이 된다</text>
+  <g>
+    <line x1="270" y1="160" x2="420" y2="75" stroke="#2b6cb0" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="330" y="105" fill="#2b6cb0" font-size="11">pd_pbcm · hasIssuer</text>
+    <rect x="425" y="55" width="440" height="42" rx="6" fill="#e8f1fb" stroke="#2b6cb0" stroke-width="1.5"/>
+    <text x="440" y="73" font-weight="bold">Organization</text>
+    <text x="440" y="90" fill="#333" font-size="12">DB distinct 1,818 → alias 1,817 → 노드 1,816 (법인 키 병합)</text>
+  </g>
+  <g>
+    <line x1="270" y1="190" x2="420" y2="135" stroke="#2b6cb0" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="330" y="153" fill="#2b6cb0" font-size="11">crd_grd</text>
+    <rect x="425" y="115" width="440" height="42" rx="6" fill="#e8f1fb" stroke="#2b6cb0" stroke-width="1.5"/>
+    <text x="440" y="133" font-weight="bold">CreditGrade</text>
+    <text x="440" y="150" fill="#333" font-size="12">실재 15 · 선언 노드 22(등급 20+밴드 2) · closure 20 · 유일한 서열 축</text>
+  </g>
+  <g>
+    <line x1="270" y1="220" x2="420" y2="195" stroke="#2b6cb0" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="330" y="200" fill="#2b6cb0" font-size="11">pd_risk_gcd</text>
+    <rect x="425" y="175" width="440" height="42" rx="6" fill="#e8f1fb" stroke="#2b6cb0" stroke-width="1.5"/>
+    <text x="440" y="193" font-weight="bold">RiskGrade</text>
+    <text x="440" y="210" fill="#333" font-size="12">'11'~'16' + '00' → 0~6 · range_by_table 테이블 단위 선언</text>
+  </g>
+  <g>
+    <line x1="270" y1="250" x2="420" y2="255" stroke="#2b6cb0" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="330" y="248" fill="#2b6cb0" font-size="11">curr_cd</text>
+    <rect x="425" y="235" width="440" height="42" rx="6" fill="#e8f1fb" stroke="#2b6cb0" stroke-width="1.5"/>
+    <text x="440" y="253" font-weight="bold">Currency</text>
+    <text x="440" y="270" fill="#333" font-size="12">KRW 1 · '000' 1행은 오염값 — 등재 금지</text>
+  </g>
+
+  <!-- 부재 (점선) -->
+  <text x="580" y="318" text-anchor="middle" font-weight="bold" fill="#7b3a12">⊘ 부재로 선언 — 게이트가 된다 (ttl ABSENT 11)</text>
+  <rect x="290" y="325" width="580" height="80" rx="6" fill="#fdf1e7" stroke="#c05621" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="305" y="347" fill="#333" font-size="12"><tspan font-weight="bold">개체 3</tspan> — AssetClass(상품 자체가 채권) · Index(지수 추종 아님) · Region(발행국 21,881/21,882 KR)</text>
+  <text x="305" y="368" fill="#333" font-size="12"><tspan font-weight="bold">속성 8</tspan> — 등급 이력 · 금리 이력 · 업종 · 이자지급주기 · 거래량 · 최소투자금액 · 수수료 · 발행사 재무</text>
+  <text x="305" y="392" fill="#666" font-size="11">조회해서 0건이 아니라, 속성이 선언돼 있지 않아서 SQL 생성 전에 끝난다 — LLM 호출 0회</text>
+  <line x1="155" y1="290" x2="155" y2="365" stroke="#c05621" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="155" y1="365" x2="290" y2="365" stroke="#c05621" stroke-width="1.5" stroke-dasharray="6,4"/>
+
+  <text x="645" y="300" text-anchor="middle" fill="#666" font-size="11">노드·ttl 은 전부 빌드 산출물 — 사람이 쓴 것은 "어느 컬럼 값이 이 개체인가" 한 줄과 코드북 한 장</text>
+</svg>

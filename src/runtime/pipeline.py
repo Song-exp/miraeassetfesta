@@ -3754,7 +3754,10 @@ def domain_caveats(sql: str, rows: str, question: str = "") -> list:
     if _hedge and re.fullmatch(r"[0\s|]+", (rows.splitlines()[-1] if rows else "x").strip() or "x"):
         out.append("※ 헤지펀드는 **사모 영역**이라 공모 모수에서 0 인 것이 정상입니다 — "
                    "자료가 빠진 것이 아닙니다.")
-    if "수수료선취" in rows and "수수료미징구" in rows:
+    # 🔴 2026-09-06 핵심 34 재점검: HCX 가 han_clas_nm 을 SELECT 에 안 실으면 결과에 '수수료선취' 가 없어 고지가 빠졌다(🟡).
+    #    A·C 클래스의 보수 비교라는 사실은 질문이 이미 말한다 — 결과 컬럼에 기대지 않는다.
+    _ac = re.search(r"A\s*클래스.*C\s*클래스|C\s*클래스.*A\s*클래스|A\s*와\s*C|A\s*·\s*C", question) and "보수" in question
+    if ("수수료선취" in rows and "수수료미징구" in rows) or _ac:
         out.append("※ 총보수만 비교한 값입니다. **A 계열은 가입 시 선취 수수료를 따로 뗍니다**(금액은 이 데이터에 "
                    "없습니다) — 그래서 유불리는 투자 기간에 달려 있습니다: **길게 보유하면 A, 짧게 보유하면 C** 가 "
                    "유리한 것이 일반적입니다.")
@@ -5175,7 +5178,9 @@ def ensure_ext_join(sql: str, ctx) -> tuple[str, list[str]]:
         for u in guard.unknown_columns(sql, ctx):
             close = difflib.get_close_matches(u.lower(), excl, n=2, cutoff=0.8)
             if len(close) == 1:
-                sql = re.sub(rf"(?<![\w.]){re.escape(u)}\b", close[0], sql, flags=re.I)
+                # 🔴 2026-09-06 OFFICIAL-002 서버 원문: `e.mother_fund_names` — 종전 lookbehind `(?<![\w.])` 가
+                #    별칭 뒤(`e.`)를 건너뛰어 로그는 "→ mother_fund_names_raw" 를 찍고 SQL 은 그대로였다 → 기각 → 거절.
+                sql = re.sub(rf"(?<!\w){re.escape(u)}\b", close[0], sql, flags=re.I)
                 notes.append(f"{u} → {close[0]}(유일 근사)")
         if re.search(rf"\b{ext}\b", sql, re.I):
             continue
@@ -9630,6 +9635,39 @@ def absent_period_value_note(question: str, ground_lines: list[str], reason: str
             + f" 입니다 (판매중·공모, 기준일 {gate.DATA_CUTOFF}).")
 
 
+def drop_hallucinated_select_items(sql: str, ctx) -> tuple[str, list[str]]:
+    """스키마에 없는 컬럼이 **SELECT 목록 항목**에만 있으면 그 항목을 걷는다. (SQL, 걷은 컬럼)
+
+    🔴 2026-09-06 OFFICIAL-002(주최 공식 문항) 서버 원문: `SELECT DISTINCT e.ext_fund_page_id, e.itm_no, e.mother_fund_names, …`
+       — `ext_fund_page_id` 는 어느 표에도 없는 컬럼이다. 기각 → 재생성이 같은 문장 → "데이터에 없어 답변을 제공하지
+       못했습니다". 표시 열 하나 때문에 국민성장펀드의 수록 항목 전부를 못 답했다.
+    표시 열을 걷는 것은 조건을 넓히지도 좁히지도 않는다 — 모수 불변. WHERE·GROUP BY·ORDER BY 에도 쓰인 컬럼은 손대지 않는다
+    (그건 환각 술어 가드의 몫). 항목이 하나만 남아도 걷는다 · 전부 걷히면 불개입(문장이 비어 버린다).
+    """
+    if re.search(r"\bunion\b", sql, re.I):
+        return sql, []
+    unk = {u.lower() for u in guard.unknown_columns(sql, ctx)}      # 검사기와 **같은** 판정 — 별칭·내장함수·리터럴 제외
+    if not unk:
+        return sql, []
+    m_sel = re.search(r"^\s*select\s+(distinct\s+)?(.*?)\bfrom\b", sql, re.I | re.S)
+    if not m_sel:
+        return sql, []
+    items = _split_select_items(m_sel.group(2))
+    tail = re.sub(r"'(?:[^']|'')*'", "''", sql[m_sel.end(2):])
+    kept, dropped = [], []
+    for it in items:
+        masked = re.sub(r"'(?:[^']|'')*'", "''", it)
+        bad = sorted(u for u in unk if re.search(rf"(?<![\w.]){re.escape(u)}\b|\.{re.escape(u)}\b", masked, re.I))
+        if bad and not any(re.search(rf"(?<![\w.]){re.escape(b)}\b|\.{re.escape(b)}\b", tail, re.I) for b in bad):
+            dropped.extend(bad)
+            continue
+        kept.append(it)
+    if not dropped or not kept:
+        return sql, []
+    return sql[:m_sel.start(2)] + ", ".join(x.strip() for x in kept) + " " + sql[m_sel.end(2):], dropped
+
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None, fired_out: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -10073,6 +10111,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 미선언 테이블 OR 가지 제거 — {' · '.join(undecl)} (16R gold ③-1 · OFFICIAL-004 실측: "
              "`ext_etf_holdings.ticker` OR 가지 2개 때문에 문장 전체가 기각되고 재생성이 완전히 같은 문장을 "
              "돌려줘 무응답이 됐다. OR 가지는 조건을 넓히는 자리라 걷어도 모수가 넓어지지 않는다)")
+    sql, sel_dropped = drop_hallucinated_select_items(sql, ctx)
+    if sel_dropped:
+        step(f"[Guard] 환각 표시 열 제거 — SELECT 목록에만 있는 스키마 밖 컬럼 {' · '.join(sel_dropped)} 을 걷었다 "
+             "(2026-09-06 OFFICIAL-002 실측: `e.ext_fund_page_id` 하나로 문장 전체가 기각돼 국민성장펀드 수록 항목을 못 답했다 — 표시 열은 모수를 바꾸지 않는다)")
     sql, halluc = drop_hallucinated_column_conjuncts(sql, canon_fired)
     if halluc:
         step(f"[Guard] 환각 컬럼 술어 제거 — {' · '.join(halluc)} (16R KG ③-6 · gold ③-1: 스키마에 없는 컬럼을 쓴 "
@@ -10412,6 +10454,13 @@ def answer_question(
             return result
         if rg is not None:
             sql, err, violations = rg
+        if (err or violations) and name_token and fund_exists(name_token):
+            # 🔴 2026-09-06 OFFICIAL-002 — 거절 뒤집기와 같은 원칙을 **스키마 기각 경로**에도 건다. 이름이 지목한 상품이
+            #    마스터에 실재하면 "데이터에 없다" 는 거절은 틀렸다 — HCX 가 컬럼을 두 번 지어내도 수록 항목은 답해야 한다.
+            step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)} · 이름이 지목한 '{name_token}' 이 "
+                 "마스터에 실재하므로 수록 항목 조회로 대체한다(거절 뒤집기와 같은 원칙)")
+            sql = refusal_override_sql(name_token)
+            err, violations = _sql_precheck(sql, ctx, tables, cross, question=q), []
         if err or violations:
             step(f"[Guard] 재생성 후에도 실패 — {err or '; '.join(str(v) for v in violations)}")
             step("[Decision] 값이 DB 에 없거나 SQL 이 안전하지 않아 종료 (조건을 완화하지 않는다)")

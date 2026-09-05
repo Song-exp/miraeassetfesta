@@ -3103,6 +3103,62 @@ _BOND_COL_KO = {"bd_knd": "종류", "bd_inrt_tcd": "금리구분", "bd_intp_tcd"
 _BOND_YIELD_COLS = ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield", "srfc_irt")
 
 
+def _effective_mat_window(sql: str) -> str | None:
+    """WHERE 최상위 mat_dt 조건 전부의 교집합을 표기 문자열로 — 'a~b'·'a'·'a 이후'·'b 까지'. 사용자 조건이 없으면 None.
+
+    구매가능 하한(mat_dt >= 20260824) 하나뿐이면 표기하지 않는다 — 그건 모수지 사용자가 물은 창이 아니다(#66 ⑤).
+    조건이 서로 어긋나(lo > hi) 0행이면 그대로 'a~b' 로 적어 사용자가 모순을 본다.
+    """
+    m_w = _WHERE_BODY.search(sql)
+    if not m_w:
+        return None
+    body = m_w.group(1)
+    fold = "\x01"
+    folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
+    lo: int | None = None
+    hi: int | None = None
+    hi_strict = False
+    user_pred = False
+    stack = guard.split_conjuncts(folded)
+    while stack:
+        c = stack.pop().strip()
+        if c.startswith("(") and c.endswith(")") and len(guard.split_disjuncts(c[1:-1])) == 1:
+            stack.extend(guard.split_conjuncts(c[1:-1].strip()))     # 괄호 그룹 (a AND b) 은 풀어서 본다
+            continue
+        c = c.replace(fold, " AND ")
+        m = re.match(r"^mat_dt\s+BETWEEN\s+(\d{8})(?:\.0)?\s+AND\s+(\d{8})(?:\.0)?$", c, re.I)
+        if m:
+            a, b = int(m.group(1)), int(m.group(2))
+            lo = a if lo is None else max(lo, a)
+            hi = b if hi is None else min(hi, b)
+            user_pred = True
+            continue
+        m = re.match(r"^mat_dt\s*(>=|<=|=|<|>)\s*(\d{8})(?:\.0)?$", c, re.I)
+        if not m:
+            continue
+        op, v = m.group(1), int(m.group(2))
+        if op in (">=", ">"):
+            lo = v if lo is None else max(lo, v)
+            user_pred = user_pred or v > BUYABLE_INT
+        elif op in ("<=", "<"):
+            if hi is None or v < hi:
+                hi, hi_strict = v, (op == "<")
+            user_pred = True
+        else:
+            lo = v if lo is None else max(lo, v)
+            hi, hi_strict = (v if hi is None else min(hi, v)), False
+            user_pred = True
+    if not user_pred:
+        return None
+    if lo is not None and hi is not None:
+        if lo == hi:
+            return _fmt_ymd(str(lo))
+        return f"{_fmt_ymd(str(lo))}~{_fmt_ymd(str(hi))}" + (" (끝날 미포함)" if hi_strict else "")
+    if lo is not None:
+        return f"{_fmt_ymd(str(lo))} 이후"
+    return f"{_fmt_ymd(str(hi))} {'이전' if hi_strict else '까지'}"
+
+
 def _fmt_ymd(v: str) -> str:
     s = v.strip().rstrip("0").rstrip(".") if re.fullmatch(r"\d{8}\.0+", v.strip()) else v.strip()
     return f"{s[:4]}-{s[4:6]}-{s[6:]}" if re.fullmatch(r"\d{8}", s) else (s or "미수록")
@@ -3153,12 +3209,12 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     total = cov[1] if cov else None
     basis = f"기준일 {gate.DATA_CUTOFF}"
     # 만기 창을 머리줄에 굽는다 — 창이 틀리면 사용자가 바로 본다 (2026-09-03 #51: '내년' 이 2028~2029 로 나갔는데 어디에도 안 보였다)
-    mw = _MAT_BETWEEN.search(sql)
-    me = re.search(r"\bmat_dt\s*=\s*(\d{8})", sql, re.I)
-    if mw:
-        basis = f"만기 {_fmt_ymd(mw.group(1))}~{_fmt_ymd(mw.group(2))} · 질문 시점 {gate.DATA_CUTOFF} 기준"
-    elif me:
-        basis = f"만기 {_fmt_ymd(me.group(1))} · 질문 시점 {gate.DATA_CUTOFF} 기준"
+    # 🔴 2026-09-05 #68 — 첫 BETWEEN 만 읽으면 안 된다. "지난달에 만기된 채권" 이 `mat_dt BETWEEN 20260824 AND 20260930
+    #    AND mat_dt <= 20260914` 로 나갔을 때 머리줄은 8/24~9/30 이라 적고 모수 473종목은 8/24~9/14 의 값이었다 —
+    #    실행 조건과 표기가 달랐다. mat_dt 조건 전부의 **교집합**을 적는다(_effective_mat_window).
+    win = _effective_mat_window(sql)
+    if win:
+        basis = f"만기 {win} · 질문 시점 {gate.DATA_CUTOFF} 기준"
     if total and total > n:
         head = (f"조건에 해당하는 채권은 전체 {total:,}종목이며, {axis_txt + ' ' if axis_txt else ''}상위 {n}개는 다음과 같습니다 ({basis})."
                 if axis_txt else f"조건에 해당하는 채권은 전체 {total:,}종목이며, 그중 {n}개는 다음과 같습니다 ({basis}).")

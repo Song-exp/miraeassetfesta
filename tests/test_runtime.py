@@ -1483,6 +1483,24 @@ def test_enforce_relative_window():
     # 만기 질의는 하한만 있어도 종전대로 발동한다
     q7 = "3년 안에 만기되는 안전한 채권 몇 개만 골라줘"
     assert "mat_dt BETWEEN 20260824 AND 20290824" in enforce_relative_window(floor + " LIMIT 30", q7, gate.resolve_relative_window(q7))[0]
+
+
+def test_effective_mat_window_header():
+    """2026-09-05 #68 — 머리줄 만기 창은 mat_dt 조건 전부의 교집합이다.
+
+    "지난달에 만기된 채권들은 지금 어떻게 됐어?" 가 `BETWEEN 20260824 AND 20260930 AND mat_dt <= 20260824+90` 로 나갔고
+    머리줄은 첫 BETWEEN 만 읽어 8/24~9/30 이라 적었다. 모수 473종목은 8/24~9/14(교집합)의 값이었다.
+    """
+    from src.runtime.pipeline import _effective_mat_window as w
+    f = "SELECT pd_no FROM domestic_bonds WHERE "
+    assert w(f + "mat_dt BETWEEN 20260824 AND 20260930 AND mat_dt <= 20260914 GROUP BY pd_no LIMIT 30") == "2026-08-24~2026-09-14"
+    assert w(f + "(mat_dt >= 20260824 AND mat_dt <= 20290824) LIMIT 30") == "2026-08-24~2029-08-24"     # 괄호 그룹도 푼다
+    assert w(f + "mat_dt = 20260824 LIMIT 30") == "2026-08-24"
+    assert w(f + "mat_dt < 20260824 LIMIT 5") == "2026-08-24 이전"
+    # 구매가능 하한 하나뿐이면 창이 아니다(모수) · OR 그룹은 창으로 읽지 않는다 · 조건 없음
+    assert w(f + "curr_cd='KRW' AND mat_dt >= 20260824 LIMIT 30") is None
+    assert w(f + "(mat_dt >= 20260824 OR mat_dt = 0) LIMIT 30") is None
+    assert w("SELECT pd_no FROM domestic_bonds LIMIT 30") is None
     # '발행' 과 '만기' 를 함께 물으면 만기 축 판정은 살아 있다
     q8 = "올해 발행된 채권 중 내년에 만기되는 것"
     assert enforce_relative_window(floor + " LIMIT 30", q8, gate.resolve_relative_window(q8))[1] is None   # 창이 둘 → 불개입

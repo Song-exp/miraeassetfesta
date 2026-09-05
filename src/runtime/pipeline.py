@@ -3481,6 +3481,34 @@ def country_axis_note(sql: str, question: str) -> str | None:
             "'투자 지역' 대분류로 세면 수가 달라집니다 — 그 축을 원하시면 말씀해 주세요.")
 
 
+def domain_caveats(sql: str, rows: str, question: str = "") -> list:
+    """숫자만으로는 오해되는 자리에 **도메인 한 문장**을 붙인다.
+
+    셋 다 규칙 문장으로는 이미 선언돼 있는데 네 회차 내리 답변에 닿지 않았다 — 조립기가 적는다.
+
+    ① 판매완료 ≠ 청산 (`DOM-07`, PDF §2.3) — "판매완료된 공모펀드는 몇 개야? **이미 청산된 거야?**"
+       에서 숫자만 답하고 뒷부분을 넘겼다. 신규 가입이 닫힌 것이지 펀드가 사라진 게 아니다.
+    ② 헤지펀드는 사모 영역 (`DOM-11`) — 공모 모수에서 0 이 나오는 것이 **정상**인데, 그 말이 없으면
+       결손처럼 읽힌다.
+    ③ A·C 클래스 보수 비교 (`DOM-06`, PDF §3.1) — 총보수만 비교하면 절반이다. A 는 가입 시
+       **선취 수수료**를 따로 떼는데 그 금액이 마스터에 없어, 유불리는 **투자 기간의 문제**다.
+    """
+    out = []
+    if re.search(r"sale_yn\s*=\s*'판매완료'", sql):
+        out.append("※ '판매완료' 는 **신규 가입이 닫힌 것**이지 청산(펀드 해지)이 아닙니다 — "
+                   "이미 가입한 투자자는 계속 보유·환매할 수 있습니다.")
+    # 🔴 SQL 이 `hdge_fd_yn` 을 안 쓰고 이름 LIKE 로 푸는 경우가 잦다(실측) — 질문 낱말도 함께 본다.
+    _hedge = re.search(r"\bhdge_fd_yn\b", sql, re.I) or "헤지펀드" in question.replace(" ", "")
+    if _hedge and re.fullmatch(r"[0\s|]+", (rows.splitlines()[-1] if rows else "x").strip() or "x"):
+        out.append("※ 헤지펀드는 **사모 영역**이라 공모 모수에서 0 인 것이 정상입니다 — "
+                   "자료가 빠진 것이 아닙니다.")
+    if "수수료선취" in rows and "수수료미징구" in rows:
+        out.append("※ 총보수만 비교한 값입니다. **A 계열은 가입 시 선취 수수료를 따로 뗍니다**(금액은 이 데이터에 "
+                   "없습니다) — 그래서 유불리는 투자 기간에 달려 있습니다: **길게 보유하면 A, 짧게 보유하면 C** 가 "
+                   "유리한 것이 일반적입니다.")
+    return out
+
+
 def flag_missing_note(sql: str) -> str | None:
     """Y/N 플래그로 세었는데 그 컬럼에 **미수록이 많으면** 그 사실을 적는다. 아니면 None.
 
@@ -9437,9 +9465,11 @@ def answer_question(
     if cnt is not None:
         step("[Answer] 개수 답변 기계 조립 — 펀드수/클래스수 1행은 HCX 없이 옮긴다 "
              "(2026-09-02 R5 재검: 클래스 541 을 답변기가 버림 — 034 재검은 병기, 비결정)")
-        _fn = flag_missing_note(sql)
+        _notes = ([flag_missing_note(sql)] if flag_missing_note(sql) else []) + domain_caveats(sql, rows, q)
+        if _notes:
+            cnt += "\n\n" + "\n".join(_notes)
+        _fn = _notes[0] if _notes else None
         if _fn:
-            cnt += "\n\n" + _fn
             step("[Answer] 결측 병기 — 플래그 컬럼의 미수록 비율을 적었다 "
                  "(2026-09-05 DOM-08 실측: 환헤지 Y 만 세고 결측 39% 를 안 밝히면 '나머지는 안 한다' 로 읽힌다)")
         result.think_trace = "\n".join(trace)
@@ -9615,6 +9645,11 @@ def answer_question(
         result.answer = (result.answer or "").rstrip() + "\n\n" + partial_absent
         step("[Answer] 부분 부재 고지 — 질문이 함께 물은 미수록 항목을 답변 끝에 기계로 적었다 "
              "(2026-09-04 OFFICIAL-002: 있는 것과 없는 것을 함께 묻는 질문을 쪼갤 구조가 없어 통째로 거절하던 자리)")
+    for _c in domain_caveats(sql, rows, q):
+        if _c[:20] not in (result.answer or ""):
+            result.answer = (result.answer or "").rstrip() + "\n\n" + _c
+            step("[Answer] 도메인 고지 — 숫자만으로는 오해되는 자리에 한 문장을 기계로 적었다 "
+                 "(판매완료≠청산 · 헤지펀드는 사모 영역 · A계열 선취 수수료와 기간 조건부)")
     if axis_note and axis_note not in result.answer:
         result.answer = axis_note + "\n\n" + result.answer
         step("[Answer] 축 교체 고지 — 질문이 지목한 축이 전건 결측이라 다른 축으로 답한 사실을 머리줄에 기계로 적었다 "

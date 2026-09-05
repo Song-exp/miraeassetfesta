@@ -62,7 +62,8 @@ def test_override_sql_returns_the_product(ctx):
 
 def test_refusal_is_overridden_when_product_exists(ctx):
     r = answer_question("OFFICIAL-002", Q, planner=_Refuser(), ctx=ctx)
-    assert "거절 뒤집기" in r.think_trace
+    # 2026-09-06: 개요 질의는 개요 조회 확정식이 먼저 받는다(HCX 0회) — 어느 쪽이든 "실재 상품은 거절하지 않는다" 는 같다
+    assert "거절 뒤집기" in r.think_trace or "개요 조회 확정식" in r.think_trace
     ans = r.answer or ""
     assert "4" in ans and "주식혼합형" in ans, ans          # 있는 것은 답한다
     assert "운용 전략" in ans, "없는 것을 명시하지 않았다"      # 없는 것은 밝힌다

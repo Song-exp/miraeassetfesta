@@ -16,6 +16,7 @@ RAW = ("SELECT DISTINCT e.ext_fund_page_id, e.itm_no, e.mother_fund_names, e.cla
        "FROM public_funds p JOIN ext_fund_page e ON e.itm_no = p.itm_no "
        "WHERE p.itm_nm LIKE '%국민성장%' AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모'")
 Q = "국민성장펀드의 구조와 투자전략 동향 등 찾아서 알려줘"
+Q_ATTR = "국민성장펀드 환매 수수료와 총보수 알려줘"          # 개요가 아니라 속성 질의 — HCX 계획 경로를 탄다
 
 
 @pytest.fixture(scope="module")
@@ -44,7 +45,7 @@ def test_OFFICIAL_002_원문이_실행까지_간다(ctx):
     class P:
         def plan_sql(s, q, g): return RAW
         def compose_answer(s, q, rows, a=""): return "[HCX]"
-    r = answer_question("OFFICIAL-002", Q, planner=P(), ctx=ctx)
+    r = answer_question("OFFICIAL-002x", Q_ATTR, planner=P(), ctx=ctx)
     assert "[Execute]" in r.think_trace and "mother_fund_names_raw" in r.sql
     assert "답변을 제공하지 못했습니다" not in (r.answer or "")
 
@@ -55,7 +56,7 @@ def test_두_번_기각돼도_실재_상품이면_수록_항목으로(ctx):
     class P:
         def plan_sql(s, q, g): return bad
         def compose_answer(s, q, rows, a=""): return "[HCX]"
-    r = answer_question("OFFICIAL-002", Q, planner=P(), ctx=ctx)
+    r = answer_question("OFFICIAL-002x", Q_ATTR, planner=P(), ctx=ctx)
     assert "수록 항목 조회로 대체" in r.think_trace and "[Execute]" in r.think_trace
 
 
@@ -64,3 +65,39 @@ def test_DOM06_고지는_질문으로_판정(ctx):
     notes = domain_caveats("SELECT or_co_rwrd_r FROM public_funds LIMIT 30", "or_co_rwrd_r\n7.2", q)
     assert any("선취 수수료" in n for n in notes)
     assert not any("선취 수수료" in n for n in domain_caveats("SELECT itm_no FROM public_funds LIMIT 30", "itm_no\nX", "순자산 큰 펀드"))
+
+
+from src.runtime.pipeline import is_overview_question  # noqa: E402
+
+
+class _NoHCX:
+    def plan_sql(self, q, g): raise AssertionError("HCX 계획이 호출됐다")
+    def compose_answer(self, q, rows, a=""): raise AssertionError("HCX 작문이 호출됐다")
+
+
+def test_공식_문항은_HCX_0회로_개요를_조립한다(ctx):
+    r = answer_question("OFFICIAL-002", Q, planner=_NoHCX(), ctx=ctx)
+    assert "개요 조회 확정식" in r.think_trace and "개요 답변 기계 조립" in r.think_trace
+    for must in ("클래스 수: 4개", "미래에셋자산운용", "주식혼합형", "혼합자산", "위험등급", "억원", "수록되어 있지 않아"):
+        assert must in r.answer, must
+
+
+@pytest.mark.parametrize("q, want", [
+    ("국민성장펀드의 구조와 투자전략 동향 등 찾아서 알려줘", True),
+    ("미래에셋코어테크 펀드 어떤 상품이야?", True),
+    ("미래에셋코어테크 펀드 순자산 알려줘", False),          # 속성 질의
+    ("미래에셋코어테크 펀드는 클래스가 몇 개야?", False),
+    ("Kimi 관련 투자 상품 있어?", False),
+    ("수익률 좋은 펀드 추천해줘", False),
+])
+def test_개요_판정_범위(q, want):
+    assert is_overview_question(q) is want
+
+
+def test_실재하지_않는_이름은_개요_경로에_들지_않는다(ctx):
+    """'Kimi' 같은 부재 대상은 종전 거절 경로 그대로 — 가짜 플래너가 거절을 돌려주면 그 거절이 답이다."""
+    class P:
+        def plan_sql(self, q, g): return "REFUSE: 데이터에 없는 상품"
+        def compose_answer(self, q, rows, a=""): return "[HCX]"
+    r = answer_question("T", "Kimi 펀드의 구조와 전략 알려줘", planner=P(), ctx=ctx)
+    assert "개요 조회 확정식" not in r.think_trace

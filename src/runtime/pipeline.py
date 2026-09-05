@@ -9668,6 +9668,52 @@ def drop_hallucinated_select_items(sql: str, ctx) -> tuple[str, list[str]]:
 
 
 
+_OVERVIEW_Q = re.compile(r"구조|전략|동향|개요|소개|특징|어떤\s*(?:펀드|상품)|설명해|알려줘")
+_OVERVIEW_ATTR_Q = re.compile(r"수익률|보수|순자산|기준가|위험등급|클래스|설정|운용사|수탁사|보유|종목|모펀드|몇|얼마|언제|누구|비교|낮|높|큰|작")
+
+
+def is_overview_question(question: str) -> bool:
+    """상품 하나의 **개요**를 묻는가 — 구조·전략·동향·소개. 특정 속성(수익률·보수·순자산…)을 물으면 아니다."""
+    q = question.replace(" ", "")
+    return bool(_OVERVIEW_Q.search(q)) and not _OVERVIEW_ATTR_Q.search(q)
+
+
+def _overview_answer(rows: str, name_token: str, partial_absent: str) -> str | None:
+    """`refusal_override_sql` 의 1행(대표_itm_no · itm_nm · 클래스수 · 운용사코드 · 유형 · 약관분류 · 위험등급 · fd_nast_suma)을
+    HCX 없이 개요 문장으로 조립한다. 모양이 다르면 None.
+
+    🔴 2026-09-06 핵심 34 재점검 — OFFICIAL-002(주최 공식 문항)가 세 번 중 한 번은 4행을 받고도 "정보를 제공할 수
+       없습니다", 두 번은 "직접 확인할 데이터는 없다" 며 일부 사실을 뒤섞었다. 6차에 맞았던 답도 HCX 산문이었다 —
+       공식 문항의 답을 HCX 에 맡길 수 없다. 마스터가 아는 것은 마스터 말로, 없는 것은 부재 고지로.
+    """
+    lines = rows.splitlines()
+    if len(lines) != 2:
+        return None
+    cols = [c.strip() for c in lines[0].split(" | ")]
+    vals = [v.strip() for v in lines[1].split(" | ")]
+    if "itm_nm" not in cols or "클래스수" not in cols:
+        return None
+    rec = dict(zip(cols, vals))
+    names = _org_names_by_code()
+    code = rec.get("운용사코드", "").strip()
+    org_names = names.get(code) or names.get(code.zfill(8)) or []
+    org = (sorted(org_names, key=len)[-1] if org_names else None)
+    org_txt = f"{org}({code})" if org else (f"코드 {code}(기관명 미수록)" if code else None)
+    try:
+        nast = f"{float(rec.get('fd_nast_suma', '') or 0) / 1e8:,.0f}억원"
+    except ValueError:
+        nast = None
+    items = [("상품명(대표 클래스)", rec.get("itm_nm")), ("클래스 수", f"{rec.get('클래스수')}개" if rec.get("클래스수") else None),
+             ("운용사", org_txt), ("유형", rec.get("유형")), ("약관 분류", rec.get("약관분류")),
+             ("위험등급", rec.get("위험등급")), ("순자산(대표 클래스 기준)", nast)]
+    body = "\n".join(f"- {k}: {v}" for k, v in items if v)
+    head = f"'{name_token}' 이름의 공모펀드가 마스터에 있습니다 (기준일 {gate.DATA_CUTOFF}). 수록된 구조 항목은 다음과 같습니다."
+    out = head + "\n\n" + body
+    if partial_absent:
+        out += "\n\n" + partial_absent
+    return out
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None, fired_out: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -10299,10 +10345,20 @@ def answer_question(
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "
          f"{len(grounding):,}자 · 구성: {blocks}")
     t0 = time.monotonic()
-    raw_sql = planner.plan_sql(q, grounding)
+    # 🔴 2026-09-06 개요 조회 확정식 — 이름이 지목한 상품이 마스터에 실재하고 질문이 구조·전략·동향·개요를 물으면
+    #    HCX 에 계획을 맡기지 않는다. 핵심 34 재점검에서 OFFICIAL-002 가 HCX 의 환각 컬럼(ext_fund_page_id)으로
+    #    거절됐고, 고친 뒤에도 4행을 받은 HCX 산문이 세 번 중 한 번 "제공할 수 없습니다" 였다.
+    #    답은 마스터가 아는 것(유형·약관분류·위험등급·운용사·클래스·순자산) + 없는 것의 부재 고지 — 둘 다 결정적이다.
+    overview = bool(tables == ["public_funds"] and name_token and is_overview_question(q) and fund_exists(name_token))
+    if overview:
+        raw_sql = refusal_override_sql(name_token)
+        step(f"[Guard] 개요 조회 확정식 — 이름이 지목한 '{name_token}' 이 마스터에 실재하고 질문이 개요(구조·전략·동향)라 "
+             "HCX 계획 없이 마스터 요약 SQL 로 간다 (2026-09-06 OFFICIAL-002 재점검: HCX 환각 컬럼 기각 → 거절 · 산문 1/3 거절)")
+    else:
+        raw_sql = planner.plan_sql(q, grounding)
     result.raw_sql = raw_sql          # 가드 적용 전 원문 — 섀도 재생용(로그 전용)
 
-    partial_absent = ""
+    partial_absent = absent_partial_note(q, ctx, tables) if overview else ""
     if raw_sql.strip().upper().startswith(REFUSE_PREFIX) and name_token and fund_exists(name_token):
         # 🔴 2026-09-04 OFFICIAL-002(**주최 공식 문항**) — "국민성장펀드의 구조와 투자전략 동향" 은
         #    **있는 것과 없는 것을 함께** 묻는데 플래너가 통째로 거절했다(SQL 0회). 이름이 지목한 상품이
@@ -10695,7 +10751,13 @@ def answer_question(
             step(f"[Answer] 커버리지 병기 — LIMIT 도달, {scope} 를 답변 입력에 굽는다 (2026-09-02 R3 재검: 30행 중 5행 나열 + 총량 미고지)")
     rows_for_answer = f"{header}\n{answer_rows}"
     # 옛 2인자 플래너(테스트 프로브 등)와 호환 — answer_rules 를 받지 않으면 넘기지 않는다
-    if _accepts_answer_rules(planner):
+    ov = _overview_answer(rows, name_token, partial_absent) if overview and n == 1 else None
+    if ov is not None:
+        step("[Answer] 개요 답변 기계 조립 — 마스터 요약 1행을 HCX 없이 항목별로 옮기고 부재 항목을 함께 적는다 "
+             "(2026-09-06 OFFICIAL-002: 같은 4행을 받고도 HCX 산문이 1/3 거절·2/3 사실 뒤섞임)")
+        result.answer = ov
+        partial_absent = ""                                  # 이미 실었다
+    elif _accepts_answer_rules(planner):
         result.answer = planner.compose_answer(q, rows_for_answer, answer_rules)
     else:
         result.answer = planner.compose_answer(q, rows_for_answer)

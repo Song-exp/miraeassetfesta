@@ -1520,6 +1520,38 @@ def _axis_from_question(question: str) -> str | None:
     return "fd_nast_suma" if ("순자산" in q or "규모" in q) else None
 
 
+def ensure_orderby_in_range(sql: str) -> tuple[str, list]:
+    """SELECT 열 수를 넘는 **위치 ORDER BY** 를 걷어낸다. (SQL, 걷어낸 위치)
+
+    2026-09-05 DOM-06 실측 — HCX 가 `ORDER BY 4` 를 냈는데 SELECT 항목은 3개였다. SQLite 문법
+    오류라 질의가 통째로 죽고, 재생성도 같은 실수를 반복해 오거절로 끝났다. 클래스 조건·이름
+    조건은 다 맞았는데 **정렬 하나 때문에** 답이 없었다.
+
+    정렬은 답의 축이 아니라 표시 순서다 — 실행 불가능한 키를 걷어 질의를 살린다. 남은 키가
+    없으면 ORDER BY 절을 통째로 뗀다(리포의 방언 토큰 치환과 같은 원칙: 기계로 고칠 수 있으면
+    보정한다).
+    """
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    m = _ORDER_BY_ALL.search(sql)
+    if not frm or not m:
+        return sql, []
+    head = re.sub(r"^\s*select\s+(distinct\s+)?", "", sql[:frm.start()], flags=re.I)
+    n = len(_split_select_items(head))
+    keys, dropped = [], []
+    for raw in _split_select_items(m.group(1)):
+        mk = _KEY_DIR.match(raw.strip())
+        expr = mk.group(1).strip()
+        if expr.isdigit() and not (1 <= int(expr) <= n):
+            dropped.append(int(expr))
+            continue
+        keys.append(raw.strip())
+    if not dropped:
+        return sql, []
+    if keys:
+        return sql[:m.start(1)] + ", ".join(keys) + " " + sql[m.end(1):], dropped
+    return (sql[:m.start()] + " " + sql[m.end():]).strip(), dropped
+
+
 def ensure_fund_rank_axis(sql: str, question: str) -> tuple[str, bool]:
     """ORDER BY 가 랭킹 축을 안 가리키면, **질문이 지목한 축**으로 정렬을 바로 세운다. (SQL, 고쳤는지)
 
@@ -2262,6 +2294,8 @@ def ensure_fund_key_column(sql: str) -> tuple[str, list[str]]:
 _CLASS_NOTE_Q = re.compile(r"종류\s*([A-Za-z](?:\s*-?\s*[A-Za-z0-9]){0,4})|(?<![A-Za-z])([A-Za-z](?:-?[A-Za-z0-9]){0,4})\s*클래스")
 _CLASS_NM_CONJ = re.compile(r"\b(?:\w+\.)?han_clas_nm\b", re.I)
 _CLASS_NM_SUFFIX = "REPLACE(REPLACE(itm_nm,' ',''),'-','')"
+# 종목명 접미로 클래스를 거르는 술어 — 확정식이 자기 것을 넣기 전에 걷어낸다
+_CLASS_SUFFIX_PRED = re.compile(r"LIKE\s*'%종류[^']*'", re.I)
 
 
 @lru_cache(maxsize=128)
@@ -2277,13 +2311,60 @@ def _class_suffix_exists(tok: str) -> bool:
         con.close()
 
 
-def _class_notation_in_question(question: str) -> str | None:
-    """질문의 클래스 표기(하이픈·공백 제거, 대문자화). DB 에 실재하는 접미만 돌려준다."""
+def _class_notations_in_question(question: str) -> list:
+    """질문의 클래스 표기 **전부**(하이픈·공백 제거, 대문자화). DB 에 실재하는 접미만.
+
+    🔴 2026-09-05 AA24 실측 — 정규식이 공백을 건너뛰며 붙이므로 "종류A 3년 수익률" 이 `A 3` 으로
+       잡히고 `A3` 접미가 없어 통째로 None 이 됐다. 그래서 `han_clas_nm` 절이 살아남아 0행이 났다.
+       **긴 후보가 실패하면 한 글자씩 줄여 재시도**한다 — 'C-P2' 같은 실제 표기는 그대로 살고
+       질문의 우연한 꼬리(' 3')만 떨어진다.
+
+    🔴 DOM-06("A클래스와 C클래스 중 어느 쪽이 보수가 낮아?") 은 **둘 다** 있어야 비교가 성립한다.
+       종전엔 첫 표기 하나만 돌려줘 A 만 조회되고 C 를 못 찾아 답을 못 냈다.
+    """
+    out: list = []
     for m in _CLASS_NOTE_Q.finditer(question):
-        tok = re.sub(r"[\s-]", "", m.group(1) or m.group(2) or "")
-        if tok and _class_suffix_exists(tok.upper()):
-            return tok.upper()
-    return None
+        tok = re.sub(r"[\s-]", "", m.group(1) or m.group(2) or "").upper()
+        while tok:
+            if _class_suffix_exists(tok):
+                if tok not in out:
+                    out.append(tok)
+                break
+            tok = tok[:-1]
+    return out
+
+
+def _class_notation_in_question(question: str) -> str | None:
+    """질문의 클래스 표기 하나 — 여러 개면 첫 번째. 종전 호출부 호환용."""
+    toks = _class_notations_in_question(question)
+    return toks[0] if toks else None
+
+
+def _strip_class_nm_predicates(expr: str) -> str:
+    """`han_clas_nm` 을 쓴 **낱개 술어만** 걷어내고 형제 조건은 살린다.
+
+    🔴 2026-09-05 AA24 실측 — 종전엔 최상위 AND 조각 중 `han_clas_nm` 이 **보이기만 하면** 통째로
+       버렸다. 그런데 HCX 가 조건을 괄호로 묶어 냈다:
+
+           (REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%'
+            AND REPLACE(han_clas_nm,' ','') LIKE '%종류A%'
+            AND TRIM(or_co_xtn_itt_cd) = '00080008')
+
+       한 덩어리라 **이름 필터·운용사 필터까지 함께 사라졌고** 모수가 344펀드로 벌어졌다.
+       괄호 안으로 들어가 잎사귀 술어만 지운다.
+    """
+    parts = guard.split_conjuncts(expr)
+    if len(parts) > 1:
+        kept = [x for x in (_strip_class_nm_predicates(p) for p in parts) if x]
+        return " AND ".join(kept)
+    e = (parts[0] if parts else expr).strip()
+    if e.startswith("(") and e.endswith(")"):
+        inner = _strip_class_nm_predicates(e[1:-1])
+        return f"({inner})" if inner else ""
+    # 🔴 HCX 가 이미 자기 클래스 접미 조건을 갖고 있으면 그것도 걷는다 — 안 걷으면 확정식과
+    #    AND 로 겹쳐 교집합이 한쪽만 남는다(2026-09-05 DOM-06: `(A OR C) AND A` = A 뿐).
+    #    상품명 필터(`… LIKE '%미래에셋코어테크%'`)는 리터럴이 '종류' 로 시작하지 않아 안전하다.
+    return "" if (_CLASS_NM_CONJ.search(e) or _CLASS_SUFFIX_PRED.search(e)) else e
 
 
 def ensure_fund_class_notation(sql: str, question: str) -> tuple[str, bool]:
@@ -2296,18 +2377,21 @@ def ensure_fund_class_notation(sql: str, question: str) -> tuple[str, bool]:
     """
     if not _FUND_TBL.search(sql) or re.search(r"\bunion\b", sql, re.I):
         return sql, False
-    tok = _class_notation_in_question(question)
-    if not tok:
+    toks = _class_notations_in_question(question)
+    if not toks:
         return sql, False
-    cond = f"{_CLASS_NM_SUFFIX} LIKE '%종류{tok}'"
+    # 비교 질문("A클래스와 C클래스 중 …")은 둘 다 있어야 성립한다 — OR 로 묶는다
+    cond = (f"{_CLASS_NM_SUFFIX} LIKE '%종류{toks[0]}'" if len(toks) == 1 else
+            "(" + " OR ".join(f"{_CLASS_NM_SUFFIX} LIKE '%종류{t}'" for t in toks) + ")")
     if cond in sql:
         return sql, False
     m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
     if not m_w:
         anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
         return (f"{sql[:anchor.start()]}WHERE {cond} {sql[anchor.start():]}", True) if anchor else (sql, False)
-    keep = [c for c in guard.split_conjuncts(m_w.group(1)) if not _CLASS_NM_CONJ.search(c)]
-    return sql[:m_w.start()] + " WHERE " + " AND ".join([cond] + keep) + " " + sql[m_w.end():].lstrip(), True
+    kept = _strip_class_nm_predicates(m_w.group(1))
+    return (sql[:m_w.start()] + " WHERE " + " AND ".join([cond] + ([kept] if kept else []))
+            + " " + sql[m_w.end():].lstrip(), True)
 
 
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
@@ -7883,6 +7967,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 안 쓰는 외부표 조인 제거 — " + "·".join(ext_drop) + " 을 걷어냈다 "
              "(컬럼을 하나도 안 쓰는 1:1 LEFT JOIN 이라 결과 불변 · 남겨 두면 대표행 보정이 통째로 "
              "비켜간다 · 2026-09-05 FND-007 실측)")
+    sql, ob_dropped = ensure_orderby_in_range(sql)
+    if ob_dropped:
+        step("[Guard] 위치 ORDER BY 범위 보정 — SELECT 열 수를 넘는 키 "
+             + "·".join(str(x) for x in ob_dropped) + " 을 걷어냈다 "
+             "(문법 오류라 질의가 통째로 죽는다 · 2026-09-05 DOM-06 실측: 조건은 다 맞았는데 "
+             "`ORDER BY 4` 하나로 오거절)")
     sql, axis_fixed = ensure_fund_rank_axis(sql, q)
     if axis_fixed:
         step("[Guard] 랭킹 정렬축 교정 — ORDER BY 가 랭킹 축을 안 가리켜 질문이 지목한 축으로 세웠다 "

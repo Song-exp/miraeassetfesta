@@ -1454,6 +1454,25 @@ def test_resolve_relative_window_table():
     assert gate.future_tokens("내년에 만기되는 회사채") == ["2027"]
     assert gate.future_tokens("3년 뒤 만기 채권") == ["2029"]
     assert gate.future_tokens("올해 안에 만기되는 채권") == []
+    # ── 2026-09-05 #68 — 과거 방향: 문법의 대칭 절반(지난·저번·전 × 주·달·해) + 오늘을 품는 낱말은 방향으로 자른다 ──
+    # 원 사고: "지난달에 만기된 채권들은 지금 어떻게 됐어?" → 확정표에 '지난달' 이 없어 창 [] → HCX 가 8/24~9/30(미래)로 냈다.
+    p = lambda q: w(q, "past")
+    assert p("지난달에 만기된 채권들은 지금 어떻게 됐어?") == [("지난달", 20260701, 20260731)]
+    assert p("저번 달 만기") == [("지난달", 20260701, 20260731)] and p("전월 만기") == [("지난달", 20260701, 20260731)]
+    assert p("지난주 만기된") == [("지난주", 20260817, 20260823)]                  # 8/17 월 ~ 8/23 일
+    assert p("작년에 만기된 채권") == [("작년", 20250101, 20251231)] and p("지난해 만기") == [("작년", 20250101, 20251231)]
+    assert p("2년 전에 만기된") == [("2년 전", 20240101, 20241231)]               # 'N년 전' = 그 해 전체
+    assert p("최근 6개월 안에 새로 발행된 회사채") == [("최근 6개월", 20260224, 20260824)]   # '6개월 안에'(미래형)는 과거 방향에서 안 잡는다
+    assert p("최근 반 년 발행") == [("최근 반 년", 20260224, 20260824)]
+    # 오늘을 품는 낱말 — 자연 창을 방향으로 자른다: 미래 D~끝 · 과거 시작~D
+    assert p("올해 만기 지난 채권") == [("올해", 20260101, 20260824)]
+    assert w("올해 안에 만기되는 채권") == [("올해", 20260824, 20261231)]           # 미래 방향은 종전과 같다
+    assert p("이번 달 발행된") == [("이번 달", 20260801, 20260824)] and w("이번 달 만기") == [("이번 달", 20260824, 20260831)]
+    assert w("올해 상반기 만기") == [] and p("올해 상반기 발행된") == [("올해 상반기", 20260101, 20260630)]   # 미래 방향엔 빈 창
+    # 과거 낱말은 미래 방향(기본)에 안 섞인다 — "지난 1주일 수익률" 류 성과 기간을 창으로 오폭하지 않는다
+    assert w("지난 1주일 수익률이 높은 채권") == [] and w("지난달 수익률") == []
+    assert p("전주 지역개발채권") == []                                              # 지명 '전주' 는 낱말이 아니다
+    assert gate.resolve_past_window("최근 6개월 발행") == p("최근 6개월 발행")     # 호환 이름
 
 
 def test_enforce_relative_window():
@@ -1477,20 +1496,41 @@ def test_enforce_relative_window():
     # 불개입: '오늘' 이 시점일 뿐인 질의 · 만기 경과 질의 · 이미 같은 창
     q4 = "오늘 수익률 높은 채권"
     assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE applied_yield > 5 LIMIT 5", q4, gate.resolve_relative_window(q4))[1] is None
+    # 🔴 2026-09-05 #68 — 만기 경과 질의(과거 방향)도 같은 가드가 창을 강제한다(종전엔 알아보고 물러났다).
+    #    '올해' 는 과거 방향에서 1/1~D 다 — 호출자가 미래 방향 창(D~12/31)을 줘도 가드가 방향대로 다시 푼다.
     q5 = "올해 만기 지난 채권"
-    assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt < 20260824 LIMIT 5", q5, gate.resolve_relative_window(q5))[1] is None
+    fixed5, note5 = enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt < 20260824 LIMIT 5", q5, gate.resolve_relative_window(q5))
+    assert note5 and "mat_dt BETWEEN 20260101 AND 20260824" in fixed5 and "방향 past" in note5
     assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5", q, gate.resolve_relative_window(q))[1] is None
+    # 원 사고 #68: "지난달에 만기된 채권들은 지금 어떻게 됐어?" → HCX 미래 창(8/24~9/30 + 산술) → 지난달(7월) 창으로, 구매가능 하한 없이
+    q68 = "지난달에 만기된 채권들은 지금 어떻게 됐어?"
+    fixed68, note68 = enforce_relative_window(
+        "SELECT pd_no, pd_nm, mat_dt FROM domestic_bonds WHERE mat_dt BETWEEN 20260824 AND 20260930 AND mat_dt <= 20261122 GROUP BY pd_no LIMIT 30",
+        q68, gate.resolve_relative_window(q68))
+    assert note68 and "WHERE mat_dt BETWEEN 20260701 AND 20260731 GROUP BY pd_no" in fixed68 and "20260824" not in fixed68
     # ── 2026-09-05 서버 실측 #66 회귀 — '축 대체': 발행 시점 질의에 만기 창을 강제하던 자리 ──
     # 원 사고: "최근 6개월 안에 새로 발행된 회사채 중 표면금리 높은 5개" 가 답한 5종목의 실제 발행일은
     #          2023-09-15 ~ 2025-09-24 로 5/5 전부 창 밖. 발행 축(isu_dt)이 있는데 창이 mat_dt 로 갔다.
+    # 🔄 #68 에서 "강제하지 않는다"(예외 경로)를 "발행 축으로 강제한다"(같은 가드, 축만 다름)로 — 구매가능 하한은 모수라 남는다.
     floor = "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' AND mat_dt >= 20260824"
-    for qi in ("최근 6개월 안에 새로 발행된 회사채 중에 표면금리 높은 5개 알려줘",
-               "이번 달에 새로 나온 채권", "올해 발행된 채권 알려줘"):
-        assert enforce_relative_window(floor + " LIMIT 30", qi, gate.resolve_relative_window(qi))[1] is None
-    # HCX 가 isu_dt 로 옳게 써도 종전엔 mat_dt 창이 덧붙어 '발행 AND 만기' 로 오염됐다
+    for qi, want in (("최근 6개월 안에 새로 발행된 회사채 중에 표면금리 높은 5개 알려줘", "isu_dt BETWEEN 20260224 AND 20260824"),
+                     ("이번 달에 새로 나온 채권", "isu_dt BETWEEN 20260801 AND 20260824"),
+                     ("올해 발행된 채권 알려줘", "isu_dt BETWEEN 20260101 AND 20260824")):
+        fixed_i, note_i = enforce_relative_window(floor + " LIMIT 30", qi, gate.resolve_relative_window(qi))
+        assert note_i and "축 isu_dt" in note_i and f"{want} AND isu_dt > 0" in fixed_i
+        assert "mat_dt >= 20260824" in fixed_i and "mat_dt BETWEEN" not in fixed_i        # 모수는 남고 만기 창은 안 생긴다
+    # HCX 가 isu_dt 로 옳게 썼으면 창은 그대로 두고 isu_dt > 0(미수록 26행 제외)만 붙는다 — mat_dt 창으로 오염되지 않는다
     q6 = "올해 발행된 채권 알려줘"
-    assert enforce_relative_window(floor + " AND isu_dt BETWEEN 20260101 AND 20260824 LIMIT 30", q6,
-                                   gate.resolve_relative_window(q6))[1] is None
+    fixed6, _ = enforce_relative_window(floor + " AND isu_dt BETWEEN 20260101 AND 20260824 LIMIT 30", q6, gate.resolve_relative_window(q6))
+    assert "isu_dt BETWEEN 20260101 AND 20260824 AND isu_dt > 0" in fixed6 and fixed6.count("mat_dt") == 1
+    # HCX 가 만기 창을 발행 시점에 갖다 쓴 #66 원형 — 만기 창은 걷히고 발행 창이 들어간다
+    fixed66, _ = enforce_relative_window(floor + " AND mat_dt BETWEEN 20260824 AND 20270224 ORDER BY srfc_irt DESC LIMIT 5",
+                                         "최근 6개월 안에 새로 발행된 회사채 중에 표면금리 높은 5개 알려줘", None)
+    assert "isu_dt BETWEEN 20260224 AND 20260824" in fixed66 and "20270224" not in fixed66 and "mat_dt >= 20260824" in fixed66
+    # 발행 예정(미래 방향)은 과거로 자르지 않는다
+    from src.runtime.pipeline import time_direction
+    assert time_direction("다음 달에 발행될 채권") == "future" and time_direction("최근 6개월에 발행된 채권") == "past"
+    assert time_direction("지난달에 만기된 채권") == "past" and time_direction("내년에 만기되는 채권") == "future"
     # 구매가능 하한(mat_dt >= 판정일)은 사용자가 물은 만기 조건이 아니다 — 이것 때문에 만기를 말하지 않은
     # "오늘 수익률 높은 채권" 이 mat_dt = 20260824(만기가 오늘)로 좁혀졌다. q4 와 같은 질문, 실운영 SQL 형태.
     assert enforce_relative_window(floor + " AND applied_yield > 5 LIMIT 5", q4, gate.resolve_relative_window(q4))[1] is None
@@ -1552,8 +1592,9 @@ def test_resolve_past_window():
     assert p("지난 3개월 발행 채권") == [("지난 3개월", 20260524, 20260824)]
     assert p("최근 1년 안에 발행된 채권") == [("최근 1년", 20250824, 20260824)]
     assert p("지난 1주일 신규 발행") == [("지난 1주일", 20260817, 20260824)]
-    assert p("올해 발행된 채권") == []                       # 과거 방향 낱말이 없다
-    # 🔴 확정표는 그대로 — '최근 1년 수익률' 류(코퍼스 '최근' 9문항 중 6문항)를 오폭하지 않는다
+    # 🔄 2026-09-05 #68 — 오늘을 품는 낱말('올해')은 과거 방향에서 1/1~D 로 잘린다(종전엔 [] — 발행 창을 HCX 재량에 맡겼다)
+    assert p("올해 발행된 채권") == [("올해", 20260101, 20260824)]
+    # 🔴 미래 방향(기본)에는 과거 낱말이 안 섞인다 — '최근 1년 수익률' 류(코퍼스 '최근' 9문항 중 6문항)를 오폭하지 않는다
     assert gate.resolve_relative_window("최근 1년 수익률이 더 높은 것은?") == []
     assert gate.resolve_relative_window("6개월 안에 만기되는 채권") == [("6개월 안에", 20260824, 20270224)]
 
@@ -1669,6 +1710,27 @@ def test_full_path_gov_count_including_ktb(ctx):
     # 대조군 — 국고채 언급 없는 국공채 집계는 가드 미발동
     r3 = answer_question("T-52c", "국공채는 몇 종목이야?", planner=GovCountPlanner(), ctx=ctx)
     assert "국고채 종류 교정" not in r3.think_trace and r3.answer.startswith("국공채는 총 1,774종목입니다")
+
+
+class LastMonthMaturedPlanner:
+    """2026-09-05 #68 서버 실측 원문 SQL — 미래 창(8/24~9/30) + 정수 산술(+90). 가드 사슬 전체를 통과한 뒤의 모습을 본다."""
+
+    def plan_sql(self, question, grounding):
+        return ("SELECT pd_no, pd_nm, mat_dt, dur, after_tax_yield FROM domestic_bonds "
+                "WHERE mat_dt BETWEEN 20260824 AND 20260930 AND mat_dt <= 20260824+90 GROUP BY pd_no LIMIT 30")
+
+    def compose_answer(self, question, rows, answer_rules=""):
+        return "HCX 산문"
+
+
+def test_full_path_last_month_matured(ctx):
+    """#68 "지난달에 만기된 채권들은 지금 어떻게 됐어?" — 창은 지난달(7월), 구매가능 하한은 어느 가드도 다시 넣지 않는다,
+    7월 만기 종목은 데이터에 0건이므로 목록이 아니라 0행 사유가 나간다(만기 경과 종목은 마스터에서 빠진다)."""
+    r = answer_question("T-68", "지난달에 만기된 채권들은 지금 어떻게 됐어?", planner=LastMonthMaturedPlanner(), ctx=ctx)
+    assert "mat_dt BETWEEN 20260701 AND 20260731" in r.sql and "20260824" not in r.sql and "+" not in r.sql
+    assert "방향 past" in r.think_trace
+    assert r.answer != "HCX 산문" and "473" not in r.answer and "국민주택" not in r.answer
+    assert "확인" in r.answer or "없" in r.answer
 
 
 def test_bond_count_answer_shapes():

@@ -136,103 +136,151 @@ def _add_years(d: _dt.date, n: int) -> _dt.date:
 
 # 낱말 앞에 한글·영숫자가 붙으면 낱말이 아니다 — 'KB내일드림'·'오늘이엔엠'(발행사) 은 상대 시점이 아니다
 _W = r"(?<![가-힣A-Za-z0-9])"
-_RELATIVE_WINDOW: list[tuple[str, str, Callable[[], tuple[int, int]]]] = [
-    # (라벨, 정규식, 창 계산) — 위에서부터 첫 매치가 이긴다(세부 표현 → 일반 표현 순)
-    ("내년 상반기", _W + r"내년\s*상반기", lambda: (_ymd(_dt.date(_TODAY.year + 1, 1, 1)), _ymd(_dt.date(_TODAY.year + 1, 6, 30)))),
-    ("내년 하반기", _W + r"내년\s*하반기", lambda: (_ymd(_dt.date(_TODAY.year + 1, 7, 1)), _ymd(_dt.date(_TODAY.year + 1, 12, 31)))),
-    ("올해 하반기", _W + r"(?:올해|금년|이번\s*해)\s*하반기", lambda: (_ymd(_TODAY), _ymd(_dt.date(_TODAY.year, 12, 31)))),
-    ("내후년", _W + r"(?:내후년|후년)", lambda: (_ymd(_dt.date(_TODAY.year + 2, 1, 1)), _ymd(_dt.date(_TODAY.year + 2, 12, 31)))),
-    ("내년", _W + r"내년", lambda: (_ymd(_dt.date(_TODAY.year + 1, 1, 1)), _ymd(_dt.date(_TODAY.year + 1, 12, 31)))),
-    ("올해", _W + r"(?:올해|금년|연내|올\s*해|이번\s*해|연말\s*까지|올해\s*말)", lambda: (_ymd(_TODAY), _ymd(_dt.date(_TODAY.year, 12, 31)))),
+# (라벨, 정규식, 자연 창 계산, 방향 절단 여부) — 위에서부터 첫 매치가 이긴다(세부 표현 → 일반 표현 순).
+# 🔴 2026-09-05 #68 — 표는 방향을 모른다. '올해·이번 주·이번 달' 처럼 오늘(D)을 품는 낱말은 **자연 창**(1/1~12/31)을 적고,
+#    호출자가 준 방향으로 resolve_relative_window 가 자른다: 미래(만기 도래·기본) → D~끝 · 과거(만기 경과·발행됨) → 시작~D.
+#    종전엔 '올해' = D~12/31 로 굳혀 놔서 "올해 만기 지난 채권" 이 뒤쪽 절반(미래)으로 잡혔다. 오늘·내일·내년처럼
+#    한쪽에만 있는 낱말은 자르지 않는다(clip=False).
+_RELATIVE_WINDOW: list[tuple[str, str, Callable[[], tuple[int, int]], bool]] = [
+    ("내년 상반기", _W + r"내년\s*상반기", lambda: (_ymd(_dt.date(_TODAY.year + 1, 1, 1)), _ymd(_dt.date(_TODAY.year + 1, 6, 30))), False),
+    ("내년 하반기", _W + r"내년\s*하반기", lambda: (_ymd(_dt.date(_TODAY.year + 1, 7, 1)), _ymd(_dt.date(_TODAY.year + 1, 12, 31))), False),
+    ("올해 상반기", _W + r"(?:올해|금년|이번\s*해)\s*상반기", lambda: (_ymd(_dt.date(_TODAY.year, 1, 1)), _ymd(_dt.date(_TODAY.year, 6, 30))), True),
+    ("올해 하반기", _W + r"(?:올해|금년|이번\s*해)\s*하반기", lambda: (_ymd(_dt.date(_TODAY.year, 7, 1)), _ymd(_dt.date(_TODAY.year, 12, 31))), True),
+    ("내후년", _W + r"(?:내후년|후년)", lambda: (_ymd(_dt.date(_TODAY.year + 2, 1, 1)), _ymd(_dt.date(_TODAY.year + 2, 12, 31))), False),
+    ("내년", _W + r"내년", lambda: (_ymd(_dt.date(_TODAY.year + 1, 1, 1)), _ymd(_dt.date(_TODAY.year + 1, 12, 31))), False),
+    ("올해", _W + r"(?:올해|금년|연내|올\s*해|이번\s*해|연말\s*까지|올해\s*말)", lambda: (_ymd(_dt.date(_TODAY.year, 1, 1)), _ymd(_dt.date(_TODAY.year, 12, 31))), True),
     # 발행사 '(주)오늘이엔엠' · 펀드명 '교보악사 내일환매'·'내일받는'·'내일드림'·'내일출금' 은 상대 시점이 아니다
-    ("오늘", _W + r"(?:오늘(?!이엔엠)|금일|당일)", lambda: (_ymd(_TODAY), _ymd(_TODAY))),
-    ("내일", _W + r"내일(?!환매|받는|드림|출금)", lambda: (_ymd(_TODAY + _dt.timedelta(days=1)),) * 2),
-    ("모레", _W + r"모레", lambda: (_ymd(_TODAY + _dt.timedelta(days=2)),) * 2),
-    ("이번 주", _W + r"(?:이번\s*주|금주)", lambda: (_ymd(_TODAY), _ymd(_TODAY + _dt.timedelta(days=6 - _TODAY.weekday())))),
-    ("다음 주", _W + r"(?:다음\s*주|차주)", lambda: (_ymd(_TODAY + _dt.timedelta(days=7 - _TODAY.weekday())), _ymd(_TODAY + _dt.timedelta(days=13 - _TODAY.weekday())))),
-    ("이번 달", _W + r"(?:이번\s*달|이달|당월)", lambda: (_ymd(_TODAY), _ymd(_month_end(_TODAY.year, _TODAY.month)))),
-    ("다음 달", _W + r"(?:다음\s*달|다음달|내달|익월)", lambda: _month_window(_add_months(_TODAY, 1))),
+    ("오늘", _W + r"(?:오늘(?!이엔엠)|금일|당일)", lambda: (_ymd(_TODAY), _ymd(_TODAY)), False),
+    ("내일", _W + r"내일(?!환매|받는|드림|출금)", lambda: (_ymd(_TODAY + _dt.timedelta(days=1)),) * 2, False),
+    ("모레", _W + r"모레", lambda: (_ymd(_TODAY + _dt.timedelta(days=2)),) * 2, False),
+    ("이번 주", _W + r"(?:이번\s*주|금주)", lambda: (_ymd(_TODAY - _dt.timedelta(days=_TODAY.weekday())), _ymd(_TODAY + _dt.timedelta(days=6 - _TODAY.weekday()))), True),
+    ("다음 주", _W + r"(?:다음\s*주|차주)", lambda: (_ymd(_TODAY + _dt.timedelta(days=7 - _TODAY.weekday())), _ymd(_TODAY + _dt.timedelta(days=13 - _TODAY.weekday()))), False),
+    ("이번 달", _W + r"(?:이번\s*달|이달|당월)", lambda: _month_window(_TODAY), True),
+    ("다음 달", _W + r"(?:다음\s*달|다음달|내달|익월)", lambda: _month_window(_add_months(_TODAY, 1)), False),
+]
+# 과거 방향 고유 낱말 — 문법의 대칭 절반(지난·저번·전 × 주·달·해). 이 창은 오늘(D)보다 앞이라 자르지 않는다.
+# '전주'(지명)·'전달'(동사) 은 뺀다. 과거 창은 만기 축에선 **만기 경과 질의**에만 뜻이 있다(모수 밖) — 호출자가 방향으로 켠다.
+_PAST_WINDOW: list[tuple[str, str, Callable[[], tuple[int, int]]]] = [
+    ("어제", _W + r"어제", lambda: (_ymd(_TODAY - _dt.timedelta(days=1)),) * 2),
+    ("그저께", _W + r"(?:그저께|그제)", lambda: (_ymd(_TODAY - _dt.timedelta(days=2)),) * 2),
+    ("지난주", _W + r"(?:지난\s*주|저번\s*주)", lambda: (_ymd(_TODAY - _dt.timedelta(days=7 + _TODAY.weekday())), _ymd(_TODAY - _dt.timedelta(days=1 + _TODAY.weekday())))),
+    ("지난달", _W + r"(?:지난\s*달|저번\s*달|전월)", lambda: _month_window(_add_months(_TODAY, -1))),
+    ("작년", _W + r"(?:작년|지난\s*해|전년도)", lambda: (_ymd(_dt.date(_TODAY.year - 1, 1, 1)), _ymd(_dt.date(_TODAY.year - 1, 12, 31)))),
+    ("재작년", _W + r"재작년", lambda: (_ymd(_dt.date(_TODAY.year - 2, 1, 1)), _ymd(_dt.date(_TODAY.year - 2, 12, 31)))),
 ]
 
 
 def _month_window(d: _dt.date) -> tuple[int, int]:
     return _ymd(d.replace(day=1)), _ymd(_month_end(d.year, d.month))
-# 숫자 상대 시점 — 'N년 뒤·후' = 해당 연도 전체 / 'N개월 뒤·후' = 해당 월 전체 / 'N년·N개월 안에·이내' = D ~ D+N
+# 숫자 상대 시점(미래 방향) — 'N년 뒤·후' = 해당 연도 전체 / 'N개월 뒤·후' = 해당 월 전체 / 'N일·N주 뒤' = 그 날·그 주 /
+# 'N년·N개월·N주·N일 안에·이내' = D ~ D+N
 _REL_NUM = re.compile(
-    _W + r"(\d{1,2})\s*(년|개월|달)\s*(뒤|후(?!순위)|안에|이내|내에|내로)"
+    _W + r"(\d{1,2})\s*(년|개월|달|주일|주|일)\s*(뒤|후(?!순위)|안에|이내|내에|내로)"
 )
 _MAT_DT_WINDOW = 60      # SQL 에서 mat_dt 와 연도 사이의 허용 거리(글자) — BETWEEN·SUBSTR·CAST 어느 형태든 이 안에 든다
 
-# ── 과거 방향 창 — '최근 N개월'·'지난 N년' (2026-09-05 #66) ───────────────────────────────
-# 🔴 확정표(_RELATIVE_WINDOW·_REL_NUM)에는 과거 방향이 없다. 그래서 "최근 6개월 안에 새로 발행된" 과
+# ── 과거 방향 창 — '최근 N개월'·'지난 N년'·'N년 전' (2026-09-05 #66 · #68) ───────────────────────
+# 🔴 확정표(_RELATIVE_WINDOW·_REL_NUM)에는 과거 방향이 없었다. 그래서 "최근 6개월 안에 새로 발행된" 과
 #    "6개월 안에 만기되는" 이 **똑같은 창**(20260824~20270224)으로 잡혔다 — 앞의 '최근' 을 아무도 안 봤다.
-# 🔴 확정표에 섞지 않고 따로 둔다. 코퍼스 395문항의 '최근/지난' 9건 중 6건이 "최근 1년 수익률"·"지난 1주일
-#    수익률" 처럼 **성과 기간(컬럼 선택)** 이지 날짜 창이 아니다. 확정표에 넣으면 그 6건을 오폭한다 —
-#    이 함수는 호출부가 발행 시점 질의로 판정했을 때만 부른다.
+# 🔴 과거 창은 방향을 켠 호출자에게만 나간다. 코퍼스 395문항의 '최근/지난' 9건 중 6건이 "최근 1년 수익률"·"지난 1주일
+#    수익률" 처럼 **성과 기간(컬럼 선택)** 이지 날짜 창이 아니다 — 기본(미래) 방향에 섞으면 그 6건을 오폭한다.
 _PAST_NUM = re.compile(
     r"(?:최근|지난|근래)\s*(\d{1,2})\s*(년|개월|달|주일|주|일)|(?:최근|지난|근래)\s*(반\s*년)"
+    r"|" + _W + r"(\d{1,2})\s*(년|개월|달|주일|주|일)\s*전(?!후|체|반)"          # 'N년 전' = 그 해 전체 · 'N개월 전' = 그 달 전체
 )
 
 
+def _num_window(n: int, unit: str, k: int) -> tuple[int, int]:
+    """D 에서 k·n 단위만큼 떨어진 시점의 **자연 창** — 년=그 해 전체 · 개월=그 달 전체 · 주=그 주(월~일) · 일=그 날."""
+    if unit == "년":
+        y = _TODAY.year + k * n
+        return _ymd(_dt.date(y, 1, 1)), _ymd(_dt.date(y, 12, 31))
+    if unit in ("개월", "달"):
+        return _month_window(_add_months(_TODAY, k * n))
+    if unit in ("주", "주일"):
+        d = _TODAY + _dt.timedelta(weeks=k * n)
+        mon = d - _dt.timedelta(days=d.weekday())
+        return _ymd(mon), _ymd(mon + _dt.timedelta(days=6))
+    d = _TODAY + _dt.timedelta(days=k * n)
+    return _ymd(d), _ymd(d)
+
+
+def _span_from_today(n: int, unit: str, k: int) -> tuple[int, int]:
+    """D 부터 k·n 단위까지의 **구간** (안에·이내 = 미래 k=+1 · 최근·지난 = 과거 k=-1). 달·년은 일수 환산이 아니라
+    달력으로 센다 — 184일 빼기와 6개월 빼기는 사흘 어긋나고, 그 사흘에 종목이 들고 난다."""
+    if unit == "년":
+        end = _add_years(_TODAY, k * n)
+    elif unit in ("개월", "달"):
+        end = _add_months(_TODAY, k * n)
+    elif unit in ("주", "주일"):
+        end = _TODAY + _dt.timedelta(weeks=k * n)
+    else:
+        end = _TODAY + _dt.timedelta(days=k * n)
+    lo, hi = sorted((_ymd(_TODAY), _ymd(end)))
+    return lo, hi
+
+
 def resolve_past_window(question: str) -> list[tuple[str, int, int]]:
-    """'최근 N개월'·'지난 N년' → [(낱말, lo, hi)] (D-N ~ D, 양끝 포함). 질문 시점 D = BUYABLE_CUTOFF.
+    """과거 방향 창 — '최근 N개월'·'지난 N년'·'N년 전'·'지난달'·'작년' → [(낱말, lo, hi)]. 질문 시점 D = BUYABLE_CUTOFF.
 
-    달 수는 일수 환산이 아니라 _add_months 로 센다 — 184일 빼기와 6개월 빼기는 사흘 어긋나고,
-    그 사흘에 종목이 들고 난다.
+    호환 이름 — resolve_relative_window(question, "past") 와 같다. 발행 시점 판정(is_issuance_time_q)과
+    발행 프롬프트 줄이 부른다.
     """
-    out: list[tuple[str, int, int]] = []
-    for m in _PAST_NUM.finditer(question):
-        if m.group(3):                                   # '반 년'
-            n, unit = 6, "개월"
-        else:
-            n, unit = int(m.group(1)), m.group(2)
-        if n == 0:
-            continue
-        if unit == "년":
-            lo_d = _add_years(_TODAY, -n)
-        elif unit in ("개월", "달"):
-            lo_d = _add_months(_TODAY, -n)
-        elif unit in ("주", "주일"):
-            lo_d = _TODAY - _dt.timedelta(weeks=n)
-        else:
-            lo_d = _TODAY - _dt.timedelta(days=n)
-        lo, hi = _ymd(lo_d), _ymd(_TODAY)
-        label = re.sub(r"\s+", " ", m.group(0).strip())
-        if not any(l == lo and h == hi for _, l, h in out):
-            out.append((label, lo, hi))
-    return out
+    return resolve_relative_window(question, "past")
 
 
-def resolve_relative_window(question: str) -> list[tuple[str, int, int]]:
-    """질문의 상대 시점 낱말 → [(낱말, lo, hi)] (mat_dt 정수 창, 양끝 포함). 질문 시점은 BUYABLE_CUTOFF 로 고정.
+def resolve_relative_window(question: str, direction: str = "future") -> list[tuple[str, int, int]]:
+    """질문의 상대 시점 낱말 → [(낱말, lo, hi)] (정수 YYYYMMDD 창, 양끝 포함). 질문 시점은 BUYABLE_CUTOFF 로 고정.
 
-    '10년 만기'·'잔존 3년' 같은 기간 표현은 창이 아니다(숫자형은 뒤·후·안에·이내 가 붙을 때만).
+    direction — 'future'(기본: 만기 도래 축) 는 오늘을 품는 낱말('올해'·'이번 달')을 D~끝 으로 자르고 미래 숫자형('N년 안에'·'N년 뒤')만 본다.
+                'past'(만기 경과·발행됨 축) 는 시작~D 로 자르고 과거 고유 낱말('지난달'·'작년')과 과거 숫자형('최근 N개월'·'N년 전')을 본다.
+    '10년 만기'·'잔존 3년' 같은 기간 표현은 창이 아니다(숫자형은 뒤·후·안에·이내·전·최근 이 붙을 때만).
     같은 창이 두 번 나오면 하나로 센다. 서로 다른 창이 여럿이면 호출자가 판단한다(가드는 불개입).
     """
+    assert direction in ("future", "past"), direction
     out: list[tuple[str, int, int]] = []
-    for label, pat, fn in _RELATIVE_WINDOW:
+    D = _ymd(_TODAY)
+
+    def _add(label: str, lo: int, hi: int) -> None:
+        if lo <= hi and not any(l == lo and h == hi for _, l, h in out):
+            out.append((label, lo, hi))
+
+    for label, pat, fn, clip in _RELATIVE_WINDOW:
         m = re.search(pat, question)
         if m:
             lo, hi = fn()
-            if not any(l == lo and h == hi for _, l, h in out):
-                out.append((label, lo, hi))
+            if clip:
+                lo, hi = (max(lo, D), hi) if direction == "future" else (lo, min(hi, D))
+            _add(label, lo, hi)
             question = question[:m.start()] + " " * (m.end() - m.start()) + question[m.end():]   # '내년 상반기' 가 '내년' 으로 또 잡히지 않게
-    for m in _REL_NUM.finditer(question):
-        n, unit, rel = int(m.group(1)), m.group(2), m.group(3)
-        if n == 0:
-            continue
-        if rel in ("뒤", "후"):
-            if unit == "년":
-                y = _TODAY.year + n
-                lo, hi = _ymd(_dt.date(y, 1, 1)), _ymd(_dt.date(y, 12, 31))
-            else:
-                lo, hi = _month_window(_add_months(_TODAY, n))
-        else:
-            hi_d = _add_years(_TODAY, n) if unit == "년" else _add_months(_TODAY, n)
-            lo, hi = _ymd(_TODAY), _ymd(hi_d)
-        label = m.group(0).strip()
-        if not any(l == lo and h == hi for _, l, h in out):
-            out.append((label, lo, hi))
+    if direction == "future":
+        for m in _REL_NUM.finditer(question):
+            n, unit, rel = int(m.group(1)), m.group(2), m.group(3)
+            if n == 0:
+                continue
+            lo, hi = _num_window(n, unit, +1) if rel in ("뒤", "후") else _span_from_today(n, unit, +1)
+            _add(m.group(0).strip(), lo, hi)
+        return out
+    for label, pat, fn in _PAST_WINDOW:
+        m = re.search(pat, question)
+        if m:
+            lo, hi = fn()
+            _add(label, lo, hi)
+            question = question[:m.start()] + " " * (m.end() - m.start()) + question[m.end():]
+    for m in _PAST_NUM.finditer(question):
+        if m.group(3):                                   # '최근 반 년'
+            lo, hi = _span_from_today(6, "개월", -1)
+        elif m.group(4):                                 # 'N년 전' — 그 시점의 자연 창
+            n, unit = int(m.group(4)), m.group(5)
+            if n == 0:
+                continue
+            lo, hi = _num_window(n, unit, -1)
+        else:                                            # '최근·지난 N개월' — D-N ~ D
+            n, unit = int(m.group(1)), m.group(2)
+            if n == 0:
+                continue
+            lo, hi = _span_from_today(n, unit, -1)
+        _add(re.sub(r"\s+", " ", m.group(0).strip()), lo, hi)
     return out
 
 

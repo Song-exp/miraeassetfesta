@@ -676,7 +676,7 @@ def pin_sql_now(sql: str) -> tuple[str, bool]:
     return new, new != sql
 
 
-def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, int, int]]) -> tuple[str, str | None]:
+def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, int, int]] | None = None) -> tuple[str, str | None]:
     """질문의 상대 시점('내년'·'올해'·'3년 안에' …)이 확정한 만기 창을 SQL 에 강제한다. (보정된 SQL, 적용 설명 | None)
 
     🔴 2026-09-03 서버 실측(#51): '내년에 만기가 되는 회사채' 를 HCX 가 `mat_dt BETWEEN 20280824 AND 20290824` 로 냈다.
@@ -695,30 +695,47 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
             (HCX 가 `isu_dt BETWEEN …` 로 옳게 써도 종전엔 mat_dt 창이 덧붙어 '발행 AND 만기' 로 오염됐다).
          ⑤ `mat_dt >= 20260824` 는 우리가 주입한 구매가능 모수지 사용자가 물은 만기 조건이 아니다 — 이것 때문에
             만기를 한 번도 말하지 않은 "오늘 수익률 높은 채권" 이 `mat_dt = 20260824`(만기가 오늘) 로 좁혀졌다.
+    🔴 2026-09-05 #68 — "지난달에 만기된 채권들은 지금 어떻게 됐어?" 가 `mat_dt BETWEEN 20260824 AND 20260930` 로 나갔다.
+       확정표에 과거 방향 낱말이 없었고(지난달 = 창 []), 이 가드는 만기 경과 질의(③)면 통째로 물러났다 — 알아보고도
+       아무것도 안 했다. 그 사이 #66 은 발행 축을 "강제하지 않는다"(④)로 닫았는데, 그건 예외 경로였다.
+       이제 가드는 하나다: **방향(time_direction)과 축(발행이면 isu_dt, 아니면 mat_dt)은 질문이 정하고**, 창은
+       gate.resolve_relative_window(question, direction) 이 준다. 과거 방향에서는 호출자가 준 창을 쓰지 않고 다시 푼다 —
+       호출자의 창은 미래 방향 기본값일 수 있다('올해 만기 지난' 을 D~12/31 로 받으면 안 된다).
+       발행 축에서는 구매가능 하한(mat_dt >= 20260824)을 남긴다(모수) — 만기 창·잔존일수 조건만 걷어낸다.
     """
-    if "domestic_bonds" not in sql or not windows or _PAST_MATURITY_Q.search(question):
+    if "domestic_bonds" not in sql:
         return sql, None
-    if len({(lo, hi) for _, lo, hi in windows}) != 1:
+    direction = time_direction(question)
+    issuance = is_issuance_time_q(question)
+    if windows is None or direction == "past":
+        windows = gate.resolve_relative_window(question, direction)
+    if not windows or len({(lo, hi) for _, lo, hi in windows}) != 1:
         return sql, None
-    if is_issuance_time_q(question):
-        return sql, None                                        # ④ 발행 시점 질의 — 만기 축으로 갈아끼우지 않는다
+    axis = "isu_dt" if issuance else "mat_dt"
     label, lo, hi = windows[0]
-    want = f"mat_dt = {lo}" if lo == hi else f"mat_dt BETWEEN {lo} AND {hi}"
+    want = f"{axis} = {lo}" if lo == hi else f"{axis} BETWEEN {lo} AND {hi}"
+    if axis == "isu_dt":
+        want += " AND isu_dt > 0"                                # 규칙 발행시점축 — 0·NULL 26행은 미수록
     m_w = _WHERE_BODY.search(sql)
     body = m_w.group(1) if m_w else ""
     fold = "\x01"
     folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
     conjuncts = [c.replace(fold, " AND ").strip() for c in guard.split_conjuncts(folded)]
-    # ⑤ 구매가능 하한(mat_dt >= 판정일)만 있는 것은 '만기 조건이 있다' 로 세지 않는다
-    has_pred = any(_MAT_OR_REMAIN.search(c) and not _BUYABLE_FLOOR.match(c) for c in conjuncts)
-    if not has_pred and not _MATURITY_Q.search(question):
-        return sql, None
+    if axis == "mat_dt":
+        # ⑤ 구매가능 하한(mat_dt >= 판정일)만 있는 것은 '만기 조건이 있다' 로 세지 않는다
+        has_pred = any(_MAT_OR_REMAIN.search(c) and not _BUYABLE_FLOOR.match(c) for c in conjuncts)
+        if not has_pred and not _MATURITY_Q.search(question):
+            return sql, None
+        is_target = lambda c: bool(_MAT_OR_REMAIN.search(c))
+    else:
+        has_pred = True
+        is_target = lambda c: bool(_ISU_OR_MAT.search(c)) and not _BUYABLE_FLOOR.match(c)
     kept: list[str] = []
     for c in conjuncts:
         if not c:
             continue
-        if _MAT_OR_REMAIN.search(c):
-            others = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", _SQL_LITERAL.sub("''", c))} - _SQL_WORDS - {"mat_dt", "remaining_days", "domestic_bonds", "between", "cast", "as", "integer", "real"}
+        if is_target(c):
+            others = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", _SQL_LITERAL.sub("''", c))} - _SQL_WORDS - {"mat_dt", "remaining_days", "isu_dt", "domestic_bonds", "between", "cast", "as", "integer", "real"}
             if others:
                 return sql, None                                    # 다른 컬럼과 섞인 절 — 의도 불명, 불개입
             continue
@@ -732,7 +749,21 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
         tail = re.search(r"\b(?:group\s+by|having|order\s+by|limit)\b", sql, re.I)
         pos = tail.start() if tail else len(sql.rstrip().rstrip(";"))
         new = sql[:pos].rstrip() + " WHERE " + new_where + " " + sql[pos:].lstrip()
-    return new, f"'{label}' → {want} (질문 시점 {gate.BUYABLE_CUTOFF} 고정 · 확정표 gate._RELATIVE_WINDOW)"
+    return new, f"'{label}' → {want} (질문 시점 {gate.BUYABLE_CUTOFF} 고정 · 방향 {direction} · 축 {axis} · 확정표 gate._RELATIVE_WINDOW)"
+
+
+# 발행 예정(미래 방향) 단서 — 없으면 '발행된' 은 과거 방향이다(데이터의 채권은 전부 이미 발행됐다)
+_FUTURE_ISSUE_Q = re.compile(r"발행\s*(?:될|예정|할)|나올|출시\s*(?:될|예정)")
+_ISU_OR_MAT = re.compile(r"\b(?:isu_dt|mat_dt|remaining_days)\b", re.I)
+
+
+def time_direction(question: str) -> str:
+    """질문의 시점 방향 — 'past'(만기 경과·발행됨) / 'future'(만기 도래·발행 예정·기본). 창 해석·프롬프트·가드가 같은 판정을 쓴다."""
+    if _PAST_MATURITY_Q.search(question):
+        return "past"
+    if is_issuance_time_q(question) and not _FUTURE_ISSUE_Q.search(question):
+        return "past"
+    return "future"
 
 
 def raise_maturity_floor(sql: str, question: str) -> tuple[str, bool]:
@@ -7649,7 +7680,8 @@ def build_grounding(
         parts.append("# 도메인 규칙 (ontology/*.yaml — 조건식이 있으면 그대로 쓴다. 일부는 이 질문과 무관할 수 있다)\n" + rules)
     bond_q = bool(question) and "domestic_bonds" in target
     issuance_q = bond_q and is_issuance_time_q(question)
-    windows = gate.resolve_relative_window(question) if (bond_q and not issuance_q) else []
+    direction = time_direction(question) if bond_q else "future"
+    windows = gate.resolve_relative_window(question, direction) if (bond_q and not issuance_q) else []
     if issuance_q:
         # 🔴 2026-09-05 #66 — 종전엔 발행 질의에도 "'6개월 안에' = mat_dt BETWEEN …" 를 실어 보냈다. 그 한 줄이
         #    "최근 6개월 안에 새로 발행된 회사채" 오답의 1차 원인이다(답한 5종목의 실제 발행일은 2023~2025년).
@@ -7666,10 +7698,14 @@ def build_grounding(
         # 질문 시점을 못 들으면 HCX 가 '내년' 을 제멋대로 센다(2026-09-03 #51: 20280824~20290824). 창은 결정층이 정하고 가드가 강제한다 —
         # 이 문장은 재생성 횟수를 줄이는 보조다.
         wins = " · ".join(f"'{l}' = {'mat_dt = ' + str(lo) if lo == hi else f'mat_dt BETWEEN {lo} AND {hi}'}" for l, lo, hi in windows)
-        parts.append(
-            f"# 질문 시점(오늘) = {gate.BUYABLE_CUTOFF}(월) 로 고정. 상대 시점 확정: {wins}\n"
-            "# 이 창을 그대로 쓴다. remaining_days 로 창을 만들지 않는다(잔존일수는 8/21 기준이라 3일 어긋난다). 만기 조건은 mat_dt 정수 리터럴로만."
-        )
+        line = (f"# 질문 시점(오늘) = {gate.BUYABLE_CUTOFF}(월) 로 고정. 상대 시점 확정: {wins}\n"
+                "# 이 창을 그대로 쓴다. remaining_days 로 창을 만들지 않는다(잔존일수는 8/21 기준이라 3일 어긋난다). 만기 조건은 mat_dt 정수 리터럴로만.")
+        if direction == "past":
+            # 🔴 2026-09-05 #68 — "지난달에 만기된 채권" 에 구매가능 하한(mat_dt >= 20260824)을 얹으면 과거 창과 모순이라 미래로 밀린다.
+            #    만기 경과 질의는 규칙 기본모수의 명시적 예외다 — 하한 없이 과거 창만. 만기 후 상태(상환 여부)는 데이터에 없다.
+            line += ("\n# 🔴 이 질문은 **만기 경과** 질의다(과거 방향) — 구매가능 하한 mat_dt >= 20260824 을 넣지 않는다. 위 창만 쓴다.\n"
+                     "# 데이터에 남은 만기 경과 종목은 마스터 정리에서 빠지지 않은 소수뿐이며, 만기 후 상환 여부 같은 사후 상태는 수록돼 있지 않다.")
+        parts.append(line)
     if future:
         # 기준일 이후 연도는 만기일 조건으로만 정당하다 (gate §③ — 사후 검사와 짝)
         parts.append(
@@ -8885,7 +8921,7 @@ def answer_question(
     sql, pinned = pin_sql_now(sql)
     if pinned:
         step(f"[Guard] SQL 의 '지금' 고정 — 'now'·CURRENT_DATE 를 질문 시점 {gate.BUYABLE_CUTOFF} 로 치환 (서버 실제 시각은 심사일이다 — 2026-09-03 #51 재점검)")
-    windows = gate.resolve_relative_window(q) if "domestic_bonds" in sql else []
+    windows = gate.resolve_relative_window(q, time_direction(q)) if "domestic_bonds" in sql else []
     sql, win_note = enforce_relative_window(sql, q, windows)
     if win_note:
         step(f"[Guard] 상대 시점 창 확정 — {win_note} (2026-09-03 서버 실측 #51: HCX 가 '내년' 을 20280824~20290824 로 오계산 · "

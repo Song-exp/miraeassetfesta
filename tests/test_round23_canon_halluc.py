@@ -41,3 +41,33 @@ def test_확정식이_서도_문장은_망가지지_않는다():
     assert "fd_open_itt_cd" not in out
     assert "ORDER BY nast_tamt DESC" in out
     assert " AND  AND " not in out and "WHERE AND" not in out.replace("  ", " ")
+
+
+def test_성한_컬럼이_같은_OR_그룹에_있으면_가지만_걷는다():
+    """🔴 6차 회귀: 확정식 필터와 환각 컬럼이 한 OR 그룹에 묶여 그룹째 사라졌고
+    남은 조건이 sale_yn 뿐이라 답이 전체 모수(4,428펀드)로 나갔다."""
+    sql = ("SELECT itm_no FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (','||prfd_attr_cds||',' LIKE '%,C102,%' OR fd_mdfy_itt_cd = 400) LIMIT 30")
+    out, dropped = drop_hallucinated_column_conjuncts(sql, canon_fired=True)
+    assert "prfd_attr_cds" in out, "확정식이 심은 필터가 사라지면 모수가 전체로 넓어진다"
+    assert "fd_mdfy_itt_cd" not in out
+    assert dropped == ["fd_mdfy_itt_cd 가지"]
+
+
+def test_환각만_든_OR_그룹은_통째로_걷는다():
+    sql = ("SELECT itm_no FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (asset_class = 'A' OR fund_type = 'B') LIMIT 30")
+    out, dropped = drop_hallucinated_column_conjuncts(sql, canon_fired=True)
+    assert "asset_class" not in out and "fund_type" not in out
+    assert "sale_yn = '판매중'" in out
+
+
+def test_알려진_컬럼_술어가_한_개도_줄지_않는다():
+    """불변식 — 걷기 전후로 성한 컬럼의 등장 횟수가 유지된다."""
+    import re
+    sql = ("SELECT itm_no FROM public_funds WHERE sale_yn = '판매중' "
+           "AND (','||prfd_attr_cds||',' LIKE '%,C102,%' OR fd_mdfy_itt_cd = 400) "
+           "AND zrin_btyp_nm = '주식형' AND asset_class = 'X' LIMIT 30")
+    out, _ = drop_hallucinated_column_conjuncts(sql, canon_fired=True)
+    for col in ("sale_yn", "prfd_attr_cds", "zrin_btyp_nm"):
+        assert len(re.findall(col, out)) == len(re.findall(col, sql)), col

@@ -29,6 +29,7 @@ ROUNDS = [
     ("3차 · 09-05 02:5x", "probe_funds_2026-09-05_r3.json", "verdicts_funds_2026-09-05_r3.json"),
     ("4차 · 09-05 오전", "probe_funds_2026-09-05_r4.json", "verdicts_funds_2026-09-05_r4.json"),
     ("5차 · 09-05 저녁", "probe_funds_2026-09-05_r5.json", "verdicts_funds_2026-09-05_r5.json"),
+    ("6차 · 09-05 밤", "probe_funds_2026-09-05_r6.json", "verdicts_funds_2026-09-05_r6.json"),
 ]
 # 본문에 끼워 넣는 손 편집 절 — (앵커, 파일). 앵커 앞에 삽입한다.
 INCLUDES = [("BEFORE_BLOCKS", "funds_defects_2026-09-04.md"), ("AFTER_BLOCKS", "funds_repairs_2026-09-04.md")]

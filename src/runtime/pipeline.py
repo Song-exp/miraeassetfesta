@@ -8451,6 +8451,56 @@ def _bond_count_answer(sql: str, rows: str, n: int, question: str) -> str | None
     return out
 
 
+
+# 코드만 있고 이름이 어느 컬럼에도 없는 기관 역할 — 이름은 KG 에만 있다(pipeline.py:1548 참조)
+_ROLE_CODE_COL = {"trusc_xtn_itt_cd": ("수탁사", "Org_trustee_"), "or_co_xtn_itt_cd": ("운용사", "Org_")}
+_COND_COUNT_COL = re.compile(
+    r"\bcount\s*\(\s*(?:distinct\s+)?case\s+when\s+(?:trim\s*\(\s*)?(\w+)\s*\)?\s*(?:=|\blike\b|\bin\b)", re.I)
+
+
+def absent_condition_actual(sql: str, rows: str, n: int) -> str | None:
+    """조건부 집계가 0 일 때 **그 조건 컬럼이 실제로 무엇인지** 한 줄로 붙인다. 아니면 None.
+
+    🔴 2026-09-05 X22 실측: 'KB자산운용 펀드 중 국민은행이 수탁하는 공모펀드는 몇 개야? 실제 수탁사는 어디야?'
+       — 앞 질문(0건)은 맞는데 뒷 질문이 통째로 사라졌다. HCX 는 `MAX(mgmt_co_nm) AS 실제_수탁사` 로
+       **운용사 이름**을 수탁사로 내려 했다(역할 혼동). 수탁사 이름은 어느 컬럼에도 없고 KG 에만 있다.
+
+    부재를 말할 때 **무엇이 대신 있는지**를 함께 대는 자리다 — 같은 모수(FROM·WHERE 그대로)에서
+    그 컬럼의 실제 분포를 세고 KG 로 이름을 붙인다. 코드→이름이 KG 에만 있는 역할 컬럼에만 발동한다.
+    """
+    if n != 1:
+        return None
+    m_col = _COND_COUNT_COL.search(sql)
+    if not m_col:
+        return None
+    col = m_col.group(1).lower()
+    if col not in _ROLE_CODE_COL:
+        return None
+    role, prefix = _ROLE_CODE_COL[col]
+    m_from = re.search(r"\bfrom\b.*?(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_from:
+        return None
+    try:
+        body, cnt = _execute(f"SELECT {col} AS c, COUNT(*) AS n {m_from.group(0).strip()} "
+                             f"GROUP BY 1 ORDER BY 2 DESC LIMIT 5")
+    except Exception:                                   # noqa: BLE001 — 부가 문장이라 실패는 침묵
+        return None
+    if cnt < 1:
+        return None
+    con = connect_readonly()
+    try:
+        named = []
+        for line in body.splitlines()[1:]:
+            code = line.split(" | ")[0].strip()
+            if not code:
+                continue
+            row = con.execute("SELECT canonical_name FROM kg_node WHERE node_id = ?", (prefix + code,)).fetchone()
+            named.append(f"{row[0]}({code})" if row else code)
+    finally:
+        con.close()
+    return f"이 모수의 실제 {role}는 " + " · ".join(named) + " 등입니다 (클래스 수 많은 순 5곳)." if named else None
+
+
 def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
     """단일 집계(COUNT·SUM) 결과가 0 이면 HCX 없이 '없음' 을 기계 조립한다. 아니면 None.
 
@@ -9084,12 +9134,33 @@ def drop_hallucinated_column_conjuncts(sql: str, canon_fired: bool = False) -> t
     if not m_w:
         return sql, []
     conjs = _flat_conjuncts(m_w.group(1))
+
+    def _cols_of(expr: str) -> set:
+        return {m.group(1).lower() for m in _PRED_COL.finditer(re.sub(r"'(?:[^']|'')*'", "''", expr))}
+
     kept, dropped = [], []
     for c in conjs:
-        cols = {m.group(1).lower() for m in _PRED_COL.finditer(re.sub(r"'(?:[^']|'')*'", "''", c))}
+        cols = _cols_of(c)
         bad = sorted(x for x in cols if x not in known and x not in _SQL_WORDS)
         lits = _SQL_LITERAL.findall(c)
         others = " AND ".join(x for x in conjs if x is not c)
+        # 🔴 2026-09-05 밤 KG-018 회귀 — **성한 컬럼이 같은 절에 있으면 통째로 걷지 않는다.** 6차 실측:
+        #    확정식이 심은 `prfd_attr_cds LIKE '%,C102,%'` 와 환각 `fd_mdfy_itt_cd=400` 이 **한 OR 그룹**에
+        #    묶여 있어 그룹째 사라졌고, 남은 조건이 `sale_yn='판매중'` 뿐이라 답이 전체 모수(4,428펀드)로
+        #    나갔다. OR 가지는 조건을 넓히는 자리라 **가지만** 걷으면 모수가 좁아진다 — 통째로 걷는 건
+        #    성한 컬럼이 하나도 없을 때뿐이다.
+        # 성한 컬럼은 **낱말로** 훑는다 — `','||prfd_attr_cds||','` 처럼 식 안에 있으면 _PRED_COL 이 못 본다.
+        sound = {w.lower() for w in re.findall(r"[A-Za-z_]\w*", c)} & known
+        if bad and sound and (canon_fired or (lits and all(l in others for l in lits))):
+            branches = guard.split_disjuncts(_outer_group(c.strip()) or c.strip())
+            ok = [b for b in branches if not (_cols_of(b) - known - set(_SQL_WORDS))
+                  and ({w.lower() for w in re.findall(r"[A-Za-z_]\w*", b)} & known)]
+            if len(branches) > 1 and ok and len(ok) < len(branches):
+                kept.append(f" ({' OR '.join(x.strip() for x in ok)}) " if len(ok) > 1 else f" {ok[0].strip()} ")
+                dropped.append(f"{bad[0]} 가지")
+                continue
+            kept.append(c)
+            continue
         # 🔴 2026-09-05 Z10·KG-018 — 확정식 가드가 **이 질의의 축을 이미 심었으면** 리터럴이 다른 절에
         #    없어도 걷는다. 실측: Z10 은 `zrin_ptn_nm='인도주식'`(유형 축 주입)이 들어간 채
         #    `asset_class='해외주식형' AND fund_type='공모'` 가 함께 실려 기각됐고, KG-018 은
@@ -9104,6 +9175,37 @@ def drop_hallucinated_column_conjuncts(sql: str, canon_fired: bool = False) -> t
     if not dropped:
         return sql, []
     return sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):], dropped
+
+
+
+_AGG_CALL = re.compile(r"\b(?:count|sum|avg|min|max|total|group_concat)\s*\(", re.I)
+
+
+def drop_aggregate_group_by(sql: str) -> str:
+    """GROUP BY 의 위치 표기가 **집계 열**을 가리키면 그 항목을 걷는다. 다 걷히면 GROUP BY 를 지운다.
+
+    🔴 2026-09-05 X22 실측: HCX 가 집계만 있는 SELECT 에 `GROUP BY 1` 을 붙여
+       `OperationalError: aggregate functions are not allowed in the GROUP BY clause` 로 실행이 죽고
+       '데이터 조회 중 오류가 발생해 확인할 수 없습니다' 가 나갔다. 묶을 키가 없는 질의라
+       GROUP BY 자체가 잉여다 — 걷어도 결과가 달라지지 않는다(집계 1행은 그대로 1행).
+       이름 표기(GROUP BY 컬럼)는 손대지 않는다 — 진짜 묶음일 수 있다.
+    """
+    m = re.search(r"\bgroup\s+by\b(.*?)(?=\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m:
+        return sql
+    m_sel = re.search(r"\bselect\b(?:\s+distinct)?(.*?)\bfrom\b", sql, re.I | re.S)
+    if not m_sel:
+        return sql
+    items = _split_select_items(m_sel.group(1))
+    parts = m.group(1).split(",")
+    kept = [x for x in parts
+            if not (x.strip().isdigit() and 1 <= int(x.strip()) <= len(items)
+                    and _AGG_CALL.search(items[int(x.strip()) - 1]))]
+    if len(kept) == len(parts):
+        return sql
+    if any(k.strip() for k in kept):
+        return sql[:m.start(1)] + " " + ",".join(kept).strip() + " " + sql[m.end(1):]
+    return sql[:m.start()] + " " + sql[m.end(1):]
 
 
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
@@ -9530,6 +9632,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 환각 컬럼 술어 제거 — {' · '.join(halluc)} (16R KG ③-6 · gold ③-1: 스키마에 없는 컬럼을 쓴 "
              "최상위 절은, 그 절의 값 리터럴이 확정식으로 이미 걸려 있을 때만 걷는다. Z11 실측: "
              "`asset_class='중국주식' AND fund_type='공모'` 두 환각 컬럼이 기각 → 재생성 동일 SQL → 오거절을 냈다)")
+    before_gb = sql
+    sql = drop_aggregate_group_by(sql)
+    if sql != before_gb:
+        step("[Guard] 집계 GROUP BY 제거 — 위치 표기가 집계 열을 가리켜 SQLite 가 거부하던 자리 "
+             "(2026-09-05 X22 실측: 집계만 있는 SELECT 에 `GROUP BY 1` → aggregate functions are not "
+             "allowed in the GROUP BY clause → 실행 실패. 묶을 키가 없어 걷어도 결과가 같다)")
     return sql
 
 
@@ -9954,6 +10062,12 @@ def answer_question(
         step("[Answer] 0 집계 답변 기계 조립 — 단일 COUNT/SUM 결과 0 은 HCX 없이 '확인되지 않음' 으로 옮긴다 "
              "(2026-09-02 실측: '삼성전자가 발행한 채권 있어?' COUNT=0 1행이 0행 조기반환을 비켜 HCX 작문으로 나감)")
         result.think_trace = "\n".join(trace)
+        actual = absent_condition_actual(sql, rows, n)
+        if actual:
+            step("[Answer] 부재의 근거 — 조건부 집계 0 에 그 역할의 실제 값을 KG 이름으로 붙인다 "
+                 "(2026-09-05 X22 실측: '실제 수탁사는 어디야' 뒷질문이 통째로 사라졌고, "
+                 "HCX 는 운용사 이름을 수탁사 자리에 내려 했다 — 수탁사 이름은 KG 에만 있다)")
+            zero = zero + " " + actual
         result.answer = zero
         return result
     mgr = _manager_rank_answer(sql, rows, n)

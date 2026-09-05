@@ -7868,6 +7868,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 **조인 정리를 먼저 한다** — 뒤따르는 펀드 가드들은 `join|union` 이 보이면 통째로 비켜간다.
     #    ① INNER→LEFT: 커버리지 93.7% 라 INNER 면 짝 없는 561클래스가 조용히 사라진다(KG-005).
     #    ② 안 쓰는 조인 제거: 결과엔 무해하지만 남겨 두면 대표행 보정이 꺼진다(FND-007).
+    sql, unasked = guard.drop_unasked_enum_values(sql, q)
+    if unasked:
+        step("[Guard] 안 물은 값 제거 — 열거 조건에서 질문이 부르지 않은 " + " · ".join(f"'{v}'" for v in unasked)
+             + " 을 걷어냈다 (질문이 그 목록의 값을 하나라도 이름으로 불렀을 때만 · "
+             "2026-09-05 DOM-05 실측: '파생상품' 만 물었는데 '재간접' 이 끼어 1위가 바뀌었다)")
     sql, ext_left = guard.ensure_ext_left_join(sql)
     if ext_left:
         step("[Guard] 외부표 LEFT 전환 — " + "·".join(ext_left) + " 을 INNER 에서 LEFT 로 "

@@ -74,5 +74,8 @@ def test_kg012_end_to_end(ctx):
             return "HCX-CALLED"
 
     r = answer_question("KG-012", "해외주식형 중에서 중국주식 유형인 공모펀드는 몇 개야?", planner=P(), ctx=ctx)
-    assert "IN 목록 정리" in r.think_trace, "보정 가드가 발동하지 않았다"
+    # 2026-09-05 — `drop_unasked_enum_values`(DOM-05 대응)가 같은 IN 목록을 먼저 좁힌다.
+    # 질문이 '해외주식형' 은 부르고 '국내외혼합' 은 안 불렀기 때문이다. 어느 가드가 걷든 결과는 같다.
+    assert any(k in r.think_trace for k in ("IN 목록 정리", "안 물은 값 제거")), "두 가드 모두 미발동"
+    assert "국내외혼합" not in (r.sql or ""), "없는 값이 SQL 에 남았다"
     assert "205" in (r.answer or "") and "522" in (r.answer or ""), r.answer

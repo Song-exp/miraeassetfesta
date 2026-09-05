@@ -300,6 +300,45 @@ _EXT_JOIN_CLAUSE = re.compile(
     r"(?=\s+(?:LEFT\s+JOIN|JOIN|WHERE|GROUP\s+BY|ORDER\s+BY|LIMIT)\b|$)", re.I | re.S)
 
 
+# 질문이 값을 이름으로 부르는 축들 — 이 컬럼의 IN 목록만 좁힌다. 코드·이름 컬럼은 대상이 아니다.
+_NAMED_ENUM_COLS = ("or_attr_desc", "zrin_btyp_nm", "zrin_ptn_nm")
+
+
+def drop_unasked_enum_values(sql: str, question: str) -> tuple[str, list[str]]:
+    """IN 목록에서 **질문이 부르지 않은 값**을 걷어낸다. (SQL, 걷어낸 값)
+
+    2026-09-05 DOM-05 실측("파생상품 유형 공모펀드 중 순자산 큰 3개 알려줘"):
+
+        or_attr_desc IN ('재간접', '파생상품')
+                          ↑ 질문에 없다
+
+    그 결과 1위가 피델리티글로벌테크놀로지(**재간접형**)로 바뀌었다 — 정답 1위는 NH-Amundi
+    코리아2배레버리지(파생형) 7,333억이다. 머리줄에도 '재간접·파생상품 기준' 이라 적혀 답을
+    읽는 사람이 모수가 넓어진 것을 알 수는 있으나, **묻지 않은 것을 답한 것**이다.
+
+    🔴 발동은 좁게 — **질문이 그 목록의 값을 하나라도 이름으로 불렀을 때만** 나머지를 걷는다.
+       하나도 안 불렀으면 총칭어 질의다(`혼합형` → `IN ('주식혼합형','채권혼합형')` 은 `혼합형
+       확정식 치환` 이 일부러 넓힌 것이다). 그 자리를 건드리면 안 되므로 불개입한다.
+    """
+    q = question.replace(" ", "").casefold()
+    dropped: list[str] = []
+    out = sql
+    for m in list(_IN.finditer(sql)):
+        col, body = (m.group(2) or "").lower(), m.group(3)
+        if col not in _NAMED_ENUM_COLS:
+            continue
+        lits = _LIT.findall(body)
+        if len(lits) < 2:
+            continue
+        keep = [l for l in lits if l.replace(" ", "").casefold() in q]
+        if not keep or len(keep) == len(lits):
+            continue                                  # 아무것도 안 불렀으면 총칭어 질의 — 불개입
+        dropped += [l for l in lits if l not in keep]
+        body_new = ", ".join("'" + l + "'" for l in keep)
+        out = out.replace(m.group(0), m.group(0).replace(body, body_new), 1)
+    return out, dropped
+
+
 def drop_unused_ext_join(sql: str) -> tuple[str, list[str]]:
     """쓰이지 않는 `ext_*` LEFT JOIN 을 걷어낸다. (SQL, 걷어낸 테이블)
 

@@ -136,3 +136,10 @@ def test_종목이_편입된_펀드_목록은_전체_수를_다시_센다(ctx):
     assert "구성종목 확정식" not in r.think_trace                      # 펀드→종목 템플릿으로 뒤집히지 않는다
     assert r.answer.startswith("'삼성전자' 을(를) 편입한 공모펀드는 전체")
     assert "전체 30개" not in r.answer and "순자산 순으로 30개" in r.answer
+
+
+def test_위험등급_정렬은_목록_묶기가_걷지_않는다(ctx):
+    from src.runtime.pipeline import ensure_fund_list_grouping
+    sql = ("SELECT itm_no, itm_nm, zrin_fd_ivst_risk_grd_nm FROM public_funds WHERE sale_yn = '판매중' "
+           "ORDER BY CAST(zrin_fd_ivst_risk_gcd AS INTEGER) DESC LIMIT 5")
+    assert ensure_fund_list_grouping(sql, "위험등급이 낮은 순으로 알려줘") == (sql, False)

@@ -3919,8 +3919,8 @@ def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     if re.search(r"\border\s+by\b", sql, re.I):
         # 2026-09-06 FV-1a: `ORDER BY itm_nm`(이름순) 같은 비랭킹 정렬은 목록의 축이 아니다 — 걷고 순자산순 묶기로 간다.
         #    랭킹 축(수익률·순자산·보수)이면 랭킹 가드의 몫이라 그대로 물러난다.
-        if _fund_sort_target(sql):
-            return sql, False
+        if _fund_sort_target(sql) or re.search(r"zrin_fd_ivst_risk_gcd", sql[sql.upper().rfind("ORDER BY"):], re.I):
+            return sql, False                                   # 랭킹 축·위험등급 정렬은 질문의 축이다(FV-1b '위험등급 낮은 순')
         sql = re.sub(r"\border\s+by\b.*?(?=\blimit\b|$)", "", sql, flags=re.I | re.S)
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]

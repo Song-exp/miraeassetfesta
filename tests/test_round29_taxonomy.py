@@ -196,3 +196,77 @@ def test_axis_placeholder_expanded_from_declarations(ctx):
     joined = " ".join(ys["vocab"])
     for axis in ("발행잔액", "듀레이션", "잔존일수", "표면금리"):
         assert axis in joined
+
+
+# ── ⑥ 09-06 저녁 — 약한 축 묶음(2~7): 만기구간 · 국민주택 · 투기등급 · 규모 · 복리/단리 · 예금비교 ────
+@pytest.mark.parametrize("question", [
+    "단기채 추천해줘", "장기채 뭐 있어", "중기채 수익률 높은 순",
+    "국민주택채권 알려줘", "국민주택채권 지금 사면 수익률 어때?",
+    "복리로 이자 붙는 채권 있어?", "단리채 몇 종목이야",
+])
+def test_weak_axes_now_route_to_bonds(ctx, question):
+    """종전엔 어휘가 없어 4테이블 미특정(근거문서 희석)으로 빠지던 질문들."""
+    assert route(question, ctx).tables == [B]
+    assert not gate.check(question, ctx, [B]).rejected
+
+
+# 🔴 규칙 **이름**이 아니라 본문 고유 문구로 잰다 — 고위험제외 본문이 '규칙 투기등급' 을 언급하므로
+#    이름만 찾으면 triggered 규칙이 안 실려도 걸린다(초판 실패).
+_RULE_MARK = {"만기구간": "채권 종류가 아니라 **만기 구간**이다",
+              "투기등급": "표준표 BB+ 이하",
+              "예금비교": "예금환산수익률 컬럼이 그 비교를 위해 있다"}
+
+
+@pytest.mark.parametrize("question, rule, present", [
+    ("단기채 추천해줘", "만기구간", True),
+    ("하이일드 채권 알려줘", "투기등급", True),
+    ("예금보다 나은 채권 있어?", "예금비교", True),
+    # 낱말이 없으면 안 실린다 — triggered 규칙은 프롬프트를 불리지 않는다
+    ("수익률 높은 채권 5개", "만기구간", False),
+    ("수익률 높은 채권 5개", "투기등급", False),
+    ("수익률 높은 채권 5개", "예금비교", False),
+])
+def test_triggered_rules_load_only_when_asked(ctx, question, rule, present):
+    assert (_RULE_MARK[rule] in ctx.planner_context([B], question)) is present
+
+
+def test_kind_filter_national_housing(ctx):
+    from src.runtime.pipeline import _question_kind_filters
+    f = _question_kind_filters("국민주택채권 몇 종목이야")
+    assert f == {"TRIM(bd_knd) IN ('국민주택1종','국민주택2종')"}
+    assert _question_kind_filters("국민주택1종 알려줘") == {"TRIM(bd_knd)='국민주택1종'"}
+
+
+@pytest.mark.parametrize("question, keeps_c0", [
+    # 질문이 투기등급을 콕 집으면 C0 제외 절을 넣지 않는다 (126 → 23 조용한 축소 방지)
+    ("하이일드 채권 알려줘", True),
+    ("정크본드 5개", True),
+    ("투자부적격 등급 채권 있어?", True),
+    ("투기등급 채권 수익률 높은 순", True),
+    # 일반 추천은 종전대로 C0 를 뺀다
+    ("수익률 높은 채권 5개 추천해줘", False),
+    ("안전한 채권 3개", False),
+])
+def test_speculative_grade_bypasses_c0_exclusion(question, keeps_c0):
+    from src.runtime.pipeline import _rank_exclusions
+    excl = _rank_exclusions("SELECT pd_nm FROM domestic_bonds WHERE 1=1", question)
+    assert (not any("C0" in e for e in excl)) is keeps_c0
+
+
+def test_maturity_bucket_rule_partitions_buyable_universe():
+    """만기구간 세 구간의 합 = 구매가능 모수 (빠짐·겹침 0) — 규칙에 적은 수치 그대로."""
+    import sqlite3
+    con = sqlite3.connect(db_path())
+    buy = "curr_cd='KRW' AND mat_dt>=20260824"
+    s = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {B} WHERE {buy} AND mat_dt<20270824").fetchone()[0]
+    m = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {B} WHERE {buy} AND mat_dt BETWEEN 20270824 AND 20310824").fetchone()[0]
+    l = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {B} WHERE {buy} AND mat_dt>20310824").fetchone()[0]
+    tot = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {B} WHERE {buy}").fetchone()[0]
+    con.close()
+    assert (s, m, l) == (6414, 11230, 2787)
+    assert s + m + l == tot
+
+
+def test_scale_ambiguity_declared(ctx):
+    d = ctx.enums[B]["clarify"]["다의어"]
+    assert "규모" in d and "bd_tisu_a" in d["규모"] and "isu_bal_amt" in d["규모"]

@@ -6459,7 +6459,9 @@ def _rank_exclusions(sql: str, question: str) -> list[str]:
         excl.append(f"mat_dt >= {BUYABLE_INT}")
     if "'11'" not in sql and not re.search(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
         excl.append("pd_risk_gcd <> '11'")
-    if "C0" not in sql and not re.search(r"C0|투기|부실", question, re.I):
+    # 🔄 2026-09-06 — 우회 어휘에 하이일드·정크·투자부적격이 없어 '하이일드 채권 알려줘' 가 126→23종목으로
+    #    조용히 줄었다(규칙 투기등급). 낱말은 yaml query_rules.투기등급.triggers 와 같은 집합이어야 한다.
+    if "C0" not in sql and not re.search(r"C0|투기|부실|하이\s*일드|high\s*yield|정크|투자\s*부적격|투자등급\s*미만", question, re.I):
         excl.append("COALESCE(TRIM(crd_grd),'') <> 'C0'")
     if "사모" not in sql and "사모" not in question:
         excl.append("bd_ofr_tcd <> '사모'")

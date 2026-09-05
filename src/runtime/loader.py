@@ -253,17 +253,31 @@ def _axis_alternation(table: str, doc: dict, ctx: "RuntimeContext") -> str:
     이것으로 갈아끼우면 지금 막히는 문항이 도로 뚫린다(2026-09-06 실측: #72 가 통과로 돌아섰다).
     그래서 이 함수의 결과는 기존 어휘 **옆에** 붙는다 — 선언은 `(?:금리|수익률|{AXIS})` 꼴로 쓴다.
     """
+    # 🔴 2026-09-06 재점검 — 첫 판은 korean_name 을 **공백에서도** 쪼개 '개인 세후 운용수익률' → 개인·세후,
+    #    '판매/민평 공통 기준일' → 판매·공통·기준 같은 수식어 조각 32개가 축으로 들어갔고, "구분이 어떻게 바뀐 거야"
+    #    가 시계열로 기각됐다. 축 이름은 **구분자(/·괄호)에서만** 쪼갠다 — '민평수익률/민평금리' 는 갈라야 하지만
+    #    '개인 세후 운용수익률' 은 한 이름이다. 수치형 컬럼만(텍스트 컬럼의 구분·코드·순번은 축이 아니다).
+    def _names(ko: str) -> set[str]:
+        return {w.strip() for w in re.split(r"[/(),·]+", ko or "") if len(w.strip()) >= 2}
+
+    numeric = {col for col, _ko, typ in (ctx.schema.get(table) or []) if "text" not in (typ or "").lower()}
     axes: set[str] = set()
-    for _col, ko, typ in (ctx.schema.get(table) or []):
-        if "text" in (typ or "").lower():          # 식별자·코드값은 축이 아니다
-            continue
-        axes |= {w for w in _AXIS_SPLIT.split(ko or "") if len(w) >= 2}
-    for spec in (doc.get("columns") or {}).values():
+    for col, ko, _typ in (ctx.schema.get(table) or []):
+        if col in numeric:
+            axes |= _names(ko)
+    canon_names: set[str] = set()                        # 축 동의어 판정용 — 컬럼의 한글 이름 전체
+    for col, spec in (doc.get("columns") or {}).items():
         if isinstance(spec, dict):
-            axes |= {w for w in _AXIS_SPLIT.split(spec.get("korean_name") or "") if len(w) >= 2}
-    axes |= {str(k) for k in (doc.get("synonyms") or {}) if len(str(k)) >= 2}
-    # 영문·숫자만인 조각(Clean·Price·15.4)은 한글 문형에 안 쓰인다 — 넣으면 오탐만 는다
-    axes = {a for a in axes if not re.fullmatch(r"[A-Za-z0-9.]+", a)}
+            names = _names(spec.get("korean_name") or "")
+            canon_names |= names
+            if col in numeric:
+                axes |= names
+    # synonyms 는 **축 동의어**(만기 → 상환일자 · 잔존만기 → 잔존일수)만 — 값 동의어(한전·국채·복리)는 축이 아니다
+    for k, canon in (doc.get("synonyms") or {}).items():
+        if str(canon).strip() in canon_names | axes and len(str(k)) >= 2:
+            axes.add(str(k))
+    # 한글이 없는 조각(Clean Price·15.4·ISIN)은 한글 문형에 안 쓰인다 — 넣으면 오탐만 는다
+    axes = {a for a in axes if re.search(r"[가-힣]", a)}
     return "|".join(re.escape(a) for a in sorted(axes, key=len, reverse=True))
 
 

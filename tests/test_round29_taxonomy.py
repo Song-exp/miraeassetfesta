@@ -307,3 +307,38 @@ def test_negated_category_keeps_exclusion(question, clause):
 def test_positive_category_still_bypasses(question, clause):
     from src.runtime.pipeline import _rank_exclusions
     assert clause not in " ".join(_rank_exclusions("SELECT pd_nm FROM domestic_bonds WHERE 1=1", question))
+
+
+# ── ⑧ 09-06 밤 2차 재점검 — 오분류 셋 ───────────────────────────────────────────────
+@pytest.mark.parametrize("question", [
+    "매출채권 유동화 채권 알려줘",      # 채권 구조 용어 — 발행사 재무가 아니다
+    "부채담보부증권 알려줘",            # CDO
+    "조건부자본증권 알려줘", "신종자본증권 뭐 있어",   # 이름에 '자본' 313행
+    "구분이 어떻게 바뀐 거야", "기준일이 언제로 바뀌었어?", "개인이 오른 채권",   # {AXIS} 잡낱말이 시계열로 오폭하던 것
+])
+def test_recheck_structure_terms_and_modifier_fragments_pass(ctx, question):
+    r = gate.check(question, ctx, [B])
+    assert not (r.rejected and ("hasIssuerFinancials" in r.reason or "hasYieldHistory" in r.reason))
+
+
+def test_axis_alternation_has_no_modifier_fragments(ctx):
+    """{AXIS} 는 축 이름만 — korean_name 을 공백에서 쪼개 생긴 수식어 조각(개인·세후·구분·기준·코드)이 섞이면 안 된다."""
+    ys = next(i for i in ctx.absent_props[B] if i["property"] == "hasYieldHistory")
+    joined = " ".join(ys["vocab"])
+    for junk in ("개인", "법인", "구분", "기준", "코드", "순번", "여부", "공통", "성격", "동일", "한전", "국채"):
+        assert not re.search(rf"\|{junk}\|", joined) and not re.search(rf"\|{junk}\)", joined), junk
+    for axis in ("발행잔액", "듀레이션", "잔존일수", "표면금리", "컨벡시티"):
+        assert axis in joined
+
+
+@pytest.mark.parametrize("question, clause", [
+    ("하이일드 채권은 빼고 추천해줘", "C0"),      # 명사 뒤 조사
+    ("투기등급 채권 말고 안전한 것", "C0"),        # 명사 둘
+    ("사모채는 제외하고 추천", "사모"),
+    ("C0 등급은 제외해줘", "C0"),
+    ("부실 채권을 빼고 수익률 높은 순", "C0"),
+    ("고위험 채권들은 말고", "'11'"),              # 복수 '들'
+])
+def test_negation_word_order_variants_keep_exclusion(question, clause):
+    from src.runtime.pipeline import _rank_exclusions
+    assert clause in " ".join(_rank_exclusions("SELECT pd_nm FROM domestic_bonds WHERE 1=1", question))

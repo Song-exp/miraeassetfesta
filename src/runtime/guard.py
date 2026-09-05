@@ -1107,6 +1107,11 @@ def _apply_one(sql: str, enf: dict, subs: dict, in_union: bool = False) -> tuple
         for i, g in enumerate(m.groups(), 1):
             v = "" if g is None else str(g)
             rep = rep.replace("{%d:nospace}" % i, re.sub(r"\s+", "", v)).replace("{%d}" % i, v)
+        # 🔴 replace_expr 과 같은 열 수 보호 — 이 액션도 SELECT 항목을 바꿀 수 있다(2026-09-05 MKTAVG).
+        #    가지 하나만 열이 늘면 UNION 이 통째로 실행 불가가 된다. 슬롯 쪽에서 `when.sql.lacks: [union]`
+        #    으로는 막을 수 없다 — apply_enforce 가 가지로 쪼갠 뒤 판정해 가지 안에 'union' 이 없다.
+        if in_union and _top_commas(rep) != _top_commas(m.group(0)):
+            return sql, False
         return sql[:m.start()] + rep + sql[m.end():], True
     return sql, False
 

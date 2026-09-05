@@ -221,12 +221,18 @@ def test_rank_answer_assembles():
     assert "1년 수익률 상위 2개 공모펀드" in out and "클래스 최고값(MAX)" in out, out
     assert "판매중·공모 기준" in out and "기준일 2026-08-24" in out, out
     assert "종류Ce" not in out and "Class Ae" not in out, out          # 클래스명이 아니라 펀드명
-    assert "누적 수익률" in out, out                                    # 100% 초과 — 수익률극단값 규칙의 주의 문구
+    assert "누적 수익률" in out, out
+    assert "100%를 넘는 값은" in out, out                                # 극단값 경고 — 수익률극단값 규칙
 
     # 하위 랭킹은 MIN 축으로 고지한다
     low = P._fund_rank_answer(RANK_SQL.replace("DESC", "ASC").replace("MAX(", "MIN("),
                               rows.replace("387.66", "-83.96").replace("362.53", "-79.07"), 2)
-    assert low and "하위 2개" in low and "클래스 최저값(MIN)" in low and "누적 수익률" not in low, low
+    assert low and "하위 2개" in low and "클래스 최저값(MIN)" in low, low
+    # 🔴 2026-09-05 변경 — 종전엔 |값| ≥ 100 일 때만 누적 주석을 붙였다. 그런데 −80% 대 하위 랭킹이야말로
+    #    연 환산으로 읽힐 여지가 크다("3년에 −80%" 를 "해마다 −80%" 로). S2·Y4 채점이 그 지적이었다.
+    #    수익률 축이면 **누적이라는 사실은 언제나** 적고, 극단값 경고만 조건부로 남긴다.
+    assert "누적 수익률" in low, low
+    assert "100%를 넘는 값은" not in low, low
 
 
 def test_rank_answer_skips_without_class_count():

@@ -2984,7 +2984,7 @@ def _code_value_label(col: str, lit: str) -> str | None:
     return None
 
 
-def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
+def _fund_rank_answer(sql: str, rows: str, n: int, question: str = "") -> str | None:
     """펀드 랭킹(대표행 가드 산출형)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
 
     8R ③-10(F6″-b) — 값은 gold 전수인데 서술에서 감점이 나던 자리다. 7R 실측: SELECT 에 `클래스수` 가 실려 있는데
@@ -3036,7 +3036,7 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
         f"펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, {label} = {axis}, 기준일 {gate.DATA_CUTOFF}"
     out = [f"{label} {'상위' if direction == 'DESC' else '하위'} {n}개 {pop}입니다 ({scope}).", ""]
     fee_pct_already = col in _FUND_FEE_COLS and _fee_is_percent(sql, cols[val_i], val_i)
-    extreme = False
+    extreme, mmf = False, 0
     for i, ln in enumerate(lines[1:], 1):
         parts = [p.strip() for p in ln.split(" | ")]
         if len(parts) != len(cols):
@@ -3062,10 +3062,24 @@ def _fund_rank_answer(sql: str, rows: str, n: int) -> str | None:
         except ValueError:
             return None
         out.append(f"{i}. {_fund_stem(parts[name_i])}: {label} {val} · 클래스 {k}개")
-    if extreme:
-        # ontology/enums/public_funds.yaml `수익률극단값` — 8기간 수익률은 전부 누적이고 100% 초과 행에는 주의 문구를 붙인다
-        out += ["", "※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다. 100%를 넘는 값은 "
-                    "파생·레버리지 전략에서 나오므로 손실도 같은 배율로 커질 수 있습니다."]
+        if "MMF" in parts[name_i].upper():
+            mmf += 1
+    # 🔴 `규모_MMF포함`(clarify.사람의_선택) — "규모가 큰 펀드" 의 순자산 상위는 법인 자금 파킹용
+    #    MMF 로 채워진다(최대 12.4조). 사용자는 그걸 물은 게 아니다. 규칙은 세 회차 내리 안 지켜졌으므로
+    #    **결과 행으로 기계 판정**한다 — 이름에 MMF 가 든 펀드가 절반을 넘으면 그 사실을 적는다.
+    #    질문이 MMF 를 지목했으면(FND-007) 이미 아는 사실이라 침묵한다.
+    if col == "fd_nast_suma" and mmf * 2 > n and "MMF" not in question.upper():
+        out += ["", f"※ 상위 {n}개 중 {mmf}개가 **MMF**(법인 자금을 단기 예치하는 상품)입니다. "
+                    "MMF 를 빼고 보시려면 'MMF 제외' 라고 말씀해 주세요."]
+    if col in _RET_LABEL:
+        # 🔴 2026-09-05 S2·Y4 — 종전엔 `extreme`(|값| ≥ 100)일 때만 붙였다. 그런데 −80% 대 하위 랭킹은
+        #    주석이 없어 연 환산으로 읽힐 여지가 더 크다("3년에 −80%" 를 "해마다 −80%" 로 읽는다).
+        #    수익률 축이면 **누적이라는 사실은 언제나** 적고, 극단값 경고만 조건부로 남긴다.
+        #    ontology/enums/public_funds.yaml `수익률극단값`.
+        note = "※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다."
+        if extreme:
+            note += " 100%를 넘는 값은 파생·레버리지 전략에서 나오므로 손실도 같은 배율로 커질 수 있습니다."
+        out += ["", note]
     return "\n".join(out)
 
 
@@ -8714,7 +8728,7 @@ def answer_question(
         result.think_trace = "\n".join(trace)
         result.answer = lst
         return result
-    rk = _fund_rank_answer(sql, rows, n)
+    rk = _fund_rank_answer(sql, rows, n, q)
     if rk is not None:
         step("[Answer] 랭킹 답변 기계 조립 — SELECT 에 실린 클래스수를 반드시 옮기고 값 축(MAX/SUM)을 머리줄에 굽는다, HCX 0회 "
              "(8R ③-10 · 7R 실측: R7·S1·Y3·Y4 는 클래스수 미표기 + 머리 이름이 클래스명 · Y2·U13 은 MAX 축 미고지 · "

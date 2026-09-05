@@ -105,3 +105,39 @@ def test_capital_security_label_survives_missing_bond_kind(ctx):
     con.close()
     assert n_label == 280
     assert n_coco_labeled == n_coco_total
+
+
+# ── ④ 별칭 자백 검사 (G2) — 모델이 별칭에 적은 축이 선언상 없는 축이면 기각 ────────
+@pytest.mark.parametrize("label, sql", [
+    # 과거 사고의 실제 SQL 꼴 — 별칭이 축 대체를 자백한다
+    ("#77 이자주기", "SELECT TRIM(bd_intp_tcd) AS 이자지급주기, COUNT(DISTINCT pd_no) "
+                     "FROM domestic_bonds WHERE pd_pbcm LIKE '%한국전력%' GROUP BY 1"),
+    ("#65 등급이력", "SELECT pd_nm, crd_grd_dt AS 등급변동일 FROM domestic_bonds "
+                     "WHERE crd_grd_dt BETWEEN 20260701 AND 20260824"),
+    ("#72 금리이력", "SELECT pd_nm, srfc_irt AS 금리추이 FROM domestic_bonds ORDER BY mat_dt DESC LIMIT 30"),
+    ("#67 업종", "SELECT pd_nm, pd_pbcm AS 업종 FROM domestic_bonds WHERE pd_nm LIKE '%우주항공%'"),
+    ("#81 거래량", "SELECT pd_nm, exg_close_price AS 거래량 FROM domestic_bonds ORDER BY exg_close_price DESC"),
+    ("#81 최소금액", "SELECT pd_nm, eval_price AS 최소투자금액 FROM domestic_bonds LIMIT 5"),
+])
+def test_axis_alias_confession_rejects(ctx, label, sql):
+    from src.runtime.pipeline import axis_alias_confession
+    why = axis_alias_confession(sql, ctx)
+    assert why, f"축 대체를 못 잡음: {label}"
+    assert "없는 축" in why
+
+
+@pytest.mark.parametrize("label, sql", [
+    # 헷갈리는 정상 별칭 — 한 글자 차이로 뜻이 갈린다
+    ("등급적용일", "SELECT pd_nm, crd_grd_dt AS 등급적용일 FROM domestic_bonds"),
+    ("이자지급방식", "SELECT TRIM(bd_intp_tcd) AS 이자지급방식, COUNT(*) FROM domestic_bonds GROUP BY 1"),
+    ("거래구분", "SELECT pd_exg_mkt AS 거래구분, COUNT(*) FROM domestic_bonds GROUP BY 1"),
+    ("장내종가", "SELECT pd_nm, exg_close_price AS 장내종가 FROM domestic_bonds WHERE exg_close_price>0"),
+    ("발행기관", "SELECT TRIM(pd_pbcm) AS 발행기관, COUNT(*) AS 종목수 FROM domestic_bonds GROUP BY 1"),
+    ("민평수익률", "SELECT pd_nm, applied_yield AS 민평수익률 FROM domestic_bonds ORDER BY applied_yield DESC LIMIT 5"),
+    ("만기·잔존", "SELECT pd_nm, mat_dt AS 만기일, remaining_days AS 잔존일수 FROM domestic_bonds"),
+    # 🔴 다른 도메인에는 실재하는 축이다 — 테이블을 안 보고 별칭만 보면 여기서 오폭한다
+    ("ETF 분배주기", "SELECT pd_abrv_nm, pd_dvid_cycl AS 분배주기 FROM domestic_etfs"),
+])
+def test_axis_alias_confession_does_not_overreach(ctx, label, sql):
+    from src.runtime.pipeline import axis_alias_confession
+    assert axis_alias_confession(sql, ctx) is None, f"정상 별칭을 기각: {label}"

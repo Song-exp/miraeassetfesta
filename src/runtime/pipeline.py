@@ -379,6 +379,7 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool, question: str =
     #    고치고 다음 가드에 다시 걸려 예산이 소진된다(OFFICIAL-004 실측: 1차 괄호 가드 · 2차 테이블 참조로
     #    서로 다른 두 가드가 재생성 1회를 나눠 쓰고 무응답). 가드를 늘릴수록 이 곱셈이 나빠진다.
     errs = [e for e in (validate_sql(sql), forbidden_column_use(sql, ctx), forbidden_literal_use(sql),
+                        axis_alias_confession(sql, ctx),
                         fabricated_name_literal_use(sql, question, ctx) if question else None) if e]
     agg = where_window_or_aggregate(sql)
     if agg:
@@ -2310,6 +2311,47 @@ _FORBIDDEN_LITERALS = [
     ("domestic_bonds", re.compile(r"curr_cd\s*(?:<>|!=)\s*'KRW'", re.I),
      "curr_cd <> 'KRW' 는 오염값 '000' 1행만 남긴다 — 외화 채권은 수록 없음, 원화 외 통화 조건을 만들지 않는다"),
 ]
+
+
+_SQL_ALIAS = re.compile(r"\bAS\s+([\"'`\[]?)([가-힣][가-힣A-Za-z0-9_]*)\1", re.I)
+
+
+def axis_alias_confession(sql: str, ctx=None) -> str | None:
+    """모델이 컬럼에 붙인 **한글 별칭**이 그 테이블의 부재축 선언에 걸리면 축 대체다 — 기각 사유, 없으면 None.
+
+    🔴 2026-09-06 신설. 축 대체(없는 축을 있는 컬럼으로 메꿈)는 이 시스템 최대의 환각 부류이고 네 번 터졌다
+    (#65 등급이력→crd_grd_dt · #72 금리이력→만기정렬 · #67 업종→종목명 LIKE · #77 이자주기→지급방식).
+    그때마다 **사고를 맞고 나서** 게이트 어휘를 손으로 넓혔다 — 질문 문형은 무한하니 뒤쫓는 방식이다.
+
+    그런데 #77 의 SQL 은 자백을 남겼다: `SELECT TRIM(bd_intp_tcd) AS 이자지급주기 … GROUP BY …`.
+    모델이 **스스로** 무엇을 답한 셈 치는지 별칭에 적었는데, 별칭 정규화 가드가 컬럼명으로 되돌리며
+    그 흔적을 지웠다. 자백을 지우기 전에 읽으면 된다.
+
+    질문(자유로운 한국어)이 아니라 **별칭**(짧고 모델이 고른 표기)을 재는 것이 핵심이다 —
+    질문 쪽 판정은 오폭이 크지만(2026-09-06 진단 실측 11.1%), 별칭은 모델이 축 이름을 직접 쓴 자리라
+    좁고 정확하다. 어휘도 새로 쓰지 않는다: **이미 있는 absent_properties 선언을 그대로 돌린다** —
+    부재축을 하나 선언할 때마다 이 가드가 저절로 같이 세진다(4도메인 공통).
+    """
+    props = getattr(ctx, "absent_props", None) if ctx is not None else None
+    if not props:
+        return None
+    in_sql = set(guard.sql_tables(sql))
+    aliases = [m.group(2) for m in _SQL_ALIAS.finditer(sql)]
+    if not aliases:
+        return None
+    for table, items in props.items():
+        if table not in in_sql:
+            continue
+        for item in items:
+            for pat in (item.get("vocab") or []):
+                for alias in aliases:
+                    if re.search(pat, alias):
+                        sub = (item.get("substitute") or {}).get("note") or ""
+                        return (f"별칭 `AS {alias}` 가 {table} 에 없는 축({item['property']})을 가리킨다 — "
+                                f"있는 컬럼으로 없는 축을 대신 답하지 않는다. {item.get('why', '')} "
+                                f"{sub} 그 축은 조회할 수 없으니 조건·별칭에서 **빼고**, "
+                                f"질문이 그 축만 묻는다면 SQL 대신 REFUSE 를 낸다.").strip()
+    return None
 
 
 def forbidden_literal_use(sql: str) -> str | None:

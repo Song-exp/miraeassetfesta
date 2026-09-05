@@ -122,4 +122,13 @@ def test_declaration_reached_ttl():
                        "ontology", "bond_kr.ttl")
     s = open(ttl, encoding="utf-8").read()
     assert f"# ABSENT: fp:DomesticBond 에는 fp:{PROP} 없음" in s
-    assert s.count("# ABSENT:") == 7
+    # 🔄 2026-09-06 — 숫자를 박아 두면 부재축을 하나 선언할 때마다 이 줄이 깨진다(hasTradingVolume·
+    #    hasMinimumInvestment 를 더하며 7→9). 기대값을 **선언에서 세어** ttl 이 yaml 을 빠짐없이 옮겼는지만 본다.
+    import yaml as _yaml
+    onto = os.path.dirname(ttl)
+    doc = _yaml.safe_load(open(os.path.join(onto, "enums", "domestic_bonds.yaml"), encoding="utf-8"))
+    declared = [it["property"] for it in (doc.get("absent_properties") or [])]
+    for prop in declared:
+        assert f"# ABSENT: fp:DomesticBond 에는 fp:{prop} 없음" in s, f"ttl 에 안 나간 선언: {prop}"
+    # 스키마에서 바로 오는 ABSENT 3건(hasAssetClass·tracksIndex·hasRegion) + 선언분
+    assert s.count("# ABSENT:") == 3 + len(declared)

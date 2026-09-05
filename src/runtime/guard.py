@@ -16,6 +16,7 @@ from functools import lru_cache
 from dataclasses import dataclass
 
 from .loader import EXT_TABLES, TABLES, RuntimeContext, connect_readonly
+from .gate import BUYABLE_CUTOFF
 
 # col = 'lit'  ·  tbl.col = 'lit'  ·  col IN ('a','b')  — 문자열 리터럴만 (숫자 비교는 값 사전 대상이 아니다)
 # 🔴 TRIM(col) = 'lit' · COALESCE(TRIM(col),'') = 'lit' 도 잡는다 — 2026-09-02 실측: ensure_trimmed_compare 가
@@ -655,22 +656,62 @@ def split_disjuncts(where: str) -> list[str]:
 
 
 @dataclass
+class DateGap:
+    """날짜 컬럼 창이 0행일 때의 수록 범위 — 창 양옆에 실제로 있는 가장 가까운 값과, 창이 판정일 이전이면 남은 경과분 수.
+
+    2026-09-05 #68 — "지난달에 만기된 채권" 의 창(20260701~20260731)은 컬럼 전체 범위(20260628~20830605) **안**이라
+    min/max 대조로는 사유가 안 나온다. 창 바로 아래·위의 실제 값(20260628 · 20260820)을 보이면 사용자가 빈 자리를 본다.
+    만기 경과 종목이 61종목만 남은 것은 마스터 정리(domestic_bonds.yaml §mat_dt: 소멸 25,429종목 중 67.5%가 경과분)의 결과다.
+    """
+    col: str
+    lo: int
+    hi: int
+    below: int | None                      # 창 아래에서 가장 가까운 실제 값 (없으면 None)
+    above: int | None                      # 창 위에서 가장 가까운 실제 값
+    past_kept: int | None = None           # 창이 판정일 이전일 때 — 판정일 이전 값이 남아 있는 종목 수 (mat_dt 만)
+
+
+@dataclass
 class ZeroRowDiagnosis:
     counts: list[tuple[str, int]]          # (조건, 단독 적용 시 건수)
     total: int                             # 조건 없이 (FROM 만) 건수
+    gaps: list[DateGap] | None = None      # 0행인 날짜 창의 수록 범위 (#68)
 
     def text(self) -> str:
+        gap_txt = " ".join(
+            f"[{g.col} {g.lo}~{g.hi} 수록 없음 — 가장 가까운 값 아래 {g.below} · 위 {g.above}"
+            + (f" · 판정일 이전 잔존 {g.past_kept}종목" if g.past_kept is not None else "") + "]"
+            for g in (self.gaps or []))
         if not self.counts:
-            return ""
+            return gap_txt
         alive = [(c, n) for c, n in self.counts if n > 0]
         dead = [(c, n) for c, n in self.counts if n == 0]
         bits = [f"{c} → {n:,}건" for c, n in self.counts]
         head = "조건별 단독 조회: " + " / ".join(bits)
+        if gap_txt:
+            head += " " + gap_txt
         if dead:
             return head + f". 값 자체가 없는 조건: {', '.join(c for c, _ in dead)}."
         if len(alive) >= 2:
             return head + ". 각 조건은 존재하나 동시에 만족하는 상품이 없습니다."
         return head
+
+    def gap_text(self) -> str | None:
+        """날짜 창 공백 사유 — 사용자 문장. 창은 표기용 날짜로, 가장 가까운 실제 값을 병기한다."""
+        if not self.gaps:
+            return None
+        out = []
+        for g in self.gaps:
+            lab = _COL_KO.get(g.col, g.col)
+            win = _ymd_text(g.lo) if g.lo == g.hi else f"{_ymd_text(g.lo)}~{_ymd_text(g.hi)}"
+            near = " · ".join(_ymd_text(v) for v in (g.below, g.above) if v is not None)
+            s = f"{lab}{_ga(lab)} {win}인 상품은 수록되어 있지 않습니다"
+            s += f" (수록된 가장 가까운 {lab}: {near})." if near else "."
+            if g.past_kept is not None and g.col == "mat_dt":
+                s += (f" 판정일 {BUYABLE_CUTOFF} 이전에 만기된 종목은 데이터에 {g.past_kept:,}종목만 남아 있고"
+                      "(만기 경과분은 마스터에서 정리됩니다), 만기 후 상환 여부 같은 사후 상태는 수록되어 있지 않습니다.")
+            out.append(s)
+        return " ".join(out)
 
     def user_text(self) -> str | None:
         """사용자 답변에 붙일 자연어 사유 한 문장 — 개발자 표기(SQL 조각) 금지.
@@ -678,7 +719,10 @@ class ZeroRowDiagnosis:
         2026-08-31 밤 리드 결정: 0행 사유는 답변에 싣되 '조건별 단독 조회: …' 류 개발자
         텍스트로는 내보내지 않는다. SQL 조각을 한국어로 옮기지 못하는 조건이 하나라도 끼면
         구체 서술을 포기하고 일반 문장으로 낮춘다 — 어색한 반역(半譯)보다 안전하다.
-        <> 제외절(고위험제외·수익률정상 주입분)은 사용자가 물은 조건이 아니므로 열거에서 뺀다."""
+        <> 제외절(고위험제외·수익률정상 주입분)은 사용자가 물은 조건이 아니므로 열거에서 뺀다.
+        날짜 창 공백(#68)이 있으면 그것이 사유다 — 창 옆의 실제 값을 보이는 문장이 '동시에 만족하는 상품이 없다' 보다 정확하다."""
+        if self.gaps:
+            return self.gap_text()
         if not self.counts:
             return None
         dead = [c for c, n in self.counts if n == 0]
@@ -703,7 +747,46 @@ _COL_KO = {
     "srfc_irt": "표면금리", "applied_yield": "수익률", "mat_dt": "만기일",
     "remaining_days": "잔존일수", "pd_pbcm": "발행기관", "bd_intp_tcd": "이자지급방식",
     "bd_inrt_tcd": "금리유형", "bd_ofr_tcd": "공모/사모 구분", "pd_nm": "상품명", "curr_cd": "통화",
+    "isu_dt": "발행일", "crd_grd_dt": "신용등급 부여일",
 }
+
+
+def _ymd_text(v: int) -> str:
+    s = str(int(v))
+    return f"{s[:4]}-{s[4:6]}-{s[6:]}" if len(s) == 8 else s
+
+
+# 날짜 창 조건 — `col BETWEEN a AND b` / `col op v` / `col = v` (정수 YYYYMMDD). 컬럼은 *_dt 관례로 판정한다.
+_H_DATE_BETWEEN = re.compile(r"^([A-Za-z_]\w*_dt)\s+BETWEEN\s+(\d{8})(?:\.0)?\s+AND\s+(\d{8})(?:\.0)?$", re.I)
+_H_DATE_CMP = re.compile(r"^([A-Za-z_]\w*_dt)\s*(>=|<=|=|<|>)\s*(\d{8})(?:\.0)?$", re.I)
+
+
+def _date_window_of(cond: str) -> tuple[str, int, int] | None:
+    """조건 하나를 (컬럼, lo, hi) 창으로. 한쪽만 있는 부등호는 반대쪽을 0/99999999 로 연다."""
+    c = _H_TRIM.sub(r"\1", cond.strip())
+    m = _H_DATE_BETWEEN.match(c)
+    if m:
+        return m.group(1).lower(), int(m.group(2)), int(m.group(3))
+    m = _H_DATE_CMP.match(c)
+    if not m:
+        return None
+    col, op, v = m.group(1).lower(), m.group(2), int(m.group(3))
+    if op == "=":
+        return col, v, v
+    if op in (">=", ">"):
+        return col, v + (op == ">"), 99999999
+    return col, 0, v - (op == "<")
+
+
+def _date_gap(con: sqlite3.Connection, frm: str, col: str, lo: int, hi: int) -> DateGap:
+    """창 양옆의 실제 값 + (창이 판정일 이전이면) 판정일 이전 잔존 종목 수. 0값(미수록)은 값으로 세지 않는다."""
+    below = con.execute(f"SELECT MAX({col}) FROM {frm} WHERE {col} > 0 AND {col} < ?", (lo,)).fetchone()[0]
+    above = con.execute(f"SELECT MIN({col}) FROM {frm} WHERE {col} > ?", (hi,)).fetchone()[0]
+    cutoff = int(BUYABLE_CUTOFF.replace("-", ""))
+    kept = None
+    if col == "mat_dt" and hi < cutoff:
+        kept = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {frm} WHERE mat_dt > 0 AND mat_dt < ?", (cutoff,)).fetchone()[0]
+    return DateGap(col, lo, hi, int(below) if below else None, int(above) if above else None, kept)
 _RISK_KO = {"11": "1등급(매우높은위험)", "12": "2등급(높은위험)", "13": "3등급(다소높은위험)",
             "14": "4등급(보통위험)", "15": "5등급(낮은위험)", "16": "6등급(매우낮은위험)",
             "00": "해당없음"}
@@ -759,7 +842,7 @@ def _humanize_cond(cond: str) -> str | None:
         if col not in _COL_KO:
             return None
         lab = _COL_KO[col]
-        word = (_CMP_DATE_KO if col in _DATE_COLS else _CMP_KO)[op]
+        word = (_CMP_DATE_KO if (col in _DATE_COLS or col.endswith("_dt")) else _CMP_KO)[op]
         return f"{lab}{_ga(lab)} {val} {word}"
     m = _H_LIKE.match(c)
     if m:
@@ -769,29 +852,46 @@ def _humanize_cond(cond: str) -> str | None:
 
 
 def diagnose_zero_rows(sql: str, con: sqlite3.Connection | None = None) -> ZeroRowDiagnosis | None:
-    """단순 SELECT(서브쿼리·UNION·HAVING 없음)만. 조건이 하나면 진단할 게 없다(None)."""
+    """단순 SELECT(서브쿼리·UNION·HAVING 없음)만. 조건이 하나면 진단할 게 없다(None) — 단 날짜 창 공백(#68)은 예외."""
     if _COMPLEX.search(sql):
         return None
     m = _SIMPLE.match(sql.strip().rstrip(";"))
     if not m or not m.group("where"):
         return None
-    conj = split_conjuncts(m.group("where").strip())
+    # 🔴 2026-09-05 #68 — BETWEEN 의 AND 를 조건 경계로 갈랐다. `mat_dt BETWEEN 20260701 AND 20260731` 이
+    #    "mat_dt BETWEEN 20260701"(오류 → 버림) 과 "20260731"(참 → 21,882건) 으로 갈려 "조건 각각은 있으나 동시엔 없다" 는
+    #    **거짓 사유**가 나갔다(#67 과 같은 부류 — 사유 침묵이 아니라 사유 날조). BETWEEN 을 접고 가른다.
+    fold = "\x01"
+    folded = re.sub(r"(\bBETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", m.group("where").strip(), flags=re.I)
+    conj = [c.replace(fold, " AND ") for c in split_conjuncts(folded)]
     if len(conj) < 2:
         # 🔴 2026-09-05 #66 — 최상위가 OR 한 덩어리면 여기서 통째로 포기했다. "우주항공·방산 쪽 기업이 발행한
         #    채권" 이 `pd_pbcm LIKE '%우주항공%' OR pd_pbcm LIKE '%방산%'` 0행으로 끝났고, 사용자는 사유 없는
         #    "확인되지 않습니다" 한 줄만 받았다 — 어느 항목을 뒤졌는지조차 알 수 없다. OR 가지로 갈라 진단한다.
-        #    (가지가 하나뿐이면 종전대로 진단할 게 없다.)
+        #    (가지가 하나뿐이면 진단할 게 없다 — 단 그 하나가 날짜 창이면 아래 공백 진단이 사유가 된다.)
         head = (conj[0] if conj else "").strip()
         while head.startswith("(") and head.endswith(")") and len(split_disjuncts(head)) == 1:
             head = head[1:-1].strip()                       # 통째로 감싼 괄호만 벗긴다
         disj = [d.strip() for d in split_disjuncts(head) if d.strip()]
-        if len(disj) < 2:
-            return None
-        conj = disj
+        if len(disj) >= 2:
+            conj = disj
     frm = m.group("from").strip()
     own = con is None
     con = con or connect_readonly()
     try:
+        # ── 날짜 창 공백(#68) — 창 조건이 단독으로 0행이면 창 옆의 실제 값을 잰다. 조건이 하나뿐이어도 이것은 사유다.
+        gaps: list[DateGap] = []
+        for c in conj:
+            w = _date_window_of(c)
+            if not w:
+                continue
+            try:
+                if con.execute(f"SELECT count(*) FROM {frm} WHERE {c}").fetchone()[0] == 0:
+                    gaps.append(_date_gap(con, frm, *w))
+            except sqlite3.Error:
+                continue
+        if len(conj) < 2:
+            return ZeroRowDiagnosis([], 0, gaps) if gaps else None
         total = con.execute(f"SELECT count(*) FROM {frm}").fetchone()[0]
         counts = []
         for c in conj:
@@ -800,7 +900,7 @@ def diagnose_zero_rows(sql: str, con: sqlite3.Connection | None = None) -> ZeroR
             except sqlite3.Error:
                 n = -1
             counts.append((c, n))
-        return ZeroRowDiagnosis([(c, n) for c, n in counts if n >= 0], total)
+        return ZeroRowDiagnosis([(c, n) for c, n in counts if n >= 0], total, gaps or None)
     finally:
         if own:
             con.close()

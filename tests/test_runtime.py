@@ -1599,6 +1599,30 @@ def test_resolve_past_window():
     assert gate.resolve_relative_window("6개월 안에 만기되는 채권") == [("6개월 안에", 20260824, 20270224)]
 
 
+def test_diagnose_zero_rows_date_gap():
+    """0행 사유 — 날짜 창 공백 (2026-09-05 #68). 창 조건 하나뿐이어도 창 옆의 실제 값을 보여 사유가 된다.
+
+    원 사고: "지난달에 만기된 채권" 창(7월)이 0행 → ① BETWEEN 의 AND 를 조건 경계로 갈라 "조건 각각은 있으나 동시엔 없다" 는
+             거짓 사유 ② 조건이 하나면 진단 없음. 컬럼 전체 범위(20260628~20830605) 안이라 min/max 대조로는 못 잡는다.
+    """
+    from src.runtime import guard
+    d = guard.diagnose_zero_rows("SELECT pd_no FROM domestic_bonds WHERE mat_dt BETWEEN 20260701 AND 20260731 GROUP BY pd_no LIMIT 30")
+    assert d and d.gaps and d.gaps[0].col == "mat_dt" and (d.gaps[0].below, d.gaps[0].above) == (20260628, 20260820)
+    assert d.gaps[0].past_kept == 61                                       # DB 실측: 판정일 이전 만기로 남은 종목(6/28 · 8/20~8/23)
+    u = d.user_text()
+    assert "만기일이 2026-07-01~2026-07-31인 상품은 수록되어 있지 않습니다" in u and "2026-06-28 · 2026-08-20" in u
+    assert "이전에 만기된 종목은 데이터에 61종목만 남아 있" in u and "사후 상태는 수록되어 있지 않습니다" in u
+    assert "동시에 만족" not in u and "20260731" not in d.text().split("[")[0]      # BETWEEN 이 갈라지지 않는다
+    # 형제 축 — 발행일 미래 창(발행 예정은 9/10 까지만) · 판정일 이전 문장은 mat_dt 에만 붙는다
+    d2 = guard.diagnose_zero_rows("SELECT pd_no FROM domestic_bonds WHERE curr_cd='KRW' AND mat_dt >= 20260824 AND isu_dt BETWEEN 20261001 AND 20261231 AND isu_dt > 0 LIMIT 30")
+    assert d2 and d2.gaps and d2.gaps[0].col == "isu_dt" and d2.gaps[0].below == 20260910 and d2.gaps[0].past_kept is None
+    assert d2.user_text().startswith("발행일이 2026-10-01~2026-12-31인 상품은 수록되어 있지 않습니다 (수록된 가장 가까운 발행일: 2026-09-10)")
+    # 창은 있는데 다른 조건이 죽은 경우 — 종전 사유 그대로(창 공백이 아니다)
+    d3 = guard.diagnose_zero_rows("SELECT pd_no FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 AND crd_grd = 'ZZZ' LIMIT 30")
+    assert d3 and not d3.gaps and "신용등급이 'ZZZ'인 상품 자체가 없습니다" in d3.user_text()
+    assert ("mat_dt BETWEEN 20270101 AND 20271231", 6320) in d3.counts          # BETWEEN 이 한 조건으로 세어진다
+
+
 def test_diagnose_zero_rows_or_branches():
     """0행 사유 — 최상위가 OR 한 덩어리여도 가지별로 진단한다 (2026-09-05 #66).
 
@@ -1730,7 +1754,10 @@ def test_full_path_last_month_matured(ctx):
     assert "mat_dt BETWEEN 20260701 AND 20260731" in r.sql and "20260824" not in r.sql and "+" not in r.sql
     assert "방향 past" in r.think_trace
     assert r.answer != "HCX 산문" and "473" not in r.answer and "국민주택" not in r.answer
-    assert "확인" in r.answer or "없" in r.answer
+    # 0행 사유 — 창 공백 진단(guard.DateGap): 7월 창은 비어 있고, 판정일 이전 만기는 소수만 남았고, 사후 상태는 미수록
+    assert "만기일이 2026-07-01~2026-07-31인 상품은 수록되어 있지 않습니다" in r.answer
+    assert "이전에 만기된 종목은 데이터에" in r.answer and "사후 상태는 수록되어 있지 않습니다" in r.answer
+    assert "동시에 만족" not in r.answer                                   # BETWEEN 을 가른 거짓 사유가 다시 나오면 안 된다
 
 
 def test_bond_count_answer_shapes():

@@ -2340,6 +2340,42 @@ def _class_notation_in_question(question: str) -> str | None:
     return toks[0] if toks else None
 
 
+_FEE_SUM_ITEM = re.compile(
+    r"(?<![\w.])(" + "|".join(_FUND_FEE_COLS) + r")\b(?:\s*\+\s*(?:" + "|".join(_FUND_FEE_COLS) + r")\b)*", re.I)
+
+
+def ensure_fee_percent_select(sql: str) -> tuple[str, bool]:
+    """SELECT 의 보수 식이 ‰ 인데 % 인 척하면 **식에 ÷10 을 굽는다**. (SQL, 구웠는지)
+
+    2026-09-05 DOM-06 서버 실측:
+
+        SELECT … or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r AS "총보수_퍼센트"
+        → 14.35                                                ↑ ÷10 이 없다. 값은 ‰ (=1.435%)
+
+    별칭은 '퍼센트' 라 말하는데 값은 천분율이라 답변이 "총보수는 14.35%" 로 나갔다 — 10배다.
+    랭킹 기계 조립은 `_fee_pct` 가 환산하지만 **HCX 산문 경로**에는 그 장치가 없었다.
+    단위는 이름이 아니라 식이 정한다(2026-09-04 교훈) — 식을 고쳐 답변기가 무엇을 하든 맞게 한다.
+    불개입: 이미 ÷10 을 한 식 · 보수 컬럼이 SELECT 에 없음.
+    """
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm or not _FUND_TBL.search(sql):
+        return sql, False
+    head = sql[:frm.start()]
+    out, fixed = head, False
+    for m in list(_FEE_SUM_ITEM.finditer(head)):
+        seg = head[max(0, m.start() - 60):m.end() + 60]
+        if re.search(r"/\s*10(?:\.0*)?\b", seg):
+            continue                                   # 이미 환산했다 — 두 번 나누면 100배 작아진다
+        # 🔴 집계 안(`MIN(보수합)`)은 건드리지 않는다 — 랭킹 기계 조립의 `_fee_pct` 가 담당하고,
+        #    여기서 감싸면 대표행 보정이 다시 MIN 을 씌워 `MIN(MIN(…))` 문법 오류가 난다(실측).
+        if re.search(r"\b(?:MIN|MAX|SUM|AVG)\s*\([^)]*$", head[:m.start()], re.I):
+            continue
+        expr = m.group(0)
+        out = out.replace(expr, f"ROUND(({expr}) / 10.0, 4)", 1)
+        fixed = True
+    return (sql[:frm.start()].replace(head, out) + sql[frm.start():], True) if fixed else (sql, False)
+
+
 def _strip_class_nm_predicates(expr: str) -> str:
     """`han_clas_nm` 을 쓴 **낱개 술어만** 걷어내고 형제 조건은 살린다.
 
@@ -2390,8 +2426,24 @@ def ensure_fund_class_notation(sql: str, question: str) -> tuple[str, bool]:
         anchor = _SQL_ANCHOR.search(sql) or re.search(r"\blimit\b", sql, re.I)
         return (f"{sql[:anchor.start()]}WHERE {cond} {sql[anchor.start():]}", True) if anchor else (sql, False)
     kept = _strip_class_nm_predicates(m_w.group(1))
-    return (sql[:m_w.start()] + " WHERE " + " AND ".join([cond] + ([kept] if kept else []))
-            + " " + sql[m_w.end():].lstrip(), True)
+    out = (sql[:m_w.start()] + " WHERE " + " AND ".join([cond] + ([kept] if kept else []))
+           + " " + sql[m_w.end():].lstrip())
+    return _ensure_name_in_select(out), True
+
+
+def _ensure_name_in_select(sql: str) -> str:
+    """SELECT 에 종목명을 넣는다 — **클래스는 이름으로만 구분된다.**
+
+    2026-09-05 DOM-06 서버 실측 — 두 클래스를 정확히 조회했는데 SELECT 가
+    `itm_no | han_clas_nm | 총보수_퍼센트` 뿐이라 어느 행이 A 이고 C 인지 알 방법이 없었다.
+    답변기가 추측했고 **뒤집어 적었다**("A클래스 17.55 · C클래스 14.35" — 실제는 반대).
+    클래스 표기는 종목명 접미에 있으므로 그 열을 함께 낸다.
+    """
+    frm = re.search(r"\bfrom\b", sql, re.I)
+    if not frm or re.search(r"\bitm_nm\b", sql[:frm.start()], re.I):
+        return sql
+    m_sel = re.match(r"(\s*select\s+(?:distinct\s+)?)", sql, re.I)
+    return sql[:m_sel.end()] + "TRIM(itm_nm) AS itm_nm, " + sql[m_sel.end():] if m_sel else sql
 
 
 _SELECT_PLAIN_ITEM = re.compile(r"(?:TRIM\(\s*)?([A-Za-z_]\w*)\s*\)?(?:\s+AS\s+(\w+))?", re.I)
@@ -7967,6 +8019,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 안 쓰는 외부표 조인 제거 — " + "·".join(ext_drop) + " 을 걷어냈다 "
              "(컬럼을 하나도 안 쓰는 1:1 LEFT JOIN 이라 결과 불변 · 남겨 두면 대표행 보정이 통째로 "
              "비켜간다 · 2026-09-05 FND-007 실측)")
+    sql, fee_pct = ensure_fee_percent_select(sql)
+    if fee_pct:
+        step("[Guard] 보수 % 환산 주입 — SELECT 의 보수 식이 ‰ 인데 % 인 척해서 식에 ÷10 을 구웠다 "
+             "(2026-09-05 DOM-06 실측: `… AS \"총보수_퍼센트\"` 가 14.35 를 그대로 내 답변이 '14.35%' — "
+             "10배다. 단위는 이름이 아니라 식이 정한다)")
     sql, ob_dropped = ensure_orderby_in_range(sql)
     if ob_dropped:
         step("[Guard] 위치 ORDER BY 범위 보정 — SELECT 열 수를 넘는 키 "

@@ -92,8 +92,9 @@ def test_dom06_end_to_end(ctx):
     r = answer_question("DOM-06", "미래에셋코어테크 펀드는 A클래스와 C클래스 중 어느 쪽이 보수가 낮아?",
                         planner=P(), ctx=ctx)
     ans = r.answer or ""
-    assert "14.35" in ans and "17.5" in ans, ans      # A 와 C 가 둘 다 있어야 한다
-    assert "수수료선취" in ans and "수수료미징구" in ans, ans
+    # 값은 % 로 구워져 나온다(‰ 14.35 → 1.435) — `ensure_fee_percent_select` 가 식에 ÷10 을 굽는다
+    assert "1.435" in ans and "1.755" in ans, ans     # A 와 C 가 둘 다 있어야 한다
+    assert "종류A" in ans and "종류C" in ans, "종목명이 없으면 어느 행이 A 인지 알 수 없다"
 
 
 def test_aa24_end_to_end(ctx):

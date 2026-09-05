@@ -1652,8 +1652,38 @@ def ensure_fund_rank_axis(sql: str, question: str) -> tuple[str, bool]:
     direction = "ASC" if (_ASC_WORD.search(question) and not _DESC_WORD.search(question)) else "DESC"
     m = _ORDER_BY_ALL.search(sql)
     if not m:
-        return sql, False
+        # 🔴 2026-09-05 6차 U14 — **ORDER BY 가 아예 없는 LIMIT** 도 같은 결함이다. 실측: HCX 가
+        #    `… HAVING fd_yr1_ern_r = MAX(fd_yr1_ern_r) LIMIT 3` 을 내어 '1년 수익률 상위 3개' 가
+        #    임의 3행(KB중국본토A주·미래에셋G2·하나IT코리아)이 됐다 — 5차의 `ORDER BY 3`(COUNT 지목)과
+        #    뿌리가 같다. 정렬 없는 LIMIT 은 결과가 정의되지 않는다.
+        m_lim = re.search(r"\blimit\b", sql, re.I)
+        if not m_lim:
+            return sql, False
+        return sql[:m_lim.start()] + f"ORDER BY {col} {direction} " + sql[m_lim.start():], True
     return sql[:m.start(1)] + f"{col} {direction} " + sql[m.end(1):], True
+
+
+_HAVING_COUNT = re.compile(r"\bhaving\b\s+(?:\w+|count\s*\([^)]*\))\s*(?:>|>=)\s*\d+\s*", re.I | re.S)
+_MULTIPLICITY_Q = re.compile(r"이상|이하|초과|미만|중복|(?:둘|두|여러|복수|\d+)\s*(?:개|건|종)")
+
+
+def drop_unasked_count_having(sql: str, question: str) -> tuple[str, bool]:
+    """묶음 키가 **고유 식별자**인데 붙은 개수 조건(HAVING COUNT > n)을 걷는다. 질문이 물었으면 둔다.
+
+    🔴 2026-09-05 6차 KG-018 실측: 재생성이 속성 태그 두 개를 정확히 걸어 놓고
+       `GROUP BY itm_no HAVING cnt > 1` 을 덧붙여 **항상 0행**이 됐다(itm_no 는 클래스 고유키다).
+       질문은 '단위형이면서 개방형인 공모펀드도 있어?' — 개수 조건을 물은 적이 없다.
+       질문에 없는 제한은 붙이지 않는다(온톨로지 G5) · 물었으면(`2개 이상`) 그대로 둔다.
+    """
+    if _MULTIPLICITY_Q.search(question):
+        return sql, False
+    m_grp = re.search(r"\bgroup\s+by\b(.*?)(?=\bhaving\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    if not m_grp or m_grp.group(1).strip().lower() not in _FUND_ID_COLS:
+        return sql, False
+    m_hav = _HAVING_COUNT.search(sql)
+    if not m_hav or re.search(r"\b(?:and|or)\b", m_hav.group(0), re.I):
+        return sql, False
+    return sql[:m_hav.start()] + " " + sql[m_hav.end():], True
 
 
 def ensure_fund_rank_representative(sql: str, question: str = "") -> tuple[str, bool]:
@@ -9638,6 +9668,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 집계 GROUP BY 제거 — 위치 표기가 집계 열을 가리켜 SQLite 가 거부하던 자리 "
              "(2026-09-05 X22 실측: 집계만 있는 SELECT 에 `GROUP BY 1` → aggregate functions are not "
              "allowed in the GROUP BY clause → 실행 실패. 묶을 키가 없어 걷어도 결과가 같다)")
+    sql, hav_dropped = drop_unasked_count_having(sql, q)
+    if hav_dropped:
+        step("[Guard] 안 물은 개수 조건 제거 — 고유 식별자 묶음에 붙은 HAVING COUNT 는 항상 거짓이다 "
+             "(2026-09-05 6차 KG-018 실측: 속성 태그를 정확히 걸어 놓고 `GROUP BY itm_no HAVING cnt > 1` "
+             "을 덧붙여 0행 → '확인할 수 없음'. 질문은 개수를 물은 적이 없다)")
     return sql
 
 

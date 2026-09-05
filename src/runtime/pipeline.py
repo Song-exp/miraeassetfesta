@@ -6887,6 +6887,85 @@ def ensure_similar_bond_query(sql: str, question: str, ctx) -> tuple[str, str | 
     return new, note
 
 
+# ── 표기에 없는 신용등급 토큰 되묻기 (2026-09-05 서버 실측 · 사고 #76) ──────────────────────────
+# "신용등급 BBB++ 인 채권 찾아줘" — KG 매핑이 'BBB++' 안에서 'BBB+' 를 잡아(경계 검사 부재) BBB+ 100종목을 답했다. 매핑 경계를
+# 고쳐도(위) HCX 가 'BBB+' 를 추측해 쓰면 같은 답이 나오므로, 표기에 없는 등급 토큰은 HCX 앞에서 결정층이 되묻는다 —
+# clarify.존재하지_않는_개체 의 정답 형태("혹시 BBB+ 를 말씀하신 건가요?"). 표준 등급 20종은 shared/credit_grade.yaml 노드 라벨,
+# 데이터 표기(AA0·C0 …)는 loader.grade_scale — 둘 다 선언이라 코드 상수가 없다. 값 검사(check_values)는 'BBB++' 리터럴을 기각만
+# 하고 nearest_enum_value 는 접미사·공백 차이만 흡수하므로 조용히 'BBB+' 로 바꾸는 경로는 없다(로컬 확인).
+# 🔴 글자 부분이 A/B/C 반복·D 인 토큰만 본다 — 'CB'(전환사채)·'CD'(금리)·'ABS' 는 등급이 아니다. 'CCC'·'D' 처럼 표준엔 있고
+#    데이터에 0건인 등급은 되묻지 않는다(등급서열 규칙: '해당 채권 없음' 으로 답한다 — 0행 경로).
+_GRADE_TOKEN_Q = re.compile(r"(?<![A-Za-z0-9])(AAA|AA|A|BBB|BB|B|CCC|CC|C|D)([+\-0]{1,3})?(?![A-Za-z0-9])")
+
+
+def _known_grade_forms(ctx) -> set[str]:
+    forms = {l for n in getattr(ctx, "kg_nodes", ()) if n.node_id.startswith("CG_") for l in n.labels if re.fullmatch(r"[A-D+\-0]+", l)}
+    forms |= set(_grade_scale())
+    return forms
+
+
+def grade_token_clarify(question: str, tables: list[str], ctx) -> str | None:
+    """질문의 등급꼴 토큰이 표준·데이터 표기 어디에도 없으면 가까운 등급을 후보로 되묻는 문장, 아니면 None."""
+    if tables != ["domestic_bonds"]:
+        return None
+    known = _known_grade_forms(ctx)
+    scale = _grade_scale()
+    for m in _GRADE_TOKEN_Q.finditer(question):
+        letters, sym = m.group(1), m.group(2) or ""
+        tok = letters + sym
+        if tok in known or not sym:
+            continue
+        family = [g for g in scale if re.match(rf"{re.escape(letters)}[+\-0]?$", g)]
+        if not family:
+            continue
+        best = next((g for g in family if g == letters + sym[0]), None)
+        con = connect_readonly()
+        try:
+            counts = {g: con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(crd_grd) = ? AND mat_dt >= {BUYABLE_INT} AND curr_cd = 'KRW'", (g,)).fetchone()[0] for g in family}
+        except sqlite3.Error:
+            counts = {}
+        finally:
+            con.close()
+        fam_txt = " / ".join(f"{g}({counts[g]:,}종목)" if g in counts else g for g in family)
+        lead = f"'{tok}' 은(는) 신용등급 표기에 없습니다."
+        if best:
+            return (f"{lead} 혹시 {best} 를 말씀하신 건가요? {letters} 계열의 실제 표기는 {fam_txt} 입니다 — "
+                    f"어느 등급으로 찾아드릴까요? (구매가능 종목 기준일 {gate.DATA_CUTOFF})")
+        return f"{lead} {letters} 계열의 실제 표기는 {fam_txt} 입니다 — 어느 등급으로 찾아드릴까요? (구매가능 종목 기준일 {gate.DATA_CUTOFF})"
+    return None
+
+
+# ── 채권 목록의 SELECT * 를 표준 컬럼 목록으로 (2026-09-05 #76 부수 결함) ───────────────────────
+# `SELECT *` 목록은 ① 대표행 가드가 불개입이라(`*` 에 GROUP BY pd_no 를 얹으면 SQLite 가 임의 행을 골라 장외행만 다른 컬럼
+# 307종목의 값이 섞인다 — 대표행 규칙은 이 경우 '두 줄 병기') 같은 종목이 장내·장외 행으로 두 번 나오고(한진127-2 ×2),
+# ② 58컬럼이 전부 실려 조립기가 핵심 항목만 골라 보인다. 조립기가 보이는 표준 컬럼 + 질문이 한글명으로 부른 컬럼(스키마
+# korean_name 선언)으로 바꿔 쓰면 대표행·근거컬럼 가드가 그대로 붙는다. 집계·JOIN·부질의·DISTINCT 는 불개입.
+_BOND_STAR_COLS = ("pd_nm", "pd_pbcm", "bd_knd", "bd_ofr_tcd", "crd_grd", "pd_risk_gcd", "pd_risk_nm",
+                   "applied_yield", "srfc_irt", "mat_dt", "remaining_days", "dur")
+_SELECT_STAR = re.compile(r"^\s*SELECT\s+(DISTINCT\s+)?\*\s*(?:,\s*(.*?))?\s+FROM\s+domestic_bonds\b", re.I | re.S)
+
+
+def ensure_bond_select_columns(sql: str, question: str, ctx) -> tuple[str, bool]:
+    """채권 단일 테이블 목록의 `SELECT *[, extras]` 를 표준 컬럼 목록(+질문이 부른 컬럼)으로. (보정된 SQL, 보정했는지)"""
+    m = _SELECT_STAR.match(sql)
+    if not m or m.group(1) or re.search(r"\b(?:join|union|group\s+by)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    cols = list(_BOND_STAR_COLS)
+    schema = ((getattr(ctx, "enums", None) or {}).get("domestic_bonds") or {}).get("columns") or {}
+    for col, spec in schema.items():
+        ko = (spec.get("korean_name") if isinstance(spec, dict) else None) or ""
+        if col not in cols and col in _BOND_COL_KO | _BOND_AXIS_KO and any(len(w) >= 2 and w in question for w in re.split(r"[/(),\s]+", ko)):
+            cols.append(col)
+    extras = [e.strip() for e in (m.group(2) or "").split(",") if e.strip()]
+    for e in extras:
+        alias = re.search(r"\bAS\s+(\w+)\s*$", e, re.I)
+        name = (alias.group(1) if alias else e).lower()
+        if name not in cols:
+            cols.append(e)
+    fm = re.search(r"\bFROM\s+domestic_bonds\b", sql, re.I)
+    return "SELECT " + ", ".join(cols) + " " + sql[fm.start():], True
+
+
 _CHEAP_Q = re.compile(r"저렴|(?<![가-힣])비?[싸싼]")
 _CHEAP_CUE = re.compile(r"가격|단가|평가|수익률|금리|이자|비용|보수|수수료")
 CHEAP_CLARIFY = ("'싸다'는 채권에서 두 가지 뜻으로 해석될 수 있어 확인이 필요합니다. "
@@ -7061,6 +7140,9 @@ _JOSA = (r"(?:이라고|이라는|이라|으로는|으로도|으로|에서는|�
          r"|이는|이가|이를|이도|이만|은|는|이|가|을|를|의|에|도|만|랑)?")
 
 
+_GRADE_LABEL = re.compile(r"(?:AAA|AA|A|BBB|BB|B|CCC|CC|C|D)[+\-0]?")
+
+
 def _boundary_hit(label: str, text: str) -> bool:
     """라벨이 낱말로 들어 있는가.
 
@@ -7068,6 +7150,10 @@ def _boundary_hit(label: str, text: str) -> bool:
        한글 경계로만 보면 '하이닉스가' 의 조사 때문에 정상 질문이 탈락한다.
     """
     esc = re.escape(label)
+    if _GRADE_LABEL.fullmatch(label):
+        # 등급꼴 라벨('BBB+'·'AA'·'A-') — 영숫자 경계만 보면 'BBB+' 가 'BBB++' 에, 'AA' 가 'AA+' 에 붙는다(#76).
+        #    앞뒤로 등급 기호(+·-·0)가 더 오면 다른(또는 없는) 표기다.
+        return re.search(rf"(?<![A-Za-z0-9+\-]){esc}(?![A-Za-z0-9+\-])", text) is not None
     if re.search(r"[가-힣]", label):
         # 4R 부류 I — 한글 라벨의 경계도 **이름 문자 전체**([0-9A-Za-z가-힣])로 본다: 'KB차이나'·'NH-Amundi' 처럼 영문 브랜드
         #    접두가 붙은 상품명 성분('차이나')이 경계로 새어 Country 개체(투자국가 필터)로 잡혔다(S4·T14·V15 회귀). 조사 허용은 유지.
@@ -7271,7 +7357,9 @@ def _ground(
             #   — 코드 alias 로만 산다 (KG-001 오매칭 · KG-023/025/026 회귀)
             return
         # FundAttribute(S3 태그 축 179노드 — '인덱스'·'배당주'…)·Country(4R I: 상품명 성분 '차이나'·'베트남')는 항상 경계 검사 조건부
-        attr = node.node_type in ("FundAttribute", "Country")
+        # 🔴 2026-09-05 #76 — CreditGrade 도 경계 검사 조건부. 'BBB++'(표기에 없는 등급) 안에서 'BBB+' 가 잡혀 BBB+ 100종목을
+        #    답했다(서버 실측). 등급 라벨은 기호로 끝나므로 _boundary_hit 이 뒤따르는 등급 기호(+·-·0)까지 경계 위반으로 본다.
+        attr = node.node_type in ("FundAttribute", "Country", "CreditGrade")
         for label in node.labels:
             if len(label) >= _min_len(node, label):
                 yield label, attr, "label"
@@ -8603,6 +8691,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if sim_note:
         step(f"[Guard] 유사채권 확정식 — HCX SQL 을 통째로 교체: {sim_note} · 축·폭은 yaml similarity_axes 선언 "
              "(2026-09-05 #73: '비슷한' 은 두 단계 조회라 HCX 한 문장이 기준 발행사 OR 대분류 로 무너졌다 — 기관 조회 확정식과 같은 처방)")
+    sql, star_fixed = ensure_bond_select_columns(sql, q, ctx)
+    if star_fixed:
+        step("[Guard] 채권 SELECT * 재작성 — 표준 컬럼 목록(+질문이 부른 컬럼)으로 바꿔 대표행·근거컬럼 가드가 붙게 한다 "
+             "(2026-09-05 서버 실측 #76: SELECT * 목록에 한진127-2 가 장내·장외 행으로 두 번 — `*` 엔 대표행 가드가 불개입)")
     sql, pfx_fired = expand_issuer_acronym_prefix(sql)
     if pfx_fired:
         step(f"[Guard] 발행사 약칭 양표기 확장 — {' · '.join(pfx_fired)} 를 로마자·한글 음역 접두(법인 접두 (주) 포함) 4가지 OR 로 "
@@ -9039,6 +9131,15 @@ def answer_question(
              "(2026-09-02 서버 실측: 1등급+수익률 내림차순으로 단정해 신보 유동화 728% 5종목 답변) · 축 단서 낱말이 있으면 되묻지 않음")
         result.think_trace = "\n".join(trace)
         result.answer = ask_risk
+        return result
+
+    ask_grade = grade_token_clarify(q, tables, ctx)
+    if ask_grade:
+        # 결정층 되묻기 — 표기에 없는 등급 토큰('BBB++')은 가까운 등급을 후보로 되묻는다 (#76 · clarify.존재하지_않는_개체). HCX 0회.
+        step("[Clarify] 되묻기(결정층) — 질문의 등급 토큰이 표준·데이터 표기에 없어 가까운 등급을 후보로 되묻는다, HCX 0회 "
+             "(2026-09-05 서버 실측 #76: 'BBB++' 안에서 KG 가 'BBB+' 를 잡아 BBB+ 100종목을 답함)")
+        result.think_trace = "\n".join(trace)
+        result.answer = ask_grade
         return result
 
     ask_sim = similar_bond_clarify(q, tables, ctx)

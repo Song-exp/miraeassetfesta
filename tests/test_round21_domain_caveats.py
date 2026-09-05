@@ -88,3 +88,26 @@ def test_untouched(ctx, probe, qid):
     ans = _replay(ctx, probe[qid])
     for w in ("청산", "사모 영역", "선취 수수료"):
         assert w not in ans, f"{qid} 에 {w} 가 붙었다"
+
+
+def test_fee_total_column_is_injected_when_items_are_listed():
+    """🔴 2026-09-05 DOM-06 서버 실측 — HCX 가 보수 4항목을 따로 뽑아 답변에서 손으로 더했고
+    **산수를 틀렸다**("0.72 + 0.68 + 0.02 + 0.015 = 1.605%" — 실제 1.435). 합계는 SQL 이 낸다.
+    yaml `보수단위` 가 "% 환산 별칭을 반드시 함께 낸다" 고 못박은 자리다."""
+    from src.runtime.pipeline import connect_readonly, ensure_fee_percent_select
+    sql = ("SELECT TRIM(itm_nm) AS itm_nm, or_co_rwrd_r, sale_co_rwrd_r, trusc_rwrd_r, ofwk_trus_rwrd_r "
+           "FROM public_funds WHERE REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류A' "
+           "AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크증권자투자신탁(주식)%' LIMIT 3")
+    out, fixed = ensure_fee_percent_select(sql)
+    assert fixed and '"총보수_퍼센트"' in out and '" FROM' in out, out
+    con = connect_readonly()
+    try:
+        cur = con.execute(out)
+        row = dict(zip([d[0] for d in cur.description], cur.fetchone()))
+    finally:
+        con.close()
+    assert row["총보수_퍼센트"] == 1.435, row      # 손으로 더하면 틀리던 값
+
+    # 이미 총보수 열이 있으면 손대지 않는다
+    have = 'SELECT ROUND((or_co_rwrd_r + sale_co_rwrd_r)/10.0, 4) AS "총보수_퍼센트" FROM public_funds'
+    assert ensure_fee_percent_select(have)[1] is False

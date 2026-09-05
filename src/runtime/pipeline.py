@@ -2423,6 +2423,14 @@ def ensure_fee_percent_select(sql: str) -> tuple[str, bool]:
     if not frm or not _FUND_TBL.search(sql):
         return sql, False
     head = sql[:frm.start()]
+    # 🔴 2026-09-05 DOM-06 서버 실측 — HCX 가 보수 4항목을 **따로** 뽑아 답변에서 손으로 더했고
+    #    산수를 틀렸다("0.72 + 0.68 + 0.02 + 0.015 = 1.605%" — 실제 1.435). 합계는 SQL 이 낸다.
+    #    yaml `보수단위` 가 "% 환산 별칭을 반드시 함께 낸다" 고 못박은 자리다.
+    if (sum(1 for c in _FUND_FEE_COLS if re.search(rf"(?<![\w.]){c}\b", head, re.I)) >= 2
+            and not re.search(r"총보수", head)):
+        total = " + ".join(_FUND_FEE_COLS)
+        out = head.rstrip().rstrip(",") + f', ROUND(({total}) / 10.0, 4) AS "총보수_퍼센트" '
+        return out + sql[frm.start():], True
     out, fixed = head, False
     for m in list(_FEE_SUM_ITEM.finditer(head)):
         seg = head[max(0, m.start() - 60):m.end() + 60]

@@ -13,6 +13,14 @@ import re
 
 # 괄호 안에 snake_case 식별자(컬럼명)가 든 조각 — "(crd_grd)" · "기준가(bns_bpr, 기준일 단일 스냅샷)" · "(cu_charge_etc_rt)"
 _IDENT_PAREN = re.compile(r"\s*\((?=[^()]*\b[a-z][a-z0-9]*_[a-z0-9_]+\b)[^()]*\)")
+# 테이블명은 고객 낱말로 옮긴다 — 플래너 거절 사유("'Kimi' 는 domestic_bonds 에 없다")가 답변에 그대로 실린 실측(2026-09-05)
+_TABLE_KO = {
+    "domestic_bonds": "국내채권 데이터", "domestic_etfs": "국내 ETF 데이터",
+    "overseas_etfs": "해외 ETF 데이터", "public_funds": "공모펀드 데이터",
+}
+_TABLE = re.compile(r"\b(" + "|".join(_TABLE_KO) + r")\b")
+# 남은 맨 식별자(컬럼명·ext_* 테이블)는 앞의 구분점(·, ,)과 함께 뗀다 — 괄호 밖에 홀로 선 컬럼명은 고객 문장에 자리가 없다
+_IDENT_BARE = re.compile(r"(?:\s*[·,]\s*)?\b[a-z][a-z0-9]*_[a-z0-9_]+\b")
 _SPACES = re.compile(r"[ \t]{2,}")
 
 
@@ -21,6 +29,8 @@ def customer_text(text: str) -> str:
     if not text:
         return text
     out = _IDENT_PAREN.sub("", text)
+    out = _TABLE.sub(lambda m: _TABLE_KO[m.group(1)], out)
+    out = _IDENT_BARE.sub("", out)
     out = _SPACES.sub(" ", out)
     return out.replace(" .", ".").strip()
 

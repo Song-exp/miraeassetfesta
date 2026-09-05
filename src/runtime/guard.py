@@ -709,7 +709,7 @@ class ZeroRowDiagnosis:
             s += f" (수록된 가장 가까운 {lab}: {near})." if near else "."
             if g.past_kept is not None and g.col == "mat_dt":
                 s += (f" 판정일 {BUYABLE_CUTOFF} 이전에 만기된 종목은 데이터에 {g.past_kept:,}종목만 남아 있고"
-                      "(만기 경과분은 마스터에서 정리됩니다), 만기 후 상환 여부 같은 사후 상태는 수록되어 있지 않습니다.")
+                      "(만기가 지난 채권은 데이터에서 차례로 정리됩니다), 만기 후 상환 여부 같은 사후 상태는 수록되어 있지 않습니다.")
             out.append(s)
         return " ".join(out)
 

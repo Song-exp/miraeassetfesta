@@ -404,7 +404,8 @@ def check(question: str, ctx: RuntimeContext, tables: list[str]) -> GateResult:
                     rejected=True,
                     reason=f"온톨로지상 {tables[0]} 클래스에 {prop} 속성이 정의되어 있지 않음 — {why}",
                     answer=refusal("요청하신 항목은 이 상품 유형의 데이터에 수록되어 있지 않아 확인할 수 없습니다",
-                                   why.split('→')[0].replace("컬럼 없음", "항목이 없습니다").replace(" — ", ". ").strip()),
+                                   # 선언의 why 는 개발자 사유("신용등급 컬럼 없음 — ETF 는 … 별개 축") — 첫 조각만 고객 문장으로
+                                   why.split('→')[0].split(' — ')[0].replace("컬럼 없음", "항목이 없습니다").strip()),
                 )
 
     # ② enum — 신용등급 (채권 문맥 또는 '신용등급' 명시)

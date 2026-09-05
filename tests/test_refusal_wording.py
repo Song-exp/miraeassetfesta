@@ -26,6 +26,9 @@ def test_customer_text_strips_only_identifier_parentheticals():
     # 고객 정보 괄호는 남긴다
     keep = "원화(KRW) 표시 채권만 (기준일 2026-08-24) 위험등급(1~6등급)"
     assert wording.customer_text(keep) == keep
+    # 테이블명은 고객 낱말로, 맨 컬럼명은 구분점과 함께 뗀다 (플래너 거절 사유 실측: "'Kimi' 는 domestic_bonds 에 없다")
+    assert wording.customer_text("'Kimi' 라는 발행사·상품은 domestic_bonds(pd_pbcm·pd_nm) 에 없다") == "'Kimi' 라는 발행사·상품은 국내채권 데이터 에 없다"
+    assert wording.customer_text("발행사 pd_pbcm · 상품명 pd_nm 어디에도 없다") == "발행사 · 상품명 어디에도 없다"
 
 
 def test_refusal_joins_three_sentences_and_regex_still_detects():
@@ -71,3 +74,32 @@ def test_clarify_path_is_not_refusal_shaped(ctx):
     """되묻기는 이 형식을 타지 않는다 — 역질문은 유효 답변이라 '확인할 수 없습니다' 로 시작하면 거절로 채점된다."""
     r = answer_question("W-07", "가장 위험한 채권이 뭐야?", ctx=ctx)
     assert "[Clarify]" in r.think_trace and not r.answer.startswith("요청하신") and "확인할 수 없습니다" not in r.answer
+
+
+class _StubPlanner:
+    def __init__(self, sql):
+        self.sql = sql
+
+    def plan_sql(self, q, grounding):
+        self.grounding = grounding
+        return self.sql
+
+    def answer(self, *a, **k):
+        return "답변"
+
+
+def test_refuse_reason_and_zero_row_gap_have_no_dev_vocabulary(ctx):
+    r = answer_question("W-08", "Kimi 채권 있어?", ctx=ctx,
+                        planner=_StubPlanner("REFUSE: 'Kimi' 라는 발행사·상품은 domestic_bonds(pd_pbcm·pd_nm) 에 없다"))
+    assert "확인할 수 없습니다" in r.answer and "국내채권 데이터" in r.answer and not _IDENT.search(r.answer)
+    r2 = answer_question("W-09", "지난달 만기된 채권 알려줘", ctx=ctx,
+                         planner=_StubPlanner("SELECT pd_no, TRIM(pd_nm), mat_dt FROM domestic_bonds WHERE mat_dt BETWEEN 20260701 AND 20260731 LIMIT 30"))
+    assert "확인되지 않습니다" in r2.answer and "마스터" not in r2.answer and "사후 상태는 수록되어 있지 않습니다" in r2.answer
+
+
+def test_entity_absent_reason_is_one_customer_clause(ctx):
+    from src.runtime import gate
+    # ETF 는 absent_properties(①-0)가 먼저 잡는다 — 개체 단위 absent_in(①)만 타는 것은 펀드+신용등급
+    g = gate.check("미래에셋코어테크 펀드 신용등급 알려줘", ctx, ["public_funds"])
+    assert g.rejected and g.answer.startswith("요청하신 항목은 이 상품 유형의 데이터에 수록되어 있지 않아 확인할 수 없습니다.")
+    assert "컬럼" not in g.answer and " — " not in g.answer and "신용등급 항목이 없습니다" in g.answer

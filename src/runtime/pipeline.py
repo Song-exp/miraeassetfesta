@@ -1870,6 +1870,22 @@ def _single_select(sql: str) -> bool:
     return bool(re.match(r"\s*select\b", sql, re.I)) and not re.search(r"\b(?:union|except|intersect)\b", sql, re.I)
 
 
+def _inside_aggregate(head: str, col: str) -> bool:
+    """정렬 축 컬럼이 SELECT 의 어느 집계 호출 **안**에 이미 들어 있는가 — 괄호 깊이를 세어 본다.
+
+    🔴 2026-09-05 밤 FND-005 재생 실측: 종전 정규식은 괄호 **한 겹**만 허용해 `MIN(ROUND((a + b + c + d)/10.0, 4))`
+       (두 겹)를 '집계 아님' 으로 보고 다시 감쌌다 → `MIN(MIN(…))` → `misuse of aggregate function MIN()`.
+    """
+    for m in re.finditer(r"\b(?:max|min|avg|sum|total)\s*\(", head, re.I):
+        depth, i = 1, m.end()
+        while i < len(head) and depth:
+            depth += {"(": 1, ")": -1}.get(head[i], 0)
+            i += 1
+        if re.search(rf"\b{col}\b", head[m.end():i - 1], re.I):
+            return True
+    return False
+
+
 def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
     """SELECT 목록에서 정렬 축이 실린 **항목 하나**를 agg 로 감싼다. (새 head, 감쌌는지, ORDER BY 이름도 감싸야 하는지)
 
@@ -1891,7 +1907,7 @@ def _wrap_sort_col(head: str, col: str, agg: str) -> tuple[str, bool, bool]:
     swapped, ok = _reagg_class_axis(head, col, agg)
     if ok:
         return swapped, True, False
-    if re.search(rf"(?:max|min|avg|sum|total)\s*\((?:[^()]|\([^()]*\))*\b{col}\b", head, re.I):
+    if _inside_aggregate(head, col):
         return head, False, False
     m_sel = _SELECT_HEAD.match(head)
     if not m_sel:
@@ -9281,6 +9297,108 @@ def drop_aggregate_group_by(sql: str) -> str:
     return sql[:m.start()] + " " + sql[m.end(1):]
 
 
+# ── 6차 회귀 셋 — HCX 가 **컬럼을 잘못 고른** 한 부류 (2026-09-05 밤) ──────────────────────────
+_ROLE_COLS = {"or_co_xtn_itt_cd", "trusc_xtn_itt_cd"}
+_CODE_LIT = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\s*(=|IN)\s*(\(\s*)?'(\d{8})'", re.I)
+
+
+_kg_ids_cache: dict = {}
+
+
+def _kg_node_ids(ctx) -> frozenset:
+    """KG 노드 id 집합 — 컨텍스트 하나에 한 번만 만든다(4만 노드 · 호출당 7.7ms 실측)."""
+    key = id(ctx)
+    if key not in _kg_ids_cache:
+        _kg_ids_cache[key] = frozenset(getattr(n, "node_id", None) for n in (getattr(ctx, "kg_nodes", None) or []))
+    return _kg_ids_cache[key]
+
+
+def ensure_grounded_org_code_column(sql: str, ctx) -> tuple[str, list[str]]:
+    """KG 기관 코드 리터럴이 **역할 컬럼이 아닌 곳**에 걸렸으면 접지가 말한 컬럼으로 옮긴다. (SQL, 교정 목록)
+
+    🔴 6차 KG-005 실측: 접지 줄은 `'삼성자산운용' → Org_00040010 → public_funds.or_co_xtn_itt_cd='00040010'`
+       이라고 **컬럼까지** 말했는데 HCX 가 `mtco_itm_no = '00040010'` 로 썼다 — 모투자신탁 번호 자리에
+       운용사 코드. 결과 "삼성자산운용이 운용하는 건 0개"(참값 207펀드/850클래스).
+    코드는 KG 의 것이라 어느 컬럼의 값인지 KG 가 안다: `Org_<코드>` 는 운용사 · `Org_trustee_<코드>` 는 수탁사.
+    """
+    if not _FUND_TBL.search(sql):
+        return sql, []
+    ids = _kg_node_ids(ctx)
+    fixes: list[str] = []
+    def _sub(m):
+        col, code = m.group(1), m.group(4)
+        if col.lower() in _ROLE_COLS or not col.lower().endswith(("itm_no", "_no", "_cd", "_nm")):
+            return m.group(0)
+        want = ("or_co_xtn_itt_cd" if f"Org_{code}" in ids
+                else "trusc_xtn_itt_cd" if f"Org_trustee_{code}" in ids else None)
+        if not want:
+            return m.group(0)
+        fixes.append(f"{col}→{want}('{code}')")
+        return m.group(0).replace(col, want, 1)
+    out = _CODE_LIT.sub(_sub, sql)
+    return (out, fixes) if fixes else (sql, [])
+
+
+_FEE_SUM_EXPR = " + ".join(_FUND_FEE_COLS)
+
+
+def ensure_fee_rank_nonzero(sql: str) -> tuple[str, bool]:
+    """보수 축 랭킹의 모수에서 **보수 합 0**(미수록) 클래스를 뺀다. (SQL, 넣었는지)
+
+    🔴 6차 FND-005 실측: '총보수가 가장 낮은 5개' 에 피델리티 역외펀드 5개가 **0%** 로 나갔다 — 보수가 0 이
+       아니라 **수록되지 않은** 행이다(29클래스, 전부 역외). yaml `집계_TopN_필수` 가 `<정렬컬럼> NOT NULL AND <> 0`
+       을 선언해 두었는데 정렬 컬럼이 4컬럼 **합**이라 HCX 가 `IS NOT NULL` 만 붙였다. 0 제외 최저는 0.0015%.
+    발동: public_funds 단독 · ORDER BY 가 보수 컬럼/총보수 별칭 · WHERE 에 보수 합 `> 0` 이 없다.
+    """
+    if not _FUND_TBL.search(sql) or re.search(r"\b(?:join|union)\b", sql, re.I):
+        return sql, False
+    m_ob = _ORDER_BY_ALL.search(sql)
+    if not m_ob:
+        return sql, False
+    ob = m_ob.group(1)
+    fee_axis = re.search(r"총보수|" + "|".join(_FUND_FEE_COLS), ob, re.I)
+    if not fee_axis and re.fullmatch(r"\s*\d+\s*(?:asc|desc)?\s*", ob, re.I):
+        frm = re.search(r"\bfrom\b", sql, re.I)
+        items = _split_select_items(re.sub(r"^\s*select\s+(?:distinct\s+)?", "", sql[:frm.start()], flags=re.I))
+        k = int(re.search(r"\d+", ob).group(0)) - 1
+        fee_axis = 0 <= k < len(items) and re.search(r"총보수|" + "|".join(_FUND_FEE_COLS), items[k], re.I)
+    if not fee_axis:
+        return sql, False
+    if re.search(r"\)\s*>\s*0", sql) and re.search(rf"{_FUND_FEE_COLS[0]}[^)]*\)\s*>\s*0", sql):
+        return sql, False
+    m_w = re.search(r"\bwhere\b", sql, re.I)
+    m_end = re.search(r"\b(?:group\s+by|order\s+by|limit)\b", sql[m_w.end():] if m_w else sql, re.I)
+    if not m_w:
+        frm_end = re.search(r"\bfrom\s+public_funds\b(\s+\w+)?", sql, re.I).end()
+        return sql[:frm_end] + f" WHERE ({_FEE_SUM_EXPR}) > 0" + sql[frm_end:], True
+    cut = m_w.end() + (m_end.start() if m_end else len(sql) - m_w.end())
+    return sql[:cut].rstrip() + f" AND ({_FEE_SUM_EXPR}) > 0 " + sql[cut:], True
+
+
+_ABSENT_ATTR_COL = {"위험등급": "zrin_fd_ivst_risk_grd_nm"}
+_ABSENT_Q = re.compile(r"(?:정보|값|등급|자료)?\s*(?:가|이)?\s*(?:없는|없어|없음|누락|미수록|비어)")
+
+
+def ensure_absent_attr_column(sql: str, question: str) -> tuple[str, str | None]:
+    """'<속성> 정보가 없는' 부재 질의의 `IS NULL` 컬럼을 **질문이 이름 부른 속성의 컬럼**으로 맞춘다. (SQL, 교정 전 컬럼)
+
+    🔴 6차 FND-014 실측: '위험등급 정보가 없는 공모펀드는 몇 개야?' 에 HCX 가
+       `(fd_yr1_ern_r IS NULL OR fd_yr1_ern_r = -100)` — **1년 수익률** 부재를 세어 1,099펀드(참값 312/422).
+       5차는 위험등급 컬럼으로 맞게 셌다 — 순수 비결정. 질문이 속성을 이름 부르면 컬럼은 그것이어야 한다.
+    """
+    q = question.replace(" ", "")
+    hit = next((w for w in _ABSENT_ATTR_COL if w in q), None)
+    if not hit or not _ABSENT_Q.search(q) or not _FUND_TBL.search(sql):
+        return sql, None
+    want = _ABSENT_ATTR_COL[hit]
+    if re.search(rf"\b{want}\b\s+IS\s+NULL", sql, re.I):
+        return sql, None
+    m = re.search(r"\(?\s*(\w+)\s+IS\s+NULL(?:\s+OR\s+\1\s*=\s*-?\d+(?:\.\d+)?)?\s*\)?", sql, re.I)
+    if not m or m.group(1).lower() == want:
+        return sql, None
+    return sql[:m.start()] + f"({want} IS NULL OR TRIM({want}) = '')" + sql[m.end():], m.group(1)
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None, fired_out: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -9418,11 +9536,23 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
              + "·".join(str(x) for x in ob_dropped) + " 을 걷어냈다 "
              "(문법 오류라 질의가 통째로 죽는다 · 2026-09-05 DOM-06 실측: 조건은 다 맞았는데 "
              "`ORDER BY 4` 하나로 오거절)")
+    sql, code_fixes = ensure_grounded_org_code_column(sql, ctx)
+    if code_fixes:
+        step("[Guard] 접지 코드 컬럼 교정 — KG 기관 코드가 역할 컬럼 밖에 걸려 접지가 말한 컬럼으로 옮겼다: "
+             + " · ".join(code_fixes) + " (6차 KG-005 실측: 운용사 코드를 mtco_itm_no 에 걸어 '0개')")
+    sql, absent_from = ensure_absent_attr_column(sql, q)
+    if absent_from:
+        step(f"[Guard] 부재 속성 컬럼 교정 — 질문이 이름 부른 속성의 컬럼으로 IS NULL 을 옮겼다({absent_from} → 위험등급명) "
+             "(6차 FND-014 실측: 1년 수익률 부재를 세어 1,099펀드 — 참값 312)")
     sql, axis_fixed = ensure_fund_rank_axis(sql, q)
     if axis_fixed:
         step("[Guard] 랭킹 정렬축 교정 — ORDER BY 가 랭킹 축을 안 가리켜 질문이 지목한 축으로 세웠다 "
              "(2026-09-05 U14 실측: `ORDER BY 3` 이 COUNT(*) 를 가리켜 대표행 보정이 무음 종료 · "
              "3행을 받고도 '정보를 찾을 수 없습니다')")
+    sql, fee_nz = ensure_fee_rank_nonzero(sql)
+    if fee_nz:
+        step("[Guard] 보수 0 제외 — 보수 축 랭킹의 모수에서 보수 합 0(미수록 · 역외 29클래스)을 뺐다 "
+             "(6차 FND-005 실측: 피델리티 역외 5개가 0% 로 하위 5 · yaml 집계_TopN_필수 의 <> 0 이 합 식엔 안 붙었다)")
     sql, rank_fixed = ensure_fund_rank_representative(sql, q)
     if rank_fixed and had_group:
         step("[Guard] 펀드 대표행 보정 — 펀드단위 GROUP BY 랭킹의 bare 정렬 컬럼을 MAX/MIN 으로 감쌈 (2026-08-31 밤 FND-015 채점: TOP5 값 5건 전부 임의 클래스 행 실측)")

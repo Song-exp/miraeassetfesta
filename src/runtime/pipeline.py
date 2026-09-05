@@ -713,6 +713,12 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
         return sql, None
     axis = "isu_dt" if issuance else "mat_dt"
     label, lo, hi = windows[0]
+    if axis == "mat_dt" and direction == "past" and hi >= BUYABLE_INT:
+        # '만기가 지난' 은 판정일(8/24) **이전** 만기다 — 8/24 당일 만기 20종목은 구매가능 모수(>=)라 경과분이 아니다.
+        # 해석기는 '올해' 를 1/1~D 로 주지만 만기 경과 축의 끝은 D-1 이다(구매가능 = mat_dt >= 20260824 의 여집합).
+        hi = int(gate._ymd(gate._TODAY - gate._dt.timedelta(days=1)))
+        if lo > hi:
+            return sql, None
     want = f"{axis} = {lo}" if lo == hi else f"{axis} BETWEEN {lo} AND {hi}"
     if axis == "isu_dt":
         want += " AND isu_dt > 0"                                # 규칙 발행시점축 — 0·NULL 26행은 미수록

@@ -1500,7 +1500,7 @@ def test_enforce_relative_window():
     #    '올해' 는 과거 방향에서 1/1~D 다 — 호출자가 미래 방향 창(D~12/31)을 줘도 가드가 방향대로 다시 푼다.
     q5 = "올해 만기 지난 채권"
     fixed5, note5 = enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt < 20260824 LIMIT 5", q5, gate.resolve_relative_window(q5))
-    assert note5 and "mat_dt BETWEEN 20260101 AND 20260824" in fixed5 and "방향 past" in note5
+    assert note5 and "mat_dt BETWEEN 20260101 AND 20260823" in fixed5 and "방향 past" in note5   # 경과 = 판정일 이전(8/24 당일은 모수)
     assert enforce_relative_window("SELECT pd_nm FROM domestic_bonds WHERE mat_dt BETWEEN 20270101 AND 20271231 LIMIT 5", q, gate.resolve_relative_window(q))[1] is None
     # 원 사고 #68: "지난달에 만기된 채권들은 지금 어떻게 됐어?" → HCX 미래 창(8/24~9/30 + 산술) → 지난달(7월) 창으로, 구매가능 하한 없이
     q68 = "지난달에 만기된 채권들은 지금 어떻게 됐어?"

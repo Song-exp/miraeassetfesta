@@ -1,10 +1,10 @@
 # 공모펀드 78문항 테스트 결과 — 2026-09-04
 
 > 문항 `eval/probe_funds_2026-09-04_core.txt` · 예상 답변 `eval/expected_funds_2026_09_04.py` (전부 DB 실측)
-> 회차: **1차 · 09-04 16:00** `eval/probe_funds_2026-09-04_core.json` · **2차 · 09-04 20:5x** `eval/probe_funds_2026-09-04_r2.json` · **3차 · 09-05 02:5x** `eval/probe_funds_2026-09-05_r3.json` · **4차 · 09-05 오전** `eval/probe_funds_2026-09-05_r4.json` · **5차 · 09-05 저녁** `eval/probe_funds_2026-09-05_r5.json`
+> 회차: **1차 · 09-04 16:00** `eval/probe_funds_2026-09-04_core.json` · **2차 · 09-04 20:5x** `eval/probe_funds_2026-09-04_r2.json` · **3차 · 09-05 02:5x** `eval/probe_funds_2026-09-05_r3.json` · **4차 · 09-05 오전** `eval/probe_funds_2026-09-05_r4.json` · **5차 · 09-05 저녁** `eval/probe_funds_2026-09-05_r5.json` · **6차 · 09-05 밤** `eval/probe_funds_2026-09-05_r6.json`
 > 모수: 판매중·공모 = 클래스 8,969 · 펀드 3,040 · 기준일 2026-08-24
 
-## 총평 — ✅ 68 · 🟡 4 · ❌ 6  (총 78)
+## 총평 — ✅ 69 · 🟡 2 · ❌ 7  (총 78)
 
 | 회차 | ✅ | 🟡 | ❌ | 변동 |
 | :-- | --: | --: | --: | :-- |
@@ -13,25 +13,26 @@
 | 3차 · 09-05 02:5x | 57 | 12 | 9 | ✅ +4 · ❌ -6 |
 | 4차 · 09-05 오전 | 66 | 6 | 6 | ✅ +9 · ❌ -3 |
 | 5차 · 09-05 저녁 | 68 | 4 | 6 | ✅ +2 · ❌ +0 |
+| 6차 · 09-05 밤 | 69 | 2 | 7 | ✅ +1 · ❌ +1 |
 
 | 블록 | ✅ | 🟡 | ❌ | 실패·부분 문항 (최신 회차) |
 | :-- | --: | --: | --: | :-- |
 | A. 클래스 vs 펀드 단위 (PDF §3.1) — 최대 함정 | 5 | 0 | 1 | `U14`❌ |
 | B. 성과 — 누적 수익률·이상치 (§4.7) | 5 | 0 | 0 |  |
 | C. 위험등급 — 방향이 직관과 반대 (§2.5) | 4 | 0 | 1 | `FND-014`❌ |
-| D. 법적 분류·유형 (§2.1) | 4 | 0 | 1 | `Z10`❌ |
+| D. 법적 분류·유형 (§2.1) | 5 | 0 | 0 |  |
 | E. 누가 살 수 있나 · 역외 (§2.3 §4.6) | 3 | 1 | 0 | `KG-031`🟡 |
 | F. 개방/폐쇄 · 추가/단위 (§1.4 §2.2) | 1 | 0 | 1 | `KG-018`❌ |
 | G. 어디에 투자하나 (§2.4) | 4 | 0 | 0 |  |
 | H. 역할 분리 — 운용사·수탁사·판매사 (§1.2 §4.3) | 6 | 0 | 1 | `X22`❌ |
 | I. 모자형 (§3.2) | 1 | 0 | 0 |  |
-| J. 종목명 파싱·이름 조회 (§3.3) | 2 | 1 | 1 | `X3`❌ `KG-005`🟡 |
+| J. 종목명 파싱·이름 조회 (§3.3) | 2 | 0 | 2 | `X3`❌ `KG-005`❌ |
 | K. 규모 (§4.8) | 3 | 0 | 0 |  |
-| L. 설명서 항목 — PDF가 '없다'고 했으나 지금은 있는 것 | 5 | 0 | 0 |  |
+| L. 설명서 항목 — PDF가 '없다'고 했으나 지금은 있는 것 | 4 | 0 | 1 | `FND-005`❌ |
 | M. 보유 종목 (ext_fund_holdings) | 2 | 0 | 0 |  |
 | N. 답변불가 — PDF §5 중 지금도 살아있는 것 + 구조상 없는 것 | 9 | 0 | 0 |  |
 | O. 되묻기 | 3 | 0 | 0 |  |
-| P. 도메인 축 신설 — PDF가 한 절씩 다루는데 기존 문항이 없던 13축 | 11 | 2 | 0 | `DOM-06`🟡 `DOM-13`🟡 |
+| P. 도메인 축 신설 — PDF가 한 절씩 다루는데 기존 문항이 없던 13축 | 12 | 1 | 0 | `DOM-13`🟡 |
 
 ---
 
@@ -287,6 +288,45 @@ SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*), COUNT(DISTINCT printf('%0
 
 **판정** — 19범주 전부 나열 · 클래스 8,969 / 펀드 3,040 병기 · 복수 계수 182건까지 설명. 예상과 완전 일치.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 결과 19개 범주 · 클래스 8,969개 · 펀드 3,040개 (기준일 2026-08-24).
+
+- (미수록): 펀드 308개 (클래스 418개)
+- MMF: 펀드 64개 (클래스 108개)
+- 기타: 펀드 15개 (클래스 51개)
+- 부동산형: 펀드 3개 (클래스 11개)
+- 외화 MMF: 펀드 8개 (클래스 30개)
+- 절대수익추구형: 펀드 79개 (클래스 235개)
+- 주식형: 펀드 559개 (클래스 1,773개)
+- 주식혼합형: 펀드 68개 (클래스 155개)
+- 채권형: 펀드 145개 (클래스 610개)
+- 채권혼합형: 펀드 240개 (클래스 534개)
+- 커머더티형: 펀드 16개 (클래스 48개)
+- 특별자산: 펀드 2개 (클래스 8개)
+- 해외기타: 펀드 176개 (클래스 801개)
+- 해외부동산형: 펀드 23개 (클래스 73개)
+- 해외주식형: 펀드 953개 (클래스 2,784개)
+- 해외주식혼합형: 펀드 134개 (클래스 327개)
+- 해외채권형: 펀드 223개 (클래스 511개)
+- 해외채권혼합형: 펀드 191개 (클래스 440개)
+- 해외특별자산: 펀드 15개 (클래스 52개)
+
+클래스별 유형이 갈리는 펀드 182건은 복수 범주에 계수되어 범주별 펀드 수의 합(3,222)은 전체 펀드 수(3,040)와 다릅니다.
+```
+
+`[Execute] 19행`· 기계 조립(HCX 0회)· 9.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COALESCE(zrin_btyp_nm,'(미수록)'), COUNT(*), COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모') GROUP BY zrin_btyp_nm LIMIT 30
+```
+</details>
+
+**판정** — 19범주 전부 나열 · 클래스 8,969 / 펀드 3,040 병기 · 복수 계수 182건까지 설명. 예상과 완전 일치.
+
 ### ✅ `S8` — 운용사별 개수 — 펀드 단위
 
 > KB자산운용이 운용하는 공모펀드는 몇 개야?
@@ -370,6 +410,23 @@ KB자산운용이 운용하는 공모펀드는 129개(클래스 625개)입니다
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040035' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — 129(클래스 625) 정확. 단위 병기.
+
+**6차 · 09-05 밤** ✅
+
+```
+KB자산운용이 운용하는 공모펀드는 129개(클래스 625개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.8s
 
 <details><summary>SQL</summary>
 
@@ -478,6 +535,26 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 ```
 
 `[Execute] 2행`· 기계 조립(HCX 0회)· 5.7s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", MAX(han_clas_nm) AS han_clas_nm, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — 2펀드로 갈라 10+4클래스. 클래스 묶기 정상.
+
+**6차 · 09-05 밤** ✅
+
+```
+'미래에셋코어테크' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위).
+
+- 미래에셋코어테크증권자투자신탁(주식): 클래스 10개(전부 판매중)
+- 미래에셋코어테크청년소득공제증권자투자신탁(주식): 클래스 4개(전부 판매중)
+```
+
+`[Execute] 2행`· 기계 조립(HCX 0회)· 8.9s
 
 <details><summary>SQL</summary>
 
@@ -599,6 +676,29 @@ SELECT itm_no, TRIM(itm_nm), COUNT(*) as clas_cnt, fd_yr1_ern_r FROM public_fund
 
 **판정** — 🔴 유지, 이번엔 다른 방식으로 틀렸다. 'KB중국본토A주증권자투자신탁(주식) **C-Pe 클래스**: 14개' 처럼 **클래스명을 펀드명으로** 낸 데다 종목 자체가 예상(한화2.2배레버리지 387.66%)과 다르다. 다섯 회차에 ✅·✅·❌·❌·❌ — 랭킹 축을 HCX 가 매번 다르게 잡는다. ⚠️ 배포 뒤 직접 5회 물으면 5/5 정답이라 실측 시점의 계획 변동이다.
 
+**6차 · 09-05 밤** ❌
+
+```
+1년 수익률이 가장 높은 공모펀드 3개의 클래스 수는 다음과 같습니다:
+
+1. KB중국본토A주증권자투자신탁(주식) C-Pe 클래스: 14개
+2. 미래에셋G2이노베이터증권자투자신탁(주식)종류F: 14개
+3. 하나IT코리아증권자투자신탁(제1호)[주식] 종류 C-F: 13개
+
+이렇게 세 가지 펀드가 1년 동안 가장 높은 수익률을 보였으며, 각각의 클래스 수도 함께 알려드렸습니다.
+```
+
+`[Execute] 3행`· 8.0s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), COUNT(*) as clas_cnt, fd_yr1_ern_r FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 GROUP BY or_co_xtn_itt_cd, CASE WHEN length(mtco_itm_no) >= 7 THEN mtco_itm_no ELSE substr('0000000' || mtco_itm_no, -7) END HAVING fd_yr1_ern_r = MAX(fd_yr1_ern_r) AND COUNT(*) >= 1 ORDER BY 3 DESC LIMIT 3
+```
+</details>
+
+**판정** — 🔴 유지(6차 시점). ORDER BY 3 이 COUNT(*) 를 가리켜 클래스 수 순 임의 3행(KB중국본토A주·미래에셋G2·하나IT코리아). 서버 원문(raw=)으로 원인 확정: HCX 원문 SELECT 에 축 컬럼 fd_yr1_ern_r 자체가 없어 정렬축 가드가 물러났다. 6차 뒤 수리(47462f8): 축 컬럼 덧붙임 + 질문 개수→LIMIT 3 → 서버 2/2 한화2.2배 387.66%·NH-Amundi 362.53%·삼성KOSPI200 361.3%(gold 일치).
+
 ### ❌→✅ `KG-030` — 시리즈 호 구분 — 호가 다르면 다른 펀드
 
 > 미래에셋차이나솔로몬 시리즈는 몇 호까지 있고 각각 클래스가 몇 개야?
@@ -708,6 +808,27 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 
 **판정** — ✅ 회수. 3호 8클래스 · 2호 7 · 1호 2 로 정확. 1차 판정이 '오전엔 답했는데 오후에 실패' 라 적은 비결정 자리인데, 이번엔 맞았다 — 안정됐다고 보긴 이르다.
 
+**6차 · 09-05 밤** ✅
+
+```
+'미래에셋차이나솔로몬' 이름의 공모펀드 3개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위).
+
+- 미래에셋차이나솔로몬증권투자신탁 3(주식): 클래스 8개(전부 판매중)
+- 미래에셋차이나솔로몬증권투자신탁2호(주식): 클래스 7개(전부 판매중)
+- 미래에셋차이나솔로몬증권투자신탁1호(주식): 클래스 2개(전부 판매중)
+```
+
+`[Execute] 3행`· 슬롯 BASEPOP· 기계 조립(HCX 0회)· ⚠ 재생성· 39.4s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", MAX(han_clas_nm) AS han_clas_nm, MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋차이나솔로몬%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수. 3호 8클래스 · 2호 7 · 1호 2 로 정확. 1차 판정이 '오전엔 답했는데 오후에 실패' 라 적은 비결정 자리인데, 이번엔 맞았다 — 안정됐다고 보긴 이르다.
+
 ### ✅→❌→✅ `KG-029` — 다른 키로 세기
 
 > 우리자산운용 펀드 수를 대표예탁원종목번호 기준으로 세면 몇 개야?
@@ -791,6 +912,23 @@ SELECT COUNT(DISTINCT rptt_ksd_itm_no) FROM public_funds WHERE TRIM(or_co_xtn_it
 ```
 
 `[Execute] 1행`· 57.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT rptt_ksd_itm_no) FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00040007' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수. '대표예탁원종목번호 기준으로 총 88개' — 질문이 지정한 키를 그대로 썼다. 2차엔 FUNDUNIT 슬롯 키로 235를 냈던 자리다.
+
+**6차 · 09-05 밤** ✅
+
+```
+우리자산운용 펀드의 수는 대표예탁원종목번호 기준으로 총 88개입니다.
+```
+
+`[Execute] 1행`· 4.3s
 
 <details><summary>SQL</summary>
 
@@ -937,6 +1075,31 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클
 
 **판정** — 값·순서 일치. 클래스 수 병기 + '누적, 연환산 아님' 명시. 기점오류 3클래스(마이다스 1,436% 등) 제외가 정답.
 
+**6차 · 09-05 밤** ✅
+
+```
+1년 수익률 상위 5개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 1년 수익률 = 클래스 최고값(MAX), 기준일 2026-08-24).
+
+1. 한화2.2배레버리지인덱스증권투자신탁(주식-파생재간접형): 1년 수익률 387.66% · 클래스 6개
+2. NH-Amundi코리아2배레버리지증권투자신탁[주식-파생형]: 1년 수익률 362.53% · 클래스 4개
+3. 삼성KOSPI200 2배레버리지증권투자신탁 제1호[주식-파생재간접형]: 1년 수익률 361.3% · 클래스 7개
+4. NH-Amundi1.5배레버리지인덱스증권투자신탁(주식-파생형): 1년 수익률 257.14% · 클래스 5개
+5. 하나 코리아증권자투자신탁[주식]: 1년 수익률 203.13% · 클래스 8개
+
+※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다. 100%를 넘는 값은 파생·레버리지 전략에서 나오므로 손실도 같은 배율로 커질 수 있습니다.
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 3.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클래스수", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5
+```
+</details>
+
+**판정** — 값·순서 일치. 클래스 수 병기 + '누적, 연환산 아님' 명시. 기점오류 3클래스(마이다스 1,436% 등) 제외가 정답.
+
 ### 🟡→✅ `S2` — 수익률 최하위 — 이상치
 
 > 3년 수익률이 가장 나쁜 공모펀드 3개 알려줘
@@ -1044,6 +1207,29 @@ SELECT itm_no, TRIM(itm_nm), MIN(fd_yr3_ern_r) AS fd_yr3_ern_r, COUNT(*) AS "클
 ```
 
 `[Execute] 0행`· 기계 조립(HCX 0회)· 3.4s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MIN(fd_yr3_ern_r) AS fd_yr3_ern_r, COUNT(*) AS "클래스수", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MIN(fd_yr3_ern_r) IS NOT NULL AND MIN(fd_yr3_ern_r) <> 0 AND MIN(fd_yr3_ern_r) < -100 ORDER BY 3 ASC LIMIT 3
+```
+</details>
+
+**판정** — ✅ 회수(R10⑥). 값·순서 정확하고 '※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다' 가 붙었다. 종전엔 |값| ≥ 100 일 때만 붙어 −80% 대 하위 랭킹이 비었다 — 음수야말로 연 환산 오해가 크다.
+
+**6차 · 09-05 밤** ✅
+
+```
+3년 수익률 하위 3개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 3년 수익률 = 클래스 최저값(MIN), 기준일 2026-08-24).
+
+1. 미래에셋아시아퍼시픽소비성장증권자투자신탁1호(주식): 3년 수익률 -80.36% · 클래스 10개
+2. 삼성KOSPI200인버스인덱스증권투자신탁제1호[채권-파생형]: 3년 수익률 -78.08% · 클래스 3개
+3. 삼성배당주장기증권투자신탁 1[주식]: 3년 수익률 -77.8% · 클래스 12개
+
+※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다.
+```
+
+`[Execute] 0행`· 기계 조립(HCX 0회)· 111.8s
 
 <details><summary>SQL</summary>
 
@@ -1171,6 +1357,29 @@ SELECT itm_no, TRIM(itm_nm), MIN(fd_yr5_ern_r) AS fd_yr5_ern_r, COUNT(*) AS "클
 
 **판정** — ✅ 유지. 값·순서 정확 + 누적 주석. 클래스수가 회차마다 흔들리는 것(5/7/4 ↔ 9/10/5)은 수익률 결측·0 제외 조건 유무에 따라 갈리는 값이다.
 
+**6차 · 09-05 밤** ✅
+
+```
+5년 수익률 하위 3개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 5년 수익률 = 클래스 최저값(MIN), 기준일 2026-08-24).
+
+1. 미래에셋성장유망중소형주증권자투자신탁1호(주식): 5년 수익률 -84.41% · 클래스 5개
+2. 미래에셋아시아퍼시픽소비성장증권자투자신탁1호(주식): 5년 수익률 -83.38% · 클래스 7개
+3. 한화러시아증권자투자신탁(주식-재간접형): 5년 수익률 -81.51% · 클래스 4개
+
+※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다.
+```
+
+`[Execute] 3행`· 기계 조립(HCX 0회)· 3.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MIN(fd_yr5_ern_r) AS fd_yr5_ern_r, COUNT(*) AS "클래스수", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr5_ern_r <> 0 AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MIN(fd_yr5_ern_r) IS NOT NULL ORDER BY 3 ASC LIMIT 3
+```
+</details>
+
+**판정** — ✅ 유지. 값·순서 정확 + 누적 주석. 클래스수가 회차마다 흔들리는 것(5/7/4 ↔ 9/10/5)은 수익률 결측·0 제외 조건 유무에 따라 갈리는 값이다.
+
 ### ❌→✅ `AA24` — 클래스 지정 수익률
 
 > 미래에셋 코어테크 펀드 종류A 3년 수익률 알려줘
@@ -1270,6 +1479,26 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 
 **판정** — ✅ 회수(R10④). '미래에셋코어테크증권자투자신탁(주식): 3년 수익률 185.21% (누적)' — 예상과 정확히 일치하고 '누적' 도 명시했다. 1·2·3차 내리 실패하던 자리다. 표기 추출이 '종류A 3년' 을 `A 3`→`A3` 로 잡아 통째로 None 이 되던 것을 긴 후보부터 줄여 재시도하게 고쳤다.
 
+**6차 · 09-05 밤** ✅
+
+```
+'미래에셋코어테크' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위).
+
+- 미래에셋코어테크증권자투자신탁(주식): 3년 수익률 185.21% (누적) · 클래스 1개(전부 판매중)
+- 미래에셋코어테크청년소득공제증권자투자신탁(주식): 3년 수익률 185% (누적) · 클래스 1개(전부 판매중)
+```
+
+`[Execute] 2행`· 기계 조립(HCX 0회)· 3.2s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", MAX(fd_yr3_ern_r) AS "fd_yr3_ern_r_최고", MIN(fd_yr3_ern_r) AS "fd_yr3_ern_r_최저", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류A' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND TRIM(or_co_xtn_itt_cd) = '00080008') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수(R10④). '미래에셋코어테크증권자투자신탁(주식): 3년 수익률 185.21% (누적)' — 예상과 정확히 일치하고 '누적' 도 명시했다. 1·2·3차 내리 실패하던 자리다. 표기 추출이 '종류A 3년' 을 `A 3`→`A3` 로 잡아 통째로 None 이 되던 것을 긴 후보부터 줄여 재시도하게 고쳤다.
+
 ### 🟡→✅ `FND-R02` — 없는 기간 컬럼
 
 > 지난 1주일 수익률이 가장 높은 공모펀드 알려줘
@@ -1338,6 +1567,16 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_mm1_ern_r) AS fd_mm1_ern_r, COUNT(*) AS "클
 ```
 
 **미실행**· 0.4s
+
+**판정** — ✅ 회수. '1주일 수익률은 수록되어 있지 않습니다' 를 먼저 말하고 수록된 8기간을 나열한 뒤 되물었다. 1차는 말없이 1개월로 바꿔 답해 사용자가 치환을 몰랐다.
+
+**6차 · 09-05 밤** ✅
+
+```
+1주일 수익률은 이 데이터에 수록되어 있지 않습니다. 수록된 기간은 1개월·3개월·6개월·18개월·1년·2년·3년·5년 8개이며 모두 누적 기준입니다. 이 중 한 기간을 말씀해 주시면 순위나 개별 조회를 해 드리겠습니다.
+```
+
+**미실행**· 0.3s
 
 **판정** — ✅ 회수. '1주일 수익률은 수록되어 있지 않습니다' 를 먼저 말하고 수록된 8기간을 나열한 뒤 되물었다. 1차는 말없이 1개월로 바꿔 답해 사용자가 치환을 몰랐다.
 
@@ -1498,6 +1737,36 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma , zrin_fd_ivst_ri
 
 **판정** — ✅ 회수(R10①). 기계 조립으로 돌아와 **펀드명 + 클래스수 병기**가 살아났다(3차엔 '삼성MMF법인제1호 **C 클래스**' 처럼 클래스명을 펀드명으로 냈다). 6등급 방향도 정확. MMF 편중 고지까지 붙었다.
 
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 10개 공모펀드입니다 (판매중·공모·매우 낮은 위험 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 삼성MMF법인제1호: 순자산 124,295억원 · 클래스 4개
+2. KB법인용MMF I- 1: 순자산 96,266억원 · 클래스 2개
+3. 우리큰만족법인MMF1호(국공채): 순자산 90,390억원 · 클래스 2개
+4. 우리큰만족신종MMF3호: 순자산 80,497억원 · 클래스 1개
+5. 신영법인용MMF 제4-26호 C-I형: 순자산 76,371억원 · 클래스 2개
+6. IBK그랑프리국공채MMF법인투자신탁 제1호[국공채]I: 순자산 75,337억원 · 클래스 2개
+7. 신한BEST신종법인용MMFGS-2호(종류C): 순자산 63,581억원 · 클래스 2개
+8. 한화골드법인MMF-KM3호(국공채): 순자산 55,140억원 · 클래스 1개
+9. 브이아이 천하제일 법인MMF 1호: 순자산 46,666억원 · 클래스 2개
+10. 하나클래스원신종MMF(K-5호)Class C-F: 순자산 45,657억원 · 클래스 2개
+
+※ 상위 10개 중 10개가 **MMF**(법인 자금을 단기 예치하는 상품)입니다. MMF 를 빼고 보시려면 'MMF 제외' 라고 말씀해 주세요.
+```
+
+`[Execute] 10행`· 기계 조립(HCX 0회)· 4.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT p.itm_no, p.itm_nm, MAX(p.fd_nast_suma) AS fd_nast_suma , zrin_fd_ivst_risk_grd_nm, COUNT(*) AS "클래스수", zrin_fd_ivst_risk_gcd, fd_yr1_ern_r, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds p  WHERE p.sale_yn='판매중' AND p.prvo_pbff_desc='공모' AND zrin_fd_ivst_risk_gcd = 6 AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r<>0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY p.fd_nast_suma DESC LIMIT 10
+```
+</details>
+
+**판정** — ✅ 회수(R10①). 기계 조립으로 돌아와 **펀드명 + 클래스수 병기**가 살아났다(3차엔 '삼성MMF법인제1호 **C 클래스**' 처럼 클래스명을 펀드명으로 냈다). 6등급 방향도 정확. MMF 편중 고지까지 붙었다.
+
 ### ✅ `FND-002` — 등급 1 = 가장 위험
 
 > 위험등급 1등급(매우 높은 위험) 공모펀드 중 순자산 큰 5개 알려줘
@@ -1621,7 +1890,30 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma , fd_daily_bas_dt
 
 **판정** — 1등급(매우 높은 위험) 정확. 방향 양쪽 다 통과.
 
-### ✅→❌ `FND-014` — 등급 결측
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 5개 공모펀드입니다 (판매중·공모·매우 높은 위험 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 미래에셋코어테크증권자투자신탁(주식): 순자산 7,348억원 · 클래스 10개
+2. NH-Amundi코리아2배레버리지증권투자신탁[주식-파생형]: 순자산 7,333억원 · 클래스 4개
+3. KCGI코리아증권투자신탁1호[주식]: 순자산 3,735억원 · 클래스 13개
+4. 미래에셋장기성장포커스증권자투자신탁1호(주식): 순자산 3,543억원 · 클래스 10개
+5. 유리필라델피아반도체인덱스증권자투자신탁UH[주식]: 순자산 3,391억원 · 클래스 8개
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 3.4s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma , zrin_fd_ivst_risk_grd_nm, fd_daily_bas_dt, COUNT(*) AS "클래스수", zrin_fd_ivst_risk_gcd, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_gcd = '1.0' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY 3 DESC LIMIT 5
+```
+</details>
+
+**판정** — 1등급(매우 높은 위험) 정확. 방향 양쪽 다 통과.
+
+### ✅→❌→✅→❌ `FND-014` — 등급 결측
 
 > 위험등급 정보가 없는 공모펀드는 몇 개야?
 
@@ -1697,7 +1989,7 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 🔴 회귀. 위험등급 컬럼(`zrin_fd_ivst_risk_gcd`) 대신 **`fd_yr1_ern_r IS NULL OR = -100`** 으로 셌다 — 1년 수익률 결측을 위험등급 결측이라 답한 셈이다. 1,099펀드(2,056클래스)는 실측(305/422)과 무관한 수다. 1차는 같은 질문에 올바른 컬럼을 썼다.
 
-**5차 · 09-05 저녁** ❌
+**5차 · 09-05 저녁** ✅
 
 ```
 조회 조건에 해당하는 공모펀드는 312개(클래스 422개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
@@ -1712,9 +2004,26 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 </details>
 
-**판정** — 🔴 회귀. 위험등급 컬럼(`zrin_fd_ivst_risk_gcd`) 대신 **`fd_yr1_ern_r IS NULL OR = -100`** 으로 셌다 — 1년 수익률 결측을 위험등급 결측이라 답한 셈이다. 1,099펀드(2,056클래스)는 실측(305/422)과 무관한 수다. 1차는 같은 질문에 올바른 컬럼을 썼다.
+**판정** — ✅ 회수. 312펀드(422클래스) — 예상과 정확히 일치. 4차엔 위험등급 대신 `fd_yr1_ern_r` 결측을 세어 1,099/2,056 을 냈던 자리다. 컬럼 오선택이 이번엔 나지 않았다(비결정).
 
-### ✅ `KG-015` — 값 표기 흔들림
+**6차 · 09-05 밤** ❌
+
+```
+조회 조건에 해당하는 공모펀드는 1,099개(클래스 2,056개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND (fd_yr1_ern_r IS NULL OR fd_yr1_ern_r = -100)) LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — 🔴 회귀. 5차 312펀드(422클래스)로 정확했는데 6차는 1,099(2,056) — HCX 가 위험등급 대신 `fd_yr1_ern_r IS NULL OR = -100`(1년 수익률 부재)을 셌다. 참값 312/422(zrin_fd_ivst_risk_grd_nm NULL/빈). 6차 뒤 수리: 부재 속성 컬럼 교정 가드 → 재생 312/422.
+
+### ✅→❌→✅ `KG-015` — 값 표기 흔들림
 
 > 위험등급이 '높은위험'인 공모펀드는 몇 개야?
 
@@ -1790,7 +2099,7 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 2,994클래스 — '높은 위험' 2,974 + '높은위험' 20 을 합산했다. value_variants 정상.
 
-**5차 · 09-05 저녁** ✅
+**5차 · 09-05 저녁** ❌
 
 ```
 조회 조건에 해당하는 공모펀드는 4개(클래스 20개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
@@ -1805,7 +2114,24 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 </details>
 
-**판정** — 2,994클래스 — '높은 위험' 2,974 + '높은위험' 20 을 합산했다. value_variants 정상.
+**판정** — 🔴 회귀. '높은 위험'(2,974클래스)과 '높은위험'(20클래스)은 **띄어쓰기만 다른 같은 등급**이라 합산해야 하는데(정답 995펀드/2,994클래스) HCX 가 `IN ('높은위험')` 만 써서 **4개(20클래스)** 를 냈다. 4차엔 `IN ('높은위험', '높은 위험')` 로 둘 다 넣어 정확했다 — 순수 계획 변동이다. ⚠️ 이 문항의 통과 조건이 '띄어쓰기 두 표기를 합산해야 한다' 인데 그걸 HCX 에 맡겨 둔 것이 원인이다.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 995개(클래스 2,994개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 61.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_grd_nm IN ('높은위험', '높은 위험')) LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — ✅ 회수. 995개(클래스 2,994개) — '높은위험'·'높은 위험' 두 표기 합산(4e39b23 공백 표기 변형 가드). 정답.
 
 ### ✅ `KG-013` — 없는 등급
 
@@ -1856,6 +2182,16 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 **판정** — '1~6 범위라 7등급 없음' + 묻지도 않은 0등급까지 선제 정리. 모범 답변.
 
 **5차 · 09-05 저녁** ✅
+
+```
+공모펀드 위험등급은 1(매우 높은 위험)~6(매우 낮은 위험) 범위로 정의되어 있어 7등급은 없습니다. (0등급 없음 — 등급 미수록 클래스는 NULL(0 아님))
+```
+
+**미실행**· 0.4s
+
+**판정** — '1~6 범위라 7등급 없음' + 묻지도 않은 0등급까지 선제 정리. 모범 답변.
+
+**6차 · 09-05 밤** ✅
 
 ```
 공모펀드 위험등급은 1(매우 높은 위험)~6(매우 낮은 위험) 범위로 정의되어 있어 7등급은 없습니다. (0등급 없음 — 등급 미수록 클래스는 NULL(0 아님))
@@ -1951,6 +2287,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.2s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE prvo_pbff_desc = '공모' AND or_attr_desc = '채권혼합' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — 389(933) 정확.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 389개(클래스 933개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.5s
 
 <details><summary>SQL</summary>
 
@@ -2080,6 +2433,29 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클
 
 **판정** — ✅ 회수(R10③) — **1·2·3차 내리 ❌** 이던 자리다. 피델리티글로벌테크놀로지 1.22조 · 미래에셋전략배분TDF2045 1.02조 · KB퇴직연금배당40 · 한국밸류10년투자연금1 · 하나인Best연금1호 — 예상 5건과 정확히 일치하고 **MMF 가 하나도 없다**. 배제 대상을 이름 축 셋에서 유도한 것이 관건이었다(한 축만 걸면 외화 MMF 1.04조가 샌다).
 
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 5개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 피델리티글로벌테크놀로지증권자투자신탁(주식-재간접형): 순자산 12,196억원 · 클래스 12개
+2. 미래에셋전략배분적격TDF2045혼합자산자투자신탁: 순자산 10,250억원 · 클래스 11개
+3. KB퇴직연금배당40증권자투자신탁(채권혼합): 순자산 9,975억원 · 클래스 3개
+4. 한국밸류10년투자연금증권전환형투자신탁 1(주식): 순자산 9,031억원 · 클래스 2개
+5. 하나인Best연금증권투자신탁(제1호)[주식]: 순자산 8,451억원 · 클래스 1개
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 4.4s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클래스수", or_attr_desc, zrin_btyp_nm, zrin_ptn_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE COALESCE(or_attr_desc,'') NOT IN ('MMF') AND COALESCE(zrin_btyp_nm,'') NOT IN ('MMF', '외화 MMF') AND COALESCE(zrin_ptn_nm,'') NOT IN ('MMF', '외화 MMF(USD)') AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL AND MAX(fd_nast_suma) > 0 ORDER BY 3 DESC LIMIT 5
+```
+</details>
+
+**판정** — ✅ 회수(R10③) — **1·2·3차 내리 ❌** 이던 자리다. 피델리티글로벌테크놀로지 1.22조 · 미래에셋전략배분TDF2045 1.02조 · KB퇴직연금배당40 · 한국밸류10년투자연금1 · 하나인Best연금1호 — 예상 5건과 정확히 일치하고 **MMF 가 하나도 없다**. 배제 대상을 이름 축 셋에서 유도한 것이 관건이었다(한 축만 걸면 외화 MMF 1.04조가 샌다).
+
 ### ✅→🟡→✅ `FND-007` — MMF만
 
 > MMF 중에서 순자산이 가장 큰 공모펀드 3개 알려줘
@@ -2190,6 +2566,27 @@ SELECT DISTINCT itm_no, itm_nm, MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "
 
 ```sql
 SELECT DISTINCT p.itm_no, p.itm_nm, MAX(p.fd_nast_suma) AS fd_nast_suma , p.prvo_pbff_desc, p.sale_yn, p.fd_daily_bas_dt, COUNT(*) AS "클래스수", zrin_ptn_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds p  WHERE zrin_ptn_nm = 'MMF' AND p.prvo_pbff_desc='공모' AND p.sale_yn='판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY p.fd_nast_suma DESC LIMIT 3
+```
+</details>
+
+**판정** — ✅ 유지. 기계 조립으로 값 3건 + 클래스수 병기.
+
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 3개 공모펀드입니다 (판매중·공모·제로인유형명 MMF 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 삼성MMF법인제1호: 순자산 124,295억원 · 클래스 4개
+2. KB법인용MMF I- 1: 순자산 96,266억원 · 클래스 2개
+3. 우리큰만족법인MMF1호(국공채): 순자산 90,390억원 · 클래스 2개
+```
+
+`[Execute] 3행`· 기계 조립(HCX 0회)· 4.1s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT p.itm_no, p.itm_nm, MAX(p.fd_nast_suma) AS fd_nast_suma , p.prvo_pbff_desc, p.sale_yn, p.fd_daily_bas_dt, COUNT(*) AS "클래스수", zrin_ptn_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds p   WHERE zrin_ptn_nm = 'MMF' AND p.prvo_pbff_desc='공모' AND p.sale_yn='판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY p.fd_nast_suma DESC LIMIT 3
 ```
 </details>
 
@@ -2308,7 +2705,28 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클
 
 **판정** — 부동산형+해외부동산형 정확. 값 일치.
 
-### ❌→✅→❌ `Z10` — 유형 축 — 17R 실패 문항
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 3개 공모펀드입니다 (판매중·공모·부동산형·해외부동산형 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 신한K리츠인프라부동산투자신탁[재간접형]: 순자산 164억원 · 클래스 1개
+2. 하나글로벌리츠부동산자투자신탁[재간접형]: 순자산 131억원 · 클래스 13개
+3. 한화K리츠플러스부동산 자투자신탁(H)(리츠-재간접형): 순자산 56억원 · 클래스 8개
+```
+
+`[Execute] 3행`· 기계 조립(HCX 0회)· 4.1s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클래스수", zrin_btyp_nm, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND zrin_btyp_nm IN ('부동산형', '해외부동산형') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY 3 DESC LIMIT 3
+```
+</details>
+
+**판정** — 부동산형+해외부동산형 정확. 값 일치.
+
+### ❌→✅→❌→✅ `Z10` — 유형 축 — 17R 실패 문항
 
 > 해외주식형 중에서 인도주식 유형인 공모펀드는 몇 개야?
 
@@ -2401,6 +2819,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 🔴 회귀(비결정). 3차엔 34펀드(98클래스)로 정확했다. 4차엔 **HCX 가 없는 컬럼을 지어냈다** — `asset_class='해외주식형' AND country='IND' AND fund_type='공모'`. 유형 축 주입은 정상 발동해 `zrin_ptn_nm='인도주식'` 을 넣었는데, 환각 컬럼이 함께 실려 스키마 기각 → 재생성도 같은 실수 → 거절. 코드 변경과 무관하다.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 34개(클래스 98개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 BASEPOP·FUNDUNIT· 기계 조립(HCX 0회)· ⚠ 재생성· 1.9s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE zrin_ptn_nm = '인도주식' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수. 34개(클래스 98개) — 확정식이 축을 심었으면 환각 컬럼 절을 걷는 규칙(2ca7c88). 3차 정답과 일치.
+
 
 ## E. 누가 살 수 있나 · 역외 (§2.3 §4.6)
 
@@ -2487,6 +2922,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 5.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — 3,040(8,969). 두 단위 구분.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 3,040개(클래스 8,969개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 62.0s
 
 <details><summary>SQL</summary>
 
@@ -2590,6 +3042,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 217(906) 정확.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 217개(클래스 906개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· ⚠ 재생성· 2.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '삼성%' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — 217(906) 정확.
+
 ### ✅ `FND-013` — 역외펀드
 
 > 역외 공모펀드는 몇 개야?
@@ -2673,6 +3142,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.0s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND (ofsfd_yn = 1 AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/) LIMIT 30
+```
+</details>
+
+**판정** — 110(110) 정확.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 110개(클래스 110개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 1.9s
 
 <details><summary>SQL</summary>
 
@@ -2781,6 +3267,24 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 질문이 '역외펀드까지 포함하면'인데 106만 답하고 47을 '별도 법인이라 포함하지 않았다'며 제외했다. 47을 밝히고 근거를 댄 점, 코드북이 00130001 을 '국내 법인 코드 아님'으로 규정한 점은 답변에 유리하다. 다만 질문이 요구한 합산(153)을 끝내 제시하지 않았다.
 
+**6차 · 09-05 밤** 🟡
+
+```
+피델리티자산운용이 운용하는 공모펀드는 106개(클래스 246개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+종목명이 '피델리티' 로 시작하는 역외펀드 47개(클래스 47개, 해외 운용법인 코드 00130001)는 별도 법인이라 이 수에 포함하지 않았습니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 3.0s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND (TRIM(or_co_xtn_itt_cd) IN ('00080029', '00080030') AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/) LIMIT 30
+```
+</details>
+
+**판정** — 질문이 '역외펀드까지 포함하면'인데 106만 답하고 47을 '별도 법인이라 포함하지 않았다'며 제외했다. 47을 밝히고 근거를 댄 점, 코드북이 00130001 을 '국내 법인 코드 아님'으로 규정한 점은 답변에 유리하다. 다만 질문이 요구한 합산(153)을 끝내 제시하지 않았다.
+
 
 ## F. 개방/폐쇄 · 추가/단위 (§1.4 §2.2)
 
@@ -2867,6 +3371,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ AND ',' || prfd_attr_cds || ',' LIKE '%,C104,%' LIMIT 30
+```
+</details>
+
+**판정** — 3(6) — 폐쇄는 zrin 태그 축이라는 걸 정확히 썼다. fd_set_pcd='20'(단위형 220)과 혼동하지 않았다.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 3개(클래스 6개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.4s
 
 <details><summary>SQL</summary>
 
@@ -2993,6 +3514,53 @@ SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS
 </details>
 
 **판정** — 🔴 유지. '요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다'. 다섯 회차에 ✅·❌·✅·❌·❌ — 이 문항이 이 셋에서 가장 심한 비결정이다. 4차엔 HCX 가 `fd_mdfy_itt_cd`·`fd_open_itt_cd` 를 지어냈다.
+
+**6차 · 09-05 밤** ❌
+
+```
+조건에 해당하는 펀드는 전체 4,428개(클래스 10,962개)(대표번호 기준 3,293건)이며, 순자산 상위 30개 표시는 다음과 같습니다 (기준일 2026-08-24, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위·순자산 = 대표 클래스 기준(MAX)).
+
+1. 삼성MMF법인제1호: 순자산 124,295억원 · 클래스 4개
+2. KB법인용MMF I- 1: 순자산 96,266억원 · 클래스 2개
+3. 우리큰만족법인MMF1호(국공채): 순자산 90,390억원 · 클래스 2개
+4. 우리큰만족신종MMF3호: 순자산 80,497억원 · 클래스 1개
+5. 신영법인용MMF 제4-26호 C-I형: 순자산 76,371억원 · 클래스 2개
+6. IBK그랑프리국공채MMF법인투자신탁 제1호[국공채]I: 순자산 75,337억원 · 클래스 2개
+7. 신한BEST신종법인용MMFGS-2호(종류C): 순자산 63,581억원 · 클래스 2개
+8. 한화골드법인MMF-KM3호(국공채): 순자산 55,140억원 · 클래스 1개
+9. 브이아이 천하제일 법인MMF 1호: 순자산 46,666억원 · 클래스 2개
+10. 하나클래스원신종MMF(K-5호)Class C-F: 순자산 45,657억원 · 클래스 2개
+11. NH-Amundi 법인MMF8호C0: 순자산 44,652억원 · 클래스 1개
+12. 한국투자법인용MMF2호(국공채)(C-I): 순자산 43,524억원 · 클래스 2개
+13. 미래에셋법인전용MMF1호(국공채): 순자산 42,282억원 · 클래스 2개
+14. 삼성스마트MMF법인 제1호 C: 순자산 40,334억원 · 클래스 1개
+15. BNK법인MMF1호(국공채): 순자산 40,252억원 · 클래스 1개
+16. 교보악사 프라임 법인 MMF J-1호: 순자산 39,253억원 · 클래스 1개
+17. NH-Amundi 법인MMF5호: 순자산 37,250억원 · 클래스 1개
+18. 신한BEST법인용 MMF GS-1호: 순자산 33,312억원 · 클래스 1개
+19. 키움법인MMF 1호: 순자산 32,168억원 · 클래스 1개
+20. KB법인용MMF I-2(국공채): 순자산 31,445억원 · 클래스 4개
+21. 현대인베스트먼트법인MMF3호(국공채): 순자산 31,433억원 · 클래스 1개
+22. 하나 신종MMF(S-29호): 순자산 31,410억원 · 클래스 2개
+23. DB클린법인MMF제4호: 순자산 29,559억원 · 클래스 1개
+24. 대신 국공채 법인전용 MMF 1호: 순자산 29,221억원 · 클래스 4개
+25. 미래에셋법인전용MMF A- 4: 순자산 26,827억원 · 클래스 2개
+26. 플러스 국공채 법인용 MMF3호: 순자산 26,697억원 · 클래스 1개
+27. Plus 신종 법인용 MMF1호: 순자산 26,005억원 · 클래스 2개
+28. 다올법인MMF제1호[국공채]: 순자산 25
+…(생략)
+```
+
+`[Execute] 30행`· 기계 조립(HCX 0회)· ⚠ 재생성· 3.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30
+```
+</details>
+
+**판정** — 🔴 회귀(6차 시점) — 더 나쁜 형태. 전체 4,428펀드(10,962클래스)를 '조건에 해당하는 펀드' 로 냈다: 확정식 필터와 환각 컬럼이 한 OR 그룹에 묶여 그룹째 사라지고 sale_yn 만 남았다(2ca7c88 의 canon_fired 확장이 낸 회귀). 6차 뒤 수리(4b4f167: OR 가지만 걷기 · 318aaed: 고유키 묶음의 HAVING cnt>1 제거) → 서버 재확인은 30행 실 데이터로 살았으나 클래스 나열(🟡 수준). 참값 31펀드/189클래스.
 
 
 ## G. 어디에 투자하나 (§2.4)
@@ -3220,6 +3788,49 @@ SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS
 
 **판정** — ✅ 회수(R10⑧). '※ 투자 **국가 태그**(prfd_attr_cds = USA) 축으로 셌습니다. 투자 지역 대분류로 세면 수가 달라집니다' — 통과 조건이 '어느 축으로 셌는지 밝히면 통과' 였다. 98 vs 114 로 갈리는 질문이라 축 명시가 곧 검증 가능성이다.
 
+**6차 · 09-05 밤** ✅
+
+```
+조건에 해당하는 공모펀드는 전체 98개(클래스 333개)(대표번호 기준 55건)이며, 순자산 상위 30개 표시는 다음과 같습니다 (기준일 2026-08-24, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위·순자산 = 대표 클래스 기준(MAX)).
+
+1. 삼성달러표시MMF법인 제1호(USD)_Cf: 순자산 4,839억원 · 클래스 3개
+2. 삼성미국S&P500인덱스증권자투자신탁UH[주식]: 순자산 4,350억원 · 클래스 11개
+3. AB미국그로스증권투자신탁(주식-재간접형): 순자산 3,989억원 · 클래스 13개
+4. KB스타 미국 나스닥 100 인덱스 증권 자투자신탁(주식-파생형)(H): 순자산 3,225억원 · 클래스 10개
+5. 삼성미국S&P500인덱스증권자투자신탁H[주식]: 순자산 1,607억원 · 클래스 11개
+6. KB스타 미국 S&P500 인덱스 증권 자투자신탁(주식-파생형)(H): 순자산 1,560억원 · 클래스 9개
+7. KB연금미국S&P500인덱스증권자투자신탁(주식-파생형)(H): 순자산 1,524억원 · 클래스 2개
+8. 삼성S&P500미국채권혼합증권자투자신탁H[채권혼합-재간접형]: 순자산 1,075억원 · 클래스 6개
+9. KB 미국 S&P500 인덱스 40 증권 자투자신탁(채권혼합-파생형): 순자산 756억원 · 클래스 2개
+10. KB 미국 대표성장주 증권 자투자신탁(주식)(UH): 순자산 621억원 · 클래스 5개
+11. 미래에셋미국배당커버드콜액티브증권자투자신탁(주식)(UH): 순자산 538억원 · 클래스 11개
+12. 미래에셋G2이노베이터증권자투자신탁(주식): 순자산 536억원 · 클래스 15개
+13. KB 미국 대표성장주 증권 자투자신탁(주식)(H): 순자산 476억원 · 클래스 5개
+14. 한국투자미국배당귀족증권자투자신탁H(주식): 순자산 414억원 · 클래스 11개
+15. 한국투자미국배당귀족증권자투자신탁UH(주식): 순자산 354억원 · 클래스 10개
+16. 피델리티 미달러 채권 증권 자투자신탁 UH (채권-재간접형): 순자산 283억원 · 클래스 3개
+17. AB셀렉트미국증권투자신탁(주식-재간접형): 순자산 273억원 · 클래스 11개
+18. 삼성미국코어주식증권자투자신탁H[주식]: 순자산 204억원 · 클래스 12개
+19. 미래에셋미국배당커버드콜액티브증권자투자신탁(주식)(H): 순자산 178억원 · 클래스 11개
+20. 삼성미국투자등급장기채권증권자투자신탁UH[채권]: 순자산 175억원 · 클래스 8개
+21. 피델리티연금미국증권전환형자투자신탁(주식-재간접형): 순자산 167억원 · 클래스 2개
+22. 신한미국코어액티브증권자투자신탁(H)[주식]: 순자산 129억원 · 클래스 9개
+23. 미래에셋달러우량중장기채권증권자투자신탁(UH)(채권): 순자산 115억원 · 클래스 8개
+24. 피델리티미국증권자투자신탁(주식-재간접): 순자
+…(생략)
+```
+
+`[Execute] 30행`· 기계 조립(HCX 0회)· 47.7s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE ',' || prfd_attr_cds || ',' LIKE '%,USA,%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수(R10⑧). '※ 투자 **국가 태그**(prfd_attr_cds = USA) 축으로 셌습니다. 투자 지역 대분류로 세면 수가 달라집니다' — 통과 조건이 '어느 축으로 셌는지 밝히면 통과' 였다. 98 vs 114 로 갈리는 질문이라 축 명시가 곧 검증 가능성이다.
+
 ### ✅ `X21` — 없는 나라
 
 > 스페인에 투자하는 공모펀드 있어?
@@ -3303,6 +3914,23 @@ SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS
 ```
 
 `[Execute] 0행`· 2.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS fd_nast_suma, prfd_attr_cds, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE (',' || prfd_attr_cds || ',' LIKE '%,ESP,%' OR REPLACE(itm_nm,' ','') LIKE '%스페인%') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30
+```
+</details>
+
+**판정** — 0건 + '전체(판매완료·사모 포함)로는 7클래스' 까지 밝혔다. 환각 없음. 모범 답변.
+
+**6차 · 09-05 밤** ✅
+
+```
+조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 해당 조건인 펀드는 판매중·공모 기준 0개이고, 전체(판매완료·사모 포함)로는 7클래스가 있습니다.
+```
+
+`[Execute] 0행`· 2.6s
 
 <details><summary>SQL</summary>
 
@@ -3406,6 +4034,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 1,441(3,619) 정확.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 1,441개(클래스 3,619개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 12.7s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE fd_ivst_rgn_desc = '글로벌' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — 1,441(3,619) 정확.
+
 ### ✅→❌→✅ `KG-012` — 유형 세분
 
 > 해외주식형 중에서 중국주식 유형인 공모펀드는 몇 개야?
@@ -3494,6 +4139,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 ```sql
 SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE zrin_ptn_nm = '중국주식' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' AND zrin_btyp_nm IN ('해외주식형') LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — ✅ 회수(R9①). 205개(클래스 522개) — 예상과 정확히 일치. IN 목록에서 그 컬럼에 없는 값('국내외혼합')만 걷어내니 2차에 기각당했던 SQL 이 그대로 정답을 냈다. 배포 직후 3/3 재현 확인.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 205개(클래스 522개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 1.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE zrin_ptn_nm = '중국주식' AND prvo_pbff_desc = '공모' AND ovrs_fd_desc IN ('해외','국내외혼합') AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
 ```
 </details>
 
@@ -3625,6 +4287,29 @@ SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS "운용사코드",
 
 **판정** — 코드→법인명 변환 + 펀드/클래스/순자산 3열. 예상과 완전 일치.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 결과 펀드 수 상위 5개 운용사입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준, 클래스 = 판매 단위, 기준일 2026-08-24).
+
+1. 미래에셋자산운용(00080008): 펀드 823개(클래스 2,066개) · 순자산 377,707억원
+2. 우리자산운용(00040007): 펀드 235개(클래스 403개) · 순자산 224,693억원
+3. 삼성자산운용(00040010): 펀드 207개(클래스 850개) · 순자산 331,098억원
+4. iM에셋자산운용(00080035): 펀드 205개(클래스 240개) · 순자산 19,921억원
+5. 한국투자신탁운용(00040024): 펀드 142개(클래스 540개) · 순자산 180,640억원
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 5.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS "운용사코드", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS "운용사명", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS "펀드수", COUNT(*) AS "클래스수", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 3 DESC LIMIT 5
+```
+</details>
+
+**판정** — 코드→법인명 변환 + 펀드/클래스/순자산 3열. 예상과 완전 일치.
+
 ### ✅ `KG-001` — 영문 사명 매핑
 
 > Mirae Asset이 운용하는 공모펀드는 몇 개야?
@@ -3713,6 +4398,24 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — 영문 'Mirae Asset' → 823(2,066). 역외 5개 별도 안내까지.
+
+**6차 · 09-05 밤** ✅
+
+```
+미래에셋자산운용이 운용하는 공모펀드는 823개(클래스 2,066개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+종목명이 '미래에셋' 로 시작하는 역외펀드 5개(클래스 5개, 해외 운용법인 코드 00130006)는 별도 법인이라 이 수에 포함하지 않았습니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.5s
 
 <details><summary>SQL</summary>
 
@@ -3821,6 +4524,24 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 띄어쓰기 '한국 투자 신탁 운용' 매칭 성공. 143(541) — 운용사 코드 2건(00040024·00040105) 합산을 명시했다. 내 예상 142는 한 코드만 센 것으로 답변이 더 정확하다.
 
+**6차 · 09-05 밤** ✅
+
+```
+한국투자신탁운용이 운용하는 공모펀드는 143개(클래스 541개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+운용사 코드 2건(00040024·00040105)을 합산했습니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 35.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040024', '00040105') AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — 띄어쓰기 '한국 투자 신탁 운용' 매칭 성공. 143(541) — 운용사 코드 2건(00040024·00040105) 합산을 명시했다. 내 예상 142는 한 코드만 센 것으로 답변이 더 정확하다.
+
 ### ❌→✅ `KG-006` — 두 역할 동시
 
 > 미래에셋코어테크 펀드의 운용사와 수탁사는 어디야?
@@ -3898,6 +4619,23 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 **판정** — ✅ 회수(R9⑤⑥). '운용사는 미래에셋자산운용이며, 수탁사는 신한은행입니다' — 예상과 일치. 두 겹이었다: ⑤ 가드가 부질의 안의 FROM 을 보고 발동해 스스로 깨진 SQL 을 만들던 것, ⑥ 수탁사 이름이 어느 컬럼에도 없어(KG 에만 48노드) HCX 가 trusc_nm 을 지어내던 것. 코드는 SQL 이 고르고 이름은 KG 가 옮기는 분업으로 닫았다.
 
 **5차 · 09-05 저녁** ✅
+
+```
+미래에셋코어테크 펀드의 운용사는 '**미래에셋자산운용**'이며, 수탁사는 '**신한은행**'입니다.
+```
+
+`[Execute] 2행`· 슬롯 BASEPOP· 4.7s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", MAX(or_co_xtn_itt_cd) AS 운용사코드, MAX(trusc_xtn_itt_cd) AS 수탁사코드 FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC LIMIT 30 /*M:BASEPOP*/
+```
+</details>
+
+**판정** — ✅ 회수(R9⑤⑥). '운용사는 미래에셋자산운용이며, 수탁사는 신한은행입니다' — 예상과 일치. 두 겹이었다: ⑤ 가드가 부질의 안의 FROM 을 보고 발동해 스스로 깨진 SQL 을 만들던 것, ⑥ 수탁사 이름이 어느 컬럼에도 없어(KG 에만 48노드) HCX 가 trusc_nm 을 지어내던 것. 코드는 SQL 이 고르고 이름은 KG 가 옮기는 분업으로 닫았다.
+
+**6차 · 09-05 밤** ✅
 
 ```
 미래에셋코어테크 펀드의 운용사는 '**미래에셋자산운용**'이며, 수탁사는 '**신한은행**'입니다.
@@ -4027,6 +4765,27 @@ SELECT trusc_xtn_itt_cd, COUNT(DISTINCT CASE WHEN sale_yn = '판매중' AND prvo
 
 **판정** — 홍콩상하이 714 · 국민 516 · 씨티 465. 코드→은행명 변환까지.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 결과 펀드 수 상위 3개입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위, 기준일 2026-08-24).
+
+1. 홍콩상하이은행 서울지점(00020054): 펀드 714개(클래스 1,827개)
+2. 국민은행(00020004): 펀드 516개(클래스 1,656개)
+3. 한국씨티은행(00020027): 펀드 465개(클래스 1,466개)
+```
+
+`[Execute] 3행`· 기계 조립(HCX 0회)· 2.9s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT trusc_xtn_itt_cd, COUNT(DISTINCT CASE WHEN sale_yn = '판매중' AND prvo_pbff_desc = '공모' THEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no) END) AS "cnt_펀드수", SUM(CASE WHEN sale_yn = '판매중' AND prvo_pbff_desc = '공모' THEN 1 ELSE 0 END) AS "cnt_클래스수", COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY trusc_xtn_itt_cd  ORDER BY "펀드수" DESC LIMIT 3
+```
+</details>
+
+**판정** — 홍콩상하이 714 · 국민 516 · 씨티 465. 코드→은행명 변환까지.
+
 ### ✅ `KG-009` — 역할 혼동 함정
 
 > 미래에셋증권이 수탁사인 공모펀드도 있어?
@@ -4135,6 +4894,26 @@ SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS
 
 **판정** — 2펀드(14클래스)를 찾아냈다. 수탁 코드 0016022 = 미래에셋증권(ontology/codebooks/trustee.csv). 내 예상('없다')이 틀렸다 — 증권사 수탁 사례가 실재한다.
 
+**6차 · 09-05 밤** ✅
+
+```
+조건에 해당하는 공모펀드는 전체 2개(클래스 14개)이며, 순자산 순으로 다음과 같습니다 (기준일 2026-08-24, 펀드 = 운용사 종목번호 기준·클래스 = 판매 단위·순자산 = 대표 클래스 기준(MAX)).
+
+1. iM에셋 타이거 포커스 증권투자신탁(사모투자재간접형): 순자산 1,456억원 · 클래스 6개
+2. 머스트원앤온리증권자투자신탁(사모투자재간접형): 순자산 969억원 · 클래스 8개
+```
+
+`[Execute] 2행`· 기계 조립(HCX 0회)· 2.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT itm_no, itm_nm, COUNT(*) AS "클래스수", MAX(fd_nast_suma) AS fd_nast_suma, trusc_xtn_itt_cd, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE TRIM(trusc_xtn_itt_cd) = '0016022' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY fd_nast_suma DESC LIMIT 30
+```
+</details>
+
+**판정** — 2펀드(14클래스)를 찾아냈다. 수탁 코드 0016022 = 미래에셋증권(ontology/codebooks/trustee.csv). 내 예상('없다')이 틀렸다 — 증권사 수탁 사례가 실재한다.
+
 ### 🟡→❌ `X22` — 🔴 거짓 전제
 
 > KB자산운용 펀드 중 국민은행이 수탁하는 공모펀드는 몇 개야? 실제 수탁사는 어디야?
@@ -4223,6 +5002,23 @@ SELECT COUNT(DISTINCT CASE WHEN TRIM(trusc_xtn_itt_cd) = '00020004' THEN or_co_x
 
 ```sql
 SELECT COUNT(DISTINCT CASE WHEN TRIM(trusc_xtn_itt_cd) = '00020004' THEN or_co_xtn_itt_cd END) AS "국민은행_수탁_펀드 수", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS "실제_수탁사", COUNT(*) AS cnt FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE TRIM(p.or_co_xtn_itt_cd) = '00040035' AND p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — 🔴 회귀. '데이터 조회 중 오류가 발생해 확인할 수 없습니다' — SQL 실행 실패. 1차는 0건은 맞췄고 2단 질문의 뒷부분만 빠져 🟡 이었다.
+
+**6차 · 09-05 밤** ❌
+
+```
+데이터 조회 중 오류가 발생해 확인할 수 없습니다.
+```
+
+**미실행**· ⚠ 재생성· 8.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT CASE WHEN TRIM(public_funds.trusc_xtn_itt_cd) = '00020004' THEN public_funds.or_co_xtn_itt_cd END) AS "국민은행_수탁_펀드수", MAX(CASE WHEN public_funds.or_co_xtn_itt_cd NOT IN ('00040007', '00040010', '00040011', '00040013', '00040023', '00080008') THEN ext_fund_page.mgmt_co_nm ELSE NULL END) AS "실제_수탁사", COUNT(*) AS cnt FROM public_funds LEFT JOIN ext_fund_page ON public_funds.itm_no = ext_fund_page.itm_no WHERE public_funds.or_co_xtn_itt_cd = '00040035' AND public_funds.sale_yn = '판매중' AND public_funds.prvo_pbff_desc = '공모' GROUP BY 1 LIMIT 30
 ```
 </details>
 
@@ -4324,6 +5120,23 @@ SELECT mother_fund_names_raw FROM ext_fund_page WHERE itm_no IN (SELECT itm_no F
 
 **판정** — ✅ 회수. '미래에셋코어테크증권모투자신탁(주식)' 정확. 2차의 '같은 이름의 항목이 여러 자료에' 기각이 사라졌다 — R9⑤(바깥 FROM 판정)로 가드가 깨진 SQL 을 안 만들게 된 것이 직접 원인으로 보인다.
 
+**6차 · 09-05 밤** ✅
+
+```
+미래에셋코어테크 펀드의 모펀드는 미래에셋코어테크증권모투자신탁(주식)입니다.
+```
+
+`[Execute] 1행`· 41.9s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT mother_fund_names_raw FROM ext_fund_page WHERE itm_no IN (SELECT itm_no FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') LIMIT 1
+```
+</details>
+
+**판정** — ✅ 회수. '미래에셋코어테크증권모투자신탁(주식)' 정확. 2차의 '같은 이름의 항목이 여러 자료에' 기각이 사라졌다 — R9⑤(바깥 FROM 판정)로 가드가 깨진 SQL 을 안 만들게 된 것이 직접 원인으로 보인다.
+
 
 ## J. 종목명 파싱·이름 조회 (§3.3)
 
@@ -4404,6 +5217,23 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 **판정** — 🔴 오타 '코어택' 매칭 실패, 0행. 예상은 미래에셋코어테크 순자산 7,348억. '가까운 표기' 후보 3개를 제시한 건 정상 동작이나 답을 못 냈다. (부수: 답변이 질문의 「코어택」을 「코어텍」으로 잘못 인용했다)
 
 **5차 · 09-05 저녁** ❌
+
+```
+조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「코어텍」를 데이터의 종목명으로 식별하지 못했습니다 (가까운 표기: 미래에셋코어테크증권자투자신탁(주식) · 미래에셋퇴직연금코어밸류증권자투자신탁1호(주식) · 삼성퇴직연금미국코어주식40증권자투자신탁H[채권혼합]).
+```
+
+`[Execute] 0행`· 2.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", CAST(SUM(fd_nast_suma) AS INTEGER) AS fd_nast_suma, CAST(ROUND(SUM(fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS "순자산_억원", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어텍%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — 🔴 오타 '코어택' 매칭 실패, 0행. 예상은 미래에셋코어테크 순자산 7,348억. '가까운 표기' 후보 3개를 제시한 건 정상 동작이나 답을 못 냈다. (부수: 답변이 질문의 「코어택」을 「코어텍」으로 잘못 인용했다)
+
+**6차 · 09-05 밤** ❌
 
 ```
 조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 질문의 「코어텍」를 데이터의 종목명으로 식별하지 못했습니다 (가까운 표기: 미래에셋코어테크증권자투자신탁(주식) · 미래에셋퇴직연금코어밸류증권자투자신탁1호(주식) · 삼성퇴직연금미국코어주식40증권자투자신탁H[채권혼합]).
@@ -4541,6 +5371,30 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 
 **판정** — ✅ 회수. 오타 '코어태크' 를 흡수해 6펀드를 냈고 미래에셋코어테크 1등급(매우 높은 위험)이 머리에 있다. 1차는 후보 안내조차 없이 0행이었다. 다만 6개를 다 나열해 질문이 가리킨 하나를 좁히지는 않았다.
 
+**6차 · 09-05 밤** ✅
+
+```
+'코어테크' 이름의 공모펀드 6개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위).
+
+- 미래에셋코어테크증권자투자신탁(주식): 위험등급 1등급(매우 높은 위험) · 클래스 10개(전부 판매중)
+- 미래에셋코어테크청년소득공제증권자투자신탁(주식): 위험등급 1등급(매우 높은 위험) · 클래스 4개(전부 판매중)
+- 미래에셋차이나코어테크증권자투자신탁(주식)(H): 위험등급 2등급(높은 위험) · 클래스 5개(전부 판매중)
+- 미래에셋차이나코어테크증권자투자신탁(주식)(UH): 위험등급 2등급(높은 위험) · 클래스 5개(전부 판매중)
+- 미래에셋글로벌코어테크EMP증권자투자신탁(주식-재간접형): 위험등급 2등급(높은 위험) · 클래스 13개(전부 판매중)
+- 미래에셋글로벌코어테크 EMP증권자투자신탁2호(주식-재간접형): 위험등급 2등급(높은 위험) · 클래스 4개(전부 판매중)
+```
+
+`[Execute] 6행`· 기계 조립(HCX 0회)· 2.4s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", MAX(zrin_fd_ivst_risk_grd_nm) AS zrin_fd_ivst_risk_grd_nm, MIN(rptt_ksd_itm_no) AS 대표번호, zrin_fd_ivst_risk_gcd FROM public_funds WHERE prvo_pbff_desc = '공모' AND (TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%코어테크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수. 오타 '코어태크' 를 흡수해 6펀드를 냈고 미래에셋코어테크 1등급(매우 높은 위험)이 머리에 있다. 1차는 후보 안내조차 없이 0행이었다. 다만 6개를 다 나열해 질문이 가리킨 하나를 좁히지는 않았다.
+
 ### ✅ `V11` — 이름 포함 개수
 
 > 삼성 이름이 들어간 공모펀드는 몇 개야?
@@ -4639,7 +5493,25 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 229(962) + 운용사 코드별 분해까지.
 
-### 🟡→❌→🟡 `KG-005` — 2단 질문
+**6차 · 09-05 밤** ✅
+
+```
+'삼성' 이름이 들어간 공모펀드는 229개(클래스 962개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+운용사 코드별: 00040010 207개 · 00080135 10개 · 00040024 9개 · 00040067 1개 · 00040007 1개 · 00040001 1개
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· ⚠ 재생성· 3.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%삼성%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — 229(962) + 운용사 코드별 분해까지.
+
+### 🟡→❌→🟡→❌ `KG-005` — 2단 질문
 
 > 이름이 삼성으로 시작하는 공모펀드는 몇 개고, 그중 삼성자산운용이 운용하는 건 몇 개야?
 
@@ -4731,6 +5603,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 </details>
 
 **판정** — 🟡 유지, 3차보다 후퇴. '총 215개 … 그중 삼성자산운용이 운용하는 펀드는 215개' — 두 수가 같아졌다. 3차엔 217/906 · 215 로 앞부분이 정확했는데 이번엔 외부표 조인이 빠져 215 로 돌아갔다. 정답은 217펀드/906클래스 중 207/850. 근본 원인은 HCX 가 운용사를 코드가 아니라 이름(mgmt_co_nm)으로 고르는 것이라 가드 밖이다.
+
+**6차 · 09-05 밤** ❌
+
+```
+이름이 삼성으로 시작하는 공모펀드는 총 217개이며, 그중 삼성자산운용이 운용하는 펀드는 0개입니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 5.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수", COUNT(DISTINCT CASE WHEN mtco_itm_no = '00040010' THEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no) END) AS "samsung_funds_펀드수", SUM(CASE WHEN mtco_itm_no = '00040010' THEN 1 ELSE 0 END) AS "samsung_funds_클래스수" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND REPLACE(itm_nm,' ','') LIKE '삼성%' /*M:FUNDUNIT*/) LIMIT 30
+```
+</details>
+
+**판정** — 🔴 회귀. '총 217개, 그중 삼성자산운용 0개' — 앞부분 217 은 3차 이후 처음 맞았는데, 뒷부분이 접지가 or_co_xtn_itt_cd='00040010' 이라고 컬럼까지 말했는데도 HCX 가 mtco_itm_no='00040010' 에 걸어 0. 참값 217/906 · 207/850. 6차 뒤 수리: 접지 코드 컬럼 교정 가드 → 재생 217·906·207·850.
 
 
 ## K. 규모 (§4.8)
@@ -4852,6 +5741,29 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클
 
 **판정** — ✅ 유지·개선. 값 3건 정확하고 이번엔 'MMF 로 채워진다' 는 가점 항목까지 붙었다.
 
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 3개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 삼성MMF법인제1호: 순자산 124,295억원 · 클래스 4개
+2. KB법인용MMF I- 1: 순자산 96,266억원 · 클래스 2개
+3. 우리큰만족법인MMF1호(국공채): 순자산 90,390억원 · 클래스 2개
+
+※ 상위 3개 중 3개가 **MMF**(법인 자금을 단기 예치하는 상품)입니다. MMF 를 빼고 보시려면 'MMF 제외' 라고 말씀해 주세요.
+```
+
+`[Execute] 3행`· 기계 조립(HCX 0회)· 65.9s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클래스수", CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_nast_suma <> 0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 3
+```
+</details>
+
+**판정** — ✅ 유지·개선. 값 3건 정확하고 이번엔 'MMF 로 채워진다' 는 가점 항목까지 붙었다.
+
 ### ✅ `T3` — 단일 운용사 합계
 
 > 삼성자산운용이 운용하는 공모펀드 순자산 총액이 얼마야?
@@ -4935,6 +5847,23 @@ SELECT SUM(fd_nast_suma), CAST(ROUND((SUM(fd_nast_suma))/100000000.0) AS INTEGER
 ```
 
 `[Execute] 1행`· ⚠ 재생성· 8.4s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT SUM(fd_nast_suma), CAST(ROUND((SUM(fd_nast_suma))/100000000.0) AS INTEGER) || '억원' AS "순자산합계_억원" FROM public_funds WHERE sale_yn = '판매중' AND or_co_xtn_itt_cd = '00040010' AND prvo_pbff_desc = '공모' LIMIT 1
+```
+</details>
+
+**판정** — 331,098억원 정확.
+
+**6차 · 09-05 밤** ✅
+
+```
+삼성자산운용이 운용하는 공모펀드의 순자산 총액은 **331,098억원**입니다.
+```
+
+`[Execute] 1행`· ⚠ 재생성· 7.2s
 
 <details><summary>SQL</summary>
 
@@ -5068,6 +5997,29 @@ SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS "운용사코드",
 
 **판정** — 5곳 이름·순서·순자산 정확. 펀드/클래스 병기까지.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 결과 순자산 상위 5개 운용사입니다 (판매중·공모 기준, 펀드 = 운용사 종목번호 기준, 클래스 = 판매 단위, 기준일 2026-08-24).
+
+1. 미래에셋자산운용(00080008): 순자산 377,707억원 · 펀드 823개(클래스 2,066개)
+2. 삼성자산운용(00040010): 순자산 331,098억원 · 펀드 207개(클래스 850개)
+3. KB자산운용(00040035): 순자산 278,196억원 · 펀드 129개(클래스 625개)
+4. 우리자산운용(00040007): 순자산 224,693억원 · 펀드 235개(클래스 403개)
+5. 신한자산운용(00040067): 순자산 195,146억원 · 펀드 107개(클래스 405개)
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 4.1s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) AS "운용사코드", MAX(CASE WHEN printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || e.mgmt_co_nm NOT IN ('00040007/프랭클린템플턴투자신탁운용', '00040010/삼성액티브자산운용', '00040011/미래에셋자산운용', '00040013/슈로더자산운용', '00040023/우리자산운용', '00080008/멀티에셋자산운용', '00080008/미래에셋맵스자산운용') THEN e.mgmt_co_nm END) AS "운용사명", COUNT(DISTINCT printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) AS "펀드수", COUNT(*) AS "클래스수", CAST(ROUND(SUM(p.fd_nast_suma)/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' GROUP BY 1 ORDER BY SUM(p.fd_nast_suma) DESC LIMIT 5
+```
+</details>
+
+**판정** — 5곳 이름·순서·순자산 정확. 펀드/클래스 병기까지.
+
 
 ## L. 설명서 항목 — PDF가 '없다'고 했으나 지금은 있는 것
 
@@ -5179,6 +6131,26 @@ SELECT MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) A
 
 **판정** — 2019-10-21 + 경과기간 + 두 펀드 구분. PDF가 '설정일 없음'이라 한 축을 정상 답변.
 
+**6차 · 09-05 밤** ✅
+
+```
+'미래에셋코어테크' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위).
+
+- 미래에셋코어테크증권자투자신탁(주식): 설정일 2019-10-21 (약 6년 10개월) · 클래스 10개(전부 판매중)
+- 미래에셋코어테크청년소득공제증권자투자신탁(주식): 설정일 2023-03-15 (약 3년 5개월) · 클래스 4개(전부 판매중)
+```
+
+`[Execute] 2행`· 기계 조립(HCX 0회)· ⚠ 재생성· 2.7s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(p.itm_no) AS 대표_itm_no, MIN(TRIM(p.itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN p.sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", MIN(e.estb_dt) AS "최초설정일", MAX(e.estb_dt) AS "최근설정일", MIN(p.rptt_ksd_itm_no) AS 대표번호 FROM public_funds p LEFT JOIN ext_fund_page e ON e.itm_no = p.itm_no WHERE prvo_pbff_desc = '공모' AND (REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(p.rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(p.or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(p.mtco_itm_no)) >= 7 THEN trim(p.mtco_itm_no) ELSE substr('0000000' || trim(p.mtco_itm_no), -7) END, p.itm_no)) ORDER BY MIN(e.estb_dt) ASC LIMIT 30
+```
+</details>
+
+**판정** — 2019-10-21 + 경과기간 + 두 펀드 구분. PDF가 '설정일 없음'이라 한 축을 정상 답변.
+
 ### ✅ `X19` — 연도별 설정
 
 > 2025년에 설정된 공모펀드는 몇 개야?
@@ -5262,6 +6234,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· ⚠ 재생성· 43.3s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, public_funds.itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE estb_dt >= '20250101' AND estb_dt < '20260101' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' LIMIT 30
+```
+</details>
+
+**판정** — 107(305) 정확.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 107개(클래스 305개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· ⚠ 재생성· 1.8s
 
 <details><summary>SQL</summary>
 
@@ -5365,7 +6354,24 @@ SELECT itm_nm, estb_dt FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_pag
 
 **판정** — 2026-06-12 KB K-성장과 지배구조 30. 정렬 정확.
 
-### ❌→✅ `FND-005` — 총보수 랭킹 — 단위 함정
+**6차 · 09-05 밤** ✅
+
+```
+가장 최근에 설정된 공모펀드는 '**KB K-성장과 지배구조 30 목표전환 증권 투자신탁(채권혼합) A**'입니다. 이 펀드는 2026년 6월 12일에 설정되었습니다.
+```
+
+`[Execute] 1행`· ⚠ 재생성· 45.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_nm, estb_dt FROM public_funds LEFT JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no  WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모') ORDER BY estb_dt DESC LIMIT 1
+```
+</details>
+
+**판정** — 2026-06-12 KB K-성장과 지배구조 30. 정렬 정확.
+
+### ❌→✅→❌ `FND-005` — 총보수 랭킹 — 단위 함정
 
 > 총보수가 가장 낮은 공모펀드 5개 알려줘
 
@@ -5488,6 +6494,29 @@ SELECT itm_no, TRIM(itm_nm), MIN(ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rw
 
 **판정** — ✅ 유지. 총보수 하위 5개 · 기계 조립 · % 단위. 1위가 회차마다 피델리티호주펀드(0.0015%)와 미래에셋퇴직연금솔로몬(0.015%) 사이에서 갈리는데, 둘 다 실재 값이고 `> 0` 조건 유무 차이다.
 
+**6차 · 09-05 밤** ❌
+
+```
+총보수 하위 5개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 총보수 = 클래스 최저값(MIN), 기준일 2026-08-24).
+
+1. 피델리티포트폴리오중간성장형: 총보수 0% · 클래스 1개
+2. 피델리티스마트글로벌모더레이트: 총보수 0% · 클래스 1개
+3. 피델리티아시아테크놀로지: 총보수 0% · 클래스 1개
+4. 템플턴글로벌본드펀드: 총보수 0% · 클래스 1개
+5. 플랭클린하이일드펀드: 총보수 0% · 클래스 1개
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 5.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MIN(ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)/10.0, 4)) AS "총보수_퍼센트", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) IS NOT NULL GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY 3 ASC LIMIT 5
+```
+</details>
+
+**판정** — 🔴 회귀. 하위 5개가 전부 피델리티 역외펀드 '총보수 0%' — 보수 미수록(0) 29클래스가 모수에 남았다. yaml 집계_TopN_필수 의 `<> 0` 이 4컬럼 합 식엔 붙지 않았다. 5차(미래에셋퇴직연금솔로몬 0.015%)는 정확. 6차 뒤 수리: 보수 0 제외 가드 + 대표행 보정의 MIN(MIN()) 이중 감싸기 버그 수정 → 재생 피델리티호주 0.0015%·솔로몬 0.015%·…
+
 ### ✅ `Z1` — 기준가 + 클래스 지정
 
 > 미래에셋코어테크 펀드 종류A 기준가 알려줘
@@ -5586,6 +6615,26 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 ```
 
 `[Execute] 2행`· 기계 조립(HCX 0회)· 3.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", SUM(CASE WHEN sale_yn = '판매중' THEN 1 ELSE 0 END) AS "판매중클래스수", MAX(bns_bpr) AS "bns_bpr_최고", MIN(bns_bpr) AS "bns_bpr_최저", MIN(rptt_ksd_itm_no) AS 대표번호 FROM public_funds  WHERE prvo_pbff_desc = '공모' AND (REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류A' AND TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC, 2 ASC LIMIT 30
+```
+</details>
+
+**판정** — 4,726.41 / 3,321.17 둘 다. PDF가 '기준가 없음'이라 한 축을 정상 답변(bns_bpr).
+
+**6차 · 09-05 밤** ✅
+
+```
+'미래에셋코어테크' 이름의 공모펀드 2개가 조회됐습니다 (기준일 2026-08-24, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위).
+
+- 미래에셋코어테크증권자투자신탁(주식): 매매기준가 4,726.41 · 클래스 1개(전부 판매중)
+- 미래에셋코어테크청년소득공제증권자투자신탁(주식): 매매기준가 3,321.17 · 클래스 1개(전부 판매중)
+```
+
+`[Execute] 2행`· 기계 조립(HCX 0회)· 2.6s
 
 <details><summary>SQL</summary>
 
@@ -5730,6 +6779,31 @@ SELECT h.holding_nm AS "종목명", h.weight_pct AS "비중_pct", h.asset_type A
 
 **판정** — ✅ 유지. 상위 5종목·비중 완전 일치. '2026년 6월 1일 기준' 이라는 구성종목 기준일 병기가 새로 붙었다.
 
+**6차 · 09-05 밤** ✅
+
+```
+미래에셋코어테크 펀드의 보유 종목 상위 5개와 비중은 다음과 같습니다:
+
+1. 삼성전자: 24.95%
+2. SK하이닉스: 15.9%
+3. 삼성전기: 7.96%
+4. SK스퀘어: 7.46%
+5. LG이노텍: 4.46%
+
+이 정보는 2026년 6월 1일 기준으로 작성되었습니다.
+```
+
+`[Execute] 5행`· ⚠ 재생성· 5.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT h.holding_nm AS "종목명", h.weight_pct AS "비중_pct", h.asset_type AS "자산유형", h.bas_dt AS "기준일" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE p.sale_yn = '판매중' AND p.prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 5
+```
+</details>
+
+**판정** — ✅ 유지. 상위 5종목·비중 완전 일치. '2026년 6월 1일 기준' 이라는 구성종목 기준일 병기가 새로 붙었다.
+
 ### ✅ `Z7` — 순위 지정
 
 > 미래에셋코어테크 펀드가 두 번째로 많이 담은 종목은 뭐야?
@@ -5823,6 +6897,23 @@ SELECT h.holding_nm AS "종목명", h.weight_pct AS "비중_pct", h.asset_type A
 
 **판정** — 2위 SK하이닉스 15.9%. 순위 지정 정확.
 
+**6차 · 09-05 밤** ✅
+
+```
+미래에셋코어테크 펀드가 두 번째로 많이 담은 종목은 SK하이닉스로, 비중은 15.9%입니다.
+```
+
+`[Execute] 2행`· 슬롯 BASEPOP· 6.2s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT h.holding_nm AS "종목명", h.weight_pct AS "비중_pct", h.asset_type AS "자산유형", h.bas_dt AS "기준일" FROM ext_fund_holdings h WHERE h.itm_no = (SELECT h2.itm_no FROM ext_fund_holdings h2 JOIN public_funds p ON h2.grp = p.mtco_itm_no AND h2.or_co = p.or_co_xtn_itt_cd WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND REPLACE(p.itm_nm,' ','') LIKE '%미래에셋코어테크%' ORDER BY p.fd_nast_suma DESC LIMIT 1) ORDER BY h.weight_pct DESC LIMIT 2
+```
+</details>
+
+**판정** — 2위 SK하이닉스 15.9%. 순위 지정 정확.
+
 
 ## N. 답변불가 — PDF §5 중 지금도 살아있는 것 + 구조상 없는 것
 
@@ -5881,6 +6972,16 @@ SELECT h.holding_nm AS "종목명", h.weight_pct AS "비중_pct", h.asset_type A
 ```
 
 **미실행**· 0.2s
+
+**판정** — ABSENT 선언(hasFundManager)이 정확히 발동. 법적 사유를 지어내지 않고 대체 안내(운용사)까지.
+
+**6차 · 09-05 밤** ✅
+
+```
+펀드 운용역(펀드매니저) 정보는 마스터·설명서 수집분에 없어 답할 수 없습니다. 운용사(운용회사 코드 → 법인명)는 안내할 수 있습니다.
+```
+
+**미실행**· 0.3s
 
 **판정** — ABSENT 선언(hasFundManager)이 정확히 발동. 법적 사유를 지어내지 않고 대체 안내(운용사)까지.
 
@@ -6021,6 +7122,35 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 
 **판정** — ✅ 유지 — **주최 공식 문항**. 상품명·클래스 4개·운용사·유형·약관분류·위험등급·순자산을 답하고 '세부적인 투자 전략 및 방향성에 대한 내용은 제공할 수 없습니다' 로 미수록을 명시한다.
 
+**6차 · 09-05 밤** ✅
+
+```
+국민성장펀드의 구조와 투자전략 동향에 대해 다음과 같이 정리할 수 있습니다.
+
+- **상품명**: 미래에셋국민참여형국민성장혼합자산투자신탁(사모투자재간접형) 종류C (일반형)
+- **클래스 수**: 4개
+- **운용사**: 미래에셋자산운용(00080008)
+- **유형**: 주식혼합형
+- **약관분류**: 혼합자산
+- **위험등급**: 매우 높은 위험 (1등급)
+- **순자산**: 719억원
+
+다만, 세부적인 투자 전략 및 방향성에 대한 내용은 제공할 수 없습니다. 또한, 펀드의 수익률이나 기타 특성에 대해 궁금하신 부분이 있으시다면 말씀해 주시기 바랍니다. 추가적인 정보를 제공해 드릴 수 있도록 노력하겠습니다.
+
+펀드의 운용 전략·투자 방침 서술은 마스터에도 설명서 수집분(ext_fund_page)에도 수록되어 있지 않아 답할 수 없습니다. 펀드 유형(주식형·채권형 등)·약관 분류(재간접·파생상품)·투자 국가 태그는 안내할 수 있습니다.
+```
+
+`[Execute] 1행`· 슬롯 BASEPOP· 42.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "클래스수", MAX(or_co_xtn_itt_cd) AS 운용사코드, MAX(zrin_btyp_nm) AS 유형, MAX(or_attr_desc) AS 약관분류, MAX(zrin_fd_ivst_risk_grd_nm) AS 위험등급, MAX(fd_nast_suma) AS fd_nast_suma, zrin_fd_ivst_risk_gcd, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (REPLACE(itm_nm,' ','') LIKE '%국민성장%') GROUP BY printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no) ORDER BY MIN(length(REPLACE(itm_nm,' ',''))) ASC LIMIT 30 /*M:BASEPOP*/
+```
+</details>
+
+**판정** — ✅ 유지 — **주최 공식 문항**. 상품명·클래스 4개·운용사·유형·약관분류·위험등급·순자산을 답하고 '세부적인 투자 전략 및 방향성에 대한 내용은 제공할 수 없습니다' 로 미수록을 명시한다.
+
 ### ✅ `KG-027` — 좌수 — ABSENT 선언됨
 
 > 미래에셋코어테크 펀드 설정 좌수 알려줘
@@ -6076,6 +7206,16 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 ```
 
 **미실행**· 3.3s
+
+**판정** — ABSENT 선언(hasUnitsOutstanding) 정확 발동 + 대체 안내(순자산·기준가). 과거 'fd_set_pcd 10 → 10좌' 환각이 재발하지 않았다.
+
+**6차 · 09-05 밤** ✅
+
+```
+공모펀드 마스터·설명서 수집분 어디에도 좌수(설정 좌수·잔존 좌수·잔고 좌수) 컬럼이 없어 좌수는 답할 수 없습니다. 규모는 순자산, 가격은 기준가로 안내할 수 있습니다.
+```
+
+**미실행**· 0.4s
 
 **판정** — ABSENT 선언(hasUnitsOutstanding) 정확 발동 + 대체 안내(순자산·기준가). 과거 'fd_set_pcd 10 → 10좌' 환각이 재발하지 않았다.
 
@@ -6137,6 +7277,16 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 
 **판정** — ABSENT 선언(hasNavHistory) 정확 발동 + 대체 안내.
 
+**6차 · 09-05 밤** ✅
+
+```
+기준가는 기준일 단일 스냅샷만 있고 시계열(추이·변동·과거 기준가)은 수록되어 있지 않습니다. 기준일 현재 기준가와 기간 수익률(1개월~5년 누적)은 안내할 수 있습니다.
+```
+
+**미실행**· 0.3s
+
+**판정** — ABSENT 선언(hasNavHistory) 정확 발동 + 대체 안내.
+
 ### ✅ `FND-R01` — 없는 개념 (신용등급)
 
 > 신용등급이 AAA인 공모펀드 알려줘
@@ -6186,6 +7336,16 @@ SELECT MIN(itm_no) AS 대표_itm_no, MIN(TRIM(itm_nm)) AS itm_nm, COUNT(*) AS "�
 **판정** — '신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)'. 채권 개념을 펀드로 옮기지 않았고 이유가 도메인 사실이다.
 
 **5차 · 09-05 저녁** ✅
+
+```
+요청하신 항목은 이 상품 유형의 데이터에 수록되어 있지 않아 확인할 수 없습니다. 신용등급 항목이 없습니다.
+```
+
+**미실행**· 0.3s
+
+**판정** — '신용등급 컬럼 없음 — 채권형 펀드도 등급은 구성종목 단위(미수록)'. 채권 개념을 펀드로 옮기지 않았고 이유가 도메인 사실이다.
+
+**6차 · 09-05 밤** ✅
 
 ```
 요청하신 항목은 이 상품 유형의 데이터에 수록되어 있지 않아 확인할 수 없습니다. 신용등급 항목이 없습니다.
@@ -6260,6 +7420,16 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클
 
 **판정** — ✅ 회수. '제공된 데이터의 기준일은 2026-08-24 이며 이후 시점의 정보는 확인할 수 없습니다' — 미래 예측 거절로 부류가 맞았다. 1차는 '스키마에 없는 컬럼' 부류였다.
 
+**6차 · 09-05 밤** ✅
+
+```
+요청하신 시점은 제공된 데이터의 기준일(2026-08-24) 이후라 확인할 수 없습니다. 데이터는 기준일까지의 내용만 담고 있습니다. 기준일 이전 기간이나 만기일 기준으로 다시 질문해 주시면 조회해 드리겠습니다.
+```
+
+**미실행**· 3.0s
+
+**판정** — ✅ 회수. '제공된 데이터의 기준일은 2026-08-24 이며 이후 시점의 정보는 확인할 수 없습니다' — 미래 예측 거절로 부류가 맞았다. 1차는 '스키마에 없는 컬럼' 부류였다.
+
 ### ✅ `KG-032` — 기준일 밖
 
 > 2026년 9월 1일 기준으로 순자산이 가장 큰 공모펀드 알려줘
@@ -6315,6 +7485,16 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클
 ```
 
 **미실행**· 2.7s
+
+**판정** — ✅ 유지. 기준일 이후 시점 질의를 정확히 거절하고 대안(기준일 이전·만기일 기준)까지 안내한다.
+
+**6차 · 09-05 밤** ✅
+
+```
+요청하신 시점은 제공된 데이터의 기준일(2026-08-24) 이후라 확인할 수 없습니다. 데이터는 기준일까지의 내용만 담고 있습니다. 기준일 이전 기간이나 만기일 기준으로 다시 질문해 주시면 조회해 드리겠습니다.
+```
+
+**미실행**· 2.8s
 
 **판정** — ✅ 유지. 기준일 이후 시점 질의를 정확히 거절하고 대안(기준일 이전·만기일 기준)까지 안내한다.
 
@@ -6401,6 +7581,23 @@ SELECT DISTINCT pd_nm, pd_abrv_nm FROM domestic_etfs WHERE pd_nm LIKE '%김미%'
 ```
 
 `[Execute] 0행`· ⚠ 재생성· 47.2s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT DISTINCT pd_nm, pd_abrv_nm FROM domestic_etfs WHERE pd_nm LIKE '%김미%' OR pd_abrv_nm LIKE '%Kim%' LIMIT 30
+```
+</details>
+
+**판정** — ✅ 유지 — **주최 공식 문항**(답변 불가 부류). '조건에 해당하는 상품이 데이터에서 확인되지 않습니다'. 🔴 R9⑦ 의 거절 뒤집기가 이 문항엔 발동하지 않는다(이름이 지목한 상품이 0행이라 거절이 옳다) — 두 공식 문항이 같은 코드 경로에서 반대로 갈리는 것을 서버에서 확인했다.
+
+**6차 · 09-05 밤** ✅
+
+```
+조건에 해당하는 상품이 데이터에서 확인되지 않습니다. 조건 중 일부는 수록된 데이터에 해당하는 상품 자체가 없습니다.
+```
+
+`[Execute] 0행`· ⚠ 재생성· 50.2s
 
 <details><summary>SQL</summary>
 
@@ -6544,6 +7741,31 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클
 
 **판정** — 되묻고 끝내지 않았다(리드 결정 2026-08-31 준수). 1년 수익률 축을 밝히고 답 + 누적/레버리지 경고까지.
 
+**6차 · 09-05 밤** ✅
+
+```
+1년 수익률 상위 5개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 1년 수익률 = 클래스 최고값(MAX), 기준일 2026-08-24).
+
+1. 한화2.2배레버리지인덱스증권투자신탁(주식-파생재간접형): 1년 수익률 387.66% · 클래스 6개
+2. NH-Amundi코리아2배레버리지증권투자신탁[주식-파생형]: 1년 수익률 362.53% · 클래스 4개
+3. 삼성KOSPI200 2배레버리지증권투자신탁 제1호[주식-파생재간접형]: 1년 수익률 361.3% · 클래스 7개
+4. NH-Amundi1.5배레버리지인덱스증권투자신탁(주식-파생형): 1년 수익률 257.14% · 클래스 5개
+5. 하나 코리아증권자투자신탁[주식]: 1년 수익률 203.13% · 클래스 8개
+
+※ 수익률 8기간 컬럼은 모두 누적 수익률이며 연 환산이 아닙니다. 100%를 넘는 값은 파생·레버리지 전략에서 나오므로 손실도 같은 배율로 커질 수 있습니다.
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 3.2s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_yr1_ern_r) AS fd_yr1_ern_r, COUNT(*) AS "클래스수", zrin_attr_nms FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND itm_no NOT IN ('KR5157450126', 'KR5153450511', 'KR5119470012') GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_yr1_ern_r) IS NOT NULL AND MAX(fd_yr1_ern_r) > -100 ORDER BY 3 DESC LIMIT 5
+```
+</details>
+
+**판정** — 되묻고 끝내지 않았다(리드 결정 2026-08-31 준수). 1년 수익률 축을 밝히고 답 + 누적/레버리지 경고까지.
+
 
 ## O. 되묻기
 
@@ -6664,6 +7886,31 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클
 ```
 
 `[Execute] 5행`· 기계 조립(HCX 0회)· 3.1s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클래스수", CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL AND MAX(fd_nast_suma) > 0 ORDER BY 3 DESC LIMIT 5
+```
+</details>
+
+**판정** — ✅ 회수(R10⑥). 값 정확 + '※ 상위 5개 중 **5개가 MMF**(법인 자금을 단기 예치하는 상품)입니다. MMF 를 빼고 보시려면 MMF 제외 라고 말씀해 주세요'. 통과 조건이 'MMF 지배 사실을 드러내는가' 였다.
+
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 5개 공모펀드입니다 (판매중·공모 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. 삼성MMF법인제1호: 순자산 124,295억원 · 클래스 4개
+2. KB법인용MMF I- 1: 순자산 96,266억원 · 클래스 2개
+3. 우리큰만족법인MMF1호(국공채): 순자산 90,390억원 · 클래스 2개
+4. 우리큰만족신종MMF3호: 순자산 80,497억원 · 클래스 1개
+5. 신영법인용MMF 제4-26호 C-I형: 순자산 76,371억원 · 클래스 2개
+
+※ 상위 5개 중 5개가 **MMF**(법인 자금을 단기 예치하는 상품)입니다. MMF 를 빼고 보시려면 'MMF 제외' 라고 말씀해 주세요.
+```
+
+`[Execute] 5행`· 기계 조립(HCX 0회)· 2.9s
 
 <details><summary>SQL</summary>
 
@@ -6859,6 +8106,23 @@ SELECT ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) /
 
 **판정** — ✅ 유지. '이 조건에 해당하는 펀드가 **217개**라 하나의 값으로 답할 수 없습니다' — 되묻기. 4차의 204 와 수가 다른 것은 이번 SQL 이 외부표 조인을 안 걸어 모수가 온전해진 덕이다(정답 217).
 
+**6차 · 09-05 밤** ✅
+
+```
+이 조건에 해당하는 펀드가 204개라 하나의 값으로 답할 수 없습니다. 특정 펀드명이나 유형(주식형·채권형·MMF 등)을 알려주시면 그 펀드의 값을 알려드리겠습니다.
+```
+
+`[Execute] 30행`· ⚠ 재생성· 4.9s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r) / 10.0, 4) as "총보수(4항목 합)", ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)/10.0, 4) || '%' AS "총보수_퍼센트", itm_no, TRIM(itm_nm) AS itm_nm, fd_yr1_ern_r FROM public_funds WHERE TRIM(or_co_xtn_itt_cd) IN ('00040010', '00080135', '00080134', '00080168', '00040092') AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r <> 0 LIMIT 30
+```
+</details>
+
+**판정** — ✅ 유지. 되묻기(204개라 하나의 값으로 답할 수 없음) — 5차의 217 과 수가 다른 것은 HCX 가 이름 필터를 달리 잡은 탓이나 되묻기 자체는 옳다.
+
 ### ❌→✅ `FND-R03` — 주관 + 잘못된 전제
 
 > 기준가가 높은 순서로 좋은 펀드 알려줘
@@ -6952,6 +8216,23 @@ SELECT itm_no, TRIM(itm_nm), fd_price_bas_dt FROM public_funds WHERE sale_yn = '
 
 **판정** — ✅ 유지. '기준가는 펀드의 성과를 직접적으로 나타내는 지표가 아니므로 이를 기준으로 좋은 펀드를 선정하는 것은 적절하지 않습니다' — 전제를 반박하고 정렬을 수행하지 않았다.
 
+**6차 · 09-05 밤** ✅
+
+```
+기준가가 높은 순서로 좋은 펀드를 찾는 것은 적절하지 않습니다. 기준가는 설정 시 1,000에서 출발해 누적된 값이기 때문에 상품 간 크기 비교가 무의미합니다. 대신 수익률, 순자산 등 비교 가능한 축을 고려하여 좋은 펀드를 선택하는 것이 좋습니다.
+```
+
+`[Execute] 5행`· 50.1s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), fd_price_bas_dt FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_price_bas_dt IS NOT NULL ORDER BY fd_price_bas_dt DESC LIMIT 5
+```
+</details>
+
+**판정** — ✅ 유지, 문장이 더 정확해졌다 — '설정 시 1,000에서 출발해 누적된 값이라 상품 간 크기 비교가 무의미' + 대안 축(수익률·순자산) 제시.
+
 
 ## P. 도메인 축 신설 — PDF가 한 절씩 다루는데 기존 문항이 없던 13축
 
@@ -7032,6 +8313,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 **판정** — ✅ 회수. 913펀드(2,594클래스) — 예상과 정확히 일치. 2차의 1,003/2,924 오차가 사라졌다.
 
 **5차 · 09-05 저녁** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 913개(클래스 2,594개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.6s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE prvo_pbff_desc = '공모' AND or_attr_desc IN ('재간접') AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — ✅ 회수. 913펀드(2,594클래스) — 예상과 정확히 일치. 2차의 1,003/2,924 오차가 사라졌다.
+
+**6차 · 09-05 밤** ✅
 
 ```
 조회 조건에 해당하는 공모펀드는 913개(클래스 2,594개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
@@ -7141,6 +8439,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — 374(441) 정확.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 374개(클래스 441개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.2s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE pers_corp_desc = '법인' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — 374(441) 정확.
+
 ### ❌→✅ `DOM-03` — 통화
 
 > 원화가 아닌 통화로 설정된 공모펀드는 몇 개야?
@@ -7234,6 +8549,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — ✅ 회수. 131펀드(187클래스) — 예상과 정확히 일치. 1차의 '질의를 안전하게 실행할 수 없어' 거절이 사라졌다.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 131개(클래스 187개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 1.7s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND (prvo_pbff_desc = '공모' AND curr_cd <> 'KRW') LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — ✅ 회수. 131펀드(187클래스) — 예상과 정확히 일치. 1차의 '질의를 안전하게 실행할 수 없어' 거절이 사라졌다.
+
 ### ✅ `DOM-04` — 벤치마크 — 복합식 성분
 
 > KOSPI200을 벤치마크로 쓰는 공모펀드는 몇 개야?
@@ -7317,6 +8649,23 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 1.9s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE REPLACE(bmrk_nm,' ','') LIKE '%KOSPI200%' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — 815펀드(2,217클래스). 복합식 벤치마크 성분까지 포함해 셌다.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 815개(클래스 2,217개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.0s
 
 <details><summary>SQL</summary>
 
@@ -7440,7 +8789,28 @@ SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클
 
 **판정** — ✅ 회수(R10②). 1위 NH-Amundi코리아2배레버리지 7,333억 · 2위 교보악사파워인덱스1호 5,050억 — 예상과 일치. 머리줄도 '판매중·공모·**파생상품** 기준' 으로 바로잡혔다. 3차엔 묻지 않은 '재간접' 이 IN 목록에 끼어 1위가 피델리티글로벌테크놀로지(재간접형)로 바뀌었었다.
 
-### ❌→🟡 `DOM-06` — 클래스 비용 — PDF가 '못 답한다'고 한 것
+**6차 · 09-05 밤** ✅
+
+```
+순자산 상위 3개 공모펀드입니다 (판매중·공모·파생상품 기준, 펀드 = 대표예탁원번호 기준·클래스 = 판매 단위, 순자산 = 대표 클래스 기준(MAX), 기준일 2026-08-24).
+
+1. NH-Amundi코리아2배레버리지증권투자신탁[주식-파생형]: 순자산 7,333억원 · 클래스 4개
+2. 교보악사파워인덱스증권투자신탁1호(주식-파생형): 순자산 5,050억원 · 클래스 9개
+3. KB스타 미국 나스닥 100 인덱스 증권 자투자신탁(주식-파생형)(H): 순자산 3,225억원 · 클래스 10개
+```
+
+`[Execute] 3행`· 기계 조립(HCX 0회)· 50.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT itm_no, TRIM(itm_nm), MAX(fd_nast_suma) AS fd_nast_suma, COUNT(*) AS "클래스수", or_attr_desc, CAST(ROUND(fd_nast_suma/100000000.0) AS INTEGER) || '억원' AS "순자산_억원" FROM public_funds  WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND or_attr_desc IN ('파생상품') AND fd_nast_suma <> 0 GROUP BY COALESCE(NULLIF(TRIM(rptt_ksd_itm_no),'KR0000000000'), printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) HAVING MAX(fd_nast_suma) IS NOT NULL ORDER BY 3 DESC LIMIT 3
+```
+</details>
+
+**판정** — ✅ 회수(R10②). 1위 NH-Amundi코리아2배레버리지 7,333억 · 2위 교보악사파워인덱스1호 5,050억 — 예상과 일치. 머리줄도 '판매중·공모·**파생상품** 기준' 으로 바로잡혔다. 3차엔 묻지 않은 '재간접' 이 IN 목록에 끼어 1위가 피델리티글로벌테크놀로지(재간접형)로 바뀌었었다.
+
+### ❌→🟡→✅ `DOM-06` — 클래스 비용 — PDF가 '못 답한다'고 한 것
 
 > 미래에셋코어테크 펀드는 A클래스와 C클래스 중 어느 쪽이 보수가 낮아?
 
@@ -7533,6 +8903,25 @@ SELECT or_co_rwrd_r, sale_co_rwrd_r, trusc_rwrd_r, ofwk_trus_rwrd_r, itm_nm, ROU
 
 **판정** — 🟡 값·단위·방향 모두 정확해졌다 — 'A클래스의 총보수는 **1.435%**, C클래스는 **1.755%**. 따라서 A클래스의 보수가 더 낮습니다.' R11 로 세 겹을 닫은 결과다(HCX 손계산 산수 오류 → 합계 열을 SQL 이 냄 · 기호 ‰ → 반환 직전 교정). ⚠️ 다만 통과 조건의 **선취 수수료·기간 조건부**가 이번 회차엔 안 붙었다 — 그 고지는 결과에 '수수료선취'·'수수료미징구' 가 함께 있을 때 발동하는데, 이번 SQL 은 `han_clas_nm` 을 뽑지 않았다. 트리거를 결과 행에 건 대가다.
 
+**6차 · 09-05 밤** ✅
+
+```
+미래에셋코어테크 펀드의 경우, C클래스의 총보수가 1.755%, A클래스의 총보수가 1.435%로, A클래스의 보수가 더 낮습니다.
+
+※ 총보수만 비교한 값입니다. **A 계열은 가입 시 선취 수수료를 따로 뗍니다**(금액은 이 데이터에 없습니다) — 그래서 유불리는 투자 기간에 달려 있습니다: **길게 보유하면 A, 짧게 보유하면 C** 가 유리한 것이 일반적입니다.
+```
+
+`[Execute] 2행`· 8.8s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT TRIM(itm_nm) AS itm_nm, ROUND((or_co_rwrd_r) / 10.0, 4) AS "운용보수", ROUND((sale_co_rwrd_r) / 10.0, 4) AS "판매보수", ROUND((trusc_rwrd_r) / 10.0, 4) AS "수탁보수", ROUND((ofwk_trus_rwrd_r) / 10.0, 4) AS "사무관리보수", ROUND((or_co_rwrd_r + sale_co_rwrd_r + trusc_rwrd_r + ofwk_trus_rwrd_r)/10.0, 4) AS "총보수", han_clas_nm, fd_yr1_ern_r FROM public_funds  WHERE (REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류A' OR REPLACE(REPLACE(itm_nm,' ',''),'-','') LIKE '%종류C') AND TRIM(or_co_xtn_itt_cd) = '00080008' AND REPLACE(itm_nm,' ','') LIKE '%미래에셋코어테크%' AND sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND fd_yr1_ern_r IS NOT NULL AND fd_yr1_ern_r > -100 GROUP BY or_co_xtn_itt_cd, han_clas_nm LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수. 값·방향(A 1.435% < C 1.755%)에 더해 통과 조건이던 선취 수수료·투자기간 고지가 붙었다: 'A 계열은 가입 시 선취 수수료를 따로 뗍니다 … 길게 보유하면 A, 짧게 보유하면 C'.
+
 ### 🟡→✅ `DOM-07` — 판매완료 ≠ 청산
 
 > 판매완료된 공모펀드는 몇 개야? 이미 청산된 거야?
@@ -7618,6 +9007,25 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 ```
 
 `[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 1.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매완료' AND prvo_pbff_desc = '공모' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수(R11). 3,934펀드(5,747클래스) + '※ 판매완료 는 **신규 가입이 닫힌 것**이지 청산(펀드 해지)이 아닙니다 — 이미 가입한 투자자는 계속 보유·환매할 수 있습니다'. 통과 조건이 '청산 아님을 말하는가' 였고 네 회차 내리 뒷부분을 넘겼던 자리다.
+
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 3,934개(클래스 5,747개)입니다 (공모 기준, 기준일 2026-08-24).
+
+※ '판매완료' 는 **신규 가입이 닫힌 것**이지 청산(펀드 해지)이 아닙니다 — 이미 가입한 투자자는 계속 보유·환매할 수 있습니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 5.2s
 
 <details><summary>SQL</summary>
 
@@ -7725,6 +9133,25 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — ✅ 회수(R10⑧). 1,328펀드(3,688클래스) + '※ 환헤지여부 항목은 판매중·공모 8,969클래스 중 3,531건(**39%**)이 미수록입니다 — 나머지가 모두 아니오 라는 뜻이 아닙니다'. 결측률은 yaml 이 아니라 DB 에서 직접 센다(선언은 HCX 지시문이라 사용자 문장이 아니다).
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 1,328개(클래스 3,688개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+
+※ 환헤지여부 항목은 판매중·공모 8,969클래스 중 3,531건(39%)이 미수록입니다 — 나머지가 모두 '아니오' 라는 뜻이 아닙니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 2.0s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE exchdg_yn = 'Y' AND prvo_pbff_desc = '공모' AND sale_yn = '판매중' LIMIT 30 /*M:FUNDUNIT*/
+```
+</details>
+
+**판정** — ✅ 회수(R10⑧). 1,328펀드(3,688클래스) + '※ 환헤지여부 항목은 판매중·공모 8,969클래스 중 3,531건(**39%**)이 미수록입니다 — 나머지가 모두 아니오 라는 뜻이 아닙니다'. 결측률은 yaml 이 아니라 DB 에서 직접 센다(선언은 HCX 지시문이라 사용자 문장이 아니다).
+
 ### ❌→✅ `DOM-09` — 🔴 설립국가 95% 미지정
 
 > 국내에서 설립된 공모펀드는 몇 개야?
@@ -7790,6 +9217,16 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — ✅ 회수, 그것도 완전하게. '8,969건 중 8,561건(95%)이 미기재라 셀 수 없다' + 실재 코드 분포(한국 298·룩셈부르크 96·미국 10·영국 4) + 대안(투자지역·역외 여부)까지. PDF §2.4 가 경고한 설립국↔투자지역 혼동을 정면으로 피했다. 0.3s 게이트 즉답.
 
+**6차 · 09-05 밤** ✅
+
+```
+펀드가 설립된 국가는 코드가 대부분 기재되어 있지 않아 국내 설립 펀드 수를 셀 수 없습니다. 판매중인 공모펀드 8,969건 중 8,561건(95%)이 미기재이고, 코드가 있는 것은 한국 298건·룩셈부르크 96건·미국 10건·영국 4건뿐입니다. 참고로 '어디에 투자하는가'(국내/해외 구분)나 역외펀드 여부는 별개 항목으로 조회해 드릴 수 있습니다.
+```
+
+**미실행**· 0.4s
+
+**판정** — ✅ 회수, 그것도 완전하게. '8,969건 중 8,561건(95%)이 미기재라 셀 수 없다' + 실재 코드 분포(한국 298·룩셈부르크 96·미국 10·영국 4) + 대안(투자지역·역외 여부)까지. PDF §2.4 가 경고한 설립국↔투자지역 혼동을 정면으로 피했다. 0.3s 게이트 즉답.
+
 ### ❌→✅ `DOM-10` — 🔴 이자/배당 = 상수 컬럼
 
 > 이자형 공모펀드와 배당형 공모펀드는 각각 몇 개야?
@@ -7846,6 +9283,16 @@ SELECT '이자형', COUNT(*) FROM public_funds WHERE sale_yn = '판매중' AND p
 **판정** — ✅ 회수(R18 게이트). 'int_dvd_desc 가 판매중·공모 8,969 전건 배당 인 상수 컬럼 — 0개가 아니라 구분 불가' 로 즉답. HCX 0회 0.3s. 1차의 헤더 환각('이자형 1개')이 구조적으로 사라졌다.
 
 **5차 · 09-05 저녁** ✅
+
+```
+이자형과 배당형의 구분은 이 데이터로는 할 수 없습니다. 이자·배당 구분 항목이 판매중인 공모펀드 8,969건 전부 '배당' 한 값으로만 되어 있어, 이자형이 0개인 것이 아니라 구분 자체가 성립하지 않습니다. 분배 관련해서는 최근 분배율로 분배가 있었는지 여부를 조회해 드릴 수 있습니다.
+```
+
+**미실행**· 0.3s
+
+**판정** — ✅ 회수(R18 게이트). 'int_dvd_desc 가 판매중·공모 8,969 전건 배당 인 상수 컬럼 — 0개가 아니라 구분 불가' 로 즉답. HCX 0회 0.3s. 1차의 헤더 환각('이자형 1개')이 구조적으로 사라졌다.
+
+**6차 · 09-05 밤** ✅
 
 ```
 이자형과 배당형의 구분은 이 데이터로는 할 수 없습니다. 이자·배당 구분 항목이 판매중인 공모펀드 8,969건 전부 '배당' 한 값으로만 되어 있어, 이자형이 0개인 것이 아니라 구분 자체가 성립하지 않습니다. 분배 관련해서는 최근 분배율로 분배가 있었는지 여부를 조회해 드릴 수 있습니다.
@@ -7955,6 +9402,26 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — ✅ 회수(R11). 0개 + 전체 3클래스 + '※ 헤지펀드는 **사모 영역**이라 공모 모수에서 0 인 것이 정상입니다 — 자료가 빠진 것이 아닙니다'. 숫자만 보면 결손처럼 읽히던 것을 도메인 설명으로 닫았다.
 
+**6차 · 09-05 밤** ✅
+
+```
+조회 조건에 해당하는 공모펀드는 0개(클래스 0개)입니다 (판매중·공모 기준, 기준일 2026-08-24).
+해당 조건인 펀드는 판매중·공모 기준 0개이고, 전체(판매완료·사모 포함)로는 3클래스가 있습니다.
+
+※ 헤지펀드는 **사모 영역**이라 공모 모수에서 0 인 것이 정상입니다 — 자료가 빠진 것이 아닙니다.
+```
+
+`[Execute] 1행`· 슬롯 FUNDUNIT· 기계 조립(HCX 0회)· 3.5s
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' || COALESCE(CASE WHEN length(trim(mtco_itm_no)) >= 7 THEN trim(mtco_itm_no) ELSE substr('0000000' || trim(mtco_itm_no), -7) END, itm_no)) AS "펀드수", COUNT(*) AS "클래스수" FROM public_funds WHERE sale_yn = '판매중' AND prvo_pbff_desc = '공모' AND (zrin_ptn_nm = '글로벌헤지전략' OR REPLACE(itm_nm,' ','') LIKE '%헤지펀드%' OR REPLACE(itm_nm,' ','') LIKE '%사모투자재간접%') AND REPLACE(itm_nm,' ','') LIKE '%헤지펀드인%' /*M:FUNDUNIT*/ LIMIT 30
+```
+</details>
+
+**판정** — ✅ 회수(R11). 0개 + 전체 3클래스 + '※ 헤지펀드는 **사모 영역**이라 공모 모수에서 0 인 것이 정상입니다 — 자료가 빠진 것이 아닙니다'. 숫자만 보면 결손처럼 읽히던 것을 도메인 설명으로 닫았다.
+
 ### ❌→✅ `DOM-12` — 🔴 코드 의미 미제공
 
 > 전문투자자만 살 수 있는 공모펀드는 몇 개야?
@@ -8020,6 +9487,16 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 
 **판정** — ✅ 회수. '코드 의미가 제공되지 않아 어느 값이 전문투자자 전용인지 해석할 수 없다' + 대안 제시. 1차는 27이라는 해석 불가한 수를 확정 답변으로 냈다. `전문투자자코드금지` 규칙이 이번엔 지켜졌다.
 
+**6차 · 09-05 밤** ✅
+
+```
+전문투자자만 살 수 있는 공모펀드는 이 데이터로 확정할 수 없습니다. 판매 대상을 제한하는 항목이 코드로만 수록되어 있고 각 코드의 의미가 제공되지 않아, 어느 값이 '전문투자자 전용'인지 해석할 수 없습니다. 개인·법인 전용 구분이나 퇴직연금·개인연금 가입 가능 여부는 조회해 드릴 수 있습니다.
+```
+
+**미실행**· 0.3s
+
+**판정** — ✅ 회수. '코드 의미가 제공되지 않아 어느 값이 전문투자자 전용인지 해석할 수 없다' + 대안 제시. 1차는 27이라는 해석 불가한 수를 확정 답변으로 냈다. `전문투자자코드금지` 규칙이 이번엔 지켜졌다.
+
 ### 🟡 `DOM-13` — 🔴 누적 ≠ 연환산
 
 > 미래에셋코어테크 펀드 3년 수익률을 연평균으로 알려줘
@@ -8069,6 +9546,16 @@ SELECT COUNT(DISTINCT printf('%08d', CAST(or_co_xtn_itt_cd AS INTEGER)) || '/' |
 **판정** — '연평균(연환산)은 수록 없음 + 8기간 전부 누적' 을 정확히 밝혔다 — 이 셋에서 가장 어려운 축을 통과했다. 다만 있는 값(3년 누적 약 188~191%)을 함께 주지 않고 '기간을 지정해 다시 질문' 으로 넘겼다. 통과 조건이 '누적값 + 연환산 미수록' 이었다.
 
 **5차 · 09-05 저녁** 🟡
+
+```
+연평균(연환산) 수익률은 데이터에 수록되어 있지 않습니다. 수익률은 모두 누적 기준으로 1·3·6·18개월, 1·2·3·5년의 8개 기간이 수록되어 있습니다. 누적 수익률 기준의 조회나 순위를 원하시면 기간을 지정해 다시 질문해 주세요.
+```
+
+**미실행**· 0.3s
+
+**판정** — '연평균(연환산)은 수록 없음 + 8기간 전부 누적' 을 정확히 밝혔다 — 이 셋에서 가장 어려운 축을 통과했다. 다만 있는 값(3년 누적 약 188~191%)을 함께 주지 않고 '기간을 지정해 다시 질문' 으로 넘겼다. 통과 조건이 '누적값 + 연환산 미수록' 이었다.
+
+**6차 · 09-05 밤** 🟡
 
 ```
 연평균(연환산) 수익률은 데이터에 수록되어 있지 않습니다. 수익률은 모두 누적 기준으로 1·3·6·18개월, 1·2·3·5년의 8개 기간이 수록되어 있습니다. 누적 수익률 기준의 조회나 순위를 원하시면 기간을 지정해 다시 질문해 주세요.
@@ -8565,3 +10052,94 @@ SELECT or_co_rwrd_r + sale_co_rwrd_r + … AS "총보수_퍼센트"   ← ÷10 �
 서버 KG 실측: `kg_node 40,845 · kg_alias 66,603 · kg_edge 5,704` · **MotherFund 0 · FundAttribute 191 · `FundAttr_M108` 없음 · `Sec_kr_0001A0` 1**. 소스↔서버 불일치는 해소됐다.
 
 🔴 **배포 게이트의 사각지대를 하나 메웠다.** `deploy.sh` 0단계 pytest 는 **로컬 트리**에서 도는데, 서버는 `git pull` 로 팀원 커밋까지 받아 이미지를 굽는다. "팀원 코드 + 내 KG" 조합이 검증된 적이 없어, `origin/main` 코드와 배포한 DB 를 워크트리에 놓고 재확인했다(**553 → 559 passed**).
+
+
+---
+
+### R12 · 5차가 남긴 오거절 둘 — 확정식이 섰는데 환각 절이 문장을 죽였다 (2026-09-05 저녁)
+
+`Z10`·`KG-018` 은 **우리 가드가 정답 필터를 이미 심어 놓은 채로** 거절로 끝나던 문항이다.
+
+| 문항 | 확정식이 심은 것 | HCX 가 함께 실은 환각 컬럼 | 결과 |
+| :-- | :-- | :-- | :-- |
+| `Z10` | `zrin_ptn_nm = '인도주식'` (유형 축 주입) | `asset_class` · `fund_type` | 스키마 기각 → 재생성이 **같은 문장** → 오거절 |
+| `KG-018` | `prfd_attr_cds LIKE '%,C102,%' AND '%,C103,%'` (속성 태그 확정식) | `fd_mdfy_itt_cd` · `fd_open_itt_cd` | 동일 |
+
+#### 왜 종전 규칙이 못 걷었나
+
+환각 절 제거(`drop_hallucinated_column_conjuncts`)는 16R 부터 **"그 절의 값 리터럴이 다른 절에 이미 걸려 있을 때만"** 발동했다. 모수가 넓어지는 제거를 막으려던 안전장치인데, 두 문항은 리터럴이 겹치지 않는다 — `'해외주식형'` 은 `'인도주식'` 과 다른 낱말이고, `400`·`100` 은 태그 코드와 아예 다른 값이다.
+
+**그런데 겹치는지 여부는 잘못된 기준이었다.** 확정식 가드가 그 축을 심었다면 남은 환각 절은 정보가 0 이다 — 축의 정본이 이미 들어가 있으니 걷어도 모수가 넓어질 수 없다.
+
+```python
+# 전: 리터럴이 다른 절에 있어야만
+if bad and lits and all(l in others for l in lits):
+# 후: 확정식이 섰으면 그것으로 충분
+if bad and (canon_fired or (lits and all(l in others for l in lits))):
+```
+
+`canon_fired` 는 국가 태그·속성 태그·혼합형·유형 축 네 확정식 중 **하나라도 발동했는지**를 `_apply_sql_guards` 가 누적해 넘긴다. 확정식이 안 섰으면 종전 조건 그대로다 — **거절이 오답보다 낫다**는 원칙은 그대로 둔다.
+
+| 문항 | 전 | 후 (서버 실측) |
+| :-- | :-- | :-- |
+| `Z10` | 거절 | **34펀드(클래스 98)** |
+| `KG-018` | 거절 | **31펀드(클래스 189)** |
+
+커밋 `2ca7c88` · 회귀 테스트 `tests/test_round23_canon_halluc.py` 3건 · 전체 **828 passed**.
+
+🔴 **하네스가 거짓 통과를 내던 자리 하나.** 재생을 *가드 통과 후* SQL 로 하면 확정식이 이미 들어가 있어 `canon_fired` 가 서지 않는다 — 고쳤는데도 안 고쳐진 것처럼 보였다. 확정식이 심은 절을 걷어내 **HCX 원본 모양**으로 되돌린 뒤에야 실제 흐름이 재현됐다. 회귀 테스트도 `load_context()` 를 안 부르면 `_COLUMNS_OF` 가 비어 함수가 손을 떼고 **통과처럼 보인다**(첫 작성분이 그랬다).
+
+---
+
+### R13 · 6차가 남긴 셋 — 그리고 틀린 가설 하나 (2026-09-05 밤)
+
+6차 전수(78문항)와 그 뒤 서버 재확인에서 나온 자리들이다. 순서대로 적는다 — **틀린 가설을 배포한 뒤 되돌린 과정**이 이 기록의 핵심이다.
+
+#### ① `KG-018` 회귀 — 제가 낸 것
+
+R12 의 `canon_fired` 확장이 6차에서 **전체 모수 4,428펀드**를 답으로 내보냈다. 확정식이 심은 `prfd_attr_cds LIKE` 와 환각 `fd_mdfy_itt_cd` 가 **한 OR 그룹**에 묶여 있어 그룹째 사라졌고, 남은 조건이 `sale_yn` 뿐이었다. 성한 컬럼이 같은 절에 있으면 통째로 걷지 않고 **OR 가지만** 걷도록 고쳤다(가지 제거는 모수를 좁힌다). 성한 컬럼 판정은 낱말 훑기 — `','||prfd_attr_cds||','` 처럼 식 안에 있으면 술어 정규식이 못 본다. 커밋 `4b4f167`.
+
+같은 문항의 재생성 SQL 은 `GROUP BY itm_no HAVING cnt > 1` 을 덧붙여 **항상 0행**이었다(itm_no 는 고유키). 질문은 개수를 물은 적이 없다 — 묶음 키가 고유 식별자일 때만 걷고, 질문에 개수·이상 어휘가 있으면 둔다. 커밋 `318aaed`.
+
+#### ② `X22` — 실행 실패와 사라진 뒷질문
+
+| | 무엇 | 조치 |
+| :-: | :-- | :-- |
+| 실행 실패 | 집계만 있는 SELECT 에 `GROUP BY 1` → `aggregate functions are not allowed in the GROUP BY clause` | 위치 표기가 집계 열을 가리키면 그 항목만 걷는다(이름 표기 불개입) |
+| 뒷질문 소멸 | "실제 수탁사는 어디야" 가 통째로 사라지고 HCX 는 **운용사 이름**을 수탁사 자리에 내려 했다 | 조건부 집계가 0 이면 같은 모수에서 그 역할의 실제 분포를 세어 **KG 이름**으로 붙인다 — 수탁사 이름은 어느 컬럼에도 없다 |
+
+서버: *0건 + 실제 수탁사는 한국씨티은행·홍콩상하이은행 서울지점·신한은행·우리은행·농협은행 등*. 커밋 `4b4f167`.
+
+#### ③ `U14` — 서버에서만 안 서는 가드, 그리고 틀린 가설
+
+랭킹 정렬축 교정 가드는 로컬 재생에선 늘 섰는데 서버에선 5·6차 내리 안 섰다. 저는 **"중간 가드가 SELECT 위치를 옮긴다"** 고 추정하고 체인 끝 재확인을 배포했다. 사용자가 "확실해?" 라고 물었고, 답은 **아니오**였다 — 재현하지 못한 가설이었다.
+
+확정 절차:
+1. 컨테이너 안에서 트레이스의 SQL 을 가짜 플래너로 재생 → **정상**. 코드가 아니라 입력이 다르다는 뜻.
+2. API 로그에 **가드 적용 전 원문**(`raw=`)을 남기게 하고 다시 요청.
+3. 원문: `SELECT itm_no, TRIM(itm_nm), COUNT(*) … ORDER BY 3 DESC LIMIT 5` — **축 컬럼 `fd_yr1_ern_r` 이 SELECT 에 없다.** 가드는 조건 ③("그 컬럼이 SELECT 에 실려 있어야 한다")에서 물러났고, 뒤의 근거컬럼 보강이 그 컬럼을 덧붙인 뒤에야 끝 재확인이 섰다.
+
+로컬 재생이 늘 성공했던 이유는 **트레이스에 찍힌 SQL 이 보강된 뒤의 것**이었기 때문이다. 재생의 입력이 틀렸다.
+
+수리(커밋 `47462f8`): 축 컬럼이 SELECT 에 없으면 **물러나지 않고 덧붙인다**. 끝 재확인은 안전망으로 둔다. 덧붙여 질문이 명시한 개수(3개)와 LIMIT(5)를 맞췄다 — 마지막 LIMIT 의 숫자만 제자리에서 바꾼다(끝에 enforce 마커가 붙은 채권 SQL 에 덧붙이면 문법 오류 — 테스트 4건이 잡았다). 후속 경로에 기점오류 제외도 이어 붙였다(마이다스 Ce 1,436% 가 1위로 나간 실측).
+
+서버 2/2: *상위 3개 — 한화2.2배 387.66% · NH-Amundi 362.53% · 삼성KOSPI200 361.3%* (gold 일치).
+
+#### 교훈 둘
+
+- **재생은 원문으로 한다.** 트레이스의 SQL 은 가드를 지난 문장이다. 그걸로 재생하면 가드 불발을 절대 재현할 수 없다. 이제 API 로그가 원문을 남기므로 서버에서만 나는 불발은 로컬에서 재생된다.
+- **가설은 검증 뒤에 배포한다.** 끝 재확인은 해가 없어 결과적으로 살았지만, 원인을 모른 채 올린 코드였다. 다음 한 수(컨테이너 안 재생)는 10분이면 됐다.
+
+커밋 `d801245`·`318aaed`·`9a7383d`·`47462f8` · 회귀 테스트 21건 추가 · 전체 **850 passed**.
+
+#### ④ 6차 채점이 드러낸 회귀 셋 — "HCX 가 컬럼을 잘못 골랐다" 한 부류
+
+6차는 ✅69 · 🟡2 · ❌7 (5차 68·4·6). 회수 3(KG-015·Z10·DOM-06) · 회귀 3 — 셋 다 **질문의 축과 다른 컬럼**이었다.
+
+| 문항 | HCX 가 쓴 것 | 접지·질문이 말한 것 | 규칙 | 재생 |
+| :-- | :-- | :-- | :-- | :-- |
+| `KG-005` | `mtco_itm_no = '00040010'` → 0개 | 접지 줄: `or_co_xtn_itt_cd='00040010'` | KG 기관 코드가 역할 컬럼 밖에 걸리면 접지 컬럼으로 (`Org_` 운용 · `Org_trustee_` 수탁) | 217/906 · **207/850** |
+| `FND-014` | `fd_yr1_ern_r IS NULL` → 1,099 | '위험등급 정보가 없는' | 부재 질의의 IS NULL 컬럼은 질문이 이름 부른 속성의 컬럼 | **312/422** |
+| `FND-005` | 보수 합 `IS NOT NULL` 만 → 역외 0% ×5 | yaml `집계_TopN_필수`: `<> 0` | 보수 축 랭킹 모수에서 보수 합 0(미수록 29클래스) 제외 | 피델리티호주 **0.0015%** · 솔로몬 0.015% … |
+
+덤으로 잠재 버그 하나: 대표행 보정의 "이미 집계됐나" 검사가 괄호 한 겹만 봐서 `MIN(ROUND((…)))` 를 다시 감싸 `MIN(MIN(…))` 문법 오류를 냈다 — 균형 괄호로 교정. 회귀 테스트 8건.

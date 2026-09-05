@@ -3914,8 +3914,14 @@ def ensure_fund_list_grouping(sql: str, question: str) -> tuple[str, bool]:
     #    형태를 그대로 복사해 오는 경로)도 rptt 축으로 옮긴다. 축이 둘로 갈리면 조립기가 꺼진다.
     if f"GROUP BY {_FUND_KEY_EXPR}" in sql:
         return sql.replace(f"GROUP BY {_FUND_KEY_EXPR}", f"GROUP BY {_FUND_GROUP_EXPR}"), True
-    if re.search(r"\b(?:group\s+by|order\s+by)\b", sql, re.I):
+    if re.search(r"\bgroup\s+by\b", sql, re.I):
         return sql, False
+    if re.search(r"\border\s+by\b", sql, re.I):
+        # 2026-09-06 FV-1a: `ORDER BY itm_nm`(이름순) 같은 비랭킹 정렬은 목록의 축이 아니다 — 걷고 순자산순 묶기로 간다.
+        #    랭킹 축(수익률·순자산·보수)이면 랭킹 가드의 몫이라 그대로 물러난다.
+        if _fund_sort_target(sql):
+            return sql, False
+        sql = re.sub(r"\border\s+by\b.*?(?=\blimit\b|$)", "", sql, flags=re.I | re.S)
     frm = re.search(r"\bfrom\b", sql, re.I)
     head = sql[:frm.start()]
     if "itm_nm" not in head and "itm_no" not in head:
@@ -10225,11 +10231,12 @@ def rewrite_holdings_join(sql: str, question: str, ctx, hits) -> tuple[str, str 
     out = re.sub(r"(?<![\w.])public_funds\.", "", out)
     out = re.sub(rf"\bfrom\s+public_funds\s+{re.escape(p_alias)}\b", "FROM public_funds", out, flags=re.I) if p_alias else out
     note = "보유종목 JOIN → 펀드 키 IN-부질의"
-    if _SUPER_NAST_Q.search(question.replace(" ", "")):
-        m_w2 = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", out, re.I | re.S)
-        where = m_w2.group(1).strip() if m_w2 else sub
-        out = _holdings_canonical_sql(where, question)
-        note += " · 순자산 최상급 → 확정 랭킹 형태"
+    # 목록형도 확정 형태로 — 부질의가 든 WHERE 는 목록 조립기의 커버리지 계산이 못 세서 "전체 30개"(LIMIT 수)가 나갔다(FV-3a).
+    #    전용 조립기가 같은 WHERE 로 전체 수를 다시 센다. 최상급이면 상위 N, 아니면 상위 30.
+    m_w2 = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", out, re.I | re.S)
+    where = m_w2.group(1).strip() if m_w2 else sub
+    out = _holdings_canonical_sql(where, question)
+    note += " · 확정 " + ("랭킹" if _SUPER_NAST_Q.search(question.replace(" ", "")) else "목록") + " 형태"
     return out, note
 
 
@@ -10708,7 +10715,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 동률 2차 정렬 주입 — ORDER BY 1차 축 뒤에 신용등급 서열 → 만기 이른 순 → pd_no 를 붙였다 "
              "(2026-09-04 서버 실측 #62: '표면금리 높은 순 5개' 를 두 번 물어 7.5% 동률 두 종목의 1·2위가 뒤바뀜 — "
              "2차 키가 없으면 등수는 DB 가 준 우연이다)")
-    sql, hold_fixed = ensure_fund_holdings_template(sql, q, ctx, name_token, tables == ["public_funds"])
+    # 2026-09-06 FV-3a: "삼성전자가 편입된 펀드" 는 종목→펀드 방향이다 — 보유종목 재작성 표식이 있으면 펀드→종목 템플릿은 물러난다
+    if "FROM ext_fund_holdings h WHERE CASE" in sql:
+        hold_fixed = False
+    else:
+        sql, hold_fixed = ensure_fund_holdings_template(sql, q, ctx, name_token, tables == ["public_funds"])
     if hold_fixed:
         step("[Guard] 구성종목 확정식 — 개별 펀드의 보유 종목 질의를 ext_fund_holdings(grp+or_co) JOIN 템플릿으로 교체, 대표 클래스 1개의 목록을 비중순으로 "
              "(5R KG-028·KG-034·X1·X2: public_funds 단독 조회 또는 ETF 구성종목 테이블로 이탈)")

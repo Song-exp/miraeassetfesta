@@ -790,7 +790,8 @@ def test_fund_list_grouping():
     assert rows[0][1].startswith("KB중국본토A주") and rows[0][3] == 14 and rows[0][-1] == "1453억원"
     # 비발동 — '클래스' 질문 · 이미 ORDER BY · 이름 필터(개별 조회 가드 담당) · SELECT 에 식별 컬럼 없음
     assert not f(_R3_SQL, "중국 펀드 클래스 알려줘")[1]
-    assert not f(_R3_SQL.replace("LIMIT 30", "ORDER BY itm_nm LIMIT 30"), q)[1]
+    # 2026-09-06 FV-1a: 이름순(비랭킹) ORDER BY 는 걷고 묶는다 — 불개입은 **랭킹 축** ORDER BY 일 때다
+    assert not f(_R3_SQL.replace("LIMIT 30", "ORDER BY fd_nast_suma DESC LIMIT 30"), q)[1]
     assert not f("SELECT itm_no, itm_nm FROM public_funds WHERE itm_nm LIKE '%중국%' LIMIT 30", q)[1]
     assert not f("SELECT fd_yr1_ern_r FROM public_funds WHERE sale_yn='판매중' LIMIT 30", q)[1]
 
@@ -846,7 +847,8 @@ def test_r3_pipeline_markers(ctx):
             return f"* {self.first.replace('투자신탁', '투자신닥')} 등이 있습니다."
 
     p = P()
-    r = answer_question("T-R3", "중국에 투자하는 공모펀드 알려줘", planner=p, ctx=ctx)
+    # 2026-09-06: 이름순 ORDER BY 도 목록 묶기가 걷게 되어, HCX 경로는 '클래스' 예외(목록 묶기 불개입)로 유지한다
+    r = answer_question("T-R3", "중국에 투자하는 공모펀드 클래스 알려줘", planner=p, ctx=ctx)
     assert "[Guard] 목록 펀드 묶기" not in r.think_trace and "[Answer] 내부 코드 컬럼 숨김 — prfd_attr_cds" in r.think_trace
     assert "[Answer] 커버리지 병기 — LIMIT 도달, 전체 560행 / 248펀드" in r.think_trace
     assert p.rows.startswith("(조회 결과: 전체 560행 / 248펀드 중 30행 표시") and "prfd_attr_cds" not in p.rows
@@ -854,7 +856,7 @@ def test_r3_pipeline_markers(ctx):
     assert "[Guard] 상품명 전사 교정" in r.think_trace and "신닥" not in r.answer and p.first in r.answer
     # LIMIT 미도달이면 종전 머리줄 그대로
     P.plan_sql = lambda self, q, g: hcx_path.replace("LIMIT 30", "LIMIT 5")
-    r2 = answer_question("T-R3b", "중국에 투자하는 공모펀드 알려줘", planner=P(), ctx=ctx)
+    r2 = answer_question("T-R3b", "중국에 투자하는 공모펀드 클래스 알려줘", planner=P(), ctx=ctx)
     assert "커버리지 병기" not in r2.think_trace
 
 

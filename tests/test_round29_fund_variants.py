@@ -112,3 +112,27 @@ def test_국내_주식형은_등호_그대로():
     sql = "SELECT itm_no FROM public_funds WHERE sale_yn = '판매중' LIMIT 30"
     out, fixed = ensure_fund_type_axis(sql, "삼성전자가 편입된 국내 주식형 공모펀드를 알려줘")
     assert fixed and "zrin_btyp_nm = '주식형'" in out
+
+
+# ── FV-1a·3a 후속: 비랭킹 ORDER BY 는 목록 묶기가 걷는다 · 종목→펀드 방향은 구성종목 템플릿이 물러난다
+def test_이름순_ORDER_BY_는_목록_묶기를_막지_않는다(ctx):
+    sql = ("SELECT DISTINCT itm_no, itm_nm, zrin_fd_ivst_risk_grd_nm FROM public_funds WHERE sale_yn = '판매중' "
+           "AND prvo_pbff_desc = '공모' AND zrin_fd_ivst_risk_gcd <= 3 ORDER BY itm_nm ASC LIMIT 30")
+    r = answer_question("FV-1a", "현재 판매 가능한 공모펀드 중 위험등급 3등급 이상 종목 알려줘", planner=_Fixed(sql), ctx=ctx)
+    assert "목록 답변 기계 조립" in r.think_trace and r.answer.startswith("조건에 해당하는 공모펀드는 전체 1,799개")
+
+
+def test_수익률순_ORDER_BY_는_랭킹_가드의_몫(ctx):
+    from src.runtime.pipeline import ensure_fund_list_grouping
+    sql = "SELECT itm_no, itm_nm, fd_yr1_ern_r FROM public_funds WHERE sale_yn = '판매중' ORDER BY fd_yr1_ern_r DESC LIMIT 5"
+    assert ensure_fund_list_grouping(sql, "1년 수익률 높은 펀드 5개")[1] is False
+
+
+def test_종목이_편입된_펀드_목록은_전체_수를_다시_센다(ctx):
+    sql = ("SELECT p.itm_nm, p.fd_nast_suma FROM public_funds p JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no "
+           "AND f.or_co = p.or_co_xtn_itt_cd WHERE f.holding_nm = '삼성전자' AND p.sale_yn = '판매중' "
+           "AND p.prvo_pbff_desc = '공모' AND p.fd_ivst_rgn_desc = '국내' AND p.zrin_btyp_nm = '주식형' LIMIT 30")
+    r = answer_question("FV-3a", "삼성전자가 편입된 국내 주식형 공모펀드를 알려줘", planner=_Fixed(sql), ctx=ctx)
+    assert "구성종목 확정식" not in r.think_trace                      # 펀드→종목 템플릿으로 뒤집히지 않는다
+    assert r.answer.startswith("'삼성전자' 을(를) 편입한 공모펀드는 전체")
+    assert "전체 30개" not in r.answer and "순자산 순으로 30개" in r.answer

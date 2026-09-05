@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 import inspect
 import os
+import json
 import re
 from functools import lru_cache
 import sqlite3
@@ -368,7 +369,7 @@ def ensure_or_group_parens(sql: str) -> tuple[str, bool]:
     return ("".join(out) + sql[last:], True) if changed else (sql, False)
 
 
-def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
+def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool, question: str = "") -> str | None:
     """실행 전 기각 사유 — 문법·테이블·컬럼·모호 컬럼·라우팅 범위·코드 리터럴. None 이면 통과. 1차·재생성 공통(중복 코드 0).
 
     KG 1R R3 ④ 라우팅 대상 밖 테이블(KG-028: 펀드 질의에 domestic_etfs JOIN) — 교차 질의가 아니고 라우터가 정한 테이블이 있으면
@@ -377,7 +378,8 @@ def _sql_precheck(sql: str, ctx, tables: list[str], cross: bool) -> str | None:
     # 🔴 10R gold N2 — **위반을 전부 모아 한 번에 돌려준다.** 첫 사유에서 return 하면 재생성 1회가 사유 하나만
     #    고치고 다음 가드에 다시 걸려 예산이 소진된다(OFFICIAL-004 실측: 1차 괄호 가드 · 2차 테이블 참조로
     #    서로 다른 두 가드가 재생성 1회를 나눠 쓰고 무응답). 가드를 늘릴수록 이 곱셈이 나빠진다.
-    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql), forbidden_literal_use(sql)) if e]
+    errs = [e for e in (validate_sql(sql), forbidden_column_use(sql), forbidden_literal_use(sql),
+                        fabricated_name_literal_use(sql, question, ctx) if question else None) if e]
     agg = where_window_or_aggregate(sql)
     if agg:
         errs.append(f"WHERE 절에 윈도우·집계 함수 사용({agg}) — 실행 시 misuse 오류. 집계 조건은 HAVING 으로, "
@@ -2135,6 +2137,81 @@ def forbidden_literal_use(sql: str) -> str | None:
 #    `fd_wk1_ern_r`(1주 수익률)이 23,676/23,676 전건 결측이라 SQL 이 기각되고, 재생성이 말없이 1개월로
 #    갈아탄 뒤 답변이 그 사실을 한 글자도 밝히지 않았다(must_include `1주`·`없` 둘 다 미충족).
 #    컬럼 정책 단위 고지문이다 — 문항별 예외가 아니다.
+_NAME_LIKE_BOND = re.compile(r"(?:TRIM\(\s*)?(?:\b\w+\.)?\bpd_nm\s*\)?\s+(?:NOT\s+)?LIKE\s+'((?:[^']|'')*)'", re.I)
+_declared_name_lits: dict = {}
+
+
+def _declared_name_literals(ctx) -> frozenset:
+    """채권 yaml 이 선언한 종목명 표기 조각 — 규칙 text 의 `LIKE '…'` 리터럴 + esg_labels 패턴의 4형(괄호·슬래시).
+
+    손 목록이 아니다: enums/domestic_bonds.yaml 을 통째로 훑어 만든다(2026-09-05 실측: 선언 리터럴 36종 · gold 채권 SQL 의
+    pd_nm LIKE 리터럴 중 질문 밖 108건이 전부 이 집합 안에 있다 — ESG 녹/사/지 4형 · 후/전환/풋 4형 · 신종·영구·물가·분리채권·콜·콜마·(정부보증))."""
+    key = id(ctx)
+    if key in _declared_name_lits:
+        return _declared_name_lits[key]
+    doc = ((getattr(ctx, "enums", None) or {}).get("domestic_bonds")) or {}
+    text = json.dumps(doc, ensure_ascii=False)
+    lits = {m.strip("%") for m in re.findall(r"LIKE\s+'((?:[^']|'')*)'", text, re.I)}
+    for ch in re.findall(r"\[\(/\](.)\[\)/\]", text):
+        lits |= {f"({ch})", f"({ch}/", f"/{ch})", f"/{ch}/"}
+    out = frozenset(v for v in lits if v)
+    _declared_name_lits[key] = out
+    return out
+
+
+def _fabricated_name_literals(sql: str, question: str, ctx) -> list[tuple[str, str]]:
+    """pd_nm LIKE 리터럴 중 **질문에도 선언에도 없는** 조각 — (조건식 원문, 조각) 목록. 없으면 [].
+
+    2026-09-05 난이도 상 #3 서버 실측: '우주항공 관련 발행사' 에 HCX 가 `pd_nm LIKE '%우주항공%' OR pd_nm LIKE '%Space%'` —
+    'Space' 는 질문에도 데이터에도 없는 즉석 영역(譯)이다. 값 사전 대조는 이름 컬럼에 불개입이라(자유 텍스트) 여기서 출처를 본다:
+    종목명 조건의 리터럴은 ① 질문의 낱말(공백 무시·대소문자 무시) 이거나 ② yaml 선언 표기(ESG 라벨·구조·신용보강)여야 한다."""
+    if "domestic_bonds" not in sql:
+        return []
+    qn = re.sub(r"\s+", "", question).lower()
+    declared = _declared_name_literals(ctx)
+    body = _where_body(sql)
+    out = []
+    for m in _NAME_LIKE_BOND.finditer(body):
+        needle = m.group(1).strip("%")
+        if not needle or needle in declared:
+            continue
+        if re.sub(r"\s+", "", needle).lower() in qn:
+            continue
+        out.append((m.group(0), needle))
+    return out
+
+
+def strip_fabricated_name_branches(sql: str, question: str, ctx) -> tuple[str, list[str]]:
+    """OR 가지로 든 날조 종목명 조각을 걷어낸다. (보정된 SQL, 걷어낸 조각) — AND 로 묶인 날조 조각은 여기서 손대지 않고
+    _sql_precheck(fabricated_name_literal_use) 가 기각해 재생성에 사유를 준다.
+
+    OR 가지 제거는 결과를 **좁히는** 방향뿐이라(그 가지가 잡던 행은 날조 표기로 잡힌 행) 조용한 확장을 만들지 않는다.
+    AND 절 제거는 반대로 모수를 넓히므로(유일 조건이면 전 종목) 하지 않는다 — prune_dead_in_literals 와 같은 안전 논리."""
+    fab = _fabricated_name_literals(sql, question, ctx)
+    if not fab:
+        return sql, []
+    stripped = []
+    for pred, needle in fab:
+        esc = re.escape(pred)
+        new = re.sub(rf"\s+OR\s+{esc}(?=\s*[)]|\s+(?:OR|AND)\b|\s*$)", "", sql, count=1, flags=re.I)
+        if new == sql:
+            new = re.sub(rf"{esc}\s+OR\s+", "", sql, count=1, flags=re.I)
+        if new != sql:
+            sql = new
+            stripped.append(needle)
+    return sql, stripped
+
+
+def fabricated_name_literal_use(sql: str, question: str, ctx) -> str | None:
+    """실행 전 기각 사유 — AND 로 남은 날조 종목명 조각. 없으면 None."""
+    fab = _fabricated_name_literals(sql, question, ctx)
+    if not fab:
+        return None
+    needles = " · ".join(f"'{n}'" for _, n in fab)
+    return (f"질문에 없는 이름 조각 {needles} 을 pd_nm LIKE 조건에 썼다 — 종목명 조건은 질문의 낱말이나 선언된 표기"
+            "(ESG 라벨 (녹)/(사)/(지) · 구조 표기)만 쓴다. 업종·테마·번역어로 종목명을 찾지 말고, 질문에 그 낱말이 없으면 조건을 빼거나 REFUSE")
+
+
 _MISSING_AXIS_NOTE = {
     "fd_wk1_ern_r": "요청하신 1주 수익률은 제공된 데이터에 없습니다(전건 미수록). "
                     "아래는 수록된 다른 기간 축으로 대신 답한 것입니다.",
@@ -3291,6 +3368,9 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     if m and m.group(1).lower() in _BOND_AXIS_KO:
         name, hi, lo = _BOND_AXIS_KO[m.group(1).lower()]
         axis_txt = f"{name} {hi if (m.group(2) or 'ASC').upper() == 'DESC' else lo}"
+    gsort = re.search(r"/\*GRADESORT:(low|high)\*/", sql)
+    if gsort:                                   # 신용등급 서열 정렬(ensure_grade_rank_sort) — ORDER BY 가 CASE 식이라 컬럼명이 없다
+        axis_txt = "신용등급 " + ("낮은 순" if gsort.group(1) == "low" else "높은 순")
     cov = _bond_coverage_counts(sql)
     total = cov[1] if cov else None
     basis = f"기준일 {gate.DATA_CUTOFF}"
@@ -3318,6 +3398,7 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
                 else f"조건에 해당하는 채권은 {n}종목입니다 ({basis}).")
     out = [head, ""]
     warn = False
+    risk_spec = _risk_profile_spec() if asks_risk_factors(question) else None      # 위험요인 질의 — 행마다 재료 문단(P8)
     for i, r in enumerate(recs, 1):
         bits = []
         if ycol and r.get(ycol):
@@ -3361,7 +3442,15 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             if r.get(c):
                 bits.append(f"{_BOND_COL_KO.get(c, c)} {_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c]}")
         out.append(f"{i}. {r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
+        if risk_spec and i <= int(risk_spec["max_rows"]):
+            prof = _bond_risk_profile(r, cols, risk_spec)
+            if prof:
+                out.append(prof)
     tail = []
+    if risk_spec:
+        if n > int(risk_spec["max_rows"]):
+            tail.append(f"위험요인 문단은 상위 {int(risk_spec['max_rows'])}개 종목까지 붙였고, 나머지는 각 행의 신용등급·위험등급·만기로 확인해 주세요.")
+        tail.append(risk_spec["closing"])
     if "remaining_days" in cols and any(r.get("remaining_days") for r in recs):
         # 컬럼 원값을 그대로 보이되 산출 기준일을 밝힌다 — 재계산하지 않는다(심사 gold 는 제공 컬럼값에서 나올 가능성이 높다 · 2026-09-03 결정)
         tail.append(f"잔존일수는 데이터 산출일 {gate.SNAPSHOT_DATE} 기준 값입니다(질문 시점 {gate.DATA_CUTOFF} 보다 3일 앞).")
@@ -3379,6 +3468,9 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         tail.append(COUPON_SPLIT_NOTE)
     if _RECO_Q.search(question) and "pd_risk_gcd <> '11'" in sql and "bd_ofr_tcd <> '사모'" in sql:
         tail.append("위험등급이 매우 높은(1등급) 채권과 사모 채권은 제외했습니다.")
+    for note in bond_answer_notes(sql, "\n".join(out)):          # ESG 표기 기준 · 발행사명 기준 · 무등급 제외 — 단일 통로(P7)
+        if note not in tail:
+            tail.append(note)
     if tail:
         out += ["", " ".join(tail)]
     return "\n".join(out)
@@ -6054,6 +6146,86 @@ def _grade_rank_case(col: str = "crd_grd") -> str:
     return f"CASE TRIM({col}) {whens} ELSE {len(scale) + 1} END"
 
 
+_GRADE_SORT_Q = re.compile(r"신용\s*등급(?:[이은가의도])?\s*(?:가장|제일|젤|최고로?)?\s*(?:낮은|나쁜|하위|높은|좋은|우량|상위)")
+_GRADE_LOW_Q = re.compile(r"낮은|나쁜|하위")
+# 등급 **값** 토큰 — 문자 등급(AAA·BBB-·A0…)·통칭(A등급)·밴드(투자적격·투기)·무등급. 맨 '등급' 낱말은 값이 아니다.
+_GRADE_VALUE_Q = re.compile(r"(?<![A-Za-z])(?:AAA|AA|A|BBB|BB|B|CCC|CC|C|D)(?:[+\-0])?(?![A-Za-z])|투자\s*(?:적격|등급)|투기|무등급", re.I)
+_ORDER_GRADE_KEY = re.compile(r"(\bORDER\s+BY\s+)((?:MIN|MAX)\s*\(\s*)?(?:TRIM\(\s*)?(?:\w+\.)?crd_grd\s*\)?(?:\s*\))?\s*(ASC|DESC)?", re.I)
+_GRADE_PRED = re.compile(r"^\(?\s*(?:TRIM\(\s*)?(?:\w+\.)?crd_grd\s*\)?\s*(?:IN\s*\([^)]*\)|=\s*'[^']*')\s*\)?$", re.I)
+GRADE_SORT_NOTE = "신용등급이 없는 종목(국공채 등 평가 대상이 아니거나 등급 미수록)은 제외했고, 같은 등급 안에서는 만기 이른 순으로 정렬했습니다."
+
+
+def _drop_grade_preds(cond: str) -> str | None:
+    """AND 로만 이어진 조건 트리에서 crd_grd IN/= 술어를 뺀 문자열. OR 가 최상위인 덩어리는 그대로 둔다. 전부 빠지면 ''."""
+    c = cond.strip()
+    wrapped = c.startswith("(") and c.endswith(")") and _balanced(c[1:-1])
+    inner = c[1:-1].strip() if wrapped else c
+    if _GRADE_PRED.match(inner) or _GRADE_PRED.match(c):
+        return ""
+    conj = guard.split_conjuncts(inner)
+    if len(conj) == 1:
+        return c                                            # 단일 비교식이거나 최상위 OR — 손대지 않는다
+    kept = [k for k in (_drop_grade_preds(x) for x in conj) if k]
+    if kept == [x.strip() for x in conj]:                   # 하위 그룹 안의 변화도 봐야 한다 — 개수 비교로는 놓친다
+        return c
+    joined = " AND ".join(kept)
+    return f"({joined})" if wrapped and joined else joined
+
+
+def _balanced(text: str) -> bool:
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def ensure_grade_rank_sort(sql: str, question: str) -> tuple[str, bool]:
+    """'신용등급이 가장 낮은/높은' 질의의 ORDER BY crd_grd 를 **서열 CASE** 정렬로 바꾼다. (보정된 SQL, 보정했는지)
+
+    2026-09-05 난이도 상 #2 서버 실측: 'SK 계열사 회사채 중 신용등급이 가장 낮은 종목 3개' 가
+    `crd_grd IN ('A-','BBB-','BB+') … ORDER BY crd_grd ASC` 로 나가 A- 3종목을 답했다 — 두 겹 오류다.
+    ① 문자열 사전순은 서열이 아니다('A-' < 'BBB-'). 실제 SK 접두 회사채는 BBB- 1 · BBB0 1 · BBB+ 7 · A- 13 종목.
+    ② IN 목록은 질문에 등급 값이 하나도 없는데 HCX 가 "낮은 등급이면 이것들" 이라 지어낸 것이다(strip_fabricated_risk_filter 의
+       신용등급판) — 최상급 정렬에 값 목록을 덧대면 모수가 임의로 좁아진다.
+    서열은 선언(loader.grade_scale → _grade_rank_case)에서 오고, 무등급은 축 값이 없으므로 `crd_grd IS NOT NULL` 을 넣어
+    모수 밖으로 둔다(답변에 GRADE_SORT_NOTE 로 밝힌다). 동률은 정렬축 규칙 그대로 만기 이른 순 → pd_no.
+    🔴 어휘는 **'신용등급' 명시**일 때만 — 맨 '등급 낮은 채권' 은 gold BND-C-016 대로 되묻기(신용/위험 다의)가 먼저다.
+    불개입: JOIN·UNION·서브쿼리 · ORDER BY 1차 키가 crd_grd 가 아닌 경우(HCX 가 다른 축을 골랐으면 축 판단은 정렬축 가드의 몫)."""
+    if "domestic_bonds" not in sql or not _GRADE_SORT_Q.search(question):
+        return sql, False
+    if re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    m = _ORDER_GRADE_KEY.search(sql)
+    if not m:
+        return sql, False
+    grouped = bool(re.search(r"\bGROUP\s+BY\b", sql, re.I))
+    low = bool(_GRADE_LOW_Q.search(_GRADE_SORT_Q.search(question).group(0)))
+    wrap = (lambda e: f"MIN({e})") if grouped else (lambda e: e)
+    key = f"{wrap(_grade_rank_case())} {'DESC' if low else 'ASC'}"
+    tail_keys = f", {wrap('mat_dt')} ASC, pd_no ASC"
+    rest = sql[m.end():]
+    has_more = re.match(r"\s*,", rest)
+    new = sql[:m.start()] + m.group(1) + key + ("" if has_more else tail_keys) + rest
+    # ② 질문에 등급 값이 없으면 crd_grd IN/= 절은 날조 — AND 결합에서만 걷어낸다. enforce 슬롯(BONDPOP)이 원 WHERE 를
+    #    괄호로 감싸므로 AND 만으로 이어진 괄호 그룹은 안으로 들어가고, OR 가 최상위인 그룹은 통째로 둔다.
+    if not _GRADE_VALUE_Q.search(question):
+        wm = re.search(r"\bWHERE\b", new, re.I)
+        if wm:
+            t = _WHERE_TAIL.search(new, wm.end())
+            hi = t.start() if t else len(new)
+            body = new[wm.end():hi]
+            dropped = _drop_grade_preds(body.strip())
+            if dropped is not None and dropped != body.strip():
+                new = new[:wm.start()] + (f"WHERE {dropped} " if dropped else "") + new[hi:]
+    new, _ = _append_exclusions(new, ["crd_grd IS NOT NULL"]) if not re.search(r"crd_grd\s+IS\s+NOT\s+NULL", new, re.I) else (new, False)
+    return new.rstrip() + f" /*GRADESORT:{'low' if low else 'high'}*/", True
+
+
 def ensure_tie_break(sql: str, question: str = "") -> tuple[str, bool]:
     """채권 랭킹의 ORDER BY 에 동률 2차 키를 붙인다. (보정된 SQL, 보정했는지)
 
@@ -7139,8 +7311,17 @@ def ensure_risk_name_column(sql: str) -> tuple[str, bool]:
         return sql, False
     head = sql[: frm.start()]
     m = re.search(r"\bpd_risk_gcd\b", head)
-    if not m or (m.start() > 0 and head[m.start() - 1] == "("):
+    if not m:
         return sql, False
+    # 🔴 2026-09-05 난이도 상 #2 — `TRIM(pd_risk_gcd) AS 위험등급` 은 표시 컬럼인데 "직전 문자가 (" 판정이 함수 인자로
+    #    보고 불개입 → 답변에 '위험등급 14' 코드가 그대로 나갔다(이 가드가 막으려던 바로 그 오답). 불개입은 **집계 래퍼**
+    #    (COUNT·AVG·SUM·MIN·MAX·GROUP_CONCAT)일 때만 — TRIM 같은 표시용 래퍼는 항목 끝에 pd_risk_nm 을 덧붙인다.
+    before = head[: m.start()]
+    if re.search(r"\b(?:COUNT|AVG|SUM|MIN|MAX|GROUP_CONCAT)\s*\(\s*(?:DISTINCT\s+)?(?:TRIM\s*\(\s*)?$", before, re.I):
+        return sql, False
+    if before.rstrip().endswith("("):
+        new = _select_add_col(sql, "pd_risk_nm")
+        return new, new != sql
     return sql[: m.end()] + ", pd_risk_nm" + sql[m.end():], True
 
 
@@ -8334,6 +8515,216 @@ def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
     return head.rstrip() + ", " + ", ".join(add) + " " + rest, True
 
 
+_SELECT_ALL = re.compile(r"(?:\bSELECT\s+(?:DISTINCT\s+)?|,\s*)\*", re.I)   # 전체 선택 — 구조표시 CASE 의 GLOB '*…*' 별표는 아니다
+_ROLLUP_ONLY = re.compile(r"\b(?:COUNT|SUM|AVG|GROUP_CONCAT)\s*\(", re.I)   # MAX/MIN 은 대표행 형에서 정렬 컬럼 극값 — 집계 판정에서 뺀다
+_RISK_FACTOR_Q_FALLBACK = (r"위험\s*요인", r"리스크\s*요인", r"위험\s*요소", r"주의(?:할|해야\s*할)\s*점", r"어떤\s*위험")
+_RISK_PROFILE_COLS_FALLBACK = ("crd_grd", "pd_risk_gcd", "pd_risk_nm", "dur", "remaining_days", "mat_dt",
+                               "bd_ofr_tcd", "bd_intp_tcd", "bd_inrt_tcd", "srfc_irt")
+_RISK_PROFILE_CLOSING_FALLBACK = ("위험요인은 수록된 항목(투자위험등급·신용등급·듀레이션·잔존만기·구조·모집 방식)으로만 정리했습니다. "
+                                  "발행사의 재무 상태나 업황·전망은 데이터에 없어 다루지 않았습니다.")
+
+
+def _risk_profile_spec(ctx=None) -> dict:
+    """위험요인 재료 선언(enums/domestic_bonds.yaml risk_factor_profile) — 없으면 코드 폴백. 컴파일된 trigger 정규식을 함께 준다."""
+    doc = ((getattr(ctx, "enums", None) or {}).get("domestic_bonds")) if ctx is not None else None
+    if doc is None:
+        try:
+            doc = (_ev_ctx().enums or {}).get("domestic_bonds") or {}
+        except Exception:                                    # noqa: BLE001 — 선언 로드 실패 시에도 조립기는 살아 있어야 한다
+            doc = {}
+    spec = dict((doc or {}).get("risk_factor_profile") or {})
+    spec.setdefault("triggers", list(_RISK_FACTOR_Q_FALLBACK))
+    spec.setdefault("columns", list(_RISK_PROFILE_COLS_FALLBACK))
+    spec.setdefault("max_rows", 5)
+    spec.setdefault("investment_floor", "BBB-")
+    spec.setdefault("closing", _RISK_PROFILE_CLOSING_FALLBACK)
+    spec["trigger_re"] = re.compile("|".join(spec["triggers"]))
+    return spec
+
+
+def asks_risk_factors(question: str, ctx=None) -> bool:
+    return bool(_risk_profile_spec(ctx)["trigger_re"].search(question))
+
+
+def _structure_case(ctx) -> str | None:
+    """규칙 `구조표시` 의 CASE 식(… END) — 선언에서 그대로 꺼낸다. 없으면 None."""
+    doc = ((getattr(ctx, "enums", None) or {}).get("domestic_bonds")) or {}
+    rule = ((doc.get("query_rules") or {}).get("구조표시")) or ""
+    text = rule if isinstance(rule, str) else (rule.get("text") or "")
+    m = re.search(r"(CASE WHEN .*? END) AS 구조", text)
+    return m.group(1) if m else None
+
+
+def ensure_risk_factor_columns(sql: str, question: str, ctx) -> tuple[str, bool]:
+    """'위험요인' 질의의 채권 SELECT 에 재료 컬럼(선언 risk_factor_profile.columns + 구조 CASE)을 보장한다. (보정된 SQL, 보정했는지)
+
+    2026-09-05 난이도 상 실측: #5 의 SELECT 엔 신용등급조차 없어 조립기가 위험요인 요구를 무시했고, #1 은 위험등급 한 줄이 전부였다.
+    답변기는 SELECT 된 컬럼만 본다(필터컬럼표시 규칙) — 위험요인 문단의 재료는 SELECT 단계에서 결정적으로 넣는다.
+    불개입: 트리거 없음 · JOIN·UNION·서브쿼리 · `*` · 집계 · pd_no 이외 GROUP BY."""
+    if "domestic_bonds" not in sql or not asks_risk_factors(question, ctx):
+        return sql, False
+    if re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head, rest = sql[:frm.start()], sql[frm.start():]
+    gb = re.search(r"\bGROUP\s+BY\s+([^\s,]+)(\s*,)?", sql, re.I)
+    if gb and (gb.group(2) or gb.group(1).lower().split(".")[-1] != "pd_no"):
+        return sql, False
+    if _SELECT_ALL.search(head) or _ROLLUP_ONLY.search(head) or (_AGG_HEAD.search(head) and not gb):
+        return sql, False                                   # 대표행 형(GROUP BY pd_no + MAX/MIN 정렬 컬럼)은 목록이다
+    add = [c for c in _risk_profile_spec(ctx)["columns"] if not re.search(rf"\b{c}\b", head)]
+    case = _structure_case(ctx)
+    if case and "AS 구조" not in head:
+        add.append(f"{case} AS 구조")
+    if not add:
+        return sql, False
+    return head.rstrip() + ", " + ", ".join(add) + " " + rest, True
+
+
+def _grade_band_text(grade: str, floor: str) -> str:
+    """신용등급의 밴드 위치 — 서열은 선언(_grade_scale). 값이 없으면 미수록 문장."""
+    g = (grade or "").strip()
+    if not g:
+        return "신용등급 미수록(국공채·특수채는 평가 대상이 아닐 수 있음)"
+    scale = _grade_scale()
+    if g not in scale or floor not in scale:
+        return f"신용등급 {g}"
+    i, f = scale.index(g), scale.index(floor)
+    if i < f:
+        return f"신용등급 {g} — 투자적격 등급(AAA~{floor}) 안, 위에서 {i + 1}번째"
+    if i == f:
+        return f"신용등급 {g} — 투자적격 등급의 가장 낮은 단계"
+    return f"신용등급 {g} — 투기 등급({floor} 아래)"
+
+
+def _bond_risk_profile(r: dict, cols: list, spec: dict) -> str:
+    """종목 한 행의 위험요인 문단 — 수록된 값만 문장으로. 없는 것은 쓰지 않는다(발행사 재무·업황·전망 금지)."""
+    parts = []
+    if r.get("pd_risk_nm"):
+        parts.append(f"투자위험등급 {r['pd_risk_nm']}")
+    if "crd_grd" in cols:
+        parts.append(_grade_band_text(r.get("crd_grd", ""), spec["investment_floor"]))
+    dur, rem = r.get("dur"), r.get("remaining_days")
+    try:
+        dur_v = float(dur) if dur not in (None, "") else None
+    except ValueError:
+        dur_v = None
+    if dur_v is not None and dur_v not in (0.0, 99.0):
+        parts.append(f"금리위험(듀레이션) {dur_v:g}년" + (f" · 잔존 {rem}일" if rem else ""))
+    elif dur_v in (0.0, 99.0):
+        parts.append("듀레이션 미산출")
+    struct = r.get("구조", "")
+    name = r.get("pd_nm", "")
+    if struct or re.search(r"신종|영구", name):
+        st = struct or "영구채"
+        extra = " (만기일 = 콜 개시일)" if "영구" in st or re.search(r"신종|영구", name) else ""
+        if "후순위" in st or "자본성" in st or re.search(r"\(후\)|/후[)/]", name):
+            extra += " · 후순위(변제 순위가 일반 채권보다 뒤)"
+        if "자본성" in st:
+            extra += " · 원금 상각·이자 미지급 조건 가능"
+        parts.append(f"구조 {st}{extra}")
+    if (r.get("bd_ofr_tcd") or "").strip() == "사모":
+        parts.append("사모 발행")
+    intp, inrt = (r.get("bd_intp_tcd") or "").strip(), (r.get("bd_inrt_tcd") or "").strip()
+    if intp == "할인채":
+        parts.append("할인채 — 표면금리 란은 발행 할인율")
+    elif inrt and inrt != "고정금리":
+        parts.append(f"{inrt} — 표면금리는 기준일 스냅샷")
+    return "   위험요인: " + " · ".join(parts) if parts else ""
+
+
+_ESG_LIKE = re.compile(r"pd_nm\s+LIKE\s+'%[(/][녹사지][)/]%'")
+ESG_LABEL_NOTE = "ESG 채권 여부는 종목명의 표기(녹=녹색채권 · 사=사회적채권 · 지=지속가능채권) 기준입니다."
+
+
+def bond_answer_notes(sql: str, answer: str) -> list[str]:
+    """가드가 만든 고지 의무 중 답변 본문에 아직 없는 것 — 목록 조립·HCX 산문 어느 경로든 끝에 덧붙인다.
+
+    2026-09-05 난이도 상 #2·#5 실측: '발행사명 기준' 은 목록 조립 머리줄에만 있어 HCX 산문 경로에서 사라졌고, ESG 라벨의
+    '종목명 표기 기준' 병기(name_encoding.esg_labels)는 어느 경로에도 없었다. 고지는 문항이 아니라 **SQL 에 남은 가드 흔적**에 매달린다."""
+    notes = []
+    if _ESG_LIKE.search(sql) and "종목명의 표기" not in answer:
+        notes.append(ESG_LABEL_NOTE)
+    pfx = sorted({m.group(1) for m in _ISSUER_PFX_BRANCH.finditer(sql)})
+    if pfx and "발행사명" not in answer:
+        notes.append(f"발행사명이 {'/'.join(pfx)} 로 시작하는 발행사 기준입니다(계열 소속 여부는 데이터에 없어 이름으로 판정).")
+    if "/*GRADESORT:" in sql and GRADE_SORT_NOTE not in answer:
+        notes.append(GRADE_SORT_NOTE)
+    return notes
+
+
+_KO_ALIAS_ITEM = re.compile(
+    r"^\s*(?:TRIM\(\s*)?(?:\w+\.)?([A-Za-z_]\w*)\s*\)?\s+AS\s+([가-힣][가-힣A-Za-z0-9_/·()]*)\s*$", re.I)
+
+
+def normalize_bond_select_aliases(sql: str) -> tuple[str, list[str]]:
+    """채권 SELECT 의 `컬럼 AS 한글별칭`(TRIM 래퍼 포함)을 `… AS 컬럼` 으로 되돌린다. (보정된 SQL, 되돌린 별칭)
+
+    2026-09-05 난이도 상 #2 실측: HCX 가 `TRIM(pd_nm) AS 상품명, TRIM(crd_grd) AS 신용등급 …` 으로 헤더를 한글화하자 결과 헤더에
+    pd_nm 이 없어 목록 조립기(_bond_list_answer, HCX 0회)가 비켜 가고 산문 경로로 갔다 — 위험등급 코드 노출·고지 소실이 그 뒤를 따랐다.
+    한글 라벨은 조립기가 스키마 한글명(_BOND_COL_KO)으로 붙이므로 SQL 단계의 별칭은 정보가 아니라 장애물이다. 별칭을 ORDER BY·GROUP BY
+    에서도 같은 컬럼명으로 바꾼다. 계산식 별칭(CASE … AS 구조, MAX(x) AS x)은 건드리지 않는다."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, []
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    sel = re.match(r"\s*SELECT\s+(DISTINCT\s+)?", sql, re.I)
+    if not frm or not sel:
+        return sql, []
+    head, rest = sql[sel.end():frm.start()], sql[frm.start():]
+    items = _split_select_items(head)
+    renamed, out_items = [], []
+    for it in items:
+        m = _KO_ALIAS_ITEM.match(it)
+        if not m:
+            out_items.append(it.strip())
+            continue
+        col, alias = m.group(1), m.group(2)
+        expr = it[: it.upper().rfind(" AS ")].strip()
+        out_items.append(f"{expr} AS {col}")
+        renamed.append(alias)
+        rest = re.sub(rf"(?<![\w가-힣]){re.escape(alias)}(?![\w가-힣])", col, rest)
+    if not renamed:
+        return sql, []
+    return sql[: sel.end()] + ", ".join(out_items) + " " + rest, renamed
+
+
+_BOND_ATTR_COLS = ("applied_yield", "after_tax_yield", "corp_pretax_yield", "buy_yield", "srfc_irt", "crd_grd",
+                   "pd_risk_gcd", "pd_risk_nm", "mat_dt", "isu_dt", "remaining_days", "dur", "eval_price",
+                   "isu_bal_amt", "bd_tisu_a", "bd_knd", "bd_ofr_tcd", "bd_intp_tcd", "bd_inrt_tcd", "pd_pbcm")
+
+
+def ensure_bond_identity_columns(sql: str) -> tuple[str, bool]:
+    """종목 단위 채권 SELECT 에 종목 식별자(pd_no · pd_nm)를 보장한다. (보정된 SQL, 보정했는지)
+
+    2026-09-05 난이도 상 #1 서버 실측: '에코프로 자회사 채권 중 표면금리 가장 높은 종목의 위험요인' SELECT 가
+    pd_pbcm·srfc_irt·pd_risk_gcd 뿐 — 답변에 **종목명이 없었다**(전체 3종목 중 상위 1개 … 위험등급 3등급). 대표행 규칙의
+    "종목 단위 답변엔 종목 식별자" 를 SELECT 단계에서 보장한다. ensure_bond_evidence_columns(수익률 정렬 한정)의 형제로,
+    정렬 축 제한이 없다 — 목록 조립기(_bond_list_answer)의 발동 조건 ③(헤더에 pd_nm)이 여기서 충족된다.
+    불개입: JOIN·UNION·서브쿼리 · `*` · DISTINCT(발행사 목록 — 식별자를 넣으면 DISTINCT 의미가 깨진다) · 집계(COUNT·SUM…) ·
+    pd_no 이외 GROUP BY(발행사별·종류별 집계) · SELECT 에 종목 속성 컬럼이 하나도 없을 때(식별자만 묻는 SQL)."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    if not frm:
+        return sql, False
+    head, rest = sql[:frm.start()], sql[frm.start():]
+    gb = re.search(r"\bGROUP\s+BY\s+([^\s,]+)(\s*,)?", sql, re.I)
+    if gb and (gb.group(2) or gb.group(1).lower().split(".")[-1] != "pd_no"):
+        return sql, False
+    if _SELECT_ALL.search(head) or _ROLLUP_ONLY.search(head) or (_AGG_HEAD.search(head) and not gb) or re.search(r"\bSELECT\s+DISTINCT\b", head, re.I):
+        return sql, False                                   # 대표행 형(GROUP BY pd_no + MAX/MIN 정렬 컬럼)은 목록이다
+    plain = re.sub(r"\bCASE\b.*?\bEND\b", "", head, flags=re.I | re.S)     # 구조표시 CASE 안의 pd_nm LIKE 는 표시 컬럼이 아니다
+    if re.search(r"\bpd_nm\b", plain) or not any(re.search(rf"\b{c}\b", plain) for c in _BOND_ATTR_COLS):
+        return sql, False
+    sel = re.match(r"\s*SELECT\s+", head, re.I)
+    if not sel:
+        return sql, False
+    add = ("" if re.search(r"\bpd_no\b", plain) else "pd_no, ") + "TRIM(pd_nm) AS pd_nm, "
+    return head[: sel.end()] + add + head[sel.end():] + rest, True
+
+
 def ensure_bond_representative(sql: str) -> tuple[str, bool]:
     """채권 목록 SELECT 를 종목(pd_no) 단위로 묶는다 — GROUP BY pd_no + 정렬 컬럼 MAX/MIN. (보정된 SQL, 보정했는지)
 
@@ -8911,6 +9302,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 값 사전 대조(check_values)보다 앞 — 0행 매칭 값 하나가 정답 SQL 을 통째로 죽이던 자리.
     #    2026-09-04 KG-012: `zrin_btyp_nm IN ('해외주식형','국내외혼합')` 에서 뒤엣값이 그 컬럼에 없어
     #    기각당했는데, 실측하면 그 SQL 이 낸 205펀드/522클래스가 정답이었다.
+    sql, ko_aliases = normalize_bond_select_aliases(sql)
+    if ko_aliases:
+        step("[Guard] 채권 SELECT 별칭 정규화 — 한글 별칭 " + " · ".join(ko_aliases[:6]) + " 을 원 컬럼명으로 되돌림 "
+             "(2026-09-05 난이도 상 #2: 'AS 상품명' 헤더 때문에 목록 조립기가 비켜 가 산문 경로로 — 라벨은 조립기가 스키마 한글명으로 붙인다)")
+    sql, name_stripped = strip_fabricated_name_branches(sql, q, ctx)
+    if name_stripped:
+        step("[Guard] 날조 종목명 조각 제거 — 질문에도 선언에도 없는 pd_nm LIKE 조각 " + " · ".join(f"'{n}'" for n in name_stripped)
+             + " 의 OR 가지를 걷어냈다 (2026-09-05 난이도 상 #3: '우주항공 관련 발행사' 에 '%Space%' 즉석 번역 · AND 절이면 precheck 가 기각)")
     if tables:
         sql, dead = guard.prune_dead_in_literals(sql, ctx)
         if dead:
@@ -9029,12 +9428,24 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, gradecol_fixed = ensure_grade_select_column(sql)
     if gradecol_fixed:
         step("[Guard] 신용등급 컬럼 보강 — WHERE 의 crd_grd 조건이 SELECT 에 없어 주입 (2026-09-02 서버 실측: '등급 높은 채권' 이 AA- 이상 15,845종목을 필터하고도 SELECT 미포함으로 '등급 정보가 없다' 오거절)")
+    sql, bid_fixed = ensure_bond_identity_columns(sql)
+    if bid_fixed:
+        step("[Guard] 종목 식별 컬럼 보장 — 종목 단위 SELECT 에 pd_no·pd_nm 을 앞세움 (2026-09-05 난이도 상 #1: '표면금리 가장 높은 종목의 위험요인' 답에 종목명이 없었다 — 대표행 규칙)")
+    sql, rf_fixed = ensure_risk_factor_columns(sql, q, ctx)
+    if rf_fixed:
+        step("[Guard] 위험요인 재료 컬럼 보장 — 선언 risk_factor_profile 의 컬럼(신용등급·위험등급·듀레이션·잔존·만기·모집·이자유형)과 구조 CASE 를 SELECT 에 넣음 "
+             "(2026-09-05 난이도 상 #1·#2·#5: 위험요인 요구에 SELECT 재료가 없어 무응답 또는 일반론 산문)")
     sql, bev_fixed = ensure_bond_evidence_columns(sql)
     if bev_fixed:
         step("[Guard] 채권 근거컬럼 보강 — 수익률·금리 정렬 목록의 SELECT 에 만기일·신용등급 병기 (2026-09-02 실측: 한전 수익률순 답이 5.051%(2052년 만기)와 4.744%(2038년)를 만기 없이 나열)")
     sql, brep_fixed = ensure_bond_representative(sql)
     if brep_fixed:
         step("[Guard] 채권 대표행 보정 — 목록 SELECT 를 GROUP BY pd_no 로 종목 단위 묶기 + 정렬 컬럼 MAX/MIN (2026-09-02 실측: 장내·장외 중복행으로 발행사 39곳 top5 에 같은 종목 2회 — gold 38개 중 37개가 GROUP BY pd_no)")
+    sql, gsort_fixed = ensure_grade_rank_sort(sql, q)
+    if gsort_fixed:
+        step("[Guard] 신용등급 서열 정렬 — '신용등급 가장 낮은/높은' 의 ORDER BY crd_grd(문자열 사전순)를 선언 서열 CASE 로 바꾸고, "
+             "질문에 등급 값이 없는데 HCX 가 지어낸 crd_grd IN/= 절은 걷어내며, 무등급은 모수 밖으로 "
+             "(2026-09-05 난이도 상 #2: 'SK 계열사 회사채 신용등급 가장 낮은 3개' 가 IN ('A-','BBB-','BB+') + ASC 로 A- 3종목 — 정답 BBB-·BBB0·BBB+)")
     sql, tie_fixed = ensure_tie_break(sql, q)
     if tie_fixed:
         step("[Guard] 동률 2차 정렬 주입 — ORDER BY 1차 축 뒤에 신용등급 서열 → 만기 이른 순 → pd_no 를 붙였다 "
@@ -9361,7 +9772,7 @@ def answer_question(
     #    그 구분이 곧 팀이 챗봇을 검토하는 방법이다 (2026-08-30). 채점자에게도 근거가 된다.
     step("[Plan] SQL 생성 — 아래 문장을 실행합니다\n" + sql)
 
-    err = _sql_precheck(sql, ctx, tables, cross)
+    err = _sql_precheck(sql, ctx, tables, cross, question=q)
     violations = [] if err else guard.check_values(sql, ctx)
     axis_note = missing_axis_note(sql)      # 14R gold ③-12 — 축을 바꿔 답하면 그 사실을 머리줄에 적는다
     regen_used = False
@@ -9391,7 +9802,7 @@ def answer_question(
                                  fired_out=result.enforce_fired)
         result.sql = sql2
         step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql2)
-        err2 = _sql_precheck(sql2, ctx, tables, cross)
+        err2 = _sql_precheck(sql2, ctx, tables, cross, question=q)
         return sql2, err2, ([] if err2 else guard.check_values(sql2, ctx))
 
     if err or violations:
@@ -9647,6 +10058,11 @@ def answer_question(
     if hedged:
         step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
              "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
+    _bn = bond_answer_notes(sql, result.answer) if "domestic_bonds" in sql else []
+    if _bn:
+        result.answer = result.answer.rstrip() + "\n\n" + " ".join(_bn)
+        step("[Answer] 채권 고지 병기 — 가드 흔적(ESG 라벨 LIKE·발행사 접두 확장·등급 서열 정렬)이 요구하는 고지 중 답변에 없던 것을 기계로 덧붙임 "
+             "(2026-09-05 난이도 상 #2·#5: '발행사명 기준' 이 HCX 산문에서 소실 · ESG '종목명 표기 기준' 은 어느 경로에도 없었다)")
     result.answer, etf_scope = ensure_etf_scope_note(result.answer, sql)
     if etf_scope:
         step("[Answer] ETF 모수 한정 고지 — 어느 테이블을 봤는지 머리줄에 기계 표기 "

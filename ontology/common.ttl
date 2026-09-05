@@ -16570,7 +16570,9 @@ fp:Org_issuer_03802fe6e3 a fp:Organization ; skos:prefLabel "에이프로젠"@ko
 fp:Org_issuer_a54b6a1c21 a fp:Organization ; skos:prefLabel "에이피에스"@ko .
 fp:Org_issuer_b03cab77da a fp:Organization ; skos:prefLabel "에코비트"@ko .
 fp:Org_issuer_3a48b4e41a a fp:Organization ; skos:prefLabel "에코프로"@ko .
+fp:Org_issuer_3a48b4e41a skos:broader fp:Sec_m_ecopro .
 fp:Org_issuer_d52728ad91 a fp:Organization ; skos:prefLabel "에코프로비엠"@ko .
+fp:Org_issuer_d52728ad91 skos:broader fp:Sec_m_ecopro_bm .
 fp:Org_issuer_ea49facf11 a fp:Organization ; skos:prefLabel "엑스페릭스"@ko .
 fp:Org_issuer_e3829a03ad a fp:Organization ; skos:prefLabel "엔씨"@ko .
 fp:Org_issuer_81ee446f02 a fp:Organization ; skos:prefLabel "엔에이치에프제12호공공임대위탁관"@ko .

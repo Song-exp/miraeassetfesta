@@ -5,6 +5,7 @@
 # 노드 1816 · 표기 변형 병합 1 · 원 distinct 1817
 # 종류 어휘와 겹쳐 제외한 오염 표기 1: 국고채권(1행) — 2026-09-04 #61
 # 운용사 노드(organization.yaml Org_000…)와는 별개. property 는 hasIssuer (운용사 hasManager 와 구분)
+# 수동 정본(Sec_m_*)과 법인 키 일치 → parent 2: 에코프로→Sec_m_ecopro · 에코프로비엠→Sec_m_ecopro_bm — 2026-09-05 자회사→채권 발행사 closure
 entity: Organization
 description: 채권 발행사 (자동 등록분, role=issuer)
 property: hasIssuer
@@ -2242,6 +2243,7 @@ nodes:
       raw: (주)에코프로
       source: rule
       evidence: 발행사명 정규화 · 3행
+    parent: Sec_m_ecopro
   Org_issuer_d52728ad91:
     label_ko: 에코프로비엠
     role: issuer
@@ -2252,6 +2254,7 @@ nodes:
       raw: (주)에코프로비엠
       source: rule
       evidence: 발행사명 정규화 · 3행
+    parent: Sec_m_ecopro_bm
   Org_issuer_ea49facf11:
     label_ko: 엑스페릭스
     role: issuer

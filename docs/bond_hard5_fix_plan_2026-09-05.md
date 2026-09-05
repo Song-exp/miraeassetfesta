@@ -167,7 +167,26 @@ SELECT * FROM kg_closure WHERE ancestor_id LIKE 'Sec_m_ecopro%'; -- 주식 Sec_k
 | P3 ABSENT | 구현 세부 확정 | `gate.check` 에 hits 가 없다 → `grounded` 선택 인자 · 항목 플래그 `only_ungrounded` · '업종' 류는 접지 무관 발동 |
 | P4 리터럴 출처 | 범위 확정 | 1차는 `pd_nm` 만. `pd_pbcm` 은 약칭 확장 가드가 질문에 없는 '에스케이' 를 **정당하게** 넣으므로 출처 검사 대상에서 제외(넣으려면 통칭표·KG alias 를 화이트리스트로, 후속) |
 
-남은 불확실 1건: 빌드 검증 V1~V7 이 다른 파일의 `parent` 참조를 거부하는지 — P1 착수 시 빌드를 돌려 바로 드러난다(거부하면 `Org_issuer` 노드를 `security_auto.yaml` 쪽에서 parent 로 잇는 대안).
+남은 불확실 1건: 빌드 검증 V1~V7 이 다른 파일의 `parent` 참조를 거부하는지 — P1 착수 시 빌드를 돌려 바로 드러난다(거부하면 `Org_issuer` 노드를 `security_auto.yaml` 쪽에서 parent 로 잇는 대안). → **구현 결과: 거부하지 않았다**(build_ontology 오류 0 · 경고는 종전 V1p 9건 그대로 · `kg_closure` 에 `Sec_m_ecopro_bm → Org_issuer_d52728ad91` 적재 · ttl 에 `skos:broader` 2줄).
+
+## 6-1. 구현 결과 (2026-09-05 밤, 같은 세션)
+
+| 항목 | 구현 | 자리 | 회귀 |
+| :-- | :-- | :-- | :-- |
+| P0 | ✅ | yaml `hasYieldHistory.why` 어휘 · ttl 재빌드 | test_yield_history_why_uses_snapshot_wording |
+| P1 | ✅ | `gen_shared_auto._link_manual_masters` (법인 키 일치 → `parent: Sec_m_<slug>`) · 재생성 diff = 노드 2 · `build_ontology` 재빌드 | test_closure_links_master_to_bond_issuer · test_bond_subsidiary_question_grounds_to_subsidiary_issuer · ETF 접지 불변 |
+| P2 | ⏸ 리드 결정 대기 | — | (P1 만으로도 #1 정답: IN (에코프로, 에코프로비엠) 중 표면금리 1위가 에코프로비엠 7-2) |
+| P3 | ✅ | yaml `hasIndustrySector` (vocab / vocab_ungrounded) · `gate.check(grounded_entity)` | #3 기각 · 축 어휘 3문형 · 접지 발행사 통과 · 산업은행 3문형 · gold answer 전건 신규 기각 0 |
+| P4 | ✅ (pd_nm 한정) | `strip_fabricated_name_branches`(OR 가지) · `fabricated_name_literal_use`(precheck 기각) · 선언 리터럴 36종은 yaml 파싱 | gold 채권 SQL 전건 무변경 · 'Space' 제거 · AND 절 기각 |
+| P5 | ✅ (+등급 IN 날조 제거 통합) | `ensure_grade_rank_sort` — 서열 CASE · `crd_grd IS NOT NULL` · 2차 키 · `/*GRADESORT:*/` 표식 → 머리줄 축 이름 | BBB-·BBB0·BBB+ 실측 재현 · BND-C-016 불개입 · 금리 축 불개입 |
+| P6-a | ✅ | `ensure_risk_name_column` — 집계 래퍼만 불개입 | TRIM 래퍼 보강 · COUNT/MAX 불개입 |
+| P6-b | ✅ | `ensure_bond_identity_columns` — DISTINCT·비-pd_no GROUP BY·속성 없음 불개입 · 구조 CASE 안의 pd_nm/`*` 는 무시 | 7종 불개입 |
+| P7 | ✅ | `bond_answer_notes` — ESG 표기 · 발행사명 접두 · 무등급 제외 — 목록 조립 tail 과 HCX 산문 경로 둘 다 | HCX 경로 고지 병기 · 중복 0 |
+| P8 | ✅ | yaml `risk_factor_profile`(triggers·columns·max_rows 5·investment_floor·closing) · `ensure_risk_factor_columns` · `_bond_risk_profile` | 에코프로비엠 7-2 문단(1등급·BBB+ 투자적격·콜 개시일·사모) · 30행 목록은 상위 5 문단 · 일반론 금지 |
+| P9 | ✖ 철회 | — | — |
+| P10 | ✅ | `guard._humanize_cond` — 같은 컬럼 LIKE OR 그룹 → "상품명에 'x'·'y' 중 하나 포함" | 3케이스 |
+| **P11 (구현 중 발견)** | ✅ | `normalize_bond_select_aliases` — HCX 의 한글 별칭(`TRIM(pd_nm) AS 상품명`)을 원 컬럼명으로. 별칭 헤더 때문에 목록 조립기(HCX 0회)가 비켜 가 산문 경로로 가던 것이 #2 의 코드 노출·고지 소실의 앞단 원인이었다 | #2 종단: 조립기 경로 진입 · 위험요인 문단 3 |
+| 종단 | ✅ | 서버가 낸 SQL 을 플래너 자리에 놓고 체인+조립기 통째로 | #1·#2·#5 종단 3건 |
 
 ## 7. 리드 결정 대기
 

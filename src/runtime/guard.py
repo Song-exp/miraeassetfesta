@@ -859,7 +859,15 @@ def _humanize_cond(cond: str) -> str | None:
     """최상위 AND 조건 하나를 '위험등급이 6등급(매우낮은위험)' 꼴로. 못 옮기면 None."""
     c = _H_COAL.sub(r"\1", _H_TRIM.sub(r"\1", cond.strip()))
     if c.startswith("(") and c.endswith(")"):
-        return None                                    # OR 그룹 — 한 문장으로 못 옮긴다
+        # OR 그룹 — 같은 이름 컬럼의 LIKE 가지들만이면 "상품명에 'x'·'y' 중 하나 포함" 으로 옮긴다.
+        # 2026-09-05 난이도 상 #3: `(pd_nm LIKE '%우주항공%' OR pd_nm LIKE '%Space%')` 0행이 "상품 자체가 없습니다" 로 나가
+        # 이름 표기 부재가 상품 부재로 읽혔다(한화에어로스페이스 11행 실재). 그 밖의 OR 그룹은 종전대로 한 문장으로 못 옮긴다.
+        likes = [_H_LIKE.match(d.strip()) for d in split_disjuncts(c[1:-1].strip())]
+        cols = {m.group(1).lower() for m in likes if m}
+        if likes and all(likes) and len(cols) == 1 and next(iter(cols)) in _COL_KO:
+            lab = _COL_KO[next(iter(cols))]
+            return f"{lab}에 {'·'.join(repr(m.group(2)) for m in likes)} 중 하나 포함"
+        return None
     m = _H_EQ.match(c)
     if m:
         col = m.group(1).lower()

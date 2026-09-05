@@ -33,6 +33,8 @@ fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
 
 # ABSENT: fp:DomesticBond 에는 fp:hasCreditGradeHistory 없음 — 채권 신용등급은 기준일 현재 등급(crd_grd)만 있고 등급 추이·변동 이력(상향·하향)은 수록되어 있지 않습니다.
 fp:DomesticBond rdfs:comment "hasCreditGradeHistory 속성 없음: 채권 신용등급은 기준일 현재 등급(crd_grd)만 있고 등급 추이·변동 이력(상향·하향)은 수록되어 있지 않습니다."@ko .
-# ABSENT: fp:DomesticBond 에는 fp:hasYieldHistory 없음 — 채권 금리·수익률·가격은 기준일(2026-08-22) 현재 스냅샷 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다.
-fp:DomesticBond rdfs:comment "hasYieldHistory 속성 없음: 채권 금리·수익률·가격은 기준일(2026-08-22) 현재 스냅샷 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다."@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasYieldHistory 없음 — 채권 금리·수익률·가격은 데이터 산출 시점(8/21 스냅샷) 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다.
+fp:DomesticBond rdfs:comment "hasYieldHistory 속성 없음: 채권 금리·수익률·가격은 데이터 산출 시점(8/21 스냅샷) 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다."@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasIndustrySector 없음 — 채권 마스터에는 발행사의 업종·산업·섹터·테마 분류 컬럼이 없다 — 발행사 이름(pd_pbcm)·채권 종류(bd_knd)·등급만 있다. 1차 외부 코드북 issuer_industry_map 은 2차 재검수에서 기각했고, 발행사→주식→ETF 구성종목 업종의 3-hop 유도는 58종목만 닿아 선언하지 않았다(2026-09-05 결정).
+fp:DomesticBond rdfs:comment "hasIndustrySector 속성 없음: 채권 마스터에는 발행사의 업종·산업·섹터·테마 분류 컬럼이 없다 — 발행사 이름(pd_pbcm)·채권 종류(bd_knd)·등급만 있다. 1차 외부 코드북 issuer_industry_map 은 2차 재검수에서 기각했고, 발행사→주식→ETF 구성종목 업종의 3-hop 유도는 58종목만 닿아 선언하지 않았다(2026-09-05 결정)."@ko .
 

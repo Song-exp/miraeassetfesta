@@ -437,6 +437,25 @@ def _kind_vocabulary(con):
     return vocab
 
 
+def _link_manual_masters(nodes):
+    """Org_issuer 노드 중 수동 정본(security_alias_manual.csv name_ko)과 법인 키가 같은 것에 parent: Sec_m_<slug>. 이은 라벨 목록을 돌려준다."""
+    path = os.path.join(ROOT, "ontology", "codebooks", "security_alias_manual.csv")
+    if not os.path.exists(path):
+        return []
+    import csv
+    with open(path, encoding="utf-8-sig") as f:
+        masters = {issuer_key(r["name_ko"]): r["slug"] for r in csv.DictReader(f) if r.get("name_ko") and r.get("slug")}
+    linked = []
+    for nid, node in nodes.items():
+        for al in node["aliases"]:
+            slug = masters.get(issuer_key(al["raw"]))
+            if slug:
+                node["parent"] = f"Sec_m_{slug}"
+                linked.append(f"{node['label_ko']}→Sec_m_{slug}")
+                break
+    return linked
+
+
 def build_issuers(con):
     rows = con.execute("select trim(pd_pbcm), count(*) from domestic_bonds where pd_pbcm is not null and trim(pd_pbcm)<>'' group by 1").fetchall()
     # 🔴 2026-09-04 서버 실측 #61 — pd_pbcm 에 종류명이 들어간 오염 1행('국고채권' · KRC035AP28C9
@@ -461,6 +480,11 @@ def build_issuers(con):
                       "aliases": [{"table": "domestic_bonds", "column": "pd_pbcm", "raw": r, "source": "rule",
                                    "evidence": f"발행사명 정규화 · {n}행"} for r, n in vs]}
         merged += len(vs) - 1
+    # 🔗 2026-09-05 — 수동 정본(codebooks/security_alias_manual.csv · Sec_m_<slug>)과 **같은 법인 키**면 parent 로 잇는다.
+    #    난이도 상 #1 실측: subsidiaryOf(에코프로비엠 → 에코프로)는 주식 정본 사이에만 있고 채권 발행사 노드는 어느 closure 에도
+    #    없어 '에코프로 자회사가 발행한 채권' 이 모회사 본체로 접지됐다. 해외는 Sec_lei_* 로 "정본 → 주식·회사채" 가 열려 있는데
+    #    국내는 그 자리가 비어 있었다. 손 컬럼이 아니라 키 일치(정본 30 중 채권 발행사 일치 2 = 에코프로·에코프로비엠)로 빌드가 잇는다.
+    linked = _link_manual_masters(nodes)
     header = (
         "# GENERATED — 편집 금지. 재생성: python scripts/gen_shared_auto.py\n"
         f"# source={SOURCE}\n# as_of={AS_OF}\n"
@@ -470,6 +494,8 @@ def build_issuers(con):
            + " · ".join(f"{r}({n}행)" for r, n in polluted) + " — 2026-09-04 #61\n" if polluted else "")
         + "# 운용사 노드(organization.yaml Org_000…)와는 별개. property 는 hasIssuer (운용사 hasManager 와 구분)\n"
     )
+    if linked:
+        header += f"# 수동 정본(Sec_m_*)과 법인 키 일치 → parent {len(linked)}: " + " · ".join(linked) + " — 2026-09-05 자회사→채권 발행사 closure\n"
     doc = {"entity": "Organization", "description": "채권 발행사 (자동 등록분, role=issuer)", "property": "hasIssuer",
            "generated": True, "source": SOURCE, "as_of": AS_OF, "nodes": nodes}
     with open(OUT_ISS, "w", encoding="utf-8", newline="\n") as f:

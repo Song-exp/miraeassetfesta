@@ -37,4 +37,6 @@ fp:DomesticBond rdfs:comment "hasCreditGradeHistory 속성 없음: 채권 신용
 fp:DomesticBond rdfs:comment "hasYieldHistory 속성 없음: 채권 금리·수익률·가격은 데이터 산출 시점(8/21 스냅샷) 한 시점만 수록되어 있고, 그 이전의 추이·변동 이력(올랐는지·내렸는지)은 수록되어 있지 않습니다."@ko .
 # ABSENT: fp:DomesticBond 에는 fp:hasIndustrySector 없음 — 채권 마스터에는 발행사의 업종·산업·섹터·테마 분류 컬럼이 없다 — 발행사 이름(pd_pbcm)·채권 종류(bd_knd)·등급만 있다. 1차 외부 코드북 issuer_industry_map 은 2차 재검수에서 기각했고, 발행사→주식→ETF 구성종목 업종의 3-hop 유도는 58종목만 닿아 선언하지 않았다(2026-09-05 결정).
 fp:DomesticBond rdfs:comment "hasIndustrySector 속성 없음: 채권 마스터에는 발행사의 업종·산업·섹터·테마 분류 컬럼이 없다 — 발행사 이름(pd_pbcm)·채권 종류(bd_knd)·등급만 있다. 1차 외부 코드북 issuer_industry_map 은 2차 재검수에서 기각했고, 발행사→주식→ETF 구성종목 업종의 3-hop 유도는 58종목만 닿아 선언하지 않았다(2026-09-05 결정)."@ko .
+# ABSENT: fp:DomesticBond 에는 fp:hasCouponFrequency 없음 — 채권 마스터에는 이자지급 방식(bd_intp_tcd — 이표/복리/할인/단리)과 금리구분(bd_inrt_tcd), 표면금리(srfc_irt)만 있고, 이표채가 몇 개월마다 이자를 주는지(3개월·6개월·연 1회)와 이자지급일은 컬럼이 없다. 58컬럼 전수 확인(2026-09-05).
+fp:DomesticBond rdfs:comment "hasCouponFrequency 속성 없음: 채권 마스터에는 이자지급 방식(bd_intp_tcd — 이표/복리/할인/단리)과 금리구분(bd_inrt_tcd), 표면금리(srfc_irt)만 있고, 이표채가 몇 개월마다 이자를 주는지(3개월·6개월·연 1회)와 이자지급일은 컬럼이 없다. 58컬럼 전수 확인(2026-09-05)."@ko .
 

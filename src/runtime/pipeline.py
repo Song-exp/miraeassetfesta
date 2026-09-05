@@ -9064,7 +9064,7 @@ def drop_undeclared_table_or_branches(sql: str) -> tuple[str, list[str]]:
     return sql[:m_w.start(1)] + " " + " AND ".join(out) + " " + sql[m_w.end(1):], dropped
 
 
-def drop_hallucinated_column_conjuncts(sql: str) -> tuple[str, list[str]]:
+def drop_hallucinated_column_conjuncts(sql: str, canon_fired: bool = False) -> tuple[str, list[str]]:
     """스키마에 없는 컬럼을 쓴 최상위 AND 절을, **그 값 리터럴이 다른 절에 이미 걸려 있을 때만** 걷는다.
 
     🔴 16R KG ③-6 / gold ③-1 — `Z11` 실측: `asset_class='중국주식' AND fund_type='공모'` 두 환각 컬럼이
@@ -9090,7 +9090,14 @@ def drop_hallucinated_column_conjuncts(sql: str) -> tuple[str, list[str]]:
         bad = sorted(x for x in cols if x not in known and x not in _SQL_WORDS)
         lits = _SQL_LITERAL.findall(c)
         others = " AND ".join(x for x in conjs if x is not c)
-        if bad and lits and all(l in others for l in lits):
+        # 🔴 2026-09-05 Z10·KG-018 — 확정식 가드가 **이 질의의 축을 이미 심었으면** 리터럴이 다른 절에
+        #    없어도 걷는다. 실측: Z10 은 `zrin_ptn_nm='인도주식'`(유형 축 주입)이 들어간 채
+        #    `asset_class='해외주식형' AND fund_type='공모'` 가 함께 실려 기각됐고, KG-018 은
+        #    `prfd_attr_cds LIKE '%,C102,%' AND '%,C103,%'`(속성 태그 확정식)가 들어간 채
+        #    `fd_mdfy_itt_cd=400 AND fd_open_itt_cd=100` 이 실려 기각됐다. 둘 다 **남는 조건이
+        #    이미 정답**인데 재생성이 같은 실수를 반복해 오거절로 끝났다.
+        #    확정식은 그 축의 정본이므로 환각 절은 정보가 0 이다 — 모수가 넓어지지 않는다.
+        if bad and (canon_fired or (lits and all(l in others for l in lits))):
             dropped.append(f"{bad[0]} 절")
             continue
         kept.append(c)
@@ -9270,11 +9277,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 운용사 최빈 이름 — MAX(mgmt_co_nm) 이 합병 코드의 구명칭을 사전순으로 뽑던 것을 "
              "소수 이름 제외로 교정 (2026-09-01 FND-035 재검: 00040007 이 프랭클린템플턴(10행)으로 표기 — 정본은 우리자산운용 373행)")
     before_ctag = sql
+    canon_fired = False
     sql, ctag_fixed = ensure_fund_country_tag(sql, q, name_token)
+    canon_fired = canon_fired or ctag_fixed
     if ctag_fixed:
         step("[Guard] 국가 태그 확정식 — 국가어 질의의 지역·설립국·태그·속성명·이름 OR 절을 KG Country 토큰 canon 하나로 접음 "
              f"(KG 1R S3·3R C: 어떤 태그를 썼든 교정 · '유형' 이면 zrin_ptn_nm) · 전: {before_ctag[before_ctag.upper().find('WHERE'):][:120]}")
     sql, attr_fixed = ensure_fund_attr_tag(sql, q)
+    canon_fired = canon_fired or attr_fixed
     if attr_fixed:
         step("[Guard] 속성 태그 확정식 — 설정형태 어휘(개방형·폐쇄형·단위형·추가형)를 KG FundAttribute 토큰 canon 으로 주입, 같은 낱말의 타 컬럼 절 제거 "
              "(KG-017 han_clas_policies LIKE '%폐쇄형%' → 0행 '0개' · KG-018 직교 축 폐기)")
@@ -9292,10 +9302,12 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 호수 경계 주입 — N호 조건을 GLOB '*[^0-9]N호*' 확정식으로 교체 "
              "(2026-09-01 FND-032 실측: HCX 가 경계식을 `'2호' IN (a OR b)` 로 옮겨 항상-거짓 0행)")
     sql, mixed_fixed = ensure_fund_mixed_type(sql, q)
+    canon_fired = canon_fired or mixed_fixed
     if mixed_fixed:
         step("[Guard] 혼합형 확정식 치환 — 유형 조건을 zrin_btyp_nm IN (주식혼합형·채권혼합형) 으로 교체 "
              "(2026-09-01 FND-023 실측 2회: '혼합형' 이 없는 값 기각→오거절, 재검은 혼합자산·대출형·개발형 오모수)")
     sql, btyp_fixed = ensure_fund_type_axis(sql, q)
+    canon_fired = canon_fired or btyp_fixed
     if btyp_fixed:
         step("[Guard] 유형 축 주입 — 질문이 고른 유형(zrin_btyp_nm) 절이 SQL 어디에도 없어 확정식을 AND 로 주입 "
              "(7R 뿌리⑥ = KG 4R G3 + 6R P′ · Y7 실측: '주식형 … 운용사 3곳' 답이 전체 랭킹 V5 와 바이트 단위로 같았다)")
@@ -9513,7 +9525,7 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step(f"[Guard] 미선언 테이블 OR 가지 제거 — {' · '.join(undecl)} (16R gold ③-1 · OFFICIAL-004 실측: "
              "`ext_etf_holdings.ticker` OR 가지 2개 때문에 문장 전체가 기각되고 재생성이 완전히 같은 문장을 "
              "돌려줘 무응답이 됐다. OR 가지는 조건을 넓히는 자리라 걷어도 모수가 넓어지지 않는다)")
-    sql, halluc = drop_hallucinated_column_conjuncts(sql)
+    sql, halluc = drop_hallucinated_column_conjuncts(sql, canon_fired)
     if halluc:
         step(f"[Guard] 환각 컬럼 술어 제거 — {' · '.join(halluc)} (16R KG ③-6 · gold ③-1: 스키마에 없는 컬럼을 쓴 "
              "최상위 절은, 그 절의 값 리터럴이 확정식으로 이미 걸려 있을 때만 걷는다. Z11 실측: "

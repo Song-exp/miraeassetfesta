@@ -43,7 +43,11 @@ SNAPSHOT_DATE = _DATES.get("snapshot") or "2026-08-21"
 _CROSS_HINTS = ("보유한", "보유중", "편입", "구성종목", "담고 있는", "포함된", "들어있는",
                 # 🔴 2026-08-31 서버 실측 — "Li Auto 담은 국내 ETF" 가 교차로 안 잡혀 종목 노드가
                 #    규칙 E(대상 테이블 alias 없음)에 걸려 버려졌다. '담은' 계열 표면형 보강.
-                "담은", "담긴", "포함한", "보유하")
+                "담은", "담긴", "포함한", "보유하",
+                # 🔴 2026-09-05 서버 실측 — "삼성전자 **비중이** 5% 넘는 ETF" 가 교차로 안 잡혀 삼성전자 노드가
+                #    대상 테이블(마스터 둘)에 alias 없음으로 버려지고, HCX 가 마스터에 없는 weight_pct 를 써서
+                #    재생성까지 두 번 기각됐다. 비중·차지 는 구성종목(ext_*_holdings.weight_pct) 축의 표면형이다.
+                "비중", "차지하")
 
 
 def detect_tables(question: str, ctx: RuntimeContext | None = None) -> list[str]:

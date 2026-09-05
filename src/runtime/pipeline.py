@@ -1088,6 +1088,85 @@ def _col_asked(table: str, col: str, question: str) -> bool:
     return False
 
 
+_DOM_ETF_TBL = re.compile(r"\bfrom\s+domestic_etfs\b", re.I)
+_ETF_RISK_COND = re.compile(r"\bpd_risk_(?:nm|cd)\b|\bdu_vlty_\w+\s*(?:<|<=|BETWEEN|ASC)", re.I)
+# 등급 조건 하나를 통째로 잡는다 — IN 목록은 따옴표 항목 단위로 읽는다. 값 안의 '(1등급)' 괄호에서 끊기면
+# 치환 뒤 꼬리 `','높은위험(2등급)')` 가 남아 SQL 이 깨진다(2026-09-05 단위 검증에서 실측). 방향 판정은 코드가 한다.
+_ETF_RISK_COND_WHOLE = re.compile(
+    r"\bpd_risk_nm\s*(?:=\s*'[^']*'|IN\s*\((?:\s*'[^']*'\s*,?)+\s*\))"
+    r"|\bpd_risk_cd\s*(?:=\s*'?\d+'?|IN\s*\((?:\s*'?\d+'?\s*,?)+\s*\))", re.I)
+_RISK_HIGH_TOKEN = re.compile(r"[12]등급|(?<![\d'])0?[12](?![\d등])")
+
+
+def _etf_risk_high_match(sql: str):
+    """SQL 의 첫 위험등급 조건이 1·2등급(고위험)만 가리키면 그 match 를, 아니면 None."""
+    m = _ETF_RISK_COND_WHOLE.search(sql)
+    if not m:
+        return None
+    body = m.group(0)
+    if re.search(r"[3-6]등급|(?<![\d'])0?[3-6](?![\d등])", body):
+        return None                      # 3~6등급이 섞였으면 방향이 틀린 게 아니다
+    return m if _RISK_HIGH_TOKEN.search(body) else None
+_ETF_SAFE_COND = "pd_risk_nm IN ('매우낮은위험(6등급)','낮은위험(5등급)')"
+_GRADE_NUM_Q = re.compile(r"[1-6]\s*등급|등급\s*[1-6]")
+
+
+def ensure_etf_safe_grade(sql: str, question: str) -> tuple[str, bool]:
+    """'안전' 질의(국내 ETF)에 위험등급 필터를 확정식으로 세운다 — 없으면 주입, 1·2등급으로 뒤집혔으면 교체.
+
+    2026-09-05 서버 실측 — "안전한 ETF 추천해줘" 의 SQL 이 `ORDER BY du_last_aum DESC LIMIT 5` 뿐이었다.
+    위험 조건이 한 글자도 없어 순자산 상위 5개(KODEX 200·TIGER 미국나스닥100 … **전부 2등급 '높은위험'**)를
+    "안전한 ETF" 로 답했다. clarify.안전한 규칙이 형식(`pd_risk_nm IN (6등급,5등급)`)까지 적어 프롬프트에
+    실렸는데도 무시됐다 — 말로 하는 규칙은 확률이고, 6등급 21건뿐이라 5등급까지 넓히는 판단도 코드가 낫다.
+    펀드판 ensure_fund_safe_grade_direction 과 동형이되, 펀드는 '뒤집힘 교정' 만 하고 여기는 '부재 주입' 도 한다 —
+    ETF 는 위험 컬럼을 아예 안 쓴 것이 실측이었기 때문이다.
+    발동: ① domestic_etfs 단일 SELECT(해외는 위험등급 컬럼이 없다 — absent 게이트 몫) ② 질문에 안전·안정 어휘
+    ③ 질문이 등급 숫자를 명시하지 않음 ④ 변동성 정렬(du_vlty)로 안전을 표현한 SQL 은 존중.
+    """
+    if not _DOM_ETF_TBL.search(sql) or not _SAFE_Q.search(question) or not _single_select(sql):
+        return sql, False
+    if _GRADE_NUM_Q.search(question):
+        return sql, False
+    m = _etf_risk_high_match(sql)
+    if m:                                   # 뒤집힘 — 1·2등급을 5·6등급으로
+        return sql[:m.start()] + _ETF_SAFE_COND + sql[m.end():], True
+    if _ETF_RISK_COND.search(sql):
+        return sql, False                   # 위험 축을 이미 썼다 — 방향도 맞다
+    out, ok = _append_exclusions(sql, [_ETF_SAFE_COND])
+    if not ok:
+        return sql, False
+    return _select_add_col(out, "pd_risk_nm"), True
+
+
+# SELECT 머리의 맨 cu_charge_rt — 앞에 '(' '.' 낱말문자가 없고(NULLIF( 안·함수 안 제외), 뒤에 AS 별칭이 이미 붙었으면 제외
+_BARE_CHARGE = re.compile(
+    r"(?<![\w.(])((?:(?:d|e|domestic_etfs|overseas_etfs)\.)?cu_charge_rt)\b(?!\s*\()(?!\s+AS\b)", re.I)
+_FROM_KW = re.compile(r"\bfrom\b", re.I)
+
+
+def ensure_etf_charge_nullif(sql: str) -> tuple[str, bool]:
+    """SELECT 목록의 맨 `cu_charge_rt` 를 `NULLIF(cu_charge_rt, 0)` 으로 감싼다 — 0 은 보수가 아니라 미입력이다.
+
+    2026-09-05 서버 실측 — "에코프로 자회사 편입 ETF 중 순자산 큰 상품" 답변: "이 ETF 의 **총보수는 없으며**".
+    묻지도 않은 cu_charge_rt 가 SELECT 에 실렸고 값이 0.0 이라 답변기가 '보수 없음' 으로 읽었다.
+    KODEX 200 은 보수가 있다(투자설명서). normalization.zero_as_missing_default: true 가 이미 선언한 사실을
+    SQL 층에 굽는다 — 보수개별조회 규칙은 '보수를 물었을 때' 만 NULLIF 를 요구했는데, 안 물었을 때 실린
+    맨값이 더 위험했다. WHERE 의 cu_charge_rt(보수유효 `> 0`)는 건드리지 않는다 — SELECT 머리만.
+    """
+    if not _ETF_TBL.search(sql) or not _single_select(sql):
+        return sql, False
+    frm = _FROM_KW.search(sql)
+    if not frm:
+        return sql, False
+    head = sql[:frm.start()]
+    if re.search(r"NULLIF\s*\(\s*(?:\w+\.)?cu_charge_rt", head, re.I):
+        return sql, False
+    new_head, n = _BARE_CHARGE.subn(lambda m: f"NULLIF({m.group(1)}, 0) AS cu_charge_rt", head)
+    if not n:
+        return sql, False
+    return new_head + sql[frm.start():], True
+
+
 def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
     """ETF 랭킹·집계 SQL 에 상품군 확정식을 기계 주입. (보정된 SQL, 보정했는지) — `ensure_fund_base_population` 의 ETF 판.
 
@@ -4273,6 +4352,9 @@ _DISCLAIMER = re.compile(
     #   어느 것도 조회 결과에서 나온 문장이 아니다(근거 밖 부연 + 투자권유). 문형으로 걷는다.
     r"|신중(?:하게|히)\s*(?:고려|검토|결정|판단|접근)|투자\s*(?:결정|판단)을\s*(?:내리|하시|해야)"
     r"|충분히\s*(?:이해|검토|고려|숙지)|손실이\s*발생할\s*수\s*있|수익을\s*추구합니다"
+    # 🔴 2026-09-05 서버 실측 — "안전한 ETF 추천해줘" 답변 꼬리: "안정적인 수익을 추구하는 투자자들에게 **적합합니다**"
+    #   + "주기적인 모니터링이 필요합니다". 위험등급 2등급 5개를 두고 한 말이라 근거 없는 권유다. 문형으로 걷는다.
+    r"|투자자(?:들)?에게\s*적합|적합합니다|모니터링이\s*필요|안정적인\s*수익을\s*추구"
     # 11R KG ③-18 재발 — 내용 없는 마무리문("위의 정보를 통해 … 확인할 수 있습니다")
     r"|위(?:의|\s*정보)[^.!?\n]*(?:확인할\s*수\s*있습니다|알\s*수\s*있습니다)"
     # gold ③-17 — 거절문의 외부 출처 안내("금융기관의 공식 웹사이트나 관련 보고서를 통해 확인하실 수 있습니다")
@@ -8403,6 +8485,10 @@ def build_grounding(
             "#        JOIN ext_fund_holdings f ON f.grp = p.mtco_itm_no AND f.or_co = p.or_co_xtn_itt_cd\n"
             "#        WHERE f.holding_nm='…'\n"
             "#    정렬·LIMIT 은 UNION 전체를 감싼 바깥에서 한 번만 건다. 답변에는 구분 열을 함께 밝힌다.\n"
+            "# 🔴 **같은 개체를 두 상품군에서 셀 때는 양쪽에 같은 매칭 기준을 쓴다.** KG 매핑이 값을 줬으면\n"
+            "#    두 가지 모두 그 값으로 `IN (...)`. 한쪽은 정확일치·다른 쪽은 `LIKE '%…%'` 면 두 수가 비교 불가다\n"
+            "#    (서버 실측 2026-09-05: 'S&P 500 국내·해외 각각' — 국내 정확일치 24 vs 해외 부분일치 513,\n"
+            "#    해외 쪽에 '75% S&P 500/25% Bitcoin Blend' 같은 혼합지수가 섞였다). 답변에 어느 기준인지 밝힌다.\n"
             "# 🔴 ext_ 테이블에는 **마스터의 컬럼 이름이 없다.** 조인 키 줄의 왼쪽 이름을 그대로 쓴다 —\n"
             "#    ext_etf_holdings 의 ETF 식별자는 `etf_code` 이지 `pd_itm_no` 가 아니다\n"
             "#    (서버 실측 2026-09-04: `IN (SELECT pd_itm_no FROM ext_etf_holdings …)` 가 '없는 컬럼' 으로 기각).\n"
@@ -9810,6 +9896,13 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] ETF 기본모수 주입 — 상품군 확정식(pd_grp_no='ETF' · pd_sale_yn=1)이 SQL 에 없어 주입 "
              "(8R B-4″-b · 7R U8 실측: 모수 절이 없으니 HCX 가 cu_charge_rt>0 · NOT LIKE '%not provided%' 라는 "
              "아무도 요구하지 않은 모수를 지어냈다 · AA22 49 vs gold 45)")
+    sql, etf_safe = ensure_etf_safe_grade(sql, q)
+    if etf_safe:
+        step("[Guard] ETF 안전등급 확정식 — '안전' 질의에 pd_risk_nm IN (6등급,5등급) 주입·교정 + SELECT 에 등급 병기 "
+             "(2026-09-05 실측: 위험 조건 없이 순자산 상위 5개 — 전부 2등급 높은위험 — 를 '안전한 ETF' 로 답함 · 6등급 21건뿐이라 5등급까지 넓힌다)")
+    sql, chg_null = ensure_etf_charge_nullif(sql)
+    if chg_null:
+        step("[Guard] 총보수 0→NULL — SELECT 의 맨 cu_charge_rt 를 NULLIF(…,0) 으로 (2026-09-05 실측: 0.0 을 '총보수는 없으며' 로 서술 · 0 은 미입력)")
     sql, name_fixed = ensure_fund_name_filter(sql, name_token)
     if name_fixed:
         step(f"[Guard] 상품명 필터 주입 — 질문의 고유명 '{name_token}' 이 SQL 에 없어 itm_nm LIKE 주입 + LIMIT 1 해제 "

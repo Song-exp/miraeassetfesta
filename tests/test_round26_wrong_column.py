@@ -72,3 +72,23 @@ def test_두_겹_괄호_안의_집계도_집계로_본다():
     head = f"SELECT itm_no, MIN(ROUND(({FEE})/10.0, 4)) AS x"
     assert _inside_aggregate(head, "or_co_rwrd_r")
     assert not _inside_aggregate("SELECT itm_no, or_co_rwrd_r", "or_co_rwrd_r")
+
+
+from src.runtime.pipeline import ensure_grounded_org_name_predicate  # noqa: E402
+
+KG005_RAW = ("SELECT COUNT(*) as cnt, SUM(CASE WHEN mgmt_co_nm LIKE '삼성%' THEN 1 ELSE 0 END) as s FROM public_funds "
+             "JOIN ext_fund_page ON ext_fund_page.itm_no = public_funds.itm_no WHERE prvo_pbff_desc = '공모' "
+             "AND itm_nm LIKE '삼성%' AND mgmt_co_nm IS NOT NULL")
+
+
+def test_공식명으로_부른_운용사의_이름_LIKE_를_코드_등호로(ctx):
+    out, note = ensure_grounded_org_name_predicate(
+        KG005_RAW, "이름이 삼성으로 시작하는 공모펀드는 몇 개고, 그중 삼성자산운용이 운용하는 건 몇 개야?", ctx)
+    assert note and "00040010" in note
+    assert "TRIM(or_co_xtn_itt_cd) = '00040010'" in out and "mgmt_co_nm" not in out
+    assert "itm_nm LIKE '삼성%'" in out                     # 이름 시작 조건은 질문의 축 — 그대로
+
+
+def test_공식명이_질문에_없으면_불개입(ctx):
+    """label_ko '삼성' 은 KG 여러 노드가 쓴다 — 공식명 정확 일치만 접지한다."""
+    assert ensure_grounded_org_name_predicate(KG005_RAW, "삼성 펀드 중 삼성이 운용하는 건 몇 개야?", ctx)[1] is None

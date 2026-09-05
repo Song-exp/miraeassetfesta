@@ -9399,6 +9399,42 @@ def ensure_absent_attr_column(sql: str, question: str) -> tuple[str, str | None]
     return sql[:m.start()] + f"({want} IS NULL OR TRIM({want}) = '')" + sql[m.end():], m.group(1)
 
 
+_MGMT_NAME_PRED = re.compile(r"(?<![\w.])(?:\w+\.)?mgmt_co_nm\s*(?:LIKE|=)\s*'([^']*)'", re.I)
+_MGMT_NOTNULL = re.compile(r"\s+AND\s+(?:\w+\.)?mgmt_co_nm\s+IS\s+NOT\s+NULL", re.I)
+
+
+def ensure_grounded_org_name_predicate(sql: str, question: str, ctx) -> tuple[str, str | None]:
+    """질문이 공식명으로 부른 운용사가 KG 에 접지됐으면, 외부표 **이름 LIKE** 술어를 마스터 **코드 등호**로 바꾼다.
+
+    🔴 6차·7차 KG-005 서버 원문: `SUM(CASE WHEN mgmt_co_nm LIKE '삼성%' …) … JOIN ext_fund_page …
+       AND mgmt_co_nm IS NOT NULL` — 접지가 `Org_00040010 → or_co_xtn_itt_cd='00040010'` 을 줬는데 HCX 가
+       외부표 이름 LIKE 로 풀었다. '삼성%' 은 삼성에스알에이·삼성액티브까지 물고, INNER JOIN 은 커버리지
+       93.7% 밖 클래스를 조용히 떨군다(217→215). 이름은 근거가 아니다 — 코드가 정본이다(2026-09-04 교훈).
+    접지는 **공식명(label_official) 정확 일치**로만 한다 — label_ko '삼성' 은 KG 에 여러 노드가 쓴다.
+    바꾼 뒤 `mgmt_co_nm IS NOT NULL` 받침 술어는 뗀다(안 쓰게 된 ext 조인은 뒤 가드가 정리한다).
+    """
+    if not _FUND_TBL.search(sql) or not _MGMT_NAME_PRED.search(sql):
+        return sql, None
+    qn = question.replace(" ", "")
+    best = None
+    for n in (getattr(ctx, "kg_nodes", None) or []):
+        m = re.fullmatch(r"Org_(\d{8})", getattr(n, "node_id", "") or "")
+        off = (getattr(n, "label_official", None) or "").replace(" ", "")
+        if m and off and off in qn and (best is None or len(off) > len(best[1])):
+            best = (m.group(1), off)
+    if not best:
+        return sql, None
+    code, off = best
+    def _sub(m):
+        lit = m.group(1).replace("%", "").replace(" ", "")
+        return f"TRIM(or_co_xtn_itt_cd) = '{code}'" if lit and lit in off else m.group(0)
+    out = _MGMT_NAME_PRED.sub(_sub, sql)
+    if out == sql:
+        return sql, None
+    out = _MGMT_NOTNULL.sub("", out)
+    return out, f"{off}→or_co_xtn_itt_cd='{code}'"
+
+
 def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ctx, tables: list | None = None,
                       mgmt: tuple | None = None, fired_out: list | None = None) -> str:
     """플래너가 낸 SQL 에 기계 보정 가드를 전부 적용한다.
@@ -9515,6 +9551,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 안 물은 값 제거 — 열거 조건에서 질문이 부르지 않은 " + " · ".join(f"'{v}'" for v in unasked)
              + " 을 걷어냈다 (질문이 그 목록의 값을 하나라도 이름으로 불렀을 때만 · "
              "2026-09-05 DOM-05 실측: '파생상품' 만 물었는데 '재간접' 이 끼어 1위가 바뀌었다)")
+    sql, org_nm = ensure_grounded_org_name_predicate(sql, q, ctx)
+    if org_nm:
+        step(f"[Guard] 운용사 이름 술어 → 접지 코드 — 외부표 mgmt_co_nm LIKE 를 마스터 코드 등호로 ({org_nm}) "
+             "(6차·7차 KG-005 원문 실측: '삼성%' 이름 LIKE + INNER JOIN 으로 215/215 — 참값 217/906 · 207/850)")
     sql, ext_left = guard.ensure_ext_left_join(sql)
     if ext_left:
         step("[Guard] 외부표 LEFT 전환 — " + "·".join(ext_left) + " 을 INNER 에서 LEFT 로 "

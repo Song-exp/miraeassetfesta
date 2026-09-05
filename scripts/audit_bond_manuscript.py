@@ -94,14 +94,14 @@ raw = io.open(YAML, encoding="utf-8").read()
 d = _yaml.safe_load(raw)
 n = lambda k: len(d.get(k) or [])
 
-chk(L, "yaml 줄 수", 1242, len(raw.splitlines()))
+chk(L, "yaml 줄 수", 1290, len(raw.splitlines()))
 chk(L, "columns", 58, n("columns"))
 chk(L, "query_rules", 46, n("query_rules"))
 chk(L, "answer_rules", 21, n("answer_rules"))
 cl = d.get("clarify") or {}
 chk(L, "clarify 최상위 키", 4, len(cl))
 chk(L, "clarify 항목 합", 13, sum(len(v) for v in cl.values()))
-chk(L, "absent_properties", 4, n("absent_properties"))
+chk(L, "absent_properties", 6, n("absent_properties"))
 chk(L, "forbidden_columns", 4, n("forbidden_columns"))
 chk(L, "similarity_axes 축", 5, n("similarity_axes"))
 chk(L, "gate_constants", 1, n("gate_constants"))
@@ -113,9 +113,9 @@ chk(L, "query_rules 중 enforce 슬롯", 2,
     sum(1 for v in qr.values() if isinstance(v, dict) and "enforce" in v))
 
 t = io.open(TTL, encoding="utf-8").read()
-chk(L, "bond_kr.ttl 줄 수", 42, len(t.splitlines()))
-chk(L, "bond_kr.ttl 글자 수", 3644, len(t))
-chk(L, "bond_kr.ttl ABSENT 줄", 7, t.count("# ABSENT"))
+chk(L, "bond_kr.ttl 줄 수", 46, len(t.splitlines()))
+chk(L, "bond_kr.ttl 글자 수", 4568, len(t))
+chk(L, "bond_kr.ttl ABSENT 줄", 9, t.count("# ABSENT"))
 
 # ─────────────────────────────────────────────────────────────
 # ③ KG — build_ontology.py 를 다시 돌려야 바뀐다
@@ -147,7 +147,7 @@ try:
         from src.runtime import loader
     ctx = loader.load_context()
     T = ["domestic_bonds"]
-    chk(L, "planner_context 자", 23559, len(ctx.planner_context(T)))
+    chk(L, "planner_context 자", 23713, len(ctx.planner_context(T)))
     chk(L, "answer_context 자", 3390, len(ctx.answer_context(T)))
     chk(L, "clarify_context 자", 1227, len(ctx.clarify_context(T)))
 except Exception as e:
@@ -194,9 +194,9 @@ try:
     rec = io.open(REC, encoding="utf-8").read()
     body = rec[rec.index("## §1."):rec.index("## §2.")]
     inc = len(re.findall(r"^\| \d+ \|", body, re.M))
-    chk(L, "오답기록 사고 건수", 79, inc)
+    chk(L, "오답기록 사고 건수", 82, inc)
 except Exception as e:
-    rows.append((L, "오답기록 사고 건수", 79, f"ERR {type(e).__name__}", False))
+    rows.append((L, "오답기록 사고 건수", 82, f"ERR {type(e).__name__}", False))
 
 chk(L, "평가셋 문항", 226, tot)
 chk(L, "gold_sql 붙은 문항", 163, gold)

@@ -79,6 +79,15 @@ def _domain_chunks(ctx: RuntimeContext) -> frozenset:
             if isinstance(decl, dict):
                 words.add(str(decl.get("korean_name") or ""))
         words.update((doc.get("synonyms") or {}).keys())
+    # 🔴 2026-09-06 로컬 재생 — **없다고 선언한 속성의 어휘도 도메인 어휘다.** 좌수·운용역·기준가 추이처럼
+    #    컬럼이 없는 축은 스키마 한글명에 나올 수 없어, 상품군 낱말 없이 "좌수 알려줘" 라고 물으면 인사·잡담으로
+    #    오분류돼 안내 문장이 나갔다(정답은 "미수록" 고지). absent_properties 의 vocab 패턴에서 한글 조각을 함께 뽑는다.
+    #    vocab 은 정규식이라 한글이 기호로 끊긴다(`좌[ ]?수`) — 대안(|)으로 가르고 한글만 남겨 이어 붙인 뒤 조각을 뽑는다.
+    for items in (getattr(ctx, "absent_props", None) or {}).values():
+        for item in items or []:
+            for pat in list(item.get("vocab") or []) + list(item.get("vocab_ungrounded") or []):
+                words.update(re.sub(r"[^가-힣]", "", alt) for alt in re.split(r"\|", str(pat)))
+            words.add(str(item.get("why") or ""))
     chunks: set[str] = set()
     for w in words:
         for m in re.finditer(r"[가-힣]{2,}", w):

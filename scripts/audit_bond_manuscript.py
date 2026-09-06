@@ -194,12 +194,12 @@ try:
     rec = io.open(REC, encoding="utf-8").read()
     body = rec[rec.index("## §1."):rec.index("## §2.")]
     inc = len(re.findall(r"^\| \d+ \|", body, re.M))
-    chk(L, "오답기록 사고 건수", 82, inc)
+    chk(L, "오답기록 사고 건수", 86, inc)
 except Exception as e:
-    rows.append((L, "오답기록 사고 건수", 82, f"ERR {type(e).__name__}", False))
+    rows.append((L, "오답기록 사고 건수", 86, f"ERR {type(e).__name__}", False))
 
-chk(L, "평가셋 문항", 226, tot)
-chk(L, "gold_sql 붙은 문항", 163, gold)
+chk(L, "평가셋 문항", 230, tot)
+chk(L, "gold_sql 붙은 문항", 166, gold)
 chk(L, "의도된 0행 문항(gold_rows=0)", 3, zero)
 
 # gold_sql 전건 실행
@@ -217,7 +217,7 @@ for f in sorted(glob.glob("eval/*.jsonl")):
             okc += 1
         except Exception:
             err += 1
-chk(L, "gold_sql 실행 성공", 163, okc)
+chk(L, "gold_sql 실행 성공", 166, okc)
 chk(L, "gold_sql 실행 실패", 0, err)
 
 # ─────────────────────────────────────────────────────────────

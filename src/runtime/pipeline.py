@@ -4148,6 +4148,14 @@ def _effective_mat_window(sql: str) -> str | None:
     return f"{_fmt_ymd(str(hi))} {'이전' if hi_strict else '까지'}"
 
 
+def _is_zero(v) -> bool:
+    """결과 칸이 숫자 0 인가 — '0'·'0.0'·0.0 을 한 판정으로. 값이 아니라 결측 표기인 0 을 가려낼 때 쓴다."""
+    try:
+        return float(str(v).strip()) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _fmt_ymd(v: str) -> str:
     s = v.strip().rstrip("0").rstrip(".") if re.fullmatch(r"\d{8}\.0+", v.strip()) else v.strip()
     return f"{s[:4]}-{s[4:6]}-{s[6:]}" if re.fullmatch(r"\d{8}", s) else (s or "미수록")
@@ -4278,17 +4286,27 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         # 🔴 장내종가는 **기준일과 한 덩어리로만** 적는다 (규칙 `장내종가`·`가격축`). 유효 1,270행의 종가 기준일은
         #    2019~2026년에 흩어져 있고 구매가능 모수 1,262 중 2026년치는 150(12%)뿐이라, 기준일 없이 적으면
         #    사용자는 오늘 시세로 읽는다. 기준일 컬럼은 _BOND_HIDE 라 아래 일반 루프가 못 싣는다 — 여기서 짝지어 낸다.
+        # 🆕 2026-09-06 QA r1 BO(e) — 장내종가 0 은 값이 아니라 **거래 없음**이다(스키마 missing_semantics `0: missing`
+        #    · 16,476행 · 주최 공지 "0 = 의도된 값"). 종전엔 문자열이 truthy 라 '장내종가 0.0' 이 30행에 그대로 나갔다
+        #    (D-013 녹색채권 실측) — 수익률 0 을 '미수록' 으로 적는 바로 위 규칙과 같은 축이다.
         if "exg_close_price" in cols and r.get("exg_close_price"):
             _bd = r.get("exg_close_price_base_dt")
             _bd = _fmt_ymd(_bd) if _bd and _bd.strip() else None
-            bits.append(f"장내종가 {r['exg_close_price']}" + (f"(종가 기준일 {_bd})" if _bd else ""))
+            if _is_zero(r["exg_close_price"]):
+                bits.append("장내종가 없음(장내 거래 없음)")
+            else:
+                bits.append(f"장내종가 {r['exg_close_price']}" + (f"(종가 기준일 {_bd})" if _bd else ""))
         # SELECT * 는 58컬럼 전부가 오므로 위 핵심 항목만 보이고 나머지는 옮기지 않는다(2026-09-03 BAC 행 실측)
         for c in ([] if star else cols):
             if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm",
                                         "exg_close_price", "구분") or c in _BOND_YIELD_COLS:
                 continue
             if r.get(c):
-                bits.append(f"{_BOND_COL_KO.get(c, c)} {_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c]}")
+                # 🆕 2026-09-06 QA r1 BO(d) — 날짜 컬럼은 만기(mat_dt)만 사람 표기였다. 일반 루프로 실리는 발행일(isu_dt)은
+                #    `_cell` 이 REAL 을 정수로만 되돌려 '발행일 20260626' 이 그대로 나갔다(D-052 실측). 날짜는 한 규칙으로 적는다.
+                bits.append(f"{_BOND_COL_KO.get(c, c)} "
+                            + (_fmt_ymd(r[c]) if c.endswith("_dt") else
+                               (_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c])))
         tag = f"[{r['구분']}] " if both and r.get("구분") else ""
         out.append(f"{i}. {tag}{r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
         if risk_spec and i <= int(risk_spec["max_rows"]):
@@ -10484,6 +10502,8 @@ def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
 
 
 _BOND_YIELD_SORT = re.compile(r"\border\s+by\s+(?:MAX|MIN)?\(?\s*(applied_yield|after_tax_yield|srfc_irt|buy_yield)\b", re.I)
+# 듀레이션 축 정렬 — 대표행 형(MIN(dur))·bare 둘 다. 잔존일수 병기의 발동 신호다 (2026-09-06 QA r1 BO-f).
+_BOND_DUR_SORT = re.compile(r"\border\s+by\s+(?:MAX|MIN)?\(?\s*dur\b", re.I)
 
 
 _ORDINAL_KEY = re.compile(r"(\bORDER\s+BY\s+|,\s*)(\d+)(?=\s*(?:ASC|DESC|,|\bLIMIT\b|/\*|$))", re.I)
@@ -10535,10 +10555,15 @@ def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
 
     2026-09-02 실측: '한전 채권 수익률 높은 순' SELECT 가 pd_nm·applied_yield·crd_grd 뿐 — 5.051%(만기 2052)
     와 4.744%(만기 2038)가 만기 없이 나열돼 판단 재료가 없다. ensure_fund_evidence_columns(펀드)의 채권판.
+    🆕 2026-09-06 QA r1 BO(f) — **듀레이션 정렬에는 잔존일수를 병기한다.** 듀레이션은 잔존만기가 아니라 가중평균 회수기간이라
+    dur 0.0073 다섯 종목만 나열하면 며칠 남은 채권인지 알 수 없다(D-011 실측 · 리드 J 결정 '답변에 잔존일수를 함께 보여 준다').
+    수익률 축의 병기(만기일·신용등급)는 그대로 — 축마다 필요한 재료가 다르다.
     불개입: 집계·GROUP BY·JOIN·`*`. crd_grd 는 ensure_grade_select_column 과 같은 표기(TRIM … AS crd_grd)."""
     if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
         return sql, False
-    if not _BOND_YIELD_SORT.search(sql):
+    yield_sort = bool(_BOND_YIELD_SORT.search(sql))
+    dur_sort = bool(_BOND_DUR_SORT.search(sql))
+    if not (yield_sort or dur_sort):
         return sql, False
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm:
@@ -10549,10 +10574,12 @@ def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
     if _AGG_HEAD.search(head) or "*" in head or re.search(r"\bGROUP\s+BY\b(?!\s+pd_no\b)", sql, re.I):
         return sql, False
     add = []
-    if not re.search(r"\bmat_dt\b", head):
+    if yield_sort and not re.search(r"\bmat_dt\b", head):
         add.append("mat_dt")
-    if not re.search(r"\bcrd_grd\b", head):
+    if yield_sort and not re.search(r"\bcrd_grd\b", head):
         add.append("TRIM(crd_grd) AS crd_grd")
+    if dur_sort and not re.search(r"\bremaining_days\b", head):
+        add.append("remaining_days")
     if not add:
         return sql, False
     return head.rstrip() + ", " + ", ".join(add) + " " + rest, True

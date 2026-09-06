@@ -51,11 +51,9 @@ PAGE = """<!doctype html>
     flex:0 0 auto; background:var(--card); border-bottom:1px solid var(--line);
     padding:0 20px; height:58px; display:flex; align-items:center; gap:10px;
   }
-  .mark {
-    width:26px; height:26px; border-radius:7px; flex:0 0 auto;
-    background:var(--primary); display:grid; place-items:center;
-  }
-  .mark i { width:9px; height:9px; border-radius:50%; background:#fff; display:block }
+  /* 브랜드 마크 — 원본(33x32px)을 픽셀 측정해 벡터로 옮긴 것이라 어느 크기에서도 선명하다.
+     색은 CI 토큰(--primary)을 따라간다 — 헤더·전송 버튼·말풍선이 같은 오렌지로 묶이게. */
+  .mark { width:27px; height:26px; flex:0 0 auto; color:var(--primary); display:block }
   .brand { font-size:15.5px; font-weight:700; letter-spacing:-.4px }
   .asof {
     margin-left:auto; flex:0 0 auto; color:var(--sub); font-size:12.5px;
@@ -73,11 +71,7 @@ PAGE = """<!doctype html>
 
   /* 첫 화면 */
   .intro { padding:52px 0 12px; text-align:center }
-  .intro .ic {
-    width:46px; height:46px; border-radius:14px; background:var(--tint);
-    display:grid; place-items:center; margin:0 auto 16px;
-  }
-  .intro .ic span { width:14px; height:14px; border-radius:50%; background:var(--primary) }
+  .intro .ic { width:46px; height:45px; color:var(--primary); display:block; margin:0 auto 16px }
   .intro h1 { margin:0 0 8px; font-size:21px; font-weight:700; letter-spacing:-.5px }
   .intro p { margin:0; color:var(--sub); font-size:14.5px; line-height:1.6 }
   .chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:22px }
@@ -92,11 +86,7 @@ PAGE = """<!doctype html>
   .turn { display:flex; flex-direction:column; gap:14px }
   .row { display:flex; gap:10px; align-items:flex-start }
   .row.me { justify-content:flex-end }
-  .avatar {
-    width:30px; height:30px; border-radius:50%; flex:0 0 auto; margin-top:2px;
-    background:var(--tint); display:grid; place-items:center;
-  }
-  .avatar i { width:9px; height:9px; border-radius:50%; background:var(--primary); display:block }
+  .avatar { width:23px; height:22px; flex:0 0 auto; margin-top:6px; color:var(--primary); display:block }
   .col { flex:1 1 auto; min-width:0 }
 
   .bubble { padding:13px 16px; word-break:break-word; white-space:pre-wrap }
@@ -188,9 +178,19 @@ PAGE = """<!doctype html>
   }
 </style>
 
+<!-- 브랜드 마크 원본 — 한 번 정의해 헤더·첫 화면·아바타가 함께 쓴다.
+     좌표는 원본 이미지(33x32px)를 픽셀로 재서 옮긴 값이다: 테두리 굵기 2.6 · 모서리 5.8 ·
+     M 은 바깥 획 둘이 아래로 갈수록 벌어지고 안쪽 획 둘은 아래에서 만난다. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mmark" viewBox="0 0 33 32">
+    <rect x="1.5" y="1.5" width="30" height="29" rx="5.8" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path fill="currentColor" d="M10.4 8.7H13.1L10.8 22.9H6.8Z M12.2 8.7H16L17.9 22.9H14.1Z M21.2 8.7H24.1L17 22.9H14.1Z M22.1 8.7H25.9V22.9H22.1Z"/>
+  </symbol>
+</svg>
+
 <div class="app">
   <header>
-    <div class="mark"><i></i></div>
+    <svg class="mark" viewBox="0 0 33 32" role="img" aria-label="미래에셋"><use href="#mmark"/></svg>
     <div class="brand">금융상품 Agent</div>
     <div class="asof">데이터 기준일 2026-08-24</div>
     <div class="team">트리플에이치</div>
@@ -199,7 +199,7 @@ PAGE = """<!doctype html>
   <div class="log" id="log">
     <div class="inner" id="inner">
       <div class="intro" id="intro">
-        <div class="ic"><span></span></div>
+        <svg class="ic" viewBox="0 0 33 32" aria-hidden="true"><use href="#mmark"/></svg>
         <h1>무엇을 찾아드릴까요?</h1>
         <p>국내·해외 ETF, 채권, 공모펀드를 조건으로 물어보세요.<br>답변 아래에서 실행된 SQL 과 판단 과정을 함께 확인할 수 있습니다.</p>
         <div class="chips" id="chips">
@@ -262,7 +262,7 @@ f.onsubmit=async e=>{
 
   const el=document.createElement('div'); el.className='turn';
   el.innerHTML=`<div class="row me"><div class="bubble me">${esc(q)}</div></div>`
-    +`<div class="row"><div class="avatar"><i></i></div><div class="col">`
+    +`<div class="row"><svg class="avatar" viewBox="0 0 33 32" aria-hidden="true"><use href="#mmark"/></svg><div class="col">`
     +`<div class="bubble bot"><span class="dots"><i></i><i></i><i></i></span></div></div></div>`;
   inner.appendChild(el); bottom();
   const col=el.querySelector('.col');

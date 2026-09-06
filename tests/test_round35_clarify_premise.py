@@ -68,3 +68,30 @@ def test_감싸진_LIKE_리터럴도_공백을_지운다():
     with _con() as con:
         assert con.execute(out.replace(" LIMIT 1", "")).fetchone() is not None
     assert P._suggest_similar_products(q) == []                    # 실재하므로 부재를 말하지 않는다
+
+
+# ── P0-3 — 0행 사유가 '어느 조건' 때문인지 말한다 ────────────────────────────────────────────
+
+def test_숫자_등호도_한국어로_옮긴다():
+    """따옴표 없는 숫자 리터럴 등호를 못 옮겨 사유가 통째로 일반 문장으로 낮아지던 자리."""
+    from src.runtime.guard import _humanize_cond
+    assert _humanize_cond("pd_no = 1184") == "종목코드가 '1184'"
+    assert _humanize_cond("TRIM(bd_knd) = '국고채권'") == "채권 종류가 '국고채권'"   # 문자열 등호 불변
+
+
+def test_0행_사유가_없는_조건을_지목한다():
+    from src.runtime.guard import diagnose_zero_rows
+    d = diagnose_zero_rows(
+        "SELECT TRIM(pd_nm), srfc_irt FROM domestic_bonds "
+        f"WHERE TRIM(pd_pbcm) = '{KEPCO}' AND pd_no = 1184 GROUP BY pd_no LIMIT 1")
+    txt = d.user_text()
+    assert "종목코드" in txt and "1184" in txt
+    assert "조건 중 일부는" not in txt                       # 뭉갠 일반 문장으로 낮아지지 않는다
+
+
+def test_동시불만족_갈래는_종전대로():
+    from src.runtime.guard import diagnose_zero_rows
+    txt = diagnose_zero_rows(
+        f"SELECT ISU_BAL_AMT FROM domestic_bonds WHERE TRIM(pd_pbcm) = '{KEPCO}' "
+        "AND TRIM(bd_knd) = '국고채권' LIMIT 30").user_text()
+    assert "각각 수록되어 있으나" in txt and "발행기관" in txt and "채권 종류" in txt

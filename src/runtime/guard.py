@@ -802,9 +802,14 @@ class ZeroRowDiagnosis:
             return None
         dead = [c for c, n in self.counts if n == 0]
         if dead:
-            descs = [_humanize_cond(c) for c in dead]
-            if all(descs):
-                return "수록된 데이터에는 " + " · ".join(f"{d}인 상품" for d in descs) + " 자체가 없습니다."
+            # 🔴 2026-09-06 (#98 후속) — 옮길 수 있는 것만 이름을 대고, 하나도 못 옮길 때만 일반 문장으로
+            #    낮춘다. 종전엔 하나라도 못 옮기면 전부 버려 "조건 중 일부는 …" 로 뭉갰다: 'pd_no = 1184'
+            #    (회차를 종목코드에 넣은 날조)가 사유인데 무엇이 없는지 말하지 못했다. 아래 '동시 불만족'
+            #    갈래는 이미 조건 이름을 대고 있어 갈래끼리 표기가 어긋나 있던 자리다.
+            descs = [d for d in (_humanize_cond(c) for c in dead) if d]
+            if descs:
+                out = "수록된 데이터에는 " + " · ".join(f"{d}인 상품" for d in descs) + " 자체가 없습니다."
+                return out if len(descs) == len(dead) else out + " (옮기지 못한 조건이 더 있습니다.)"
             return "조건 중 일부는 수록된 데이터에 해당하는 상품 자체가 없습니다."
         pos = [(c, n) for c, n in self.counts if "<>" not in c]
         descs = [(_humanize_cond(c), n) for c, n in pos]
@@ -822,7 +827,7 @@ _COL_KO = {
     "srfc_irt": "표면금리", "applied_yield": "수익률", "mat_dt": "만기일",
     "remaining_days": "잔존일수", "pd_pbcm": "발행기관", "bd_intp_tcd": "이자지급방식",
     "bd_inrt_tcd": "금리유형", "bd_ofr_tcd": "공모/사모 구분", "pd_nm": "상품명", "curr_cd": "통화",
-    "isu_dt": "발행일", "crd_grd_dt": "신용등급 부여일",
+    "isu_dt": "발행일", "crd_grd_dt": "신용등급 부여일", "pd_no": "종목코드",
 }
 
 
@@ -871,7 +876,9 @@ _CMP_DATE_KO = {">": "이후", ">=": "이후", "<": "이전", "<=": "이전"}
 
 _H_TRIM = re.compile(r"TRIM\(\s*([A-Za-z_]\w*)\s*\)", re.I)
 _H_COAL = re.compile(r"COALESCE\(\s*([A-Za-z_]\w*)\s*,\s*''\s*\)", re.I)
-_H_EQ = re.compile(r"^([A-Za-z_]\w*)\s*=\s*'((?:[^']|'')*)'$")
+# 🔴 2026-09-06 (#98) — 따옴표 없는 숫자 리터럴 등호(`pd_no = 1184`)를 못 옮겨 사유가 통째로 일반
+#    문장으로 낮아졌다. 문자열 등호만 보던 자리라 컬럼과 무관한 구멍이었다.
+_H_EQ = re.compile(r"^([A-Za-z_]\w*)\s*=\s*(?:'((?:[^']|'')*)'|([\w.\-]+))$")
 _H_IN = re.compile(r"^([A-Za-z_]\w*)\s+IN\s*\(([^)]*)\)$", re.I)
 _H_CMP = re.compile(r"^([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*('?)([\w.\-]+)\3$")
 _H_LIKE = re.compile(r"^([A-Za-z_]\w*)\s+LIKE\s+'%((?:[^']|'')*)%'$", re.I)
@@ -910,7 +917,7 @@ def _humanize_cond(cond: str) -> str | None:
         if col not in _COL_KO:
             return None
         lab = _COL_KO[col]
-        return f"{lab}{_ga(lab)} {_risk_or_quote(col, m.group(2))}"
+        return f"{lab}{_ga(lab)} {_risk_or_quote(col, m.group(2) if m.group(2) is not None else m.group(3))}"
     m = _H_IN.match(c)
     if m:
         col = m.group(1).lower()

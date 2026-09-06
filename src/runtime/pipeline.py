@@ -689,6 +689,20 @@ def is_issuance_time_q(question: str) -> bool:
     return bool(gate.resolve_relative_window(question) or gate.resolve_past_window(question)
                 or _YEAR_Q.search(question))
 _WHERE_BODY = re.compile(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
+_SLOT_MARK = re.compile(r"/\*M:\w+\*/")
+
+
+def _split_slot_markers(body: str) -> tuple[str, str]:
+    """WHERE 본문에서 enforce 슬롯 마커(`/*M:…*/`)를 떼어 (마커 없는 본문, 되붙일 마커 문자열) 로.
+
+    🔴 2026-09-06 QA r1 BL(UT-094·D-025) — enforce 슬롯은 마커를 WHERE 끝(LIMIT 앞)에 남기지만, 뒤 가드가 절을 덧붙이면
+    마커가 **절 사이**에 남는다(`… 20290824) /*M:BONDPOP*/ AND applied_yield > 0`). `_WHERE_BODY` 를 읽는 가드들이
+    `m`·`bondpop` 을 컬럼 토큰으로 읽어 '다른 컬럼과 섞인 절' 로 물러났다(창 강제 불발 → 1,420종목 3.79%, 정답 2,672종목 3.651%).
+    마커는 컬럼이 아니다 — 본문을 읽는 가드는 여기서 먼저 벗기고, 재조립할 때 마커를 WHERE 끝에 되붙인다
+    (침묵 판정은 `"M:<mark>" in sql` 로 위치 무관)."""
+    marks = _SLOT_MARK.findall(body)
+    clean = re.sub(r"\s+", " ", _SLOT_MARK.sub(" ", body)).strip()
+    return clean, (" " + " ".join(marks)) if marks else ""
 
 
 def _flatten_and_groups(body: str) -> str:
@@ -801,7 +815,8 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
     if axis == "isu_dt":
         want += " AND isu_dt > 0"                                # 규칙 발행시점축 — 0·NULL 26행은 미수록
     m_w = _WHERE_BODY.search(sql)
-    body = _flatten_and_groups(m_w.group(1)) if m_w else ""        # 🔄 #94 — 슬롯이 감싼 괄호를 펴서 절 단위로 본다
+    raw_body, marks = _split_slot_markers(m_w.group(1) if m_w else "")   # 🔄 BL — 슬롯 마커는 컬럼이 아니다(flatten 앞에서 벗긴다)
+    body = _flatten_and_groups(raw_body)                                # 🔄 #94 — 슬롯이 감싼 괄호를 펴서 절 단위로 본다
     fold = "\x01"
     folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
     conjuncts = [c.replace(fold, " AND ").strip() for c in guard.split_conjuncts(folded)]
@@ -826,7 +841,7 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
         kept.append(c)
     if has_pred and re.sub(r"\s+", " ", body).strip() == re.sub(r"\s+", " ", " AND ".join(kept + [want])).strip():
         return sql, None
-    new_where = " AND ".join(kept + [want])
+    new_where = " AND ".join(kept + [want]) + marks                # 마커는 WHERE 끝에 되붙인다(슬롯 짝 가드의 침묵 조건 보존)
     if m_w:
         new = sql[:m_w.start()] + "WHERE " + new_where + " " + sql[m_w.end():].lstrip()
     else:
@@ -3886,7 +3901,7 @@ def _effective_mat_window(sql: str) -> str | None:
     m_w = _WHERE_BODY.search(sql)
     if not m_w:
         return None
-    body = m_w.group(1)
+    body, _marks = _split_slot_markers(m_w.group(1))              # BL — 꼬리 마커가 `^mat_dt BETWEEN …$` 판독을 막았다(D-025 머리줄)
     fold = "\x01"
     folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
     lo: int | None = None
@@ -7460,7 +7475,7 @@ def align_threshold_operator(sql: str, question: str) -> tuple[str, list[str]]:
     m_w = _WHERE_BODY.search(sql)
     if not m_w:
         return sql, []
-    body = m_w.group(1)
+    body, marks = _split_slot_markers(m_w.group(1))               # BL — 슬롯 마커는 본문 판독에서 벗기고 끝에 되붙인다
     fixed = []
 
     def _sub(m):
@@ -7479,7 +7494,7 @@ def align_threshold_operator(sql: str, question: str) -> tuple[str, list[str]]:
     new_body = _NUM_PRED_INLINE.sub(_sub, body)
     if not fixed:
         return sql, []
-    return sql[:m_w.start(1)] + new_body + sql[m_w.end(1):], fixed
+    return sql[:m_w.start(1)] + " " + new_body + marks + " " + sql[m_w.end(1):].lstrip(), fixed
 
 
 _STRUCT_ALIASES = {   # 질문·HCX 가 쓰는 표기 → 구조표시 CASE 의 THEN 라벨

@@ -73,12 +73,12 @@ PAGE = """<!doctype html>
     display:grid; place-items:center; margin:0 auto 16px;
   }
   .intro .ic span { width:14px; height:14px; border-radius:50%; background:var(--primary) }
-  .intro h1 { margin:0 0 8px; font-size:20px; font-weight:700; letter-spacing:-.5px }
-  .intro p { margin:0; color:var(--sub); font-size:13.5px; line-height:1.6 }
+  .intro h1 { margin:0 0 8px; font-size:21px; font-weight:700; letter-spacing:-.5px }
+  .intro p { margin:0; color:var(--sub); font-size:14.5px; line-height:1.6 }
   .chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:22px }
   .chip {
     border:0; background:var(--tint); color:#8a4a12;
-    border-radius:999px; padding:9px 15px; font-size:13px; font-family:inherit;
+    border-radius:999px; padding:9px 15px; font-size:14px; font-family:inherit;
     cursor:pointer; letter-spacing:-.2px;
   }
   .chip:hover { background:#ffe9d9 }

@@ -4329,6 +4329,17 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         vals = [r.get(ycol) for r in recs if r.get(ycol)]
         if len(vals) != len(set(vals)):
             tail.append(f"{_BOND_AXIS_KO.get(ycol, (ycol,))[0]} {TIE_BREAK_NOTE}")
+    # 🆕 2026-09-06 QA r1 BO(a) — **표시 밖 동률**은 위 문장이 못 잡는다(보인 행끼리는 값이 다 다를 수 있다).
+    #    목록이 모수보다 짧으면(최상급 LIMIT 1 포함) 경계값과 같은 값을 가진 종목이 몇 개인지 세어 밝힌다.
+    if scol and total and total > n and recs:
+        _edge = recs[-1].get(scol)
+        if _edge:
+            _tie = _bond_axis_tie_count(sql, scol, _edge)
+            _shown = sum(1 for r in recs if r.get(scol) == _edge)
+            if _tie and _tie > _shown:
+                _nm = _BOND_AXIS_KO.get(scol, (_BOND_COL_KO.get(scol, scol),))[0]
+                _disp = _fmt_ymd(str(_edge)) if scol.endswith("_dt") else str(_edge)
+                tail.append(f"{_nm} {_disp}인 종목은 모두 {_tie:,}종목으로 동률이며, 그중 {_shown}종목을 표시했습니다.")
     # 이자유형분리로 축을 좁혔으면 그 사실을 밝힌다 — 모수가 그만큼 줄어든 목록이다 (gold BND-D-012 must_include '고정금리')
     if (_ORDER_SRFC.search(sql) and re.search(r"bd_intp_tcd\s*\)?\s*=\s*'이표채'", sql)
             and re.search(r"bd_inrt_tcd\s*\)?\s*=\s*'고정금리'", sql)):
@@ -4644,6 +4655,35 @@ def _bond_coverage_counts(sql: str) -> tuple[int, int] | None:
     finally:
         con.close()
     return int(row[0]), int(row[1])
+
+
+def _bond_axis_tie_count(sql: str, col: str, value: str) -> int | None:
+    """같은 모수에서 정렬 축 값이 경계값과 **똑같은** 종목 수 — 목록에 안 보이는 동률을 세는 자리. 아니면 None.
+
+    🆕 2026-09-06 QA r1 BO(a) — '만기가 가장 짧은 채권 뭐야?' 에 LIMIT 1 로 한 종목만 나갔는데 실제로는 만기 2026-08-24
+    종목이 20개 동률이었다(D-032 · gold note '이상적 답은 동률 언급'). 최상급 하나를 집는 순간 나머지 19종목은
+    사용자에게 존재하지 않는 것이 된다 — 표시 밖 동률은 결정층이 세어 밝힌다(F-021 728.524% 2종목도 같은 자리).
+    모수는 조립기가 커버리지를 세는 것과 **같은 FROM·WHERE**(_bond_coverage_counts 와 같은 판정)."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:union|having|join)\b|\(\s*select\b", sql, re.I):
+        return None
+    if re.search(r"\bgroup\s+by\b(?!\s+pd_no\b)", sql, re.I):
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m or not re.fullmatch(r"[a-z_]\w*", col or "", re.I):
+        return None
+    try:
+        v = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    con = connect_readonly()
+    try:
+        where = " AND " if re.search(r"\bwhere\b", m.group(1), re.I) else " WHERE "
+        row = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {m.group(1).strip()}{where}{col} = ?", (v,)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return int(row[0]) if row else None
 
 
 _HEADER_WRAP = re.compile(r"^(?:TRIM|UPPER|LOWER)\(\s*(?:\w+\.)?(\w+)\s*\)$", re.I)
@@ -10748,12 +10788,45 @@ def bond_answer_notes(sql: str, answer: str, question: str = "") -> list[str]:
             and "5등급" not in answer.replace("(5등급)", ""):
         absent = _kinds_without_safe_grade(question)
         notes.append(SAFE_15_16_NOTE_FALLBACK if absent else SAFE_15_16_NOTE)
+    # 🆕 2026-09-06 QA r1 BO(b) — 통칭 하나가 **여러 종류 값**으로 풀리면(은행채 = 일반+특수 · 지방채 3종 · 국민주택 2종)
+    #    사용자는 자기가 무엇을 본 것인지 모른다(S-003 실측: 답 3종목이 전부 특수은행채인데 '은행채' 라고만 적혔다).
+    #    포함 종류는 **선언(kind_filters)의 확정식 리터럴**에서 읽는다 — 코드에 이름을 적지 않는다.
+    for _tok, _incl in _kind_coverage_notes(sql, question):
+        _n = f"'{_tok}' 은(는) {' · '.join(_incl)} 를 포함한 기준입니다(종류필터 확정식)."
+        if _n not in answer and _n not in notes:
+            notes.append(_n)
     # 🆕 2026-09-06 밤 #90 — '자회사·계열사' 는 데이터에 없는 관계다. 발행사명 LIKE 로 답했으면 그 대용을 밝힌다(#70 과 같은 원칙).
     if question and _AFFILIATE_Q.search(question) and "발행사명" not in answer:
         lits = sorted({m.group(1).strip("%") for m in _ISSUER_LIKE.finditer(sql) if m.group(1).strip("%")})
         if lits:
             notes.append(f"자회사·계열 관계는 데이터에 없어 발행사명에 '{'/'.join(lits)}' 이(가) 들어간 발행사 기준으로 답했습니다.")
     return notes
+
+
+_KIND_IN_LIST = re.compile(r"IN\s*\(([^)]*)\)", re.I)
+
+
+def _kind_coverage_notes(sql: str, question: str) -> list[tuple[str, list[str]]]:
+    """질문이 부른 종류 통칭 중 확정식이 **2종 이상**을 담은 것 — [(통칭, 포함 종류 목록)]. 원천은 선언 kind_filters.
+
+    발동(전부): ① 질문에 그 통칭이 있고 ② 그 통칭의 확정식이 IN 목록(값 2개 이상)이며 ③ 그 확정식이 SQL 에 실려 있다.
+    등호 하나로 풀리는 통칭(회사채·카드채)·국고채 OR 확정식(같은 종류의 결측 회수)은 병기할 것이 없어 대상이 아니다."""
+    if "domestic_bonds" not in sql or not question:
+        return []
+    norm = re.sub(r"\s+", "", sql)
+    out: list[tuple[str, list[str]]] = []
+    for tok, expr in _kind_filters()[0]:
+        if tok not in question or re.sub(r"\s+", "", expr) not in norm:
+            continue
+        m = _KIND_IN_LIST.search(expr)
+        if not m:
+            continue
+        lits = [v.strip() for v in re.findall(r"'([^']*)'", m.group(1)) if v.strip()]
+        if len(lits) < 2:
+            continue
+        if (tok, lits) not in out:
+            out.append((tok, lits))
+    return out
 
 
 @lru_cache(maxsize=1)

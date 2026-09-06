@@ -134,3 +134,98 @@ def test_BO_f_answer_shows_remaining_days():
                  ["KR3", "티월드제일백육차유동화전문1-20", "0.0073", "AAA", "3일"])
     out = pl._bond_list_answer(sql, rows, 1, D011_Q)
     assert "잔존 3일" in out and "듀레이션 0.0073" in out and "산출일" in out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BO(a) — 최상급·절단 목록의 경계값 동률 고지 (D-032 만기 2026-08-24 20종목 · F-021 728.524% 2종목)
+#   일반 규칙: 표시된 행끼리의 동률이 아니라 **표시 밖 동률**을 같은 모수에서 세어 밝힌다.
+# ══════════════════════════════════════════════════════════════════════════════
+D032_Q = "만기가 가장 짧은 채권 뭐야?"
+D032_SQL = ("SELECT pd_nm, pd_no, MIN(mat_dt) AS mat_dt FROM domestic_bonds WHERE mat_dt >= 20260824 "
+            "GROUP BY pd_no ORDER BY MIN(mat_dt) ASC, pd_no ASC LIMIT 1")
+
+
+def test_BO_a_tie_count_measured(con):
+    n = pl._bond_axis_tie_count(D032_SQL, "mat_dt", "20260824")
+    assert n == con.execute("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE mat_dt >= 20260824 "
+                            "AND mat_dt = 20260824").fetchone()[0] == 20
+
+
+def test_BO_a_superlative_answer_discloses_tie():
+    rows = _rows(["pd_nm", "pd_no", "mat_dt"], ["산업금융채권 22신이0400-0824-1", "KR4", "20260824"])
+    out = pl._bond_list_answer(D032_SQL, rows, 1, D032_Q)
+    assert "만기 2026-08-24인 종목은 모두 20종목으로 동률이며, 그중 1종목을 표시했습니다." in out
+
+
+def test_BO_a_yield_axis_tie(con):
+    """형제 — 축이 수익률이어도 같은 규칙(F-021 728.524% 2종목)."""
+    sql = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, MAX(applied_yield) AS applied_yield , mat_dt, TRIM(crd_grd) AS crd_grd "
+           "FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 AND applied_yield IS NOT NULL "
+           "AND applied_yield > 0 GROUP BY pd_no ORDER BY MAX(applied_yield) DESC, pd_no ASC LIMIT 1")
+    assert pl._bond_axis_tie_count(sql, "applied_yield", "728.524") == 2
+    rows = _rows(["pd_no", "pd_nm", "applied_yield", "mat_dt", "crd_grd"],
+                 ["KR5", "신보2024제15차유동화전문1-2(사)", "728.524", "20261130", "C0"])
+    out = pl._bond_list_answer(sql, rows, 1, "수익률이 가장 높은 채권은 뭐야?")
+    assert "수익률 728.524인 종목은 모두 2종목으로 동률이며, 그중 1종목을 표시했습니다." in out
+
+
+def test_BO_a_no_tie_no_note():
+    """불개입 — 경계값이 유일하면 고지하지 않는다."""
+    sql = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, MAX(applied_yield) AS applied_yield FROM domestic_bonds "
+           "WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 GROUP BY pd_no ORDER BY MAX(applied_yield) DESC, pd_no ASC LIMIT 1")
+    rows = _rows(["pd_no", "pd_nm", "applied_yield"], ["KR6", "신보2024제15차유동화전문1-1(사)", "1064.523"])
+    out = pl._bond_list_answer(sql, rows, 1, "수익률이 가장 높은 채권은 뭐야?")
+    assert "동률이며" not in out
+
+
+def test_BO_a_untouched_without_sort_axis():
+    """불개입 — 정렬 축이 없는 조회 목록(ORDER BY 없음)엔 경계값이 없다."""
+    sql = ("SELECT pd_nm, pd_pbcm, mat_dt FROM domestic_bonds WHERE TRIM(pd_pbcm) = '한국전력공사(주)' "
+           "AND curr_cd = 'KRW' AND mat_dt >= 20260824 GROUP BY pd_no LIMIT 30")
+    rows = _rows(["pd_nm", "pd_pbcm", "mat_dt"], ["한국전력공사 843", "한국전력공사(주)", "20280513"])
+    out = pl._bond_list_answer(sql, rows, 1, "한국전력 채권 알려줘")
+    assert "동률이며" not in out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BO(b) — 종류 확정식이 2종 이상이면 포함 종류 병기 (S-003 은행채 = 일반은행채 + 특수은행채)
+#   일반 규칙: 통칭 하나가 여러 종류 값으로 풀리면 포함 목록을 밝힌다 — 목록은 선언 kind_filters 에서 읽는다.
+# ══════════════════════════════════════════════════════════════════════════════
+S003_Q = "가장 안전한 은행채 3개 추천해줘"
+S003_SQL = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, MAX(applied_yield) AS applied_yield , pd_risk_gcd, pd_risk_nm, dur, "
+            "remaining_days, TRIM(crd_grd) AS crd_grd, mat_dt FROM domestic_bonds "
+            "WHERE TRIM(bd_knd) IN ('일반은행채','특수은행채') AND pd_risk_gcd = '16' AND curr_cd = 'KRW' "
+            "AND mat_dt >= 20260824 AND applied_yield > 0 GROUP BY pd_no ORDER BY MAX(applied_yield) DESC LIMIT 3")
+
+
+def test_BO_b_umbrella_kind_note():
+    got = pl._kind_coverage_notes(S003_SQL, S003_Q)
+    assert got == [("은행채", ["일반은행채", "특수은행채"])]
+    notes = pl.bond_answer_notes(S003_SQL, "조건에 해당하는 채권은 전체 1,239종목이며", S003_Q)
+    assert any("특수은행채" in n and "일반은행채" in n for n in notes)
+
+
+def test_BO_b_sibling_multi_value_kinds():
+    """형제 — 지방채 3종·국민주택 2종도 같은 규칙(값 목록은 선언에서)."""
+    sql = ("SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) IN ('모집지방채','지역개발채','도시철도공채') "
+           "AND curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30")
+    got = pl._kind_coverage_notes(sql, "지방채 알려줘")
+    assert got and got[0][0] == "지방채" and len(got[0][1]) == 3
+
+
+def test_BO_b_single_value_kind_silent():
+    """불개입 — 등호 하나로 풀리는 통칭(회사채)은 병기할 것이 없다."""
+    sql = ("SELECT pd_nm FROM domestic_bonds WHERE TRIM(std_pd_mcls_nm)='회사채' AND curr_cd = 'KRW' "
+           "AND mat_dt >= 20260824 LIMIT 30")
+    assert pl._kind_coverage_notes(sql, "회사채 알려줘") == []
+
+
+def test_BO_b_word_absent_from_question_silent():
+    """불개입 — 질문이 그 통칭을 부르지 않았으면(가드가 넣은 필터) 병기하지 않는다."""
+    assert pl._kind_coverage_notes(S003_SQL, "가장 안전한 채권 3개 추천해줘") == []
+
+
+def test_BO_b_expression_absent_from_sql_silent():
+    """불개입 — 질문에 통칭이 있어도 그 확정식이 SQL 에 없으면 침묵(다른 축으로 답한 목록)."""
+    sql = "SELECT pd_nm FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30"
+    assert pl._kind_coverage_notes(sql, S003_Q) == []

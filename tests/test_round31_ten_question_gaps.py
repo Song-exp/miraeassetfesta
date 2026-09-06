@@ -181,7 +181,7 @@ def test_avg_answer_null_is_not_refusal():
 
 @pytest.mark.parametrize("sql, rows, n", [
     ("SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds LIMIT 30", "COUNT(DISTINCT pd_no)\n35", 1),        # COUNT 는 다른 조립기
-    ("SELECT AVG(srfc_irt), COUNT(*) FROM domestic_bonds LIMIT 30", "AVG(srfc_irt) | COUNT(*)\n3.8 | 10", 1),   # 항 둘
+    # 항 둘(AVG + COUNT)은 2026-09-06 QA r1 BH 부터 다열 기계 조립 — test_round33_bonds_r1::test_BH_multi_agg_row_assembled 가 고정
     ("SELECT TRIM(bd_knd), AVG(srfc_irt) FROM domestic_bonds GROUP BY 1 LIMIT 30", "bd_knd | AVG\na | 1\nb | 2", 2),  # 분포
 ])
 def test_avg_answer_untouched(sql, rows, n):

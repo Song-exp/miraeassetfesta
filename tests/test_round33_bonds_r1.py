@@ -406,3 +406,41 @@ def test_BG_superlative_fact_not_rank(q):
     if "위험도" in q:
         return
     assert not pl._RECO_Q.search(q) and not pl._RANK_Q.search(q), q
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BH — 추천 질의의 집계 SQL → 목록 강제 · 다열 집계 1행 기계 조립 (D-025)
+#   일반 규칙: 추천 질의(_RECO_Q · 개수 의문 없음)에 SELECT 가 집계만이면 표준 목록 + ORDER BY applied_yield DESC LIMIT 5 로 재작성(ensure_count_query 역방향).
+#   남는 다열 집계 1행은 _bond_avg_answer 가 값 그대로 조립한다(HCX 산문 0).
+# ══════════════════════════════════════════════════════════════════════════════
+D025_Q = "만기까지 들고 갈 건데, 3년 안에 만기되는 안전한 채권 몇 개만 골라줘"
+D025_AGG = ("SELECT COUNT(DISTINCT pd_no), AVG(applied_yield) FROM domestic_bonds WHERE curr_cd = 'KRW' AND pd_risk_gcd IN ('15','16') "
+            "AND applied_yield > 0 AND bd_ofr_tcd <> '사모' AND mat_dt BETWEEN 20260824 AND 20290824 /*M:BONDPOP*/ LIMIT 30")
+
+
+def test_BH_reco_aggregate_to_list(con):
+    out, fixed = pl.ensure_count_query(D025_AGG, D025_Q)
+    assert fixed and out.startswith("SELECT pd_no, TRIM(pd_nm) AS pd_nm") and "pd_risk_nm" in out
+    assert "ORDER BY applied_yield DESC LIMIT 5" in out and out.count("/*M:BONDPOP*/") == 1 and "COUNT(" not in out
+    rows = con.execute(out).fetchall()
+    assert len(rows) == 5 and all(r[5] in ("15", "16") for r in rows)                 # gold D-025: 15·16 · 수익률 높은 순 5행
+    # 형제 — 다른 축(표면금리)은 그 축으로 · 개수 의문이 있으면 개수 질문(불개입) · 정방향(목록→COUNT)은 종전대로
+    out2, _ = pl.ensure_count_query("SELECT AVG(srfc_irt) FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 30", "표면금리 높은 채권 5개 골라줘")
+    assert "ORDER BY srfc_irt DESC" in out2
+    cnt = "SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 30"
+    assert pl.ensure_count_query(cnt, "추천할 만한 회사채 몇 개나 있어?") == (cnt, False)
+    assert pl.ensure_count_query("SELECT pd_no, pd_nm FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 30", "수익률 5% 넘는 건 몇 개야?")[0].startswith("SELECT COUNT(DISTINCT pd_no)")
+    etf = "SELECT COUNT(*) FROM domestic_etfs WHERE pd_grp_no='ETF' LIMIT 30"
+    assert pl.ensure_count_query(etf, "ETF 추천해줘") == (etf, False)                    # 채권 전용
+
+
+def test_BH_multi_agg_row_assembled():
+    sql = "SELECT COUNT(DISTINCT pd_no), AVG(applied_yield) FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 AND TRIM(std_pd_mcls_nm)='회사채' LIMIT 30"
+    ans = pl._bond_avg_answer(sql, "COUNT(DISTINCT pd_no) | AVG(applied_yield)\n12572 | 3.9123", 1, "회사채는 몇 종목이고 평균 수익률은 얼마야?")
+    assert ans and "12,572종목" in ans and "평균 수익률 3.91%" in ans and "기준일 2026-08-24" in ans
+    ans2 = pl._bond_avg_answer("SELECT AVG(srfc_irt), MAX(srfc_irt) FROM domestic_bonds WHERE curr_cd='KRW' LIMIT 30", "AVG(srfc_irt) | MAX(srfc_irt)\n3.8 | 11.0", 1, "표면금리 평균과 최고")
+    assert ans2 and "평균 표면금리 3.80%" in ans2 and "최고 표면금리 11.00%" in ans2
+    # 불개입 — AVG 없는 집계(개수 조립기 몫) · 분포(GROUP BY) · 모르는 항
+    assert pl._bond_avg_answer("SELECT COUNT(DISTINCT pd_no), MAX(applied_yield) FROM domestic_bonds LIMIT 30", "a | b\n1 | 2", 1, "q") is None
+    assert pl._bond_avg_answer("SELECT TRIM(bd_knd), AVG(srfc_irt) FROM domestic_bonds GROUP BY 1 LIMIT 30", "bd_knd | AVG\na | 1\nb | 2", 2, "q") is None
+    assert pl._bond_avg_answer("SELECT AVG(srfc_irt), GROUP_CONCAT(pd_nm) FROM domestic_bonds LIMIT 30", "a | b\n1 | x", 1, "q") is None

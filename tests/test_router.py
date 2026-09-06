@@ -236,9 +236,10 @@ def test_grounding_carries_clarify_rules_for_bonds(ctx):
 
 
 def test_answer_rules_reach_composer(ctx):
-    # 채권 목록은 2026-09-02 부터 기계 조립(HCX 0회)이라 답변 규칙이 composer 에 닿는 경로는 집계·서술형 SQL 로 확인한다
-    p = SQLPlanner("SELECT AVG(applied_yield) AS 평균수익률, COUNT(DISTINCT pd_no) AS 종목수 FROM domestic_bonds WHERE std_pd_mcls_nm='국공채' LIMIT 1")
-    r = answer_question("H-01", "국공채 평균 수익률 알려줘", planner=p, ctx=ctx)
+    # 채권 목록은 2026-09-02 부터, AVG 를 품은 다열 집계 1행은 2026-09-06(QA r1 BH)부터 기계 조립(HCX 0회)이라
+    # 답변 규칙이 composer 에 닿는 경로는 조립기 밖의 집계 꼴(COUNT + MIN 날짜)로 확인한다
+    p = SQLPlanner("SELECT COUNT(DISTINCT pd_no) AS 종목수, MIN(mat_dt) AS 최단만기 FROM domestic_bonds WHERE std_pd_mcls_nm='국공채' LIMIT 1")
+    r = answer_question("H-01", "국공채 종목 수랑 가장 이른 만기 알려줘", planner=p, ctx=ctx)
     assert "[Answer]" in r.think_trace and p.calls
     assert "신용등급 미부여" in p.calls[0] and "## domestic_bonds" in p.calls[0]
 

@@ -8636,18 +8636,41 @@ def ensure_count_query(sql: str, question: str) -> tuple[str, bool]:
     이 가드가 받는다. 발동 조건 좁게: ① domestic_bonds ② 개수 의문 어구(추천·목록 신호가 있으면
     불개입 — '몇 개만 골라줘') ③ 단일 평문 SELECT (COUNT·GROUP BY·UNION·중첩 SELECT 없음).
     교체 시 ORDER BY·LIMIT 은 버린다(집계에 무의미)."""
-    if "domestic_bonds" not in sql or not _COUNT_Q.search(question) or _COUNT_SKIP_Q.search(question):
-        return sql, False
-    if re.search(r"\bCOUNT\s*\(|\bGROUP\s+BY\b|\bUNION\b", sql, re.I) or sql.upper().count("SELECT") != 1:
+    if "domestic_bonds" not in sql or sql.upper().count("SELECT") != 1 or re.search(r"\bUNION\b", sql, re.I):
         return sql, False
     fm = re.search(r"\bFROM\b", sql, re.I)
     if not fm:
+        return sql, False
+    # 🆕 2026-09-06 QA r1 BH(D-025) — **역방향**: 추천 질의('골라줘·추천')에 HCX 가 집계만(COUNT/AVG …, GROUP BY 없음) 내면 표준 목록
+    #    SELECT + ORDER BY applied_yield DESC LIMIT 5 로 다시 쓴다. '3년 안에 만기되는 안전한 채권 몇 개만 골라줘' 가
+    #    `COUNT(DISTINCT pd_no), AVG(applied_yield)` 1행으로 나가 HCX 산문이 '정보를 얻을 수 없다' 고 거절했다. 개수 의문 어구(_COUNT_Q)가
+    #    있으면 개수 질문이라 불개입. 뒤의 근거컬럼·대표행·동률·TOP-N 가드가 그대로 붙는다(같은 체인 자리).
+    sel = re.match(r"\s*SELECT\s+(?:DISTINCT\s+)?", sql, re.I)
+    items = [it.strip() for it in _split_select_items(sql[sel.end():fm.start()])] if sel else []
+    if (items and all(_AGG_ONLY_ITEM.match(it) for it in items) and _RECO_Q.search(question)
+            and not _COUNT_Q.search(question) and not re.search(r"\bGROUP\s+BY\b", sql, re.I)):
+        body = sql[fm.start():]
+        cut = re.search(r"\s*\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT)\b", body, re.I)
+        m_marks = _SLOT_MARK.findall(body)
+        if cut:
+            body = body[:cut.start()]
+        body = _SLOT_MARK.sub(" ", body).rstrip()
+        cols = ", ".join("TRIM(pd_nm) AS pd_nm" if c == "pd_nm" else c for c in _BOND_STAR_COLS if c not in ("dur", "bd_ofr_tcd"))
+        new = f"SELECT pd_no, {cols} {body.strip()} ORDER BY applied_yield DESC LIMIT 5" + (" " + " ".join(m_marks) if m_marks else "")
+        new, _axis = ensure_sort_axis(new, question)          # 질문이 다른 축(표면금리 …)을 말하면 그 축으로
+        return new, True
+    if not _COUNT_Q.search(question) or _COUNT_SKIP_Q.search(question):
+        return sql, False
+    if re.search(r"\bCOUNT\s*\(|\bGROUP\s+BY\b", sql, re.I):
         return sql, False
     body = sql[fm.start():]
     cut = re.search(r"\s*\b(?:ORDER\s+BY|LIMIT)\b", body, re.I)
     if cut:
         body = body[:cut.start()]
     return "SELECT COUNT(DISTINCT pd_no) AS 종목수 " + body.strip(), True
+
+
+_AGG_ONLY_ITEM = re.compile(r"^\s*(?:COUNT|AVG|SUM|MIN|MAX|TOTAL)\s*\(", re.I)
 
 
 def ensure_distinct_count(sql: str, question: str) -> tuple[str, bool]:
@@ -9824,21 +9847,18 @@ def _bond_avg_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     sel = re.match(r"\s*SELECT\s+(?:DISTINCT\s+)?", sql, re.I)
     if not frm or not sel:
         return None
-    items = _split_select_items(sql[sel.end():frm.start()])
-    if len(items) != 1:
-        return None
-    m = re.search(r"AVG\(\s*(?:\w+\.)?([A-Za-z_]\w*)\s*\)", items[0], re.I)
-    if not m:
-        return None
-    col = m.group(1).lower()
+    items = [it.strip() for it in _split_select_items(sql[sel.end():frm.start()])]
+    if not items or not any(re.match(r"AVG\s*\(", it, re.I) for it in items):
+        return None                                           # AVG 가 하나도 없으면 다른 조립기(개수·0건) 몫
     lines = rows.splitlines()
     if len(lines) == 1:                                       # NULL 한 칸은 _cell 이 '' 로 옮겨 빈 줄이 잘린다
-        raw = ""
+        cells = [""] * len(items)
     elif len(lines) == 2:
-        raw = lines[1].split(" | ")[0].strip()
+        cells = [c.strip() for c in lines[1].split(" | ")]
+        if len(cells) != len(items):
+            return None
     else:
         return None
-    label = _BOND_AXIS_KO.get(col, (_BOND_COL_KO.get(col, col),))[0]
     basis = f"기준일 {gate.DATA_CUTOFF}"
     win = _effective_mat_window(sql)
     if win:
@@ -9846,23 +9866,54 @@ def _bond_avg_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     iw = re.search(r"isu_dt\s+BETWEEN\s+(\d{8})\s+AND\s+(\d{8})", sql, re.I)
     if iw:
         basis += f" · 발행일 {_fmt_ymd(iw.group(1))}~{_fmt_ymd(iw.group(2))}"
-    if raw in ("", "None"):
-        return f"조건에 해당하는 채권이 없어 {label} 평균을 낼 수 없습니다 ({basis})."
-    try:
-        val = float(raw)
-    except ValueError:
-        return None
     cov = _bond_coverage_counts(sql)
-    unit = "%" if col in _BOND_YIELD_COLS or col in ("srfc_irt",) else ""
-    head = (f"조건에 해당하는 채권 {cov[1]:,}종목({cov[0]:,}행)의 평균 {label}은 {val:.2f}{unit}입니다 ({basis})."
-            if cov else f"조건에 해당하는 채권의 평균 {label}은 {val:.2f}{unit}입니다 ({basis}).")
     tail = []
     if cov and cov[0] != cov[1]:
         tail.append("장내·장외로 두 번 수록된 종목은 행 단위로 평균했습니다.")
-    if col == "srfc_irt":
-        zero = _zero_rate_count(sql)
-        if zero:
-            tail.append(f"표면금리가 0으로 수록된 할인채 등 {zero:,}행이 평균에 포함되어 있습니다.")
+    if len(items) == 1:
+        m = re.search(r"AVG\(\s*(?:\w+\.)?([A-Za-z_]\w*)\s*\)", items[0], re.I)
+        if not m:
+            return None
+        col = m.group(1).lower()
+        raw = cells[0]
+        label = _BOND_AXIS_KO.get(col, (_BOND_COL_KO.get(col, col),))[0]
+        if raw in ("", "None"):
+            return f"조건에 해당하는 채권이 없어 {label} 평균을 낼 수 없습니다 ({basis})."
+        try:
+            val = float(raw)
+        except ValueError:
+            return None
+        unit = "%" if col in _BOND_YIELD_COLS or col in ("srfc_irt",) else ""
+        head = (f"조건에 해당하는 채권 {cov[1]:,}종목({cov[0]:,}행)의 평균 {label}은 {val:.2f}{unit}입니다 ({basis})."
+                if cov else f"조건에 해당하는 채권의 평균 {label}은 {val:.2f}{unit}입니다 ({basis}).")
+        if col == "srfc_irt":
+            zero = _zero_rate_count(sql)
+            if zero:
+                tail.append(f"표면금리가 0으로 수록된 할인채 등 {zero:,}행이 평균에 포함되어 있습니다.")
+    else:
+        # 🆕 2026-09-06 QA r1 BH — 다열 집계 1행(COUNT + AVG · MIN/MAX …)도 HCX 산문이 아니라 값 그대로 기계 조립한다
+        #    (D-025: `COUNT(DISTINCT pd_no), AVG(applied_yield)` 1행을 HCX 가 '충분한 정보를 얻을 수 없다' 로 거절).
+        #    항마다 (집계함수, 컬럼) → 문구. 모르는 항이 하나라도 있으면 물러난다(HCX 산문 경로 그대로).
+        phrases = []
+        for it, raw in zip(items, cells):
+            m = re.match(r"(COUNT|AVG|SUM|MIN|MAX)\s*\(\s*(DISTINCT\s+)?(?:\w+\.)?([A-Za-z_*]\w*|\*)\s*\)", it, re.I)
+            if not m:
+                return None
+            fn, dist, col = m.group(1).upper(), bool(m.group(2)), m.group(3).lower()
+            label = _BOND_AXIS_KO.get(col, (_BOND_COL_KO.get(col, col),))[0]
+            unit = "%" if col in _BOND_YIELD_COLS or col == "srfc_irt" else ""
+            if raw in ("", "None"):
+                phrases.append(f"{'종목 수' if fn == 'COUNT' else label + ' ' + {'AVG': '평균', 'SUM': '합계', 'MIN': '최저', 'MAX': '최고'}[fn]} 값 없음")
+                continue
+            try:
+                val = float(raw)
+            except ValueError:
+                return None
+            if fn == "COUNT":
+                phrases.append(f"{int(val):,}{'종목' if (dist and col == 'pd_no') else '행'}")
+            else:
+                phrases.append(f"{ {'AVG': '평균', 'SUM': '합계', 'MIN': '최저', 'MAX': '최고'}[fn]} {label} {val:.2f}{unit}")
+        head = f"조건에 해당하는 채권은 {' · '.join(phrases)}입니다 ({basis})."
     return head + ((" " + " ".join(tail)) if tail else "")
 
 

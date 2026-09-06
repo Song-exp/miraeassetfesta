@@ -6557,10 +6557,17 @@ def ensure_fund_type_axis(sql: str, question: str) -> tuple[str, bool]:
     #    낱말이 하나뿐**이면 그 값 하나가 확정식이고, 다른 btyp 절은 교체한다. 총칭어('주식 펀드')일 때는
     #    질문에 열거값이 없으므로 여기 오지 않는다 — 확장은 KG 자산군 노드가 계속 담당한다.
     #    약관분류(zrin_ptn_nm)는 더 잘게 나눈 별개 축이라 건드리지 않는다(KG 부류 H).
-    if _BTYP_AXIS_COLS.search(sql):
-        m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
-        if not m_w or len(picked) != 1 or _ptn_value_in_question(question) \
-                or re.search(r"\bzrin_ptn_nm\b", sql, re.I):
+    # 🔴 2026-09-06 FV-3a 서버 실측 — **축이 있는지는 WHERE 본문만 보고 판정한다.** 종전엔 `sql` 전체를 봐서
+    #    펀드 근거컬럼 보강이 SELECT 에 넣은 `MAX(zrin_btyp_nm) AS "유형"` 을 축 절로 오인했고, WHERE 엔 축이
+    #    없으니 axis 가 비어 그대로 침묵했다. 결과: "삼성전자가 편입된 국내 **주식형** 공모펀드" 가 주식형 조건
+    #    없이 516펀드(정답 305)로 나가고 1위가 채권혼합형(KB퇴직연금배당40)이었다. 편입 확정식 경로는 근거컬럼
+    #    보강이 항상 그 컬럼을 싣기 때문에 이 우회가 **상시** 열려 있었다 — 조회 축이 SELECT 에 있다고 해서
+    #    WHERE 조건이 되지는 않는다(ETF #36·#74·#76 과 같은 '표기 변이가 정규식 가드를 우회' 부류).
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    where_body = m_w.group(1) if m_w else ""
+    if _BTYP_AXIS_COLS.search(where_body):
+        if len(picked) != 1 or _ptn_value_in_question(question) \
+                or re.search(r"\bzrin_ptn_nm\b", where_body, re.I):
             return sql, False
         conjs = _flat_conjuncts(m_w.group(1))
         axis = [c for c in conjs if re.search(r"\b(?:zrin_btyp_nm|zrin_pcd)\b", c, re.I)]

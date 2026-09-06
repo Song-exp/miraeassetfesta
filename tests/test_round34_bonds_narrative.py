@@ -229,3 +229,46 @@ def test_BO_b_expression_absent_from_sql_silent():
     """불개입 — 질문에 통칭이 있어도 그 확정식이 SQL 에 없으면 침묵(다른 축으로 답한 목록)."""
     sql = "SELECT pd_nm FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30"
     assert pl._kind_coverage_notes(sql, S003_Q) == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BO(i) — 분포 답변은 집계 축을 밝힌다 (A-015 '채권 종류별' 을 소분류 13범주로 집계)
+#   일반 규칙: 축 이름은 결과 헤더의 컬럼에서 읽고, 질문이 부른 정본 축과 다르면 그 축의 범주 수를 같은 모수에서 실측해 한 줄로.
+# ══════════════════════════════════════════════════════════════════════════════
+A015_Q = "채권 종류별로 몇 개씩 있어?"
+A015_SQL = ("SELECT std_pd_scls_nm AS std_pd_scls_nm, COUNT(DISTINCT pd_no) AS 개수 FROM domestic_bonds "
+            "WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 GROUP BY 1 ORDER BY 개수 DESC LIMIT 30 /*M:BONDPOP*/")
+A015_ROWS = _rows(["std_pd_scls_nm", "개수"], ["일반사채", 12473], ["공사채", 4142], ["특수은행채", 1299])
+
+
+def test_BO_i_axis_disclosed_and_alternative(con):
+    out = pl._distribution_answer(A015_SQL, A015_ROWS, 3, A015_Q)
+    k = con.execute("SELECT COUNT(DISTINCT TRIM(bd_knd)) FROM domestic_bonds WHERE curr_cd = 'KRW' "
+                    "AND mat_dt >= 20260824 AND COALESCE(TRIM(bd_knd),'') <> ''").fetchone()[0]
+    assert "집계 축 소분류" in out
+    assert f"채권 종류(bd_knd) 축으로 세면 {k:,}개 범주" in out
+
+
+def test_BO_i_canonical_axis_no_alternative():
+    """불개입 — 이미 bd_knd 로 집계했으면 대안 축을 말하지 않는다(축 이름만 밝힌다)."""
+    sql = A015_SQL.replace("std_pd_scls_nm AS std_pd_scls_nm", "TRIM(bd_knd) AS bd_knd").replace("std_pd_scls_nm,", "bd_knd,")
+    rows = _rows(["bd_knd", "개수"], ["일반회사채", 9000], ["국고채권", 295])
+    out = pl._distribution_answer(sql, rows, 2, A015_Q)
+    assert "집계 축 종류" in out and "축으로 세면" not in out
+
+
+def test_BO_i_other_question_no_alternative():
+    """불개입 — '종류' 를 묻지 않은 분포(등급별)는 대안 축이 없다."""
+    sql = ("SELECT TRIM(crd_grd) AS crd_grd, COUNT(DISTINCT pd_no) FROM domestic_bonds "
+           "WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 GROUP BY 1 LIMIT 30")
+    rows = _rows(["crd_grd", "COUNT(DISTINCT pd_no)"], ["AAA", 5000], ["AA+", 2516])
+    out = pl._distribution_answer(sql, rows, 2, "신용등급별로 몇 종목이야?")
+    assert "축으로 세면" not in out
+
+
+def test_BO_i_fund_distribution_untouched():
+    """불개입 — 펀드(COUNT(*)) 분포는 종전 문장 그대로(채권 축 고지 없음)."""
+    sql = "SELECT fnd_type_nm, COUNT(*) FROM public_funds WHERE sale_yn='판매중' GROUP BY 1 LIMIT 30"
+    rows = _rows(["fnd_type_nm", "COUNT(*)"], ["주식형", 100], ["채권형", 50])
+    out = pl._distribution_answer(sql, rows, 2, "유형별로 몇 개야?")
+    assert out.startswith("조회 결과 2개 범주, 합계 150건입니다 (기준일") and "집계 축" not in out

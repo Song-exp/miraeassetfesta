@@ -5574,7 +5574,7 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
     return f"{prefix}{subject}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
 
 
-def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
+def _distribution_answer(sql: str, rows: str, n: int, question: str = "") -> str | None:
     """2열(범주 라벨 · COUNT(*)) GROUP BY 분포 결과의 답변을 기계 조립한다. 아니면 None.
 
     발동 조건(전부): GROUP BY 존재 · JOIN 없음 · SELECT 가 정확히 2항목이고 둘째가 COUNT(*) ·
@@ -5620,7 +5620,12 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     total = sum(c for _, c, _ in pairs)
     if not with_funds:
         unit = "종목" if is_pdno else "건"
-        head = f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF})."
+        # 2026-09-06 QA r1 BO(i) — 분포는 **어느 축으로 갈랐는지**가 값의 절반이다. 종전엔 축이 답에 없어
+        #    소분류 13범주가 '채권 종류' 로 읽혔다(A-015 실측 · 정본 6.1 의 3단 계층에서 '채권종류' 는 bd_knd).
+        #    축 이름은 결과 헤더의 컬럼에서 읽는다(_BOND_COL_KO) — 새로 쓰는 서술이 아니라 이미 확정된 사실이다.
+        axis_ko = _BOND_COL_KO.get(_bare_header(rows.splitlines()[0].split(" | ")[0])) if is_pdno else None
+        head = (f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}{unit}입니다 "
+                f"({'집계 축 ' + axis_ko + ' · ' if axis_ko else ''}기준일 {gate.DATA_CUTOFF}).")
         if is_pdno:
             # 범주별 DISTINCT 합은 전체 DISTINCT 와 다를 수 있다(복수 범주 걸친 종목 — 등급별집계 규칙:
             # 위험등급 합 20,505 > 전체 20,497). 전체는 같은 WHERE 로 따로 세고 차이를 문자열로 굽는다.
@@ -5634,12 +5639,16 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
                     finally:
                         con.close()
                     if overall != total:
-                        head = (f"조회 결과 {len(pairs)}개 범주, 전체 {overall:,}종목입니다 (기준일 {gate.DATA_CUTOFF}). "
+                        head = (f"조회 결과 {len(pairs)}개 범주, 전체 {overall:,}종목입니다 "
+                                f"({'집계 축 ' + axis_ko + ' · ' if axis_ko else ''}기준일 {gate.DATA_CUTOFF}). "
                                 f"범주별 합은 {total:,}종목 — 복수 범주에 걸린 종목이 중복 집계되어 전체와 다릅니다.")
                 except sqlite3.Error:
                     pass
         lines = [head, ""]
         lines += [f"- {lab if lab else '(미수록)'}: {c:,}{unit}" for lab, c, _ in pairs]
+        alt = _bond_axis_alternative(sql, rows, question) if is_pdno else None
+        if alt:
+            lines += ["", alt]
         return "\n".join(lines)
     # 🔴 유형별 펀드 수의 단순 합(3,222)은 전체 펀드 수(3,040)가 아니다 — 실측 182펀드가 클래스별로 유형이 갈린다
     #    (176건은 일부 클래스만 평가 미수록·6건은 실제 상이). 전체는 같은 WHERE 로 COUNT(DISTINCT 펀드키) 를
@@ -5666,6 +5675,40 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     if distinct is not None and fund_sum != distinct:
         lines += ["", f"클래스별 유형이 갈리는 펀드 {abs(fund_sum - distinct):,}건은 복수 범주에 계수되어 범주별 펀드 수의 합({fund_sum:,})은 전체 펀드 수({distinct:,})와 다릅니다."]
     return "\n".join(lines)
+
+
+_KIND_AXIS_Q = re.compile(r"종류\s*(?:별|마다)|(?:무슨|어떤|어느)\s*종류")
+
+
+def _bond_axis_alternative(sql: str, rows: str, question: str) -> str | None:
+    """질문이 '종류별' 을 물었는데 다른 축으로 집계했을 때, 정본 축(bd_knd)의 범주 수를 **실측**해 한 줄로. 아니면 None.
+
+    2026-09-06 QA r1 BO(i) — A-015 는 소분류(13범주)로 집계돼 값은 맞았지만 사용자가 물은 '채권 종류' 는
+    bd_knd(정본 6.1 의 3단 계층 중 셋째 단)다. 축이 갈렸다는 사실만 밝히고 범주 수는 같은 모수에서 다시 센다 —
+    답변에 새 서술을 쓰지 않는다(수는 전부 SQLite 가 준다). 정본 축은 _BOND_COL_KO 의 '종류' 라벨로 찾는다."""
+    if not question or not _KIND_AXIS_Q.search(question) or "domestic_bonds" not in sql:
+        return None
+    canon = next((c for c, ko in _BOND_COL_KO.items() if ko == "종류"), None)
+    col = _bare_header(rows.splitlines()[0].split(" | ")[0])
+    axis_ko = _BOND_COL_KO.get(col)
+    if not canon or not axis_ko or col == canon:
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    con = connect_readonly()
+    try:
+        where = " AND " if re.search(r"\bwhere\b", m.group(1), re.I) else " WHERE "
+        k = con.execute(f"SELECT COUNT(DISTINCT TRIM({canon})) FROM {m.group(1).strip()}"
+                        f"{where}COALESCE(TRIM({canon}),'') <> ''").fetchone()[0]
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    if not k:
+        return None
+    return (f"위 집계의 축은 {axis_ko}({col})입니다. 같은 모수를 채권 종류({canon}) 축으로 세면 {int(k):,}개 범주로 갈립니다 "
+            f"— 대분류·소분류·채권종류는 서로 다른 단입니다.")
 
 
 _BASE_POP_COND = re.compile(r"\b(?:sale_yn|prvo_pbff_desc)\b", re.I)
@@ -13168,7 +13211,7 @@ def answer_question(
     # 🔴 분포(2열 GROUP BY COUNT) 답변은 기계 조립 — HCX 0회 (2026-09-01 FND-038 재검 실측:
     #    행수 병기 후에도 19행 중 17행만 나열 + 금지된 '일부' 서술 재발. 목록 전사는 LLM 에게
     #    맡길 수 없다 — 결정층에서 전 행을 그대로 옮긴다).
-    dist = _distribution_answer(sql, rows, n)
+    dist = _distribution_answer(sql, rows, n, q)
     if dist is not None:
         step("[Answer] 분포 답변 기계 조립 — 2열(범주·건수) GROUP BY 결과는 HCX 없이 전 행을 그대로 옮긴다 "
              "(2026-09-01 FND-038 재검: 19행 중 17행 나열 + '일부' 서술 재발)")

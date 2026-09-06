@@ -459,8 +459,16 @@ def check(question: str, ctx: RuntimeContext, tables: list[str], grounded_entity
     # ①-0 absent_properties — 속성 자체가 없는 부류(좌수·운용역·기준가 시계열…): enums yaml 선언(= ttl ABSENT)이 곧
     #    게이트 어휘다. HCX 0회 — 컬럼명 유사어(fd_set_pcd ≈ '설정')로 모델이 대체 계산하는 경로를 먼저 끊는다
     #    (2026-09-02 KG-027: 설정유형코드 '10' 을 "10좌" 로 6펀드 단언). 대체 안내는 선언의 substitute 만.
-    if len(tables) == 1:
-        for item in ctx.absent_props.get(tables[0], []):
+    # 🔴 2026-09-06 D2 서버 실측 — 종전엔 `len(tables) == 1` 일 때만 봤다. "최근 한 달 자금 유입이 많은 ETF" 가
+    #    국내+해외 두 테이블로 라우팅돼 게이트를 그냥 지났고, HCX 가 일거래대금을 '자금 유입액' 으로 답했다.
+    #    축이 **라우팅된 모든 테이블에 없으면** 어느 쪽을 조회해도 답이 없다 — 그때는 여러 테이블이어도 기각한다.
+    #    한 테이블에만 없는 축은 종전대로 통과시킨다(다른 테이블이 답할 수 있다 — 부재는 도메인의 성질이다).
+    if tables:
+        _first = {it["property"]: it for it in ctx.absent_props.get(tables[0], [])}
+        _common = [p for p in _first
+                   if all(any(i["property"] == p for i in ctx.absent_props.get(t, [])) for t in tables[1:])]
+        for prop in _common:
+            item = _first[prop]
             pats = list(item.get("vocab") or [])
             if not grounded_entity:
                 pats += list(item.get("vocab_ungrounded") or [])
@@ -472,7 +480,8 @@ def check(question: str, ctx: RuntimeContext, tables: list[str], grounded_entity
                     # 고객 문장은 선언의 answer(결론→이유→대안). 없으면 why+note 로 폴백하되 컬럼명 괄호는 뗀다 (2026-09-05 wording)
                     return GateResult(
                         rejected=True,
-                        reason=f"온톨로지 ABSENT — {tables[0]} 에 {item['property']} 속성 없음 · 질문의 '{hit.group(0)}' (enums absent_properties → HCX 0회)",
+                        reason=(f"온톨로지 ABSENT — {' · '.join(tables)} 에 {item['property']} 속성 없음 · "
+                                f"질문의 '{hit.group(0)}' (enums absent_properties → HCX 0회)"),
                         answer=customer_text(item.get("answer") or f"{item['why']}{note}"),
                     )
 

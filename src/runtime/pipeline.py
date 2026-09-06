@@ -1749,6 +1749,46 @@ def repair_where_order(sql: str) -> tuple[str, bool]:
     return re.sub(r"\s{2,}", " ", sql2).strip(), True
 
 
+# 이름 충돌 주의 — 아래 3,000줄대에 펀드용 `_NAME_LIKE` 가 따로 있고 나중 정의가 이긴다(2026-09-06 실측: 이 상수가 통째로 덮여 가드가 불발했다)
+_ETF_NAME_LIKE = re.compile(r"(?:\w+\.)?(pd_nm|pd_abrv_nm)\s+LIKE\s+'%([^%']{2,40})%'", re.I)
+_KO_TOKEN = re.compile(r"[가-힣]{2,12}")
+# 질문에 흔한 일반어 — 상품명 낱말로 쓰지 않는다
+_KO_STOP = frozenset("알려 알려줘 뭐가 있어 있나 개야 몇개 상품 종목 추천 중에 중에서 높은 낮은 큰것 순으로 기준 어디 어때".split())
+
+
+def ensure_korean_name_literal(sql: str, question: str) -> tuple[str, str | None]:
+    """상품명 LIKE 리터럴이 데이터에 0건인데 질문의 한글 낱말은 실재하면 그 낱말로 바꾼다. (SQL, 바꾼 낱말|None)
+
+    🔴 2026-09-06 서버 실측 C4 — "커버드콜 ETF 중에 분배율 높은 3개" 에 HCX 가 한글 테마어를 **영문으로 옮겨**
+       `pd_nm LIKE '%Covered Call%'` 를 냈다. 국내 상품명은 전부 한글이라 0행이고, 답변은
+       "상품명에 'Covered Call' 포함인 상품 자체가 없습니다" 로 나갔다 — 실제로는 62건 있다.
+       동의어 표에 '커버드콜→커버드콜' 이 있는데도 모델이 번역한 것이라 프롬프트로는 막히지 않는다.
+    발동: 국내 ETF 단일 조회 · 리터럴에 한글이 없고 · 그 조건의 실제 행이 0 · 질문의 한글 낱말은 행이 있을 때만.
+    불개입: 리터럴이 한 건이라도 맞으면 손대지 않는다(KODEX 200 같은 정상 조회를 건드리지 않는다).
+    """
+    if "domestic_etfs" not in sql or re.search(r"\boverseas_etfs\b|\bunion\b", sql, re.I):
+        return sql, None
+    m = _ETF_NAME_LIKE.search(sql)
+    if not m or re.search(r"[가-힣]", m.group(2)):
+        return sql, None
+    col, lit = m.group(1), m.group(2)
+    cands = [t for t in _KO_TOKEN.findall(question or "") if t not in _KO_STOP]
+    if not cands:
+        return sql, None
+    con = connect_readonly()
+    try:
+        if con.execute(f"SELECT COUNT(*) FROM domestic_etfs WHERE {col} LIKE ?", (f"%{lit}%",)).fetchone()[0]:
+            return sql, None                      # 리터럴이 실재한다 — 불개입
+        for tok in sorted(cands, key=len, reverse=True):
+            if con.execute(f"SELECT COUNT(*) FROM domestic_etfs WHERE {col} LIKE ?", (f"%{tok}%",)).fetchone()[0]:
+                return sql[:m.start()] + f"{_GUARD_MARK}{col} LIKE '%{tok}%'" + sql[m.end():], tok
+    except sqlite3.Error:
+        return sql, None
+    finally:
+        con.close()
+    return sql, None
+
+
 _DELIST_Q = re.compile(r"상장\s*폐지|상폐|폐지\s*(?:예정|되|될|앞둔)|거래\s*종료|(?:곧|앞으로)\s*(?:없어지|사라지)")
 _DELIST_CANON = "pd_lste_dt <> 99991231"
 _DELIST_PRED = re.compile(r"\(?\s*(?:\w+\.)?pd_lste_dt\s*(?:<>|!=|<|<=|=|>=|>|IS\s+NOT\s+NULL|IS\s+NULL)\s*(?:\d+)?\s*\)?", re.I)
@@ -5439,15 +5479,21 @@ def reorder_answer_list(answer: str, rows: str, sql: str) -> tuple[str, bool]:
     if len(names) < 2:
         return answer, False
     lines = answer.splitlines()
+    # 🔴 2026-09-06 재실측 — 부분일치로 첫 행부터 맞추면 'KODEX 200TR' 이 'KODEX 200'(0번 행)에 붙는다.
+    #    실제로 그렇게 붙어 세 항목이 전부 0번으로 판정됐고 순서가 그대로 남았다(서버 실측 A2 2회차).
+    #    **긴 이름부터** 맞추고, 한 번 쓴 행은 다시 쓰지 않는다.
+    order = sorted(range(len(names)), key=lambda j: -len(names[j]))
+    used: set[int] = set()
     idx, items = [], []
     for i, line in enumerate(lines):
         m = _LIST_ITEM.match(line)
         if not m:
             continue
         body = m.group(2)
-        pos = next((j for j, nm in enumerate(names) if nm and nm in body), None)
+        pos = next((j for j in order if j not in used and names[j] and names[j] in body), None)
         if pos is None:
             return answer, False          # 결과 밖 이름 — 순서 판단의 근거가 없다
+        used.add(pos)
         idx.append(i)
         items.append((pos, body))
     if len(items) < 2 or [p for p, _ in items] == sorted(p for p, _ in items):
@@ -12683,6 +12729,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     #    그 뒤 **ETF 기본모수 주입이 AND 두 절을 덧붙여** `A OR B AND C AND D` 를 만들었다. 검사기가 기각하고
     #    재생성도 같은 모양이라 "안전하게 실행할 수 없어" 로 끝났다 — 가드가 만든 결함을 가드가 막은 꼴이다.
     #    앞머리 한 번으로는 부족하다: 절을 덧붙이는 가드가 뒤에 있으므로 **검사 직전에 한 번 더** 접는다(멱등).
+    sql, ko_lit = ensure_korean_name_literal(sql, q)
+    if ko_lit:
+        step(f"[Guard] 상품명 리터럴 한글 복원 — 데이터에 0건인 영문 표기를 질문의 '{ko_lit}' 로 교체 "
+             "(2026-09-06 C4 실측: 한글 테마어를 'Covered Call' 로 옮겨 62건이 0건이 됐다 — 국내 상품명은 전부 한글이다)")
     sql, paren_late = ensure_or_group_parens(sql)
     if paren_late:
         step("[Guard] OR 가지 재괄호화(후속) — 체인 중간에 붙은 AND 절이 최상위 OR 와 섞여 "

@@ -55,8 +55,10 @@ def test_listing_year_replaces_bare_date_constant():
     sql = "SELECT pd_nm, pd_abrv_nm FROM domestic_etfs WHERE 20261231 LIMIT 30"
     out, fixed = P.ensure_etf_listing_year(sql, "2026년에 상장한 ETF 알려줘")
     assert fixed
-    assert "WHERE pd_lstg_dt BETWEEN 20260101 AND 20261231 LIMIT 30" in out, out
+    assert "WHERE pd_lstg_dt BETWEEN 20260101 AND 20261231" in out, out
     assert "WHERE 20261231" not in out
+    # 2026-09-06 A9 재배포 실측 뒤 — 확정식이 모수(ETF·판매중)도 함께 세운다(목록 질의는 기본모수 가드가 비켜 가서 ETN 이 섞였다)
+    assert "pd_grp_no = 'ETF'" in out and "pd_sale_yn = 1" in out and out.rstrip().endswith("LIMIT 30")
 
 
 def test_listing_year_appends_and_respects_direction_and_existing():

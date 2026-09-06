@@ -42,3 +42,24 @@ def test_refusal_reason_legit_is_kept():
     # 질문이 스스로 법·정책을 꺼냈으면 손대지 않는다
     why2 = "세법상 과세 기준은 데이터에 없습니다."
     assert not P.sanitize_refusal_reason(why2, "ETF 배당소득세 관련 법 규정 알려줘")[1]
+
+
+# ── #45 (재배포 서버 실측) — 질문이 준 5% 를 '근거 밖 수치' 로 지워 빈 답변 ────────────────
+
+def test_percent_from_question_is_sourced():
+    rows = "(조회 결과: 총 1행)\nETF수\n212"
+    a = "(국내 상장 ETF 기준, 기준일 2026-08-24)\n삼성전자 비중이 5% 넘는 ETF는 총 212개입니다."
+    out, dropped = P.strip_unsourced_percent(a, rows, "삼성전자 비중이 5% 넘는 ETF 몇 개야?")
+    assert dropped == [] and "212개" in out
+
+
+def test_percent_guard_never_leaves_only_the_header():
+    rows = "(조회 결과: 총 1행)\nETF수\n212"
+    a = "(국내 상장 ETF 기준, 기준일 2026-08-24)\n비중 7% 넘는 ETF는 212개입니다."
+    out, dropped = P.strip_unsourced_percent(a, rows, "삼성전자 담은 ETF 몇 개야?")
+    assert dropped == [] and "212개" in out, "지우면 머리줄만 남는다 — 원문 유지"
+    # 자체 산술은 여전히 걸린다(본문에 다른 숫자가 남을 때)
+    rows2 = "종목 | 비중\nA | 24.95\nB | 15.9"
+    a2 = "A 24.95%, B 15.9% 입니다. 합계는 약 40.85% 입니다."
+    out2, d2 = P.strip_unsourced_percent(a2, rows2, "A와 B 비중 알려줘")
+    assert "40.85" in "".join(d2) and "24.95%" in out2

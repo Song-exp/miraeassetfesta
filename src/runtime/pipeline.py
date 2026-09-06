@@ -1393,7 +1393,7 @@ def ensure_etf_aum_threshold(sql: str, question: str) -> tuple[str, bool]:
     🔴 2026-09-05 #37 실측 — "순자산 1조원 넘는 국내 ETF 몇 개": HCX 가 임계 절을 통째로 빼고 1,160 을 답함(정답 91).
        질문 축이 SQL 에서 사라진 **네 번째** 사례(연금·환헤지·월배당·순자산). 국내만 — 해외 `du_last_aum` 통화 미확정.
     """
-    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql) or re.search(r"\bdu_last_aum\b", sql, re.I):
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql):
         return sql, False
     if not _AUM_Q.search(question):
         return sql, False
@@ -1412,6 +1412,17 @@ def ensure_etf_aum_threshold(sql: str, question: str) -> tuple[str, bool]:
     else:                                   # 넘·초과·보다 큰
         op = ">"
     thresh = int(round(n * unit))
+    # 🔴 2026-09-06 A8 재배포 서버 실측 — "순자산 1조원 넘는 국내 ETF 몇 개": HCX 가 `du_last_aum >= 10000000000`
+    #    (**100억**, 1조는 1,000,000,000,000)을 냈고 989 가 나갔다(정답 91). 종전 가드는 `du_last_aum` 이 SQL 에
+    #    있기만 하면 불개입 — 자릿수가 틀린 절을 자기 절인 줄 알았다. 「있으면 확인하고 아니면 교체」(부류 Z)로 바꾼다:
+    #    비교식이 있으면 (연산자·수)를 질문의 임계와 대조해 다르면 그 자리만 고치고, 없으면 덧붙인다.
+    cmp_rx = re.compile(r"((?:\w+\.)?du_last_aum)\s*(>=|<=|>|<)\s*(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?![\d.])", re.I)
+    cmps = [mm for mm in cmp_rx.finditer(sql) if float(mm.group(3)) != 0.0]     # `> 0` 은 결측 제외식 — 임계가 아니다
+    if any(abs(float(mm.group(3)) - thresh) < 0.5 for mm in cmps):
+        return sql, False                       # 수가 맞으면 연산자(>= vs >)는 모델 재량 — 1조 '정확히' 는 실무상 없다
+    if cmps:
+        mm = cmps[0]
+        return sql[:mm.start()] + f"{mm.group(1)} {op} {thresh}" + sql[mm.end():], True
     sql2, ok = _append_exclusions(sql, [f"du_last_aum {op} {thresh}"])
     return (sql2, True) if ok else (sql, False)
 
@@ -1449,9 +1460,19 @@ def ensure_etf_listing_year(sql: str, question: str) -> tuple[str, bool]:
         cond = f"pd_lstg_dt <= {y}1231"
     else:
         cond = f"pd_lstg_dt BETWEEN {y}0101 AND {y}1231"
+    # 🔴 2026-09-06 A9 재배포 서버 실측 — "2026년에 상장한 ETF": 범위식은 맞았는데(BETWEEN 20260101 AND 20261231)
+    #    **모수가 없어** ETN 이 섞였다(4번이 '미래에셋 1.5X S&P500 VIX ETN' · 176행, 정답 ETF 124). 기본모수 가드는
+    #    랭킹·집계 꼴에만 발동하므로 이런 목록 질의는 비켜 간다 — 이 확정식이 자기 모수를 함께 세운다.
+    #    질문이 ETN 을 말했으면 상품군은 좁히지 않는다(기본모수 가드와 같은 방침).
+    strict = dict(_ETF_BASE_STRICT)
+    if _ETN_Q.search(question):
+        strict.pop("pd_grp_no")
+    base = [v for c, v in strict.items() if not re.search(rf"\b{c}\b", sql, re.I)]
     if _BARE_DATE_CONJ.search(sql):
-        return _BARE_DATE_CONJ.sub(lambda mm: mm.group(1) + cond, sql, count=1), True
-    sql2, ok = _append_exclusions(sql, [cond])
+        sql = _BARE_DATE_CONJ.sub(lambda mm: mm.group(1) + cond, sql, count=1)
+        sql2, _ = _append_exclusions(sql, base)
+        return sql2, True
+    sql2, ok = _append_exclusions(sql, [cond] + base)
     return (sql2, True) if ok else (sql, False)
 
 
@@ -1615,6 +1636,97 @@ _INDEX_SUFFIX_TOKENS = {"TR", "PR", "CR", "NR", "GR", "TRI", "INDEX"}   # 지수
 _INDEX_INTENT = re.compile(
     r"추종|따르|지수|인덱스|기초|index|KOSPI|KOSDAQ|NASDAQ|S&P|다우|Dow|코스피|코스닥|나스닥|닛케이|니케이|Nikkei"
     r"|항셍|HangSeng|Russell|러셀|MSCI|KRX|FnGuide|TR\b|PR\b", re.I)
+
+
+# ── TR·PR(총수익·가격) 지수 확정식 — 2026-09-06 라운드 13 A10 ───────────────────────────────────
+_TR_Q = re.compile(r"(?<![A-Za-z])TR(?![A-Za-z])|총\s*수익\s*(?:지수)?|토탈\s*리턴|Total\s*Return|배당\s*재투자", re.I)
+_PR_Q = re.compile(r"(?<![A-Za-z])PR(?![A-Za-z])|가격\s*지수|프라이스\s*리턴|Price\s*Return", re.I)
+_IDX_TOKEN_EXPR = "(' '||replace(replace(replace(ref_base_index,'(',' '),')',' '),',',' ')||' ')"
+_TR_CANON = f"({_IDX_TOKEN_EXPR} GLOB '* TR *' OR ref_base_index LIKE '%Total Return%')"
+_PR_CANON = f"({_IDX_TOKEN_EXPR} GLOB '* PR *' OR ref_base_index LIKE '%Price Return%')"
+_TRPR_LIT = re.compile(r"'[^']*(?<![A-Za-z])(TR|PR)(?![A-Za-z])[^']*'|'%?Total Return%?'|'%?Price Return%?'", re.I)
+
+
+_DELIST_Q = re.compile(r"상장\s*폐지|상폐|폐지\s*(?:예정|되|될|앞둔)|거래\s*종료|(?:곧|앞으로)\s*(?:없어지|사라지)")
+_DELIST_CANON = "pd_lste_dt <> 99991231"
+_DELIST_PRED = re.compile(r"\(?\s*(?:\w+\.)?pd_lste_dt\s*(?:<>|!=|<|<=|=|>=|>|IS\s+NOT\s+NULL|IS\s+NULL)\s*(?:\d+)?\s*\)?", re.I)
+
+
+def ensure_etf_delist(sql: str, question: str) -> tuple[str, bool]:
+    """'상장폐지 예정 ETF' 질의의 조건을 코드가 세운다 — `pd_lste_dt <> 99991231`, 판매중 조건은 걷어낸다. (SQL, 바꿨는지)
+
+    🔴 2026-09-06 A16 재배포 서버 실측 — 가드가 정답을 부순 **일곱 번째** 사고. HCX 는 `pd_lste_dt <> 99991231` 을 냈는데
+       기본모수 가드의 날조 술어 판별이 이 절을 지웠다 — 컬럼 한글명 '상품거래종료일자' 와 질문 '상장폐지 예정' 이 두 글자도
+       겹치지 않아 "질문에 근거 없는 술어" 로 본 것이다. 결과: `WHERE pd_grp_no = 'ETF'` 만 남아 ETF 1,235건 중 임의 30건이
+       "상장폐지 예정" 으로 나갔다(정답 71건 · 전건 판매중지). 규칙 상장폐지질의는 이미 있었다 — 규칙이 아니라 가드가 문제였다.
+    처방: 폐지 어휘가 있으면 확정식을 **표식을 붙여** 세운다(표식 절은 날조 판별에서 제외된다). HCX 가 쓴 pd_lste_dt 절은
+    모양이 어떻든 확정식으로 바꾸고, `pd_sale_yn = 1` 은 상충하므로 걷어낸다(폐지 예정 71건은 전건 판매중지).
+    """
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql) or not _DELIST_Q.search(question):
+        return sql, False
+    orig = sql
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    kept, placed = [], False
+    if m_w:
+        for c in guard.split_conjuncts(m_w.group(1)):
+            if re.fullmatch(r"\(?\s*(?:\w+\.)?pd_sale_yn\s*=\s*1\s*\)?", c.strip(), re.I):
+                continue                                    # 폐지 예정과 상충 — 걷어낸다
+            if _DELIST_PRED.fullmatch(c.strip()) or (_GUARD_MARK in c and "pd_lste_dt" in c):
+                if not placed:
+                    kept.append(_GUARD_MARK + _DELIST_CANON)
+                    placed = True
+                continue
+            kept.append(c)
+        sql = sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):] if kept else \
+            re.sub(r"\bwhere\b.*?(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", " ", sql, count=1, flags=re.I | re.S)
+    if not placed:
+        sql, ok = _append_exclusions(sql, [_GUARD_MARK + _DELIST_CANON])
+        if not ok:
+            return orig, False
+    sql = re.sub(r"\s{2,}", " ", sql).strip()
+    return sql, sql != orig
+
+
+def ensure_etf_tr_index(sql: str, question: str) -> tuple[str, bool]:
+    """'TR(총수익) 지수 추종 ETF' 질의의 지수 판별식을 코드가 세운다. (SQL, 바꿨는지)
+
+    🔴 2026-09-06 A10 재배포 서버 실측 — "TR 지수를 추종하는 ETF 몇 개야?": HCX 가 `ref_base_index GLOB '*TR*'` 을
+       냈다(212). 규칙 총수익지수_TR 은 독립 토큰식을 "이것 하나만 쓴다" 고 적었는데 세 번째 다른 모양이다
+       (8/31 LIKE '%TR%' 332 · 9/5 규칙 · 9/6 GLOB 부분일치). 부분일치는 **TRF 5050·STRIP·PR/TR Hyb** 를 잡는다.
+    🔴 그리고 옛 규칙식(' '||ref_base_index||' ') GLOB '* TR *' 도 정답이 아니었다 — 지수명의 TR 표기는 셋이다:
+       공백 토큰 ` TR `(KOSPI 200 TR) · 괄호 `(TR)`·`(Net TR)`·`(AAA TR)`(KIS·KAP 채권지수) · 철자 `Total Return`.
+       괄호를 구분자로 취급하고 철자를 OR 로 더한 확정식이 판매중 ETF **236**(전체 243)이다 — 옛 194/200 은
+       괄호·철자 42건 누락. 정답표(튜닝문항 #5 · 재투입 A10)도 이 값으로 정정했다.
+    발동: 국내 단일 SELECT · 질문에 TR/PR 낱말. 지수 컬럼에 TR/PR 리터럴을 건 절은 통째로 확정식으로 바꾸고,
+    그런 절이 없으면 덧붙인다. 확정식 절에는 가드 표식을 붙여 기본모수 가드의 날조 술어 제거를 비켜 간다.
+    """
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql):
+        return sql, False
+    want_tr, want_pr = bool(_TR_Q.search(question)), bool(_PR_Q.search(question))
+    if not (want_tr or want_pr):
+        return sql, False
+    canon = _TR_CANON if want_tr else _PR_CANON
+    if canon in sql:
+        return sql, False
+    orig = sql
+    m_w = re.search(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)", sql, re.I | re.S)
+    replaced = False
+    if m_w:
+        kept = []
+        for c in guard.split_conjuncts(m_w.group(1)):
+            if _ETF_INDEX_COL.search(c) and _TRPR_LIT.search(c) and _GUARD_MARK not in c:
+                if not replaced:
+                    kept.append(_GUARD_MARK + canon)
+                    replaced = True
+                continue                        # 같은 뜻의 두 번째 절은 버린다(중복)
+            kept.append(c)
+        if replaced:
+            sql = sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):]
+    if not replaced:
+        sql, ok = _append_exclusions(sql, [_GUARD_MARK + canon])
+        if not ok:
+            return orig, False
+    return sql, sql != orig
 
 
 def ensure_etf_index_canon(sql: str, question: str = "") -> tuple[str, bool]:
@@ -4945,8 +5057,13 @@ def _pct_rounds_to_row(v: str, have_f: set) -> bool:
     return any(round(r, dec) == x for r in have_f)
 
 
-def strip_unsourced_percent(answer: str, rows: str) -> tuple[str, list[str]]:
+def strip_unsourced_percent(answer: str, rows: str, question: str = "") -> tuple[str, list[str]]:
     """조회 결과에 없는 **백분율 수치**를 담은 문장을 제거한다. (답변, 제거한 값)
+
+    🔴 2026-09-06 #45 재배포 서버 실측 — 가드가 정답을 부순 **여섯 번째** 사고. "삼성전자 비중이 5% 넘는 ETF 몇 개야?" 에
+       결과는 212 한 값뿐이라 답변의 '5%' 가 근거 밖으로 판정돼 "…5% 넘는 ETF는 212개입니다" 문장이 통째로 지워지고
+       기계 머리줄 "(국내 상장 ETF 기준, 기준일 …)" 만 남았다. 질문이 준 수치는 근거다 — `question` 의 숫자를 근거 집합에
+       더한다. 그리고 "전부 지워지면 원문" 판정이 머리줄의 날짜 숫자를 '남은 숫자' 로 봤다 — 머리줄을 뗀 본문으로 판정한다.
 
     🔴 16R KG ③-16 (`X1` 회귀) — 13R 에 소멸했던 자체 산술이 다시 나왔다: 24.95·15.9·7.96 세 행을 받아
        "이 세 종목이 전체 포트폴리오에서 차지하는 비중은 **약 48.81%**" 를 스스로 계산해 붙였다.
@@ -4954,6 +5071,7 @@ def strip_unsourced_percent(answer: str, rows: str) -> tuple[str, list[str]]:
     기계 조립 경로는 조기 반환이라 여기 오지 않는다(HCX 산문 경로 전용). 전부 지워지면 원문을 유지한다.
     """
     have = {_num_key(v) for v in _NUM_IN_ROWS.findall(rows or "")}
+    have |= {_num_key(v) for v in re.findall(r"\d+(?:[.,]\d+)?", question or "")}      # 질문의 수치(5% 넘는)는 근거다
     have_f = _row_floats(rows)
     out, dropped = [], []
     # 소수점을 문장 끝으로 오인하지 않는 분할 — 마침표 뒤에 공백이 와야 문장이 끝난다('24.95%' 는 한 덩어리)
@@ -4968,7 +5086,8 @@ def strip_unsourced_percent(answer: str, rows: str) -> tuple[str, list[str]]:
             continue
         out.append(sent)
     txt = "".join(out).strip()
-    if not dropped or not re.search(r"\d", txt):        # 전부 지워지면 원문 — 빈 답변이 더 나쁘다
+    body = re.sub(r"^\([^)\n]*기준일[^)\n]*\)\s*", "", txt)      # 기계 머리줄 "(… 기준일 …)" 은 남은 본문이 아니다
+    if not dropped or not re.search(r"\d", body):       # 전부 지워지면 원문 — 빈 답변이 더 나쁘다
         return answer, []
     return re.sub(r"\n{3,}", "\n\n", txt), dropped
 
@@ -10260,6 +10379,8 @@ def _split_union(sql: str) -> list[str] | None:
 def _branch_guards(branch: str, q: str) -> tuple[str, list[str]]:
     notes = []
     for fn, label in ((lambda s: ensure_etf_index_canon(s), "ETF 기초지수 정본 축"),
+                      (lambda s: ensure_etf_delist(s, q), "ETF 상장폐지 확정식"),
+                      (lambda s: ensure_etf_tr_index(s, q), "ETF TR·PR 지수 확정식"),
                       (lambda s: ensure_etf_mgmt_canon(s), "ETF 운용사 정본 축"),
                       (lambda s: ensure_etf_base_population(s, q), "ETF 기본모수"),
                       (lambda s: ensure_fund_base_population(s, q, post=True), "펀드 기본모수"),
@@ -11233,6 +11354,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     # 🔴 지수 확정식이 **모수 가드보다 먼저** 돌아야 한다 — 모수 가드의 날조 술어 제거가 오염 컬럼의
     #    지수 절을 '근거 없는 술어' 로 보고 지워 버린다(순서가 뒤면 지수 조건이 통째로 사라진다).
     sql, idx_fixed = ensure_etf_index_canon(sql, q)
+    sql, delist_fixed = ensure_etf_delist(sql, q)
+    if delist_fixed:
+        step("[Guard] 상장폐지 확정식 — pd_lste_dt <> 99991231 을 표식 절로 세우고 판매중 조건을 걷어냄 "
+             "(2026-09-06 A16 재배포 실측: 기본모수 가드가 HCX 의 pd_lste_dt 절을 '근거 없는 술어' 로 지워 ETF 전체 30행이 '폐지 예정' 으로 나감 · 정답 71)")
+    sql, tr_fixed = ensure_etf_tr_index(sql, q)
+    if tr_fixed:
+        step("[Guard] TR·PR 지수 확정식 — 지수명의 TR 표기 3종(공백 토큰 · 괄호 (TR) · 철자 Total Return)을 한 식으로 "
+             "(2026-09-06 A10 재배포 실측: GLOB '*TR*' 부분일치 212 — TRF·STRIP 오탐 · 규칙식은 괄호·철자 42건 누락 · 판매중 ETF 236)")
     sql, mgmt_fixed = ensure_etf_mgmt_canon(sql)
     if mgmt_fixed:
         step("[Guard] ETF 운용사 확정식 — 오염 컬럼 cu_fund_mgmt_co(판매사·브랜드·상품명 혼재: '삼성증권(주)' 70행 "
@@ -12355,7 +12484,7 @@ def answer_question(
     if etf_scope:
         step("[Answer] ETF 모수 한정 고지 — 어느 테이블을 봤는지 머리줄에 기계 표기 "
              "(10R 재검 ③-11 · V7·W10 은 6R 에 있던 '국내' 가 7R·9R 엔 없다 — 라운드마다 뒤집히므로 고정한다)")
-    result.answer, pct_dropped = strip_unsourced_percent(result.answer, rows)
+    result.answer, pct_dropped = strip_unsourced_percent(result.answer, rows, q)
     if pct_dropped:
         step(f"[Guard] 근거 밖 백분율 제거 — 조회 결과에 없는 값 {', '.join(pct_dropped[:3])}% 를 담은 문장을 걷어냄 "
              "(16R KG ③-16 · X1 실측: 24.95·15.9·7.96 을 받아 '세 종목 합계 약 48.81%' 를 스스로 계산해 붙였다 — "

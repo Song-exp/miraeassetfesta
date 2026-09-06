@@ -3116,6 +3116,11 @@ _FUND_EXT_HINTS = re.compile(
 #    `'S&P 500'` 표기를 통째로 놓친다(공백 무시 188클래스 / 펀드 57 = gold). 이름 축과 같은 병이라 같은 가드가 받는다.
 #    등호(`_NAME_EQ`)는 확장하지 않는다 — KG 가 bmrk_nm 을 정확일치로 매핑하므로 LIKE 로 넓히면 정본이 흐려진다.
 _NAME_LIKE = re.compile(r"(?<!REPLACE\()(?:TRIM\(\s*)?((?:\b\w+\.)?)\b(itm_nm|bmrk_nm)\b\s*\)?\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
+# 🔴 2026-09-06 — 컬럼 쪽이 **이미** REPLACE 로 감싸져 있으면 위 정규식이 (?<!REPLACE\() 로 비켜 가
+#    리터럴의 공백이 그대로 남는다: `REPLACE(itm_nm,' ','') LIKE '%미래에셋 코어테크%'` → 0행.
+#    같은 함수의 선언이 "양쪽 다 정규화해야 한다" 인데 한쪽만 되던 자리다(실측: 공백 그대로 0행 / 제거 14행).
+_NAME_LIKE_WRAPPED = re.compile(
+    r"REPLACE\(\s*((?:\b\w+\.)?)\b(itm_nm|bmrk_nm)\b\s*,\s*' '\s*,\s*''\s*\)\s*((?:NOT\s+)?LIKE)\s*'((?:[^']|'')*)'", re.I)
 
 
 def ensure_spaceless_name_match(sql: str, token: str | None = None) -> tuple[str, bool]:
@@ -3136,7 +3141,12 @@ def ensure_spaceless_name_match(sql: str, token: str | None = None) -> tuple[str
         # 줄기 이름과 itm_nm 이 등호로 같을 수 있는 행이 0 (T7 오거절). 공백 무시 부분일치로 치환 — 넓히기만 한다.
         pat = m.group(3).replace(" ", "")
         return f"REPLACE({m.group(1)}{m.group(2)},' ','') LIKE '%{pat}%'"
+    def _fix_wrapped(m: re.Match) -> str:
+        # 컬럼은 이미 정규화됐고 리터럴만 안 된 자리 — 리터럴의 공백을 지운다(넓히기만 한다)
+        return f"REPLACE({m.group(1)}{m.group(2)},' ','') {m.group(3).upper()} '{m.group(4).replace(' ', '')}'"
+
     fixed = _NAME_LIKE.sub(_fix, sql)
+    fixed = _NAME_LIKE_WRAPPED.sub(_fix_wrapped, fixed)
     fixed = _NAME_EQ.sub(_fix_eq, fixed)
     if token:
         # 4R J-2 — HCX 가 이름 토큰을 조각내 AND 로 3개 이상 이어 붙인 것(미래에셋/차이나/솔로몬/증권투자신탁)은 리터럴들이
@@ -10238,6 +10248,26 @@ _ETF_NAME_LIKE_LIT = re.compile(
 _TOKEN_SPLIT = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
 
 
+def _clarify_premise_absent(table: str, where: str, params: tuple) -> bool:
+    """되묻기 전제 실측 — "그 값은 데이터에 없다" 를 **말하기 전에** 재본다. 없으면 True.
+
+    🔴 2026-09-06 사고 #98·#99 — 되묻기가 재지 않은 사실을 단정했다. '한국전력공사채권1184 표면금리'
+       가 0행이 되자 "발행사 '한국전력공사(주)' 의 채권은 데이터에 없습니다" 로 나갔는데 **403행이 있다.**
+       0행의 원인은 발행사가 아니라 옆 절(`pd_no = 1184`)이었다. 발행사 1,818곳 전수 실측: 1,392곳
+       (76.6%)이 같은 거짓 문장을 만들 수 있었다 — 그 발행사 질의가 다른 조건 때문에 0행이 되기만 하면.
+       ETF·펀드도 같다: `pd_abrv_nm='KODEX 200' AND ttl_exp_rate < 0.0` 이 0행이 되면 순자산 1위 ETF 를
+       "없습니다" 라 하고 **자기 자신을 대안으로** 내밀었다(발행사판은 자기를 빼는데 상품판은 그마저 없었다).
+
+    부재를 말하는 자리는 부재를 재는 자리다. 조회 실패는 '재지 못했다' 이므로 **말하지 않는다**(False).
+    """
+    try:
+        with connect_readonly() as con:
+            row = con.execute(f"SELECT 1 FROM {table} WHERE {where} LIMIT 1", params).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is None
+
+
 def _lookup_name_literals(sql: str) -> tuple[str, bool]:
     """개별 상품 조회 리터럴 — (이름 문자열, 펀드인가). 없으면 ('', False).
 
@@ -10268,6 +10298,19 @@ def _suggest_similar_products(sql: str) -> list[str]:
         table, col, order = "public_funds", "itm_nm", "fd_nast_suma"
     else:
         table, col, order = ("overseas_etfs" if "overseas_etfs" in sql.lower() else "domestic_etfs"), "pd_abrv_nm", "du_last_aum"
+    # 🔴 전제 실측 — 등호로 지목한 이름이 **실제로 있으면** 부재를 말하지 않는다 (#98 과 같은 부류).
+    #    LIKE 분해형은 조각을 AND 로 이은 것이 곧 그 지목이다.
+    m_eq = _NAME_LOOKUP.search(sql)
+    if m_eq and m_eq.group(2):                      # ETF 등호 — 정확일치 지목
+        where, args = f"REPLACE(TRIM({col}),' ','') = REPLACE(?,' ','')", (m_eq.group(2),)
+    elif m_eq and m_eq.group(4):                    # 펀드 — 원래 지목이 LIKE 라 LIKE 로 재본다
+        where, args = f"REPLACE(TRIM({col}),' ','') LIKE ?", (f"%{m_eq.group(4).replace(' ', '')}%",)
+    else:
+        lits = _ETF_NAME_LIKE_LIT.findall(sql)
+        where = " AND ".join(f"REPLACE(TRIM({col}),' ','') LIKE ?" for _ in lits)
+        args = tuple(f"%{x.replace(' ', '')}%" for x in lits)
+    if where and not _clarify_premise_absent(table, where, args):
+        return []
     if not is_fund:
         # 브랜드(필수 토큰)는 어느 자리에 적혔든 브랜드다 — 실측 브랜드 접두 사전에 있으면 필수 토큰으로 올린다
         # (LIKE 분해형은 리터럴 순서가 HCX 마음대로다 — 'AI'·'로봇'·'KODEX').
@@ -10368,6 +10411,11 @@ def _suggest_similar_issuers(literal: str | None) -> list[str]:
 
 def _issuer_clarify_text(literal: str | None) -> str:
     """발행사 0건·값 위반 공용 되묻기 문장. 후보가 없으면 빈 문자열."""
+    if not literal:
+        return ""
+    # 🔴 전제 실측 — 이 문장은 "그 발행사의 채권은 없다" 고 단정한다. 재보고 말한다 (#98·#99).
+    if not _clarify_premise_absent("domestic_bonds", "TRIM(pd_pbcm) = ?", (literal,)):
+        return ""
     cand = _suggest_similar_issuers(literal)
     if not cand:
         return ""

@@ -1873,8 +1873,16 @@ def test_r3_name_resolution_A(ctx):
     P.sql = _R6_SQL
     r6 = answer_question("T-R6b", "미래에셋차이나솔로몬증권투자신탁 2호 위험등급 알려줘", planner=P(), ctx=ctx)
     assert "클래스 7개" in r6.answer
-    # A-4 — 펀드 되묻기 후보
-    assert _suggest_similar_products("SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋 코어테크%' LIMIT 1")
+    # A-4 — 펀드 되묻기 후보. 🔴 2026-09-06 P0-2(#98 부류): 되묻기는 **부재를 실측한 뒤에만** 말한다.
+    #   종전 단언은 '미래에셋 코어테크'(공백 포함 리터럴)에 후보가 나오기를 요구했는데, 그 펀드는 실재 14행이다
+    #   — 즉 "요청하신 상품은 제공된 데이터에 없습니다" 라는 거짓 단정을 회귀로 고정하고 있었다.
+    #   원인은 컬럼만 REPLACE 로 정규화되고 리터럴은 안 된 것(공백 그대로 0행 / 제거 14행). 둘 다 고친다.
+    q_sp = "SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋 코어테크%' LIMIT 1"
+    assert "'%미래에셋코어테크%'" in sp(q_sp)[0]                       # 리터럴도 공백 무시로
+    assert not _suggest_similar_products(q_sp)                        # 실재하므로 부재를 말하지 않는다
+    # 실제로 없는 이름은 종전대로 후보를 낸다 — 되묻기 능력 자체는 그대로다
+    assert _suggest_similar_products(
+        "SELECT 1 FROM public_funds WHERE REPLACE(itm_nm,' ','') LIKE '%미래에셋 코어테크 인디아%' LIMIT 1")
 
 
 def test_r3_manager_scope_and_amount_B(ctx):

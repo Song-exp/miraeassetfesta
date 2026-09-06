@@ -339,3 +339,36 @@ def test_BE_sibling_structures(ctx):
 ])
 def test_BE_untouched_when_predicate_present(q, sql):
     assert pl.ensure_kind_filter(sql, q) == (sql, False)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BF — 다의어 되묻기 트리거 확장 (C-016 · BR-X05)
+#   일반 규칙: ① 종류 낱말(국공채·회사채)은 위험 축 단서가 아니다 — '가장 위험한 회사채' 도 되묻는다
+#   ② '등급' 이 신용/위험/리스크/안전 한정어·등급값 없이 높낮이 어휘와 오면 되묻는다(clarify.다의어.등급 강제 부착)
+# ══════════════════════════════════════════════════════════════════════════════
+@pytest.mark.parametrize("q", ["가장 위험한 회사채 뭐야?", "제일 위험한 국공채 알려줘", "위험도 높은 순으로 은행채 알려줘"])
+def test_BF_risky_with_kind_word_clarifies(q):
+    ask = pl.risk_ambiguity_clarify(q, T)
+    assert ask and "투자위험등급" in ask and "신용등급" in ask
+
+
+@pytest.mark.parametrize("q", ["등급 낮은 채권 알려줘", "등급이 높은 채권 5개", "등급 좋은 채권 골라줘", "낮은 등급 채권 뭐 있어?"])
+def test_BF_grade_ambiguous_clarifies(ctx, q):
+    ask = pl.grade_token_clarify(q, T, ctx)
+    assert ask and ask.startswith("'등급' 이") and "신용등급" in ask and "위험등급" in ask
+
+
+@pytest.mark.parametrize("q", [
+    "위험이 가장 낮은 등급의 채권 알려줘",            # D-003 — '위험' 단서
+    "신용등급 AA- 이상 채권 알려줘",                  # D-001
+    "신용등급 BB+ 채권 알려줘",                       # U-018
+    "신용등급 낮은 채권 알려줘", "위험등급 높은 채권 알려줘", "안전 등급 높은 채권",
+    "BBB 등급 채권 알려줘", "5등급 채권 알려줘", "등급별 채권 수 알려줘", "등급 기준으로 정렬해줘",
+])
+def test_BF_grade_with_cue_untouched(ctx, q):
+    assert pl.grade_token_clarify(q, T, ctx) is None or "'등급' 이" not in (pl.grade_token_clarify(q, T, ctx) or "")
+
+
+def test_BF_scoped_to_bonds(ctx):
+    assert pl.grade_token_clarify("등급 낮은 펀드 알려줘", ["public_funds"], ctx) is None
+    assert pl.risk_ambiguity_clarify("가장 위험한 ETF 뭐야?", ["domestic_etfs"]) is None

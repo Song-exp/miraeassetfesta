@@ -8474,10 +8474,25 @@ def _known_grade_forms(ctx) -> set[str]:
     return forms
 
 
+_GRADE_AXIS_CUE = re.compile(r"신용|위험|리스크|안전|투자\s*등급|평가\s*등급|등급\s*(?:기준|으로|별)|[0-6]\s*등급|C0|BBB|BB|CCC")
+_GRADE_LEVEL_Q = re.compile(r"등급[이가은는의도]?\s*(?:높|낮|좋|나쁘|나쁜|안\s*좋|상위|하위|우량|열위)|(?:높은|낮은|좋은|나쁜|우량한?|상위|하위)\s*등급")
+GRADE_AMBIGUITY_ASK = ("'등급' 이 신용등급인지 위험등급인지에 따라 답이 정반대라 확인이 필요합니다 (기준일 {cutoff}). "
+                       "① 신용등급(AAA~C0 · 낮을수록 부도 위험이 큼 · 국공채는 등급 미부여) — 예: '신용등급 BBB 이하 채권' "
+                       "② 투자위험등급(1~6등급 · 숫자가 클수록 안전 — '낮은 등급' 이 6등급(매우낮은위험)인지 1등급(매우높은위험)인지 갈림) — 예: '위험등급 5등급 이하 채권'. "
+                       "어느 등급 기준으로 찾아드릴까요?")
+
+
 def grade_token_clarify(question: str, tables: list[str], ctx) -> str | None:
-    """질문의 등급꼴 토큰이 표준·데이터 표기 어디에도 없으면 가까운 등급을 후보로 되묻는 문장, 아니면 None."""
+    """질문의 등급꼴 토큰이 표준·데이터 표기 어디에도 없으면 가까운 등급을 후보로 되묻는 문장, 아니면 None.
+
+    🆕 2026-09-06 QA r1 BF ② — '등급' 이 신용/위험/리스크/안전 한정어도 등급값(AAA·1등급·C0)도 없이 높낮이 어휘와 오면 되묻는다
+    (clarify.다의어.등급 선언 — "신용등급(crd_grd) / 위험등급(pd_risk_nm) — 별개 축" 의 강제 부착). BND-C-016 '등급 낮은 채권 알려줘' 가
+    HCX 되묻기 없이 신용등급 BB-~A- 215종목 목록으로 나갔다. D-003 '위험이 가장 낮은 등급' 은 '위험' 단서로 불개입."""
     if tables != ["domestic_bonds"]:
         return None
+    if "등급" in question and _GRADE_LEVEL_Q.search(question) and not _GRADE_AXIS_CUE.search(question) \
+            and not _GRADE_TOKEN_Q.search(question):
+        return GRADE_AMBIGUITY_ASK.format(cutoff=gate.DATA_CUTOFF)
     known = _known_grade_forms(ctx)
     scale = _grade_scale()
     for m in _GRADE_TOKEN_Q.finditer(question):
@@ -8568,7 +8583,9 @@ _RISKY_Q = re.compile(
     rf"|{_RISKW}\s*(?:순위|랭킹|순으로|순서대로)"
     # '덜 위험한' 은 비교급이라 반대 방향(안전) 질의다 — _TOP_SAFE_Q 는 '가장 덜 위험' 만 알아 맨 낱말은 여기서 끊는다
     r"|(?<!덜)(?<!덜\s)위험한\s*(?:채권|것|거|걸|종목)\s*(?:추천|골라|알려|보여|뭐|어떤|순위|목록|순서|\d+\s*(?:개|종목))")
-_RISK_CUE = re.compile(r"위험\s*등급|신용\s*등급|등급\s*(?:기준|으로|별)|수익률|금리|이자|듀레이션|만기|변동|부도|디폴트|원금|가격|단가|사모|공모|국공채|회사채|[1-6]\s*등급|C0|BBB|BB|CCC")
+# 🔴 2026-09-06 QA r1 BF ① — 종류 낱말(국공채·회사채)은 위험 **축** 단서가 아니다. '가장 위험한 회사채 뭐야?'(BR-X05) 가 되묻기를 건너뛰고
+#    1등급+수익률순으로 단정됐다. 축 단서는 위험등급·신용등급·수익률·듀레이션·부도 … 처럼 어느 축인지 말하는 낱말만.
+_RISK_CUE = re.compile(r"위험\s*등급|신용\s*등급|등급\s*(?:기준|으로|별)|수익률|금리|이자|듀레이션|만기|변동|부도|디폴트|원금|가격|단가|사모|공모|[1-6]\s*등급|C0|BBB|BB|CCC")
 
 
 def risk_ambiguity_clarify(question: str, tables: list[str]) -> str | None:

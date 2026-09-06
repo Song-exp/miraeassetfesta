@@ -11913,9 +11913,6 @@ def answer_question(
     if etf_scope:
         step("[Answer] ETF 모수 한정 고지 — 어느 테이블을 봤는지 머리줄에 기계 표기 "
              "(10R 재검 ③-11 · V7·W10 은 6R 에 있던 '국내' 가 7R·9R 엔 없다 — 라운드마다 뒤집히므로 고정한다)")
-    result.answer, diff_sign = ensure_etf_diff_sign_note(result.answer, sql)
-    if diff_sign:
-        step("[Answer] 괴리율 부호 고지 — +고평가/−저평가 의 뜻을 꼬리에 기계 표기 (2026-09-06 재생 E13 · 오답 색인 #13 축뒤집기)")
     result.answer, pct_dropped = strip_unsourced_percent(result.answer, rows)
     if pct_dropped:
         step(f"[Guard] 근거 밖 백분율 제거 — 조회 결과에 없는 값 {', '.join(pct_dropped[:3])}% 를 담은 문장을 걷어냄 "
@@ -11958,6 +11955,10 @@ def answer_question(
         result.answer = (result.answer or "").rstrip() + "\n\n" + partial_absent
         step("[Answer] 부분 부재 고지 — 질문이 함께 물은 미수록 항목을 답변 끝에 기계로 적었다 "
              "(2026-09-04 OFFICIAL-002: 있는 것과 없는 것을 함께 묻는 질문을 쪼갤 구조가 없어 통째로 거절하던 자리)")
+    # ETF 답변 가드(백분율·거절 전사·집계 오거절) 뒤에 붙인다 — 전사 교체가 고지를 지우지 않게 (이병철 병합 검토 2026-09-06: "내 가드 → 형 고지")
+    result.answer, diff_sign = ensure_etf_diff_sign_note(result.answer, sql)
+    if diff_sign:
+        step("[Answer] 괴리율 부호 고지 — +고평가/−저평가 의 뜻을 꼬리에 기계 표기 (2026-09-06 재생 E13 · 오답 색인 #13 축뒤집기)")
     result.answer, _pm = fix_permille_symbol(result.answer, sql)
     if _pm:
         step("[Answer] 단위 기호 교정 — SQL 이 % 로 환산해 냈는데 답변이 ‰ 로 적었다 "

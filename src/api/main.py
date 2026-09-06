@@ -155,6 +155,27 @@ def answer_question(question_id: str, question: str) -> AnswerResponse:
     )
 
 
+_USAGE_EXAMPLE = "/answer?question_id=Q1&question=%EA%B5%AD%EA%B3%A0%EC%B1%84%EB%8A%94%20%EC%B4%9D%20%EB%AA%87%20%EC%A2%85%EB%AA%A9%EC%9D%B4%EC%95%BC%3F"
+
+
+@app.get("/", response_class=HTMLResponse)
+def root() -> HTMLResponse:
+    """사람이 Base URL 을 브라우저로 열었을 때 보는 안내 한 장 (2026-09-06: 제출 링크를 눌러 보고 '안 열린다' 는 오해가 나왔다).
+
+    채점기는 /answer 를 파라미터와 함께 호출하므로 이 페이지를 거치지 않는다. 계약(5필드 JSON)과 무관한 정적 안내다.
+    """
+    return HTMLResponse(
+        "<!doctype html><meta charset='utf-8'><title>금융상품 Agent API</title>"
+        "<body style='font-family:sans-serif;max-width:720px;margin:40px auto;line-height:1.6'>"
+        "<h2>금융상품 Agent API</h2>"
+        "<p>이 주소는 API 서버입니다. 질의는 <code>GET /answer</code> 에 두 파라미터를 붙여 호출합니다.</p>"
+        "<pre>GET /answer?question_id=&lt;문항ID&gt;&amp;question=&lt;질문&gt;</pre>"
+        f"<p>예시: <a href='{_USAGE_EXAMPLE}'>국고채는 총 몇 종목이야?</a></p>"
+        "<p>응답은 5필드 JSON(question_id · question · retrieved_context · think_trace · answer)입니다. "
+        "상태 확인: <a href='/health'>/health</a></p></body>"
+    )
+
+
 @app.get("/health")
 def health() -> dict:
     """엔드포인트 생존 확인용. 배포 모니터링에서 이걸 폴링합니다."""
@@ -292,6 +313,14 @@ def _fallback(request: Request, trace: str) -> JSONResponse:
 async def invalid_params(request: Request, exc: RequestValidationError) -> JSONResponse:
     """필수 파라미터 누락·형식 오류. FastAPI 기본 422 스키마는 5필드가 아닙니다."""
     log.warning("invalid params: %s", exc.errors())
+    if not request.query_params.get("question", "").strip():
+        # 질문 자체가 없다 = 사람이 주소만 열어 본 경우가 대부분. 계약(200 + 5필드)은 지키고 answer 에 사용법을 적는다.
+        resp = _fallback(request, "1. [Error] 요청 파라미터 누락 — question 이 비어 있어 사용법을 안내")
+        body = json.loads(resp.body)
+        body["answer"] = ("질문이 비어 있습니다. 이 주소는 API 입니다 — "
+                          "/answer?question_id=<문항ID>&question=<질문> 형식으로 호출해 주세요. "
+                          "예: " + str(request.base_url).rstrip("/") + _USAGE_EXAMPLE)
+        return UTF8JSONResponse(status_code=200, content=body)
     return _fallback(request, "1. [Error] 요청 파라미터 오류 — 답변 불가로 처리")
 
 

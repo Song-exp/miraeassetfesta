@@ -9108,6 +9108,38 @@ _BOND_STAR_COLS = ("pd_nm", "pd_pbcm", "bd_knd", "bd_ofr_tcd", "crd_grd", "pd_ri
 _SELECT_STAR = re.compile(r"^\s*SELECT\s+(DISTINCT\s+)?\*\s*(?:,\s*(.*?))?\s+FROM\s+domestic_bonds\b", re.I | re.S)
 
 
+_COUNT_INTENT_Q = re.compile(r"몇|개수|건수|종목\s*수|얼마나\s*(?:많|되|있)")
+_ITEM_EQ_PRED = re.compile(r"(?:TRIM\(\s*)?(?:\w+\.)?\bpd_nm\s*\)?\s*=\s*" + chr(39) + r"[^" + chr(39) + r"]+" + chr(39), re.I)
+_ONLY_COUNT_SEL = re.compile(r"^\s*SELECT\s+COUNT\s*\(\s*(?:DISTINCT\s+)?[\w.*]+\s*\)(?:\s+AS\s+\w+)?\s+FROM\s+domestic_bonds\b", re.I)
+
+
+def drop_unasked_count_on_named_item(sql: str, question: str) -> tuple[str, bool]:
+    """질문이 **한 종목을 지목**했는데 개수를 묻지 않았으면 COUNT 를 걷고 컬럼 조회로 되돌린다.
+
+    2026-09-06 사고 #100 — '한국전력공사채권1184 지금 살 수 있어?' 가 COUNT 로 나가
+    "조건에 해당하는 채권은 총 385종목입니다"(그 발행사 전체)로 답했다. 개수 조립기는 SQL 모양만 보고
+    질문이 개수를 물었는지는 보지 않는다 — 주어를 못 읽어 "조건에 해당하는 채권" 으로 때운 것이 곧
+    '이 질문은 개수 문형이 아니다' 라는 정지 신호였는데 무시됐다.
+    P0-1 의 종목 지시자 블록이 근거문서에 "개수를 묻지 않았으면 COUNT 로 세지 말라" 고 적지만
+    선언만 있고 가드가 없으면 안 지켜진다 — 여기가 그 가드다.
+
+    발동(전부): (1) domestic_bonds 단독(JOIN·UNION·GROUP BY·서브쿼리 없음) (2) SELECT 가 COUNT 하나
+    (3) WHERE 에 종목명 등호가 있다(P0-1 이 실은 조건) (4) 질문에 개수 의도가 없다.
+    SELECT 를 `*` 로 되돌리고 뒤따르는 ensure_bond_select_columns 가 표준 컬럼 목록으로 편다 —
+    컬럼 고르기를 두 곳에 두지 않는다.
+    불개입: 개수를 물었으면 전부 종전 그대로(주어 정규식에 안 걸리는 정상 개수 문항 11건 포함) ·
+    종목명 등호가 없으면 불개입 — "조건에 해당하는 채권은 총 N종목" 은 그 문형에서 옳은 답이다."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union|group\s+by)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    if _COUNT_INTENT_Q.search(question or ""):
+        return sql, False
+    m = _ONLY_COUNT_SEL.match(sql)
+    if not m or not _ITEM_EQ_PRED.search(sql):
+        return sql, False
+    fm = re.search(r"\bFROM\s+domestic_bonds\b", sql, re.I)
+    return "SELECT * " + sql[fm.start():], True
+
+
 def ensure_bond_select_columns(sql: str, question: str, ctx) -> tuple[str, bool]:
     """채권 단일 테이블 목록의 `SELECT *[, extras]` 를 표준 컬럼 목록(+질문이 부른 컬럼)으로. (보정된 SQL, 보정했는지)"""
     m = _SELECT_STAR.match(sql)
@@ -10669,7 +10701,13 @@ def _bond_count_answer(sql: str, rows: str, n: int, question: str) -> str | None
     last = subj[-1]
     particle = "은" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "는"
     unit = "종목" if re.search(r"DISTINCT\s+pd_no", m_sel.group(1), re.I) else "건"
-    out = f"{subj}{particle} 총 {cnt:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF})."
+    # 규칙 `기본모수` 는 "답변에 모수를 밝힌다" 고 선언하는데 조립기는 기준일만 적었다 — 읽는 사람은
+    #   그게 데이터 기준일인지 만기 필터인지 알 수 없다. 산금채는 503종목 중 4종목이 만기 경과로
+    #   빠져 499 가 됐는데 그 말이 없었다(#97). 선언은 있고 가드가 없던 자리라 표기만 채운다.
+    pop = ""
+    if re.search(r"curr_cd\s*=\s*'KRW'", sql, re.I) and re.search(rf"mat_dt\s*>=?\s*{BUYABLE_INT}", sql):
+        pop = " · 원화·만기 미도래 기준"
+    out = f"{subj}{particle} 총 {cnt:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}{pop})."
     if _KTB_Q.search(question) and ktb_head_is_gov(question) and (_MCLS_EQ.search(sql) or _MCLS_IN.search(sql)):
         m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
         sub_sql = sql[:m.start()] + _KTB_FILTER + sql[m.end():]
@@ -12348,6 +12386,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if sim_note:
         step(f"[Guard] 유사채권 확정식 — HCX SQL 을 통째로 교체: {sim_note} · 축·폭은 yaml similarity_axes 선언 "
              "(2026-09-05 #73: '비슷한' 은 두 단계 조회라 HCX 한 문장이 기준 발행사 OR 대분류 로 무너졌다 — 기관 조회 확정식과 같은 처방)")
+    sql, cnt_dropped = drop_unasked_count_on_named_item(sql, q)
+    if cnt_dropped:
+        step("[Guard] 지목 종목에 안 물은 COUNT — 개수를 묻지 않았는데 COUNT 로 나가 컬럼 조회로 되돌린다 "
+             "(2026-09-06 #100: '1184 지금 살 수 있어?' 가 그 발행사 전체 385종목 개수로 답했다)")
     sql, star_fixed = ensure_bond_select_columns(sql, q, ctx)
     if star_fixed:
         step("[Guard] 채권 SELECT * 재작성 — 표준 컬럼 목록(+질문이 부른 컬럼)으로 바꿔 대표행·근거컬럼 가드가 붙게 한다 "

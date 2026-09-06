@@ -45,19 +45,19 @@ curl -sG "https://49.50.134.229.nip.io/answer" \
   "question_id": "OFFICIAL-001",
   "question": "현재 판매 가능한 원화채권 중 AA- 이상 종목 알려줘",
   "retrieved_context": "pd_no | pd_nm | crd_grd\nKR380805AG24 | 한국수출입금융 2602차-할인-181 | AAA\nKR310210GC85 | 산업금융채권 22신이0400-0824-1 | AAA\n…(30행)",
-  "think_trace": "1. [Normalize] 질의 정규화 — 길이 30\n2. [Route] 상품군 — domestic_bonds · 근거: 머리명사 채권 · 값 ['AA-']\n3. [Ground] KG 개체 매핑 — 'AA-' → CG_AAm (CreditGrade) → domestic_bonds.crd_grd='AA-' / '원화' → Curr_KRW (Currency) → domestic_bonds.curr_cd='KRW'\n4. [Gate] 통과 — 대상 테이블 ['domestic_bonds']\n5. [Plan] 근거문서 조립 — …\n6. [Guard] 등급 서열 확장 — …\n7. [Plan] SQL 생성 — 아래 문장을 실행합니다\nSELECT DISTINCT pd_no, pd_nm, crd_grd FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-') AND curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30\n8. [Guard] SQL 검사 통과 (…)\n9. [Execute] 30행 조회 (상한 30)\n10. [Answer] 채권 목록 답변 기계 조립 — …, HCX 0회",
+  "think_trace": "1. [Normalize] 질의 정규화 — 길이 30\n2. [Intent] HCX-005 질의 의도 분석 — 상품군 채권 · 과제 조회 · 개체 없음 · 조건 ['AA- 이상'] (검증: 닫힌 어휘 · 질문에 있는 어구만 · 라우팅 보조로만 쓴다)\n3. [Route] 상품군 — domestic_bonds · 근거: 머리명사 채권 · 값 ['AA-']\n4. [Ground] KG 개체 매핑 — 'AA-' → CG_AAm (CreditGrade) → domestic_bonds.crd_grd='AA-' / '원화' → Curr_KRW (Currency) → domestic_bonds.curr_cd='KRW'\n4. [Gate] 통과 — 대상 테이블 ['domestic_bonds']\n5. [Plan] 근거문서 조립 — …\n6. [Guard] 등급 서열 확장 — …\n7. [Plan] SQL 생성 — 아래 문장을 실행합니다\nSELECT DISTINCT pd_no, pd_nm, crd_grd FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-') AND curr_cd = 'KRW' AND mat_dt >= 20260824 LIMIT 30\n8. [Guard] SQL 검사 통과 (…)\n9. [Execute] 30행 조회 (상한 30)\n10. [Answer] 채권 목록 답변 기계 조립 — …, HCX 0회",
   "answer": "조건에 해당하는 채권은 전체 15,792종목이며, 그중 30개는 다음과 같습니다 (기준일 2026-08-24).\n\n1. 한국수출입금융 2602차-할인-181 — 신용등급 AAA\n2. 산업금융채권 22신이0400-0824-1 — 신용등급 AAA\n…"
 }
 ```
 
-### 3.2 답변 불가 예 — 존재하지 않는 등급 (게이트 기각 · HCX 0회 · 0.3초)
+### 3.2 답변 불가 예 — 존재하지 않는 등급 (게이트 기각 · HCX 는 의도 분석 1회만 · 약 1.3초)
 
 ```json
 {
   "question_id": "OFFICIAL-NA-001",
   "question": "신용등급 AAAA인 채권 찾아줘",
   "retrieved_context": "",
-  "think_trace": "1. [Normalize] 질의 정규화 — 길이 17\n2. [Route] 상품군 — domestic_bonds · 근거: 머리명사 채권\n3. [Ground] KG 개체 매핑 — 'AAA' → CG_AAA (CreditGrade) → domestic_bonds.crd_grd='AAA'\n4. [Gate] 기각 — 'AAAA' 는 신용등급 표준표(20종)에 없음 — 존재하지 않는 등급\n5. [Decision] HCX 호출 없이 종료 (근거는 Gate 단계)",
+  "think_trace": "1. [Normalize] 질의 정규화 — 길이 17\n2. [Intent] HCX-005 질의 의도 분석 — 상품군 채권 · 과제 조회 · 개체 ['AAAA'] · 조건 없음 (검증: 닫힌 어휘 · 질문에 있는 어구만 · 라우팅 보조로만 쓴다)\n3. [Route] 상품군 — domestic_bonds · 근거: 머리명사 채권\n4. [Ground] KG 개체 매핑 — 'AAA' → CG_AAA (CreditGrade) → domestic_bonds.crd_grd='AAA'\n4. [Gate] 기각 — 'AAAA' 는 신용등급 표준표(20종)에 없음 — 존재하지 않는 등급\n5. [Decision] HCX 호출 없이 종료 (근거는 Gate 단계)",
   "answer": "'AAAA'는 존재하지 않는 신용등급이라 확인할 수 없습니다. 유효 등급은 AAA~C 체계입니다."
 }
 ```

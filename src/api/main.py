@@ -291,6 +291,13 @@ def chat_ui(t: str = Query(default="")) -> HTMLResponse:
     return HTMLResponse(content=PAGE)
 
 
+def _public_base(request: Request) -> str:
+    """바깥에서 보이는 Base URL — Caddy 뒤에서는 request.base_url 이 http 라 X-Forwarded-Proto 를 우선한다 (2026-09-06 서버 실측)."""
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{scheme}://{host}"
+
+
 def _fallback(request: Request, trace: str) -> JSONResponse:
     """🔴 어떤 경우에도 200 + 5필드 JSON 을 반환합니다.
 
@@ -319,7 +326,7 @@ async def invalid_params(request: Request, exc: RequestValidationError) -> JSONR
         body = json.loads(resp.body)
         body["answer"] = ("질문이 비어 있습니다. 이 주소는 API 입니다 — "
                           "/answer?question_id=<문항ID>&question=<질문> 형식으로 호출해 주세요. "
-                          "예: " + str(request.base_url).rstrip("/") + _USAGE_EXAMPLE)
+                          "예: " + _public_base(request) + _USAGE_EXAMPLE)
         return UTF8JSONResponse(status_code=200, content=body)
     return _fallback(request, "1. [Error] 요청 파라미터 오류 — 답변 불가로 처리")
 

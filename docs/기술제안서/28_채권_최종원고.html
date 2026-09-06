@@ -120,7 +120,7 @@ em { color: #333; }
 <h1>02. 제안 방법</h1>
 <h2>2.1 어떤 특화 데이터를 어떻게 수집·정제했는가</h2>
 <h3>2.1.1 1차 데이터 전수 프로파일링과 결측 현황</h3>
-<p>8월 10일부터 1차 데이터(42,394행 × 40컬럼)를 기계 프로파일러로 전수 스캔하고, 컬럼마다 재현 SQL 을 붙여 뜻을 판정했다. 처음 눈에 들어온 것은 결측의 양이었다. 신용등급 컬럼이 40% 넘게 비어 있었고, 판매 조건 컬럼 13개는 거의 전부 비어 있었다. 평가정보 컬럼 일부도 NULL 이었다.</p>
+<p>1차 데이터(42,394행 × 40컬럼)를 기계 프로파일러로 전수 스캔하고, 컬럼마다 재현 SQL 을 붙여 뜻을 판정했다. 처음 눈에 들어온 것은 결측의 양이었다. 신용등급 컬럼이 40% 넘게 비어 있었고, 판매 조건 컬럼 13개는 거의 전부 비어 있었다. 평가정보 컬럼 일부도 NULL 이었다.</p>
 <p>당연히 처음 든 생각은 <strong>밖에서 채우자</strong>였다. 다른 세 상품군이 그렇게 하고 있었다. ETF 는 구성종목 75,859행과 906,848행을, 펀드는 설명서 구성종목 59,206행과 상품 페이지 10,565건을 외부에서 모았다. 채권도 같은 길을 가려고 무엇을 모을 수 있는지 봤다.</p>
 <h3>2.1.2 결측의 도메인적 원인 — 채권의 상품 구조</h3>
 <p>볼 것이 없었다. 그리고 그 이유가 전부 <strong>채권이라는 상품의 성격</strong>에 있었다.</p>
@@ -254,7 +254,7 @@ em { color: #333; }
 <p>신용등급 컬럼에는 <code>AAA</code>·<code>AA0</code>·<code>AA-</code> 같은 문자열 15종이 있다. 그런데 "AA- 이상"이 어느 등급들인지, <code>BBB-</code> 와 <code>BB+</code> 사이가 투자적격과 투기등급을 가르는 경계라는 사실은 데이터 어디에도 없다. 신용등급은 발행사의 채무상환능력을 서열로 나타낸 <strong>평가 체계</strong>이고, 데이터에는 그 체계의 결과만 들어온다. 순서와 경계는 평가사 쪽에 있다. <code>&gt;= 'AA-'</code> 는 사전순이지 서열이 아니다.</p>
 <p>그래서 한국기업평가 등급정의 한 장을 코드북으로 들여왔다. 표 21행, 표준등급 20(<code>C0</code>/<code>C</code> 동일), 투자/투기 밴드 2. 이 한 장은 행을 늘리지 않는다 — 이미 있는 <code>crd_grd</code> 문자열에 순서와 경계를 붙일 뿐이다. <code>as_of</code> 2026-08-20 으로 규약(8/24 이전 발행 자료)을 지킨다.</p>
 <h3>2.1.5 2차 데이터 전환과 판정 기준의 생존</h3>
-<p>8월 24일 2차 데이터가 왔다. 21,882행 × 58컬럼 — 행은 절반, 컬럼은 18개가 늘었다. 1차에 맞춰 쓴 판정이 흔들렸다.</p>
+<p>2차 데이터가 왔다. 21,882행 × 58컬럼 — 행은 절반, 컬럼은 18개가 늘었다. 1차에 맞춰 쓴 판정이 흔들렸다.</p>
 <table>
 <thead>
 <tr>
@@ -639,7 +639,7 @@ fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
 </tbody>
 </table>
 <h3>2.3.2 선언의 런타임 전달 실측</h3>
-<p>8월 30일, 선언이 프롬프트에 실리는지 처음 실측했다. "싼 채권 알려줘"에 되묻기 규칙이 yaml 에 있었는데 모델이 되묻지 않고 단정했다. 규칙은 있었으나 <strong>런타임이 그 슬롯을 읽지 않고 있었다.</strong></p>
+<p>선언이 프롬프트에 실리는지 처음 실측했다. "싼 채권 알려줘"에 되묻기 규칙이 yaml 에 있었는데 모델이 되묻지 않고 단정했다. 규칙은 있었으나 <strong>런타임이 그 슬롯을 읽지 않고 있었다.</strong></p>
 <p>이 발견이 검색 설계의 출발점이 됐다. 컬럼 판정이 문서에 있는 것과 챗봇이 그대로 행동하는 것은 다른 문제다. 런타임이 yaml 에서 실제로 읽는 슬롯을 전부 실측했다.</p>
 <table>
 <thead>
@@ -843,136 +843,195 @@ _GRADE_SHAPE = re.compile(r&quot;^([A-D])\1{0,3}[+\-0]?$&quot;)
 <p>주최가 정한 이 장의 흐름은 우리가 밟은 작업 순서와 같다. 02장이 수집·설계·구축을 겪은 순서대로 적었으니, 이 장은 마지막 걸음 — <strong>검색을 시작한 뒤 오답이 설계를 어떻게 바꿨는가</strong> — 를 적는다.</p>
 <p><img alt="그림 5 — 오답이 설계를 바꾼 시간축" src="figures/fig5_timeline.svg" /></p>
 <h2>4.1 서버 실측에 따른 규칙 경계 조정</h2>
-<p>이 절이 무엇을 주장하는지 먼저 적는다. <strong>데이터 전체를 보고 규칙을 세웠고, 실제 질문으로 그 규칙을 시험해서 틀리는 부류를 찾아 규칙의 경계를 다시 그렸다.</strong> 서버에 물어본 뒤 규칙이 바뀐 것은 처음 설계가 틀렸다는 뜻이 아니다. 규칙은 데이터만 보고도 세울 수 있지만, 그 규칙이 어느 질문에서 어떻게 틀리는지는 질문을 던져야만 나온다. 그래서 오답 하나를 고칠 때 그 질문 하나를 막지 않고 그 질문이 속한 부류를 찾아 부류 전체에 맞게 규칙의 폭을 <strong>넓히거나 좁혔다</strong>. 넓힌 예가 등급 비교이고 좁힌 예가 이자지급주기 부재 선언이다. 둘 다 아래에 나온다. 일반화가 됐는지는 고친 횟수가 아니라 고친 뒤 같은 부류가 다시 터졌는가로 판정했고, 마지막 날 낮에는 사고가 나기 전에 구멍을 먼저 찾았다. 그날 밤 10문항 실측이 낮은 정답률로 끝난 것도 이 절 끝과 5.4 에 그대로 적었다.</p>
-<p>8월 29일 첫 관측부터 9월 6일까지 사고 대장 96건을 기록했다(정답 확인 6건 포함). 질문 → 오답 → 정답 → 원인 층 → 수정 → 상태를 전건 남겼다. 이 절의 수치는 2026-09-06 사고 대장 #96 까지가 기준이다. 그 뒤의 수정은 이 절을 다시 쓰지 않고 대장에만 쌓는다. 그중 설계를 바꾼 것을 순서대로 적는다.</p>
-<p><strong>SQL 이 조용히 틀렸다 (8월 30~31일).</strong> 추천 질의의 제외 조건 <code>NOT (pd_risk_gcd='11' OR crd_grd='C0')</code> 가 등급이 NULL 인 국공채 2,840행을 통째로 떨어뜨렸다. NULL 이 논리식을 삼킨다. "3년 안에 만기"의 <code>mat_dt &lt;= 2029-08-22</code> 는 따옴표가 없어 SQLite 가 뺄셈으로 읽었고 <code>1999</code> 가 되어 만기일 0값 4행만 통과했다. 둘 다 오류가 나지 않는 오답이다.</p>
-<pre><code class="language-sql">-- 제외 조건: NULL-안전 확정식으로
+<p>이 절이 무엇을 주장하는지 먼저 적는다. <strong>데이터 전체를 보고 규칙을 세웠고, 실제 질문으로 그 규칙을 시험해서 틀리는 부류를 찾아 규칙의 경계를 다시 그렸다.</strong> 서버에 물어본 뒤 규칙이 바뀐 것은 처음 설계가 틀렸다는 뜻이 아니다. 규칙은 데이터만 보고도 세울 수 있지만, 그 규칙이 어느 질문에서 어떻게 틀리는지는 질문을 던져야만 나온다. 그래서 오답 하나를 고칠 때 그 질문 하나를 막지 않고 그 질문이 속한 부류를 찾아 부류 전체에 맞게 규칙의 폭을 <strong>넓히거나 좁혔다</strong>. 일반화가 됐는지는 고친 횟수가 아니라 고친 뒤 같은 부류가 다시 터졌는가로 판정했고, 마지막에는 사고가 나기 전에 구멍을 먼저 찾았다. 그 뒤 주최 예시 틀 10문항 실측이 낮은 정답률로 끝난 것도 §4.1.4 와 §5.4 에 그대로 적었다.</p>
+<p>첫 관측부터 마감까지 사고 대장 96건을 기록했다(정답 확인 6건 포함). 질문 → 오답 → 정답 → 원인 층 → 수정 → 상태를 전건 남겼다. 이 절의 수치는 사고 대장 #96 까지가 기준이고, 그 뒤의 수정은 이 절을 다시 쓰지 않고 대장에만 쌓는다. 그중 설계를 바꾼 것을 부류 단위로 정리하면 아래 표다.</p>
+<p><img alt="그림 6 — 오답 부류가 닿은 방어 층" src="figures/fig6_defense_layers.svg" /></p>
+<h3>4.1.1 오답 부류와 수리 — 한눈에</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">#</th>
+<th style="text-align: left;">질문(예)</th>
+<th style="text-align: left;">서버가 낸 것</th>
+<th style="text-align: left;">왜 틀렸나</th>
+<th style="text-align: left;">무엇을 바꿨나 — 경계 조정</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;">"안전하고 수익률 7% 이상" 추천 · "3년 안에 만기"</td>
+<td style="text-align: left;">제외 조건 <code>NOT (a OR b)</code> 가 등급 NULL 국공채 2,840행을 통째로 탈락 · <code>mat_dt &lt;= 2029-08-22</code> 가 뺄셈으로 읽혀 <code>1999</code>, 만기일 0값 4행만 통과</td>
+<td style="text-align: left;">SQL 이 오류 없이 틀림 — NULL 이 논리식을 삼키고, REAL 적재 날짜에 따옴표 없는 리터럴</td>
+<td style="text-align: left;">규칙 원문 정정 · NULL-안전 확정식 · 정수 날짜 리터럴 · 날짜 산술 금지 (§4.1.2 ①)</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;">"A등급 이상 회사채 표면금리 5% 초과"</td>
+<td style="text-align: left;"><code>crd_grd='A-'</code> 단일 등급 → 모수 596 중 49행 · 불완전 <code>IN</code> 으로 상위 209종목 누락, 1위 우리금융캐피탈458(7.5%) 대신 SC은행(5.2%)</td>
+<td style="text-align: left;">서열이 데이터에 없다 — 모델이 목록을 만들게 두면 빠진다</td>
+<td style="text-align: left;"><strong>넓힘</strong> — 등급 하나 → 서열 전체 · 코드북 closure + 가드 <code>expand_grade_comparison</code> 이 단일 비교·불완전 목록을 서열 전개식으로 교체 (§4.1.2 ②)</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;">정렬·집계 답변 전반</td>
+<td style="text-align: left;">2·4·5·6·7위만 나열돼 1위 3.986% 증발 · <code>COUNT</code> 1,929 를 "정보가 없다"</td>
+<td style="text-align: left;">값이 전부 실제 행이라 환각 검사에 안 걸림 · 프롬프트로 닫히지 않음</td>
+<td style="text-align: left;"><strong>이전</strong> — LLM → 기계 · 목록·집계·분포 답변 문장을 LLM 에서 뺌 — 기계 조립 + <code>ensure_top_row_cited</code></td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;">"가장 위험한 채권 뭐야"</td>
+<td style="text-align: left;">1등급 필터 + 수익률 내림차순 → 유동화 후순위 5종목(최고 728.5%)</td>
+<td style="text-align: left;">위험은 세 축 — 신용위험·금리위험·투자위험등급. 신용과 금리는 반대로 간다(국공채 듀레이션 평균 3.97년 &gt; 회사채 1.99년) · 728.5% 는 평가가가 액면의 27~45% 인 손실 위험</td>
+<td style="text-align: left;"><strong>신설</strong> — 결정층 되묻기 · 기본값 금지 · 축 단서 없으면 LLM 호출 전 되묻기 + 축별 규모 실측(1등급 1,394종목 · C0 103종목) · 0.3초</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;">"판매 가능한 채권"</td>
+<td style="text-align: left;"><code>buyable_quantity</code> &gt;0 296행 · =0 338행이지만 주최 공지로 값 무효 · 판매 조건 행만 보면 97.1% 소실</td>
+<td style="text-align: left;">"판매 가능"의 정의가 데이터에 없다 · as-of 8/22(토) ≠ 결제 가능일 8/24(월)</td>
+<td style="text-align: left;"><strong>선언</strong> · 구매가능 = <code>curr_cd='KRW' AND mat_dt &gt;= 20260824</code>(21,814행 · 20,431종목) · 답변 머리줄 "(기준일 2026-08-24)"</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td style="text-align: left;">"복리채 몇 종목"</td>
+<td style="text-align: left;">만기 경과 65종목을 세면서 답변엔 기준일 표기</td>
+<td style="text-align: left;">구매가능 선언이 '살 수 있나' 문형 어휘에만 걸림 — 표기와 모수 불일치</td>
+<td style="text-align: left;"><strong>신설</strong> — 강제 · <code>enforce</code> 슬롯 — 선언이 SQL 을 직접 고침 · gold 51문항 중 6 정정</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td style="text-align: left;">"표면금리 높은 순" · "한전 채권 중 만기 제일 긴 것"</td>
+<td style="text-align: left;">수익률 <code>applied_yield</code> 로 정렬(1·2위 표면금리 7.1%·3.0%, 정답 1위 7.5%) · 묻지 않은 <code>mat_dt &lt;= 20291231</code> 로 2029년 종목이 최장(실제 2052년)</td>
+<td style="text-align: left;">축 치환 — 값이 전부 진짜라 <strong>틀린 티가 안 남</strong> · 동률 순서 비결정</td>
+<td style="text-align: left;"><strong>신설</strong> — 축 고정 · 규칙 <code>정렬축</code> + <code>ensure_sort_axis</code> · <code>ensure_tie_break</code>(등급 서열 → 만기 → 종목코드) · 무근거 상한 제거 (§4.1.2 ③)</td>
+</tr>
+<tr>
+<td style="text-align: center;">8</td>
+<td style="text-align: left;">"최근 6개월 안에 <strong>발행된</strong> 회사채"</td>
+<td style="text-align: left;">창 강제 가드가 <strong>만기</strong> 창을 덧붙여 답한 5종목 발행일 전부 창 밖</td>
+<td style="text-align: left;">가드가 질문이 정하지 않은 축을 갈아끼움</td>
+<td style="text-align: left;"><strong>좁힘</strong> — 가드 발동 범위 · 불개입 조건 — 발행·신규 낱말 있고 만기·상환 낱말 없으면 발행일 축</td>
+</tr>
+<tr>
+<td style="text-align: center;">9</td>
+<td style="text-align: left;">등급 이력 · 금리 추이 · 업종 · 이자지급주기</td>
+<td style="text-align: left;">등급 부여일을 이력인 양 · 만기순 목록을 시간순인 양 · <code>LIKE '%우주항공%'</code> 0행(한화에어로스페이스 11행 실재) · 지급 <strong>방식</strong>을 <strong>주기</strong>라 부름</td>
+<td style="text-align: left;">없는 축 — 모델은 비슷해 보이는 컬럼으로 메꾼다</td>
+<td style="text-align: left;"><strong>선언</strong> · 부재 선언 4건 · 코드 변경 0 · 어휘 세 층(§4.1.3)</td>
+</tr>
+<tr>
+<td style="text-align: center;">10</td>
+<td style="text-align: left;">"신용등급 BBB++"</td>
+<td style="text-align: left;"><code>BBB++</code> 안의 <code>BBB+</code> 를 잡아 100종목</td>
+<td style="text-align: left;">개체 경계 — 환각이 아니라 결정층 매칭</td>
+<td style="text-align: left;"><strong>좁힘</strong> — 매칭 경계 · 등급 기호(+·-·0)까지 경계 · 표기에 없는 토큰은 가까운 등급 후보로 되묻기</td>
+</tr>
+<tr>
+<td style="text-align: center;">11</td>
+<td style="text-align: left;">(사고 없음) 거래량 · 최소투자금액 · 수수료 · 발행사 재무</td>
+<td style="text-align: left;">컬럼이 없는데 9문형이 전건 통과</td>
+<td style="text-align: left;">부류 전수조사에서 발견 — 같은 부류가 이미 네 번 터진 뒤</td>
+<td style="text-align: left;"><strong>선언</strong> — 선제 · 부재 선언 4건 선제 — 9 → 11</td>
+</tr>
+<tr>
+<td style="text-align: center;">12</td>
+<td style="text-align: left;">"하이일드 수익률 높은 순 5개"</td>
+<td style="text-align: left;"><code>투기등급</code> 규칙이 프롬프트에 실렸는데 무시 → 모수 18,060 · <code>ORDER BY 3</code> 서수가 가드 넷 우회</td>
+<td style="text-align: left;">선언만 있고 강제 없음 · SQL 표기 변이</td>
+<td style="text-align: left;"><strong>신설</strong> — 강제 · <code>enforce</code> 슬롯 SPECGRADE·만기구간 · 서수 ORDER BY 정규화 한 겹(가드마다 변이를 배우게 하지 않는다)</td>
+</tr>
+<tr>
+<td style="text-align: center;">13</td>
+<td style="text-align: left;">주최 예시 틀 10문항</td>
+<td style="text-align: left;">"5% 넘는"이 <code>&lt;</code> · "회사채"가 하위 종류 하나로 · "2024년 발행" 창 누락, 58초 회복 경로에서 축 대체 · 세후수익 질의에 판매행 고지 누락</td>
+<td style="text-align: left;">규칙 무시 · 가드 사각 · 회복 경로가 LLM 에 재위임 · 답변층</td>
+<td style="text-align: left;"><strong>신설</strong> · <strong>좁힘</strong> · 부등호 정합 · 종류 폭 복원 · 절대 연도 발행 창 · 값-컬럼 교정(재생성 앞) · 평균 답변 조립 · 고지 단일 통로</td>
+</tr>
+</tbody>
+</table>
+<p>표에서 굳어진 원칙은 여섯이다.</p>
+<ul>
+<li><strong>모든 규칙은 DB 에서 실행해 모수를 확인한 뒤 적는다.</strong> (#1) 오류가 나지 않는 오답은 실행해 봐야만 보인다.</li>
+<li><strong>모델이 목록을 만들게 두지 않는다.</strong> (#2) 서열은 코드북에서 생성하고 가드가 통째로 교체한다. 목록은 코드에도 없다 — <code>loader.grade_scale</code> 이 표준표 rank 와 값 사전 실재의 교집합으로 매번 만든다.</li>
+<li><strong>목록·집계·분포의 문장은 LLM 이 쓰지 않는다.</strong> (#3) 이 결정이 답변 문장을 LLM 이 쓰지 않은 문항 81%의 기원이고, 이 유형의 회귀는 그 뒤 0이다.</li>
+<li><strong>선언은 문서가 아니라 실행 계층에 있어야 한다.</strong> (#6·#12) <code>enforce</code> 슬롯이 선언을 SQL 에 직접 적용한 첫 자리이고, 같은 병이 #12 에서 한 번 더 났다.</li>
+<li><strong>틀렸는데 틀린 티가 안 나는 오답이 우리가 막는 것이다.</strong> (#7) 값·SQL·모수가 전부 재현되는 오답은 환각 검사·값 사전·모수 검사 어느 것도 못 잡는다. 축은 규칙으로 선언하고 가드로 강제해야 잡힌다.</li>
+<li><strong>결정층은 오답을 막는 자리이자 만드는 자리다.</strong> (#8) 가드가 강제하는 조건은 반드시 질문이 물은 축과 짝지어야 한다.</li>
+</ul>
+<h3>4.1.2 대표 사례 — SQL 이 어떻게 바뀌었나</h3>
+<p><strong>① SQL 이 오류 없이 틀린 자리 (#1)</strong></p>
+<pre><code class="language-sql">-- 제외 조건: NOT (a OR b) 는 NULL 행을 통째로 떨어뜨린다 → NULL-안전 확정식으로
 WHERE pd_risk_gcd &lt;&gt; '11' AND COALESCE(TRIM(crd_grd),'') &lt;&gt; 'C0' AND bd_ofr_tcd &lt;&gt; '사모'
 
--- 날짜: REAL 적재라 세 표기가 전부 다른 결과
+-- 날짜: REAL 적재라 표기마다 결과가 다르다
 mat_dt &lt;= 2029-08-22     -- 뺄셈 → 1999 → 0값 4행만
 mat_dt &lt;= '20290822'     -- REAL &lt; TEXT 타입 서열 → 전 행 통과
 mat_dt &lt;= 20290822       -- 정수 리터럴만 정답
 mat_dt &lt;= 20260824 + 90  -- 날짜 산술도 금지: 90일 뒤가 아니라 정수 덧셈 20260914 — 실행은 되고 창만 틀림
 </code></pre>
-<p>이때부터 모든 규칙을 DB 에서 실행해 모수를 확인한 뒤 적는 것이 원칙이 됐다.</p>
-<p><strong>등급 서열이 없어 상위가 통째로 빠졌다 (8월 31일).</strong> "A등급 이상 회사채 표면금리 5% 초과"가 <code>crd_grd='A-'</code> 단일 등급으로 나가 모수 596종목 중 49행만 조회됐다. 같은 날 밤에는 모델이 만든 불완전한 <code>IN</code> 목록으로 상위 209종목이 누락돼 1위 우리금융캐피탈458(7.5%) 대신 SC은행(5.2%)이 답으로 나갔다. 규칙 문서에 서열을 실어 모델이 목록을 만들게 두는 안은 여기서 기각됐다. 가드 <code>expand_grade_comparison</code> 이 단일 비교나 불완전한 목록을 서열 전개식으로 통째로 교체한다.</p>
+<p><strong>② 규칙의 폭을 넓힌 자리 — 등급 하나에서 서열 전체로 (#2)</strong></p>
 <pre><code class="language-sql">WHERE TRIM(crd_grd) = 'A-'                                        -- 모델 생성. 49행
-WHERE TRIM(crd_grd) IN ('AAA','AA+','AA0','AA-','A+','A0','A-')   -- 가드 교체 후
+WHERE TRIM(crd_grd) IN ('AAA','AA+','AA0','AA-','A+','A0','A-')   -- 가드 교체 후. 596행
 </code></pre>
-<p>목록은 코드에 없다. <code>loader.grade_scale</code> 이 표준표 rank 순서와 값 사전 실재의 교집합으로 매번 만든다. 규칙의 폭을 <strong>넓힌</strong> 자리다 — 등급 하나에서 서열 전체로. 이 넓힘이 문항 하나가 아니라 "○등급 이상" 문형 전체에 걸리는지는 형제 문항을 회귀로 붙여 확인했다.</p>
-<p><strong>답변 문장에서 1위가 증발했다 (9월 2일).</strong> 정렬 결과의 2·4·5·6·7위만 나열돼 1위 3.986% 가 빠졌다. 다른 문항에서는 <code>COUNT</code> 가 1,929 를 돌려줬는데 "정보가 없다"고 답했다. <strong>값은 전부 실제 행이라 환각 검사에 걸리지 않는다.</strong> 이 부류는 프롬프트로 닫히지 않았다. 목록·집계·분포의 답변 문장을 LLM 에서 통째로 뺐다. 조회 결과를 기계가 조립하고, 가드 <code>ensure_top_row_cited</code> 가 정렬 결과를 순서 그대로 위에서부터 옮기는지 확인한다. 이 결정이 서버 실측에서 답변 문장을 LLM 이 쓰지 않은 문항 81%의 기원이고, 이 유형의 회귀는 그 뒤 0이다.</p>
-<p><strong>애매한 질문에 단정했다 (9월 2일).</strong> "가장 위험한 채권 뭐야"에 모델이 1등급 필터 + 수익률 내림차순으로 답해 유동화 후순위 5종목(최고 728.5%)이 나갔다. 수익률이 좋은 것이 아니라 평가가가 액면의 27~45%인 원금 손실 위험이 가격에 반영된 것이다. 위험은 채권에서 성격이 다른 둘로 갈린다 — 신용위험은 발행사가 못 갚을 가능성이고, 금리위험은 금리가 움직일 때 가격이 얼마나 흔들리는가로 잔존만기·듀레이션이 결정한다. 둘은 반대로 간다 — 부도위험이 낮은 국공채일수록 초장기 발행이 가능해 듀레이션이 길어진다(국공채 평균 3.97년 &gt; 회사채 1.99년). 여기에 판매 현장의 투자위험등급이 세 번째 축으로 얹힌다. 어느 축을 묻는지에 따라 정반대의 목록이 나오므로 기본값을 금지하고, 축 단서가 없으면 LLM 호출 전에 되묻게 했다. 되묻기는 축별 규모를 DB 실측으로 함께 낸다 — 투자위험등급 1등급 1,394종목, 신용등급 C0 103종목. 실측 0.3초, LLM 0회.</p>
-<p><strong>"판매 가능"의 정의부터 데이터에 없었다 (9월 2일).</strong> 매수가능수량 컬럼 <code>buyable_quantity</code> 는 &gt;0 이 296행, =0 이 338행이지만 주최 공지로 값 자체가 무효였다. 판매 조건이 있는 행으로 읽으면 97.1%가 사라진다. 남는 것은 만기 경과 여부인데, 데이터 as-of 는 8월 22일 토요일이고 실제 결제 가능일은 8월 24일 월요일이다. 구매가능 = <code>curr_cd='KRW' AND mat_dt &gt;= 20260824</code> 로 정했다(21,814행 · 20,431종목). 판정 기준일 8/24 는 as-of 8/22 와 다르고, 답변 머리줄에 "(기준일 2026-08-24)"를 붙인다.</p>
-<p><strong>모수가 붙는 질문과 안 붙는 질문이 갈렸다 (9월 4일).</strong> 그 구매가능 선언이 '살 수 있나'라는 문형 어휘에 걸려 있어서, 같은 모수를 써야 할 개수 질의("복리채 몇 종목")에는 아무 조건도 안 붙었다. 만기 경과 65종목을 세면서 답변에는 기준일을 달았다 — 표기와 모수의 불일치다. 규칙을 프롬프트로 미는 대신 <strong>선언 자체가 SQL 을 고치게</strong> 했다(<code>enforce</code> 슬롯). 채권 gold 51문항 중 6문항의 값이 바뀌었고 전부 정정했다. 선언이 문서에서 실행 계층으로 내려온 첫 자리다.</p>
-<p><strong>축이 바뀐 오답을 만났다 (9월 4일).</strong> "표면금리 높은 순"이 수익률 <code>applied_yield</code> 로 정렬됐다. 등급 서열·회사채 필터·기준일이 전부 맞았고 정렬 축 하나만 틀렸는데, 실린 1·2위의 표면금리는 7.1%·3.0%로 상위권이 아니다(정답 1위 7.5%). 값이 전부 실제 행이다. 이 문서의 문제 정의가 여기서 확정됐다 — <strong>틀렸는데 틀린 티가 안 나는 오답</strong>이 우리가 막는 것이다. 질문의 낱말과 컬럼을 고정하는 규칙 <code>정렬축</code> 과 가드 <code>ensure_sort_axis</code> 를 세우고, 동률에는 <code>ensure_tie_break</code> 가 2차 정렬(등급 서열 → 만기 → 종목코드)을 넣는다 — 없으면 같은 질문을 두 번 물을 때 등수가 뒤바뀐다. 같은 주에 "한전 채권 중 만기가 제일 긴 것"에 묻지도 않은 상한 <code>mat_dt &lt;= 20291231</code> 이 붙어 2029년 종목이 최장으로 나온 사고도 있었다(실제 최장은 2052년). 질문에 시점 낱말이 없는데 SQL 에 상한이 있으면 날조로 보고 걷어낸다.</p>
-<p><strong>막는 장치가 새 오답을 냈다 (9월 5일).</strong> "최근 6개월 안에 <strong>발행된</strong> 회사채"에 창 강제 가드가 <strong>만기</strong> 창을 덧붙여, 답한 5종목의 발행일이 전부 창 밖이었다. 오답을 막으려 넣은 가드가 질문이 정하지 않은 축을 갈아끼웠다. 가드에 불개입 조건을 달았다 — 발행·신규 낱말이 있고 만기·상환 낱말이 없으면 발행일 축으로 가고 만기 창을 강제하지 않는다. 결정층은 오답을 막는 자리이자 만드는 자리라는 것을 여기서 배웠다.</p>
-<p><strong>없는 축을 있는 컬럼으로 메꿨다 (9월 4~5일).</strong> "최근 6개월 사이 신용등급이 오른 채권"에 모델이 등급 부여일 컬럼을 이력인 양 썼다. "한전 채권 금리가 요즘 어떻게 움직였어"에 만기순 목록을 시간순인 양 서술했다. "우주항공 관련 발행사 채권"에 업종을 종목명 <code>LIKE '%우주항공%'</code> 로 옮겨 적어 0행을 내고 "상품 자체가 없다"고 답했다(한화에어로스페이스 11행 실재). "이자를 몇 개월마다 줘"에 지급 <strong>방식</strong> 컬럼을 <strong>주기</strong>라 불렀다. 넷이 같은 부류다 — 축이 없으면 모델은 비슷해 보이는 컬럼으로 메꾼다. 넷을 부재로 선언했다(등급 이력·금리 이력·업종·이자지급주기). 코드 변경은 0이다.</p>
-<p>부재를 선언하는 일의 절반은 어디까지 막지 않을지를 정하는 일이었다. 업종은 축 이름(업종·섹터·테마)은 무조건 막되 "우주항공 관련 발행사" 같은 문형은 발행사·종목 개체가 하나도 접지되지 않았을 때만 막는다 — 접지된 질문까지 막으면 답할 수 있는 질의가 죽는다. 지급주기는 '이자·쿠폰·이표'가 함께 있을 때만 걸린다 — 아니면 "만기 몇 개월 남았어"를 오폭한다. 규칙의 폭을 <strong>좁힌</strong> 자리다 — '몇 개월마다' 전체에서 이자 낱말이 붙은 문형으로. 좁힐 때는 기존 문항 전수를 다시 돌려 오폭 0을 확인한 뒤에만 넣었다. 그리고 지급주기를 전역 규칙으로 올렸으면 안 됐다. 같은 축이 국내ETF 에는 실재한다(<code>pd_dvid_cycl</code> 분기 698 · 연 306 · 월 196 · 반기 8). <strong>부재는 도메인의 성질이지 어휘의 성질이 아니다.</strong> 게이트가 라우팅된 한 테이블의 선언만 보게 설계한 것이 여기서 값을 했다.</p>
-<p><strong>개체 경계가 틀렸다 (9월 5일).</strong> "신용등급 BBB++ 인 채권"에 값 사전이 <code>BBB++</code> 안의 <code>BBB+</code> 를 잡아 100종목을 답했다. 환각이 아니라 결정층 매칭이다. 등급꼴 라벨은 앞뒤 등급 기호(+·-·0)까지 경계로 보게 고치고, 표준·데이터 표기에 없는 토큰은 가까운 등급을 후보로 되묻는다.</p>
-<p><strong>마지막엔 오답이 나기 전에 구멍을 찾았다 (9월 6일).</strong> 분류를 전수조사하다 게이트에 아직 안 걸린 축 둘을 발견했다 — 거래량("거래가 제일 활발한 채권")과 최소투자금액("최소 얼마부터 살 수 있어"). 둘 다 마스터에 컬럼이 없는데 9문형이 전건 통과했다. 통과하면 모델이 없는 축을 있는 컬럼으로 메꾸는 자리이고, 그 부류는 이미 네 번 터진 뒤였다. 사고를 기다리지 않고 같은 형식으로 먼저 닫았다. 같은 날 부재축 어휘를 축 이름에서 떼어 선언으로 채우는 작업에서 둘이 더 나왔다 — 수수료(채권은 보수 구조가 상품 속성이 아니라 판매사·계좌 조건에서 정해진다)와 발행사 재무(데이터가 상환 능력에 대해 말할 수 있는 것은 신용등급·위험등급뿐이다). 부재 선언은 9에서 11이 됐다. 앞의 것들이 전부 서버가 틀린 답을 낸 뒤 고친 것이라면, 이 넷은 틀리기 전에 찾은 것이다. 오답 기록을 개별 수리 목록이 아니라 부류 목록으로 쓴 결과다.</p>
-<p>여기서도 어휘를 낱말로 걸지 않았다. <code>'거래'</code> 단독은 거래구분(장내/장외)과 거래된 가격도 가리키므로, 거래량의 앵커는 '거래·매매·체결'에 양을 묻는 낱말이 붙을 때다. "장내에서 실제 거래된 가격이 가장 비싼 채권"은 가격 축이라 계속 답한다.</p>
+<p>이 넓힘이 문항 하나가 아니라 "○등급 이상" 문형 전체에 걸리는지는 형제 문항을 회귀로 붙여 확인했다.</p>
+<p><strong>③ 축을 고정한 자리 — 값은 전부 진짜인데 답이 틀린 오답 (#7)</strong></p>
+<pre><code class="language-sql">ORDER BY applied_yield DESC                              -- 모델 생성. 수익률 축 — 1·2위 표면금리 7.1%·3.0%
+ORDER BY srfc_irt DESC, &lt;등급 서열&gt;, mat_dt, pd_no       -- 가드 교체 후. 질문의 축 + 동률 2차 키 — 1위 7.5%
+</code></pre>
+<p>2차 키가 없으면 같은 질문을 두 번 물을 때 등수가 뒤바뀐다. 등수는 DB 가 준 우연이 아니라 규칙이 정한 순서여야 한다.</p>
+<h3>4.1.3 부재 선언의 어휘 설계 — 어디까지 막지 않는가</h3>
+<p>부재를 선언하는 일의 절반은 어디까지 막지 않을지를 정하는 일이었다. 낱말 하나로 막으면 답할 수 있는 질의까지 죽는다. 그래서 어휘를 세 층으로 나눴고, 층을 정할 때마다 기존 문항 전수를 다시 돌려 오폭 0을 확인한 뒤에만 넣었다.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">부재 축</th>
+<th style="text-align: left;">무조건 막는 낱말</th>
+<th style="text-align: left;">조건부로 막는 문형</th>
+<th style="text-align: left;">계속 답하는 질문</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">업종 <code>hasIndustrySector</code></td>
+<td style="text-align: left;">업종 · 섹터 · 테마</td>
+<td style="text-align: left;">"우주항공 관련 발행사" — 발행사·종목 개체가 하나도 접지되지 않았을 때만</td>
+<td style="text-align: left;">한화에어로스페이스 채권(개체 접지 11행)</td>
+</tr>
+<tr>
+<td style="text-align: left;">이자지급주기 <code>hasCouponFrequency</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">'몇 개월마다' 가 이자·쿠폰·이표 낱말과 함께 있을 때만 — <strong>좁힘</strong></td>
+<td style="text-align: left;">"만기 몇 개월 남았어"</td>
+</tr>
+<tr>
+<td style="text-align: left;">거래량 <code>hasTradingVolume</code></td>
+<td style="text-align: left;">유동성 · 환금성 · 회전율</td>
+<td style="text-align: left;">거래·매매·체결 에 양을 묻는 낱말(량·대금·건수·빈도)이 붙을 때만</td>
+<td style="text-align: left;">"장내에서 실제 거래된 가격이 가장 비싼 채권" — 가격 축</td>
+</tr>
+<tr>
+<td style="text-align: left;">등급 이력 · 금리 이력</td>
+<td style="text-align: left;">이력 · 추이 · 변동 등 시간 낱말과 축 낱말의 결합</td>
+<td style="text-align: left;">조사·부사만 잇는 형(오른·내린·움직였어)</td>
+<td style="text-align: left;">만기순 목록 · 발행연도별 표면금리 안내</td>
+</tr>
+</tbody>
+</table>
 <pre><code class="language-yaml"># absent_properties: hasTradingVolume — '거래' 단독은 걸지 않는다
 vocab:
   - '(?:거래|매매|체결)\s*(?:량|대금|건수|빈도|회전율)'
   - '유동성|환금성|회전율'
 </code></pre>
-<p>위 흐름을 한눈에 보면 이렇다.</p>
+<p>지급주기를 전역 규칙으로 올렸으면 안 됐다. 같은 축이 국내ETF 에는 실재한다(<code>pd_dvid_cycl</code> 분기 698 · 연 306 · 월 196 · 반기 8). <strong>부재는 도메인의 성질이지 어휘의 성질이 아니다.</strong> 게이트가 라우팅된 한 테이블의 선언만 보게 설계한 것이 여기서 값을 했다. 그리고 마지막 넷(거래량·최소투자금액·수수료·발행사 재무)은 서버가 틀리기 전에 찾은 것이다 — 오답 기록을 개별 수리 목록이 아니라 부류 목록으로 쓴 결과다.</p>
+<h3>4.1.4 라운드별 수렴</h3>
+<p>같은 대장을 실측 라운드 단위로 다시 세면 아래와 같다. 사고 수 자체는 줄지 않았다 — 5라운드에 14건이 난 것은 일부러 어려운 난이도 문항을 던졌기 때문이다. 줄어든 것은 사고의 <strong>종류</strong>다. 첫 묶음은 SQL 이 오류 없이 틀리고 값이 빠지는 사고였고, 그 수리는 라우터·게이트·가드·조립기, 즉 결정층 자체를 세우는 코드였다. 4라운드부터는 값이 전부 맞는데 축·모수·순서·경계가 틀리는 사고로 바뀌었고, 수리는 이미 있는 가드에 분기를 더하거나 선언 한 줄을 더하는 쪽으로 옮겨 갔다. 6라운드는 사고보다 먼저 구멍을 찾았고 사용자가 직접 던진 4문항은 3문항이 정답이었다. 그러나 7라운드, 주최 예시 틀에 맞춰 던진 10문항은 첫 응답 정답이 3문항에 그쳤다. 결함은 전부 결정층·답변층이었고 선언이 틀린 자리는 없었다 — 규칙은 맞는데 강제와 조립이 새 문형을 다 덮지 못한 것이다.</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">언제</th>
-<th style="text-align: left;">무슨 오답</th>
-<th style="text-align: left;">원인</th>
-<th style="text-align: left;">무엇을 바꿨나</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;">8/30~31</td>
-<td style="text-align: left;"><code>NOT(a OR b)</code> 가 국공채 2,840행 탈락 · 날짜 뺄셈 <code>1999</code></td>
-<td style="text-align: left;">SQL 이 오류 없이 틀림</td>
-<td style="text-align: left;">NULL-안전 확정식 · 정수 날짜 리터럴 · 규칙을 DB 에서 실행해 모수 확인</td>
-</tr>
-<tr>
-<td style="text-align: left;">8/31</td>
-<td style="text-align: left;">단일 등급 <code>crd_grd='A-'</code> 596 중 49행 · 불완전 <code>IN</code> 209종목 누락</td>
-<td style="text-align: left;">서열이 데이터에 없음</td>
-<td style="text-align: left;">코드북 closure + 가드 <code>expand_grade_comparison</code></td>
-</tr>
-<tr>
-<td style="text-align: left;">9/2</td>
-<td style="text-align: left;">정렬 1위 증발 · <code>COUNT</code> 1,929 를 "정보 없음"</td>
-<td style="text-align: left;">값은 진짜라 환각 검사 통과</td>
-<td style="text-align: left;">답변 문장을 LLM 에서 뺌 — 기계 조립 · <code>ensure_top_row_cited</code></td>
-</tr>
-<tr>
-<td style="text-align: left;">9/2</td>
-<td style="text-align: left;">"가장 위험한 채권" → 728.5% 유동화 후순위</td>
-<td style="text-align: left;">위험 세 축, 둘은 정반대</td>
-<td style="text-align: left;">결정층 되묻기 · 축별 규모 실측</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/2</td>
-<td style="text-align: left;">"판매 가능" 정의 없음 · <code>buyable_quantity</code> 무효</td>
-<td style="text-align: left;">as-of 8/22(토) ≠ 결제 가능일 8/24</td>
-<td style="text-align: left;">구매가능 = KRW ∧ <code>mat_dt &gt;= 20260824</code> · 머리줄 기준일</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/4</td>
-<td style="text-align: left;">개수 질의에 모수 안 붙음 — 표기와 모수 불일치</td>
-<td style="text-align: left;">선언이 문형 어휘에만 걸림</td>
-<td style="text-align: left;"><code>enforce</code> 슬롯 — 선언이 SQL 을 직접 고침</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/4</td>
-<td style="text-align: left;">표면금리 질의가 수익률로 정렬 · 동률 순서 비결정 · 묻지 않은 상한</td>
-<td style="text-align: left;">축 치환 — 틀린 티가 안 남</td>
-<td style="text-align: left;"><code>정렬축</code> · <code>ensure_sort_axis</code> · <code>ensure_tie_break</code> · 무근거 상한 제거</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/5</td>
-<td style="text-align: left;">발행 질의에 만기 창 강제 — 5종목 전부 창 밖</td>
-<td style="text-align: left;">가드가 축을 갈아끼움</td>
-<td style="text-align: left;">가드 불개입 조건</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/4~5</td>
-<td style="text-align: left;">등급 이력·금리 이력·업종·지급주기를 있는 컬럼으로 메꿈</td>
-<td style="text-align: left;">없는 축</td>
-<td style="text-align: left;">부재 선언 4건 · 어휘 세 층(무조건 · 접지 조건부 · 앵커 조건부)</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/5</td>
-<td style="text-align: left;"><code>BBB++</code> 안의 <code>BBB+</code> 매칭 100종목</td>
-<td style="text-align: left;">개체 경계</td>
-<td style="text-align: left;">등급 기호까지 경계 · 되묻기</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/6</td>
-<td style="text-align: left;">(사고 없음) 거래량·최소투자금액·수수료·발행사 재무</td>
-<td style="text-align: left;">부류 전수조사</td>
-<td style="text-align: left;">부재 선언 4건 선제 — 9 → 11</td>
-</tr>
-<tr>
-<td style="text-align: left;">9/6</td>
-<td style="text-align: left;">"하이일드 수익률 높은 순 5개" — <code>투기등급</code> 규칙이 프롬프트에 실렸는데 무시돼 모수 18,060 · <code>ORDER BY 3</code> 서수가 가드 넷을 우회 (#84)</td>
-<td style="text-align: left;">선언만 있고 강제 없음 · SQL 표기 변이</td>
-<td style="text-align: left;"><code>enforce</code> 슬롯 SPECGRADE·만기구간 · 서수 ORDER BY 정규화 한 겹(가드마다 변이를 배우게 하지 않는다) · 커밋 <code>89640fa</code></td>
-</tr>
-<tr>
-<td style="text-align: left;">9/6 밤</td>
-<td style="text-align: left;">주최 예시 틀 10문항 — "5% 넘는"이 <code>&lt;</code> 로 · "회사채"가 하위 종류 하나로 좁혀짐 · "2024년에 발행된" 창이 안 붙고 58초 회복 경로에서 축 대체 · 세후수익 질의에 판매행 고지 누락 (#90~#94)</td>
-<td style="text-align: left;">HCX 규칙 무시 · 가드 사각 · 회복 경로가 HCX 에 재위임 · 답변층</td>
-<td style="text-align: left;">부등호 정합 <code>align_threshold_operator</code> · 종류 폭 복원 <code>restore_kind_breadth</code> · 절대 연도 발행 창 · 값-컬럼 교정 <code>fix_value_column</code>(재생성 앞) · 평균 답변 조립 · 고지 단일 통로 · 커밋 <code>a3bd4f0</code></td>
-</tr>
-</tbody>
-</table>
-<p>같은 대장을 라운드 단위로 다시 세면 아래와 같다. 사고 수 자체는 줄지 않았다 — 9월 5일에 14건이 난 것은 그날 일부러 어려운 난이도 문항을 던졌기 때문이다. 줄어든 것은 사고의 <strong>종류</strong>다. 첫 주는 SQL 이 오류 없이 틀리고 값이 빠지는 사고였고, 그 수리는 라우터·게이트·가드·조립기, 즉 결정층 자체를 세우는 코드였다. 9월 4일부터는 값이 전부 맞는데 축·모수·순서·경계가 틀리는 사고로 바뀌었고, 수리는 이미 있는 가드에 분기를 더하거나 선언 한 줄을 더하는 쪽으로 옮겨 갔다. 마지막 날은 사고보다 먼저 구멍을 찾았고, 사용자가 직접 던진 4문항은 3문항이 정답이었다. 그러나 같은 날 밤 주최 예시 틀에 맞춰 던진 10문항은 첫 응답 정답이 3문항에 그쳤다. 결함은 전부 결정층·답변층이었고 선언이 틀린 자리는 없었다 — 규칙은 맞는데 강제와 조립이 새 문형을 다 덮지 못한 것이다.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">라운드</th>
+<th style="text-align: center;">라운드</th>
+<th style="text-align: left;">실측</th>
 <th style="text-align: right;">사고</th>
 <th style="text-align: right;">선언만 고침</th>
 <th style="text-align: right;">코드 고침</th>
@@ -981,60 +1040,120 @@ vocab:
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">8/29~9/1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;">첫 관측 · 프로브 15 + 10 · 약점 프로브</td>
 <td style="text-align: right;">32 (gold 결함 1 · 승계 1)</td>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">25</td>
 <td style="text-align: left;">NULL 함정·날짜 리터럴·등급 서열·전사 환각 → 라우터·게이트·가드·조립기를 세움</td>
 </tr>
 <tr>
-<td style="text-align: left;">9/2</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;">프로브 3·4차 · 한전·삼성전자 실측</td>
 <td style="text-align: right;">18</td>
 <td style="text-align: right;">4</td>
 <td style="text-align: right;">14</td>
 <td style="text-align: left;">1위 증발·양수를 "없다"·위험 축 단정 → 답변 문장을 LLM 에서 뺌 · 결정층 되묻기</td>
 </tr>
 <tr>
-<td style="text-align: left;">9/3</td>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;">재배포 후 실측</td>
 <td style="text-align: right;">8 (정답 확인 1)</td>
 <td style="text-align: right;">1</td>
 <td style="text-align: right;">6</td>
 <td style="text-align: left;">상대 시점 오계산·가드 오폭 → 시점 확정표 · 머리명사 판별</td>
 </tr>
 <tr>
-<td style="text-align: left;">9/4</td>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;">신규 축 5문항</td>
 <td style="text-align: right;">7</td>
 <td style="text-align: right;">1</td>
 <td style="text-align: right;">6</td>
 <td style="text-align: left;">축 치환·동률·모수 불일치 → <code>정렬축</code> 규칙 · <code>enforce</code> 슬롯</td>
 </tr>
 <tr>
-<td style="text-align: left;">9/5</td>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;">어려운 난이도 4문항 + 사용자 직접 테스트</td>
 <td style="text-align: right;">14</td>
 <td style="text-align: right;">3</td>
 <td style="text-align: right;">11</td>
-<td style="text-align: left;">어려운 난이도 — 없는 축·무근거 상한·개체 경계 → 부재 선언 · 기존 가드 일반화</td>
+<td style="text-align: left;">없는 축·무근거 상한·개체 경계 → 부재 선언 · 기존 가드 일반화</td>
 </tr>
 <tr>
-<td style="text-align: left;">9/6</td>
+<td style="text-align: center;">6</td>
+<td style="text-align: left;">분류 전수조사 · 사용자 4문항</td>
 <td style="text-align: right;">7 (정답 확인 2 · 선제 3)</td>
 <td style="text-align: right;">2</td>
 <td style="text-align: right;">3</td>
-<td style="text-align: left;">사고 전 발견 4건 · 사용자 4문항 중 3 정답 · 오답 1건(#84)은 선언-미강제 → <code>enforce</code> 슬롯으로 닫음</td>
+<td style="text-align: left;">사고 전 발견 4건 · 4문항 중 3 정답 · 오답 1건(#12)은 선언-미강제 → <code>enforce</code> 슬롯으로 닫음</td>
 </tr>
 <tr>
-<td style="text-align: left;">9/6 밤</td>
+<td style="text-align: center;">7</td>
+<td style="text-align: left;">주최 예시 틀 10문항</td>
 <td style="text-align: right;">10 (정답 확인 3 · 배포 대기 1 · 결정 대기 1)</td>
 <td style="text-align: right;">0</td>
 <td style="text-align: right;">5</td>
-<td style="text-align: left;">주최 예시 틀 10문항 — 첫 응답 정답 3/10 · 부분 정답 6/10. 결함은 전부 결정층·답변층(선언 오류 0) → 부등호 정합 · 종류 폭 복원 · 절대 연도 창 · 값-컬럼 교정 · 평균 조립</td>
+<td style="text-align: left;">첫 응답 정답 3/10 · 부분 정답 6/10. 결함은 전부 결정층·답변층(선언 오류 0) → 부등호 정합 · 종류 폭 복원 · 절대 연도 창 · 값-컬럼 교정 · 평균 조립</td>
 </tr>
 </tbody>
 </table>
 <p>세는 기준은 이렇다. "선언만 고침"은 yaml 규칙 원문·동의어·부재 선언·금지 컬럼·값 사전만 바꾸고 코드가 그대로인 수리다. "코드 고침"은 가드·게이트·조립기 어느 하나라도 바뀐 수리이고, 새 가드를 세운 것과 있는 가드에 분기를 더한 것이 섞여 있다. 정답 확인·gold 결함·배포 대기·리드 결정 대기는 어느 쪽에도 세지 않았다. 선언만으로 닫힌 16건 중 6건이 부재 선언이다 — 축이 없다는 사실을 한 줄 적으면 게이트가 새 축을 막는다는 것이 이 표에서 가장 값싼 수리였다.</p>
 <h2>4.2 질의 처리 흐름 — 공식 예시 #1</h2>
 <p><em>"현재 판매 가능한 원화채권 중 AA- 이상 종목 알려줘"</em> — 서버 실측 2.4초, LLM 호출 1회(SQL 생성만).</p>
-<p>Route 가 "채권"으로 <code>domestic_bonds</code> 단일 테이블을 고르고 값 <code>['AA-']</code> 를 잡는다. Ground 가 <code>'AA-'</code> 를 <code>CG_AAm</code> 으로, <code>'원화'</code> 를 <code>Curr_KRW</code> 로 접지한다. Gate 가 등급 토큰을 표준표와 대조해 통과시킨다. Plan 이 개체 매핑·규칙(<code>구매가능</code>·<code>등급서열</code>·<code>등급정규화</code>·<code>대표행</code>)·되묻기·스키마를 근거문서로 조립해 SQL 을 생성한다. Guard 가 단일 등급 비교를 서열 목록으로 교체한다. Verify 가 WHERE 리터럴을 값 사전과 대조한다. Answer 가 30행을 기계로 조립한다.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">단계</th>
+<th style="text-align: left;">한 일</th>
+<th style="text-align: left;">이 질의에서의 결과</th>
+<th style="text-align: center;">LLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Route</td>
+<td style="text-align: left;">머리명사로 테이블 선택 · 값 후보 추출</td>
+<td style="text-align: left;">"채권" → <code>domestic_bonds</code> 단일 테이블 · 값 <code>['AA-']</code></td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Ground</td>
+<td style="text-align: left;">값을 KG 개체 → 실제 컬럼 값으로 접지</td>
+<td style="text-align: left;"><code>'AA-'</code> → <code>CG_AAm</code> → <code>crd_grd='AA-'</code> · <code>'원화'</code> → <code>Curr_KRW</code> → <code>curr_cd='KRW'</code></td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Gate</td>
+<td style="text-align: left;">없는 축·범위 밖·표기 이상 기각</td>
+<td style="text-align: left;">등급 토큰이 표준표에 있음 → 통과</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Plan</td>
+<td style="text-align: left;">근거문서 조립 → SQL 생성</td>
+<td style="text-align: left;">개체 매핑 + 규칙 <code>구매가능</code>·<code>등급서열</code>·<code>등급정규화</code>·<code>대표행</code> + 되묻기 + 스키마</td>
+<td style="text-align: center;">1</td>
+</tr>
+<tr>
+<td style="text-align: left;">Guard</td>
+<td style="text-align: left;">생성된 SQL 을 선언대로 고침</td>
+<td style="text-align: left;">단일 등급 비교 → 서열 목록 <code>IN ('AAA','AA+','AA0','AA-')</code></td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Verify</td>
+<td style="text-align: left;">WHERE 리터럴을 값 사전과 대조</td>
+<td style="text-align: left;">전부 실재 → 실행</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Answer</td>
+<td style="text-align: left;">결과를 기계로 조립</td>
+<td style="text-align: left;">30행 목록 + 별도 집계 15,792종목 + 기준일 머리줄</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
 <pre><code class="language-sql">SELECT DISTINCT pd_no, pd_nm, crd_grd FROM domestic_bonds
 WHERE TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-')
   AND curr_cd = 'KRW' AND mat_dt &gt;= 20260824
@@ -1192,10 +1311,10 @@ LIMIT 30
 <li>값이 갈리는 중복 8종목의 두 줄 병기는 선언까지만 있고 런타임 강제가 아직 없다.</li>
 <li>발행주체 유형·만기 구간·담보 유형·발행사 분류 4축은 경계값이 도메인 합의 사항이라 골격만 두었다.</li>
 <li>등급 이력·발행사 재무·계열 정보는 데이터에 없어 답하지 않는다 — 이것은 결함이 아니라 선언이다.</li>
-<li>사고 수리 86건 중 코드 변경이 70건이다. 첫 주 25건은 결정층 자체를 세운 것이라 치더라도, 9월 4일 이후에도 코드 수리(25건)가 선언 수리(6건)보다 많다. 선언만으로 닫히는 비율을 올리는 것이 다음 목표이고 아직 도달하지 않았다.</li>
-<li>선언이 있는데 강제가 없어 안 지켜진 패턴이 두 번 반복됐다 — 9월 4일 기본모수, 9월 6일 투기등급. 둘 다 <code>enforce</code> 슬롯으로 닫았지만, 선언마다 강제 슬롯이 붙었는지 점검하는 일이 아직 사람 손에 있다.</li>
+<li>사고 수리 86건 중 코드 변경이 70건이다. 첫 라운드 25건은 결정층 자체를 세운 것이라 치더라도, 4라운드 이후에도 코드 수리(25건)가 선언 수리(6건)보다 많다. 선언만으로 닫히는 비율을 올리는 것이 다음 목표이고 아직 도달하지 않았다.</li>
+<li>선언이 있는데 강제가 없어 안 지켜진 패턴이 두 번 반복됐다 — 기본모수(#6), 투기등급(#12). 둘 다 <code>enforce</code> 슬롯으로 닫았지만, 선언마다 강제 슬롯이 붙었는지 점검하는 일이 아직 사람 손에 있다.</li>
 <li>마감 직전 주최 예시 틀 10문항 실측에서 첫 응답 정답이 3/10, 부분 정답 포함 6/10 이었다. 선언이 틀린 자리는 0이었으나 결정층 가드와 답변 조립이 새 문형을 다 덮지 못했다. 5.1 의 정답률은 그 이전 239문항 기준이고, 이 10문항은 포함되지 않았다.</li>
-<li>같은 날 채권 문항 전부를 서버에 일괄로 던진 1차 실측(87문항 · <code>eval/probe_bonds_2026-09-06_r1.json</code>)은 gold 대조가 가능한 64문항에서 문자열 대조 정답 36건(56.2%)이었고, 채점기가 못 읽는 오탐 7건을 사람이 보정하면 약 67%다. 그 가운데 26건이 LLM 응답 지연 53~77초로 늦었고 재생성 9건은 60초 제한에 걸려 오거절로 끝났다 — 논리가 아니라 응답 지연이 정답률을 깎은 자리이고, 이것도 아직 닫히지 않았다.</li>
+<li>채권 문항 전부를 서버에 일괄로 던진 1차 실측(87문항 · <code>eval/probe_bonds_2026-09-06_r1.json</code>)은 gold 대조가 가능한 64문항에서 문자열 대조 정답 36건(56.2%)이었고, 채점기가 못 읽는 오탐 7건을 사람이 보정하면 약 67%다. 그 가운데 26건이 LLM 응답 지연 53~77초로 늦었고 재생성 9건은 60초 제한에 걸려 오거절로 끝났다 — 논리가 아니라 응답 지연이 정답률을 깎은 자리이고, 이것도 아직 닫히지 않았다.</li>
 </ul>
 <h2>5.5 닫으며</h2>
 <p>우리가 만든 것은 채권 챗봇이 아니라, 판정을 선언으로 고정하고 그 선언이 실행되게 하는 틀이다. 채권은 그 틀이 가장 좁은 조건에서 시험된 도메인이었다. 더할 데이터가 없었기 때문에 없는 것을 없다고 말하는 법을 먼저 배웠고, 데이터가 좁아 값 오류는 금방 드러났기 때문에 값이 전부 진짜인데 답이 틀린 부류를 정면으로 만났고, 데이터 판이 한 번 통째로 갈렸기 때문에 선언이 데이터보다 오래 살아야 한다는 기준을 실제로 겪었다. 그 셋이 채권에서 나왔지만 채권에만 남지 않는다. 부재 선언도, 유사 상품의 축 표도, 위험요인 재료 표도 테이블 단위 선언이라 다른 상품군이 같은 키를 선언하면 같은 코드가 돈다.</p>
@@ -1363,7 +1482,7 @@ python scripts/audit_bond_manuscript.py            # ⑤ 이 원고의 수치 88
 <thead>
 <tr>
 <th style="text-align: left;">확인 항목</th>
-<th style="text-align: left;">결과 (2026-09-06)</th>
+<th style="text-align: left;">결과</th>
 </tr>
 </thead>
 <tbody>

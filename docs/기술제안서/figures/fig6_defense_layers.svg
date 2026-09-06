@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12">
+  <defs>
+    <marker id="f6a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker>
+  </defs>
+  <rect width="900" height="360" fill="#fff"/>
+  <text x="450" y="26" text-anchor="middle" font-weight="bold" font-size="14">오답 부류 13이 닿은 방어 층 — 어디서 막히는가</text>
+
+  <!-- 흐름 화살표 -->
+  <path d="M30,60 L870,60" stroke="#555" stroke-width="1.5" marker-end="url(#f6a)"/>
+  <text x="30" y="52" fill="#555" font-size="11">질문</text>
+  <text x="840" y="52" fill="#555" font-size="11">답변</text>
+
+  <!-- 4 층 -->
+  <g stroke-width="1.5">
+    <rect x="30"  y="75" width="195" height="245" rx="8" fill="#eef7ec" stroke="#1f5c3a"/>
+    <rect x="245" y="75" width="195" height="245" rx="8" fill="#e8f1fb" stroke="#1a4a7a"/>
+    <rect x="460" y="75" width="215" height="245" rx="8" fill="#fdf1e7" stroke="#7b3a12"/>
+    <rect x="695" y="75" width="175" height="245" rx="8" fill="#f4f4f4" stroke="#333"/>
+  </g>
+  <g font-weight="bold" font-size="13" text-anchor="middle">
+    <text x="127" y="98" fill="#1f5c3a">Gate — 생성 전 기각</text>
+    <text x="342" y="98" fill="#1a4a7a">Plan — 선언 주입</text>
+    <text x="567" y="98" fill="#7b3a12">Guard — 결정층</text>
+    <text x="782" y="98" fill="#333">Answer — 기계 조립</text>
+  </g>
+  <g font-size="10.5" fill="#444" text-anchor="middle">
+    <text x="127" y="114">LLM 0회 · 선언만 읽는다</text>
+    <text x="342" y="114">규칙 문서 → LLM 1회(SQL)</text>
+    <text x="567" y="114">생성된 SQL 을 고친다</text>
+    <text x="782" y="114">문장은 LLM 이 쓰지 않는다</text>
+  </g>
+
+  <!-- Gate 항목 -->
+  <g font-size="11" fill="#1a1a1a">
+    <text x="42" y="140">#9  없는 축 4 — 부재 선언</text>
+    <text x="42" y="158">#11 선제 부재 선언 4</text>
+    <text x="42" y="176">#10 등급 표기 경계 → 되묻기</text>
+    <text x="42" y="194">#4  위험 세 축 → 되묻기</text>
+    <text x="42" y="226" fill="#1f5c3a" font-weight="bold">수리 = 선언 한 줄</text>
+    <text x="42" y="244" fill="#555" font-size="10.5">코드 변경 0 · 어휘 세 층으로</text>
+    <text x="42" y="260" fill="#555" font-size="10.5">막지 않을 범위를 정한다</text>
+  </g>
+  <!-- Plan 항목 -->
+  <g font-size="11" fill="#1a1a1a">
+    <text x="257" y="140">#1  NULL-안전 확정식</text>
+    <text x="257" y="158">#1  정수 날짜 리터럴 규칙</text>
+    <text x="257" y="176">#5  구매가능 선언(기준일)</text>
+    <text x="257" y="194">#7  정렬축 규칙(혼동쌍 표)</text>
+    <text x="257" y="226" fill="#1a4a7a" font-weight="bold">수리 = 규칙 원문 정정</text>
+    <text x="257" y="244" fill="#555" font-size="10.5">DB 에서 실행해 모수 확인 뒤 적는다</text>
+    <text x="257" y="260" fill="#555" font-size="10.5">실렸어도 무시되면 → Guard 로</text>
+  </g>
+  <!-- Guard 항목 -->
+  <g font-size="11" fill="#1a1a1a">
+    <text x="472" y="140">#2  등급 서열 전개(넓힘)</text>
+    <text x="472" y="158">#6 #12 enforce 슬롯(강제)</text>
+    <text x="472" y="176">#7  정렬축·동률·무근거 상한</text>
+    <text x="472" y="194">#8  가드 불개입 조건(좁힘)</text>
+    <text x="472" y="212">#13 부등호·종류 폭·값-컬럼</text>
+    <text x="472" y="240" fill="#7b3a12" font-weight="bold">수리 = 가드 신설·확장</text>
+    <text x="472" y="258" fill="#555" font-size="10.5">막는 자리이자 만드는 자리 —</text>
+    <text x="472" y="274" fill="#555" font-size="10.5">질문이 물은 축과 짝지어야 한다</text>
+  </g>
+  <!-- Answer 항목 -->
+  <g font-size="11" fill="#1a1a1a">
+    <text x="707" y="140">#3  1위 증발·양수를 "없다"</text>
+    <text x="707" y="158">#13 평균 조립·고지 통로</text>
+    <text x="707" y="176">#5  머리줄 기준일·모수</text>
+    <text x="707" y="226" fill="#333" font-weight="bold">수리 = 조립기</text>
+    <text x="707" y="244" fill="#555" font-size="10.5">이전 뒤 이 유형 회귀 0</text>
+    <text x="707" y="260" fill="#555" font-size="10.5">비-LLM 답변 81% 의 기원</text>
+  </g>
+
+  <text x="450" y="345" text-anchor="middle" fill="#666" font-size="11">값이 전부 진짜인 오답(#7·#9)은 Answer 의 환각 검사로는 안 잡힌다 — 축은 Plan 에서 선언하고 Guard 에서 강제해야 잡힌다</text>
+</svg>

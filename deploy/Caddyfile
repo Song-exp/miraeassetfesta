@@ -5,7 +5,7 @@
 #   nip.io 는 <ip>.nip.io 를 그 IP로 해석해 주는 공개 와일드카드 DNS 입니다.
 #   도메인을 사지 않고도 Let's Encrypt 발급 조건(공인 DNS 이름)을 충족합니다.
 
-{$SITE_ADDRESS} {
+(site) {
 	# api 컨테이너로 넘깁니다. api 는 호스트에 포트를 열지 않습니다 —
 	# 외부에 노출되는 것은 Caddy 의 80/443 뿐입니다.
 	reverse_proxy api:8000
@@ -20,4 +20,17 @@
 	}
 
 	encode gzip
+}
+
+# HTTPS — Let's Encrypt (nip.io 이름)
+{$SITE_ADDRESS} {
+	import site
+}
+
+# 🔴 HTTP 80 도 직접 응답한다 (2026-09-06 · 주최 공지 "실제 답변 수집은 HTTP·HTTPS 모두 허용").
+#    종전엔 Caddy 자동 HTTPS 가 80 → 443 을 308 로 돌렸는데, 채점 배치가 리다이렉트를 따르지 않으면
+#    본문 없는 308 = 미응답이다. 이름·공인 IP 둘 다 80 에서 그대로 프록시한다.
+#    SITE_IP 는 .env 에 없으면 아래 기본값(현재 공인 IP)을 쓴다.
+http://{$SITE_ADDRESS}, http://{$SITE_IP:49.50.134.229} {
+	import site
 }

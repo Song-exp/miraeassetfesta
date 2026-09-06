@@ -7009,6 +7009,114 @@ def ensure_sort_axis(sql: str, question: str) -> tuple[str, bool]:
 _ORDER_SRFC = re.compile(r"ORDER\s+BY\s+(?:MAX|MIN)?\(?\s*srfc_irt\b", re.I)
 # 사용자가 이자 유형을 콕 집으면 분리하지 않는다 — 그 축을 보겠다는 뜻이다
 _INTP_NAMED_Q = re.compile(r"할인채|무이자|무이표|제로\s*쿠폰|변동\s*금리|복리채|단리채|이표채")
+
+
+# ── 이자 미지급 어휘 (BK · 2026-09-06 QA r1 BR-X10) ────────────────────────────────────────────────
+#   선언 `query_rules.무이자질의` 는 "'이자를 안 주는·무이자·무이표·제로쿠폰·이자 없는 채권' = bd_intp_tcd='할인채'" 를
+#   이미 적어 두었는데 enforce 슬롯이 없어 아무도 강제하지 않았다(선언만 있고 가드가 없으면 안 지켜진다).
+#   확정식 값은 선언 문장에서 읽고, 통칭은 yaml `synonyms` 중 그 값을 가리키는 항목에서 읽는다 — 코드에 목록을 적지 않는다.
+#   서술형('이자를 아예 안 주는')은 낱말이 아니라 문형이라 정규식으로 둔다. 부정문('무이자 말고')은 mentions_positively 가 거른다.
+_ZERO_COUPON_VALUE_FALLBACK = "할인채"
+_ZERO_COUPON_PARAPHRASE = (r"이자(?:를|가|는|도)?\s*(?:아예\s*|전혀\s*|하나도\s*|따로\s*)?"
+                           r"(?:안\s*주|없|미지급|지급(?:하지|되지|을\s*하지)\s*않)")
+
+
+@lru_cache(maxsize=1)
+def _zero_coupon_value() -> str:
+    """이자 미지급 확정식의 이자유형 값 — 선언 `query_rules.무이자질의.text` 의 `bd_intp_tcd='…'` 가 정본."""
+    try:
+        rule = ((_ev_ctx().enums.get("domestic_bonds") or {}).get("query_rules") or {}).get("무이자질의") or {}
+        m = re.search(r"bd_intp_tcd\s*=\s*'([^']+)'", str(rule.get("text") or ""))
+        if m:
+            return m.group(1)
+    except Exception:                                        # noqa: BLE001
+        pass
+    return _ZERO_COUPON_VALUE_FALLBACK
+
+
+@lru_cache(maxsize=1)
+def _zero_coupon_pattern() -> str:
+    """이자 미지급 어휘의 정규식 — 선언 synonyms 중 값이 확정식 리터럴인 통칭 + 서술형 문형."""
+    words: list = []
+    try:
+        syn = (_ev_ctx().enums.get("domestic_bonds") or {}).get("synonyms") or {}
+        words = sorted({t for t, canon in syn.items() if str(canon).strip() == _zero_coupon_value()},
+                       key=len, reverse=True)
+    except Exception:                                        # noqa: BLE001
+        words = []
+    # 통칭은 글자 사이 띄어쓰기를 허용한다 — '제로쿠폰'/'제로 쿠폰' 은 한 낱말이다(_INTP_NAMED_Q 와 같은 처리).
+    alias = "|".join(r"\s*".join(re.escape(c) for c in w) for w in words)
+    return (alias + "|" if alias else "") + _ZERO_COUPON_PARAPHRASE
+
+
+@lru_cache(maxsize=1)
+def _other_coupon_types() -> tuple:
+    """확정식 값을 뺀 나머지 이자유형 값 — **DB 실측**(bd_intp_tcd distinct). 사용자가 이 중 하나를 콕 집으면 불개입."""
+    try:
+        with connect_readonly() as con:
+            vals = [str(r[0]).strip() for r in con.execute(
+                "SELECT DISTINCT TRIM(bd_intp_tcd) FROM domestic_bonds WHERE COALESCE(TRIM(bd_intp_tcd),'') <> ''")]
+    except sqlite3.Error:
+        return ()
+    return tuple(v for v in vals if v and v != _zero_coupon_value())
+
+
+def _zero_coupon_q(question: str) -> bool:
+    """'이자를 안 주는 채권' 질의인가 — 부정문 제외 · 다른 이자유형을 콕 집으면 아니다(그 축을 보겠다는 뜻)."""
+    pat = _zero_coupon_pattern()
+    if not guard.mentions_positively(pat, question):
+        return False
+    others = _other_coupon_types()
+    # 우리 어휘가 이미 삼킨 글자는 빼고 본다 — '무이표채' 안에는 '이표채' 가 들어 있다(부분 문자열 오탐).
+    rest = re.sub(pat, " ", question)
+    return not (others and re.search("|".join(re.escape(v) for v in others), rest))
+
+
+_INTP_PRED = re.compile(
+    r"(?:TRIM\s*\(\s*)?\bbd_intp_tcd\b\s*\)?\s*(?:IN\s*\([^)]*\)|(?:=|<>|!=)\s*'[^']*')", re.I)
+_REASON_Q = re.compile(r"왜|이유|어째서|무슨\s*까닭|어떻게\s*해서")
+
+
+def _zero_coupon_reason_answer(sql: str, question: str) -> str | None:
+    """'이자를 아예 안 주는 채권은 왜 그런거야?' — 목록이 아니라 **설명 + 종목 수**로 답한다. 아니면 None.
+
+    2026-09-06 서버 QA r1 BR-X10: 설명형 질의에 30행 목록(국민주택1종 복리채)이 나갔다. '왜' 는 종목을 달라는 말이 아니다.
+    발동(전부): ① 이자 미지급 어휘 ② 이유 문형 ③ domestic_bonds 조회에 이자유형 확정식(BK 가드가 세운 것)이 실려 있음.
+    수는 결정층이 확정식 + 구매가능 모수로 **다시 센다** — HCX 가 낸 SQL 의 모수(만기 경과 포함)에 답을 맡기지 않는다.
+    서술 범위는 선언(`query_rules.무이자질의`)이 정한 만큼만 — 할인 발행 구조 · 전환권 등 주식연계 구조. 발행 사유는 부재 고지."""
+    if "domestic_bonds" not in sql or not _REASON_Q.search(question) or not _zero_coupon_q(question):
+        return None
+    val = _zero_coupon_value()
+    if not re.search(rf"bd_intp_tcd\s*\)?\s*=\s*'{re.escape(val)}'", sql, re.I):
+        return None
+    pop = f"curr_cd = 'KRW' AND mat_dt >= {BUYABLE_INT}"
+    eq_preds = [p for k, p in _structure_predicates().items() if k in ("전환사채", "교환사채", "신주인수권부")]
+    try:
+        with connect_readonly() as con:
+            def n(where: str) -> int:
+                return int(con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE {where}").fetchone()[0])
+            disc = n(f"TRIM(bd_intp_tcd) = '{val}' AND {pop}")
+            disc_pos = n(f"TRIM(bd_intp_tcd) = '{val}' AND srfc_irt > 0 AND {pop}")
+            zero = n(f"srfc_irt = 0 AND {pop}")
+            eq = n(f"srfc_irt = 0 AND {pop} AND (" + " OR ".join(f"({x})" for x in eq_preds) + ")") if eq_preds else 0
+    except sqlite3.Error:
+        return None
+    if disc < 1:
+        return None
+    out = [f"이자를 따로 지급하지 않는 채권은 이자지급 방식이 '{val}'로 수록된 {disc:,}종목입니다 (기준일 {gate.DATA_CUTOFF}).",
+           f"{val}는 이자를 나눠 주는 대신 액면가보다 낮은 가격으로 발행하고 만기에 액면가를 돌려주는 구조입니다. "
+           f"액면가와 발행가의 차액이 이자에 해당하므로, 이자를 주지 않는 것이 아니라 지급 방식이 다른 것입니다. "
+           f"그래서 표면금리 란의 값도 지급 이자율이 아니라 발행 할인율입니다"
+           + (f" ({disc:,}종목 중 {disc_pos:,}종목에 0보다 큰 값이 들어 있습니다)." if disc_pos else ".")]
+    if zero:
+        out.append(f"표면금리가 0으로 수록된 {zero:,}종목은 이와 별개입니다"
+                   + (f" — 그중 {eq:,}종목은 전환사채·교환사채·신주인수권부처럼 주식으로 바꿀 수 있는 권리가 붙은 구조입니다. "
+                      if eq else " — ")
+                   + "표면금리 0은 데이터 결함이 아니라 구조에서 나온 값입니다.")
+    out.append("발행사가 그 구조를 택한 사정(자금조달 여건 등)은 제공된 데이터에 수록되어 있지 않습니다.")
+    return "\n\n".join(out)
+
+
 COUPON_SPLIT_NOTE = ("표면금리는 고정금리 이표채끼리만 비교했습니다 — 할인채는 표면금리 란이 발행 할인율이고 "
                      "변동금리는 스냅샷 값이라 같은 축에 놓지 않습니다(이자유형분리).")
 
@@ -7032,7 +7140,9 @@ def ensure_coupon_type_split(sql: str, question: str) -> tuple[str, bool]:
         return sql, False
     if not _ORDER_SRFC.search(sql) or re.search(r"\bCOUNT\s*\(", sql, re.I):
         return sql, False
-    if _INTP_NAMED_Q.search(question) or re.search(r"bd_intp_tcd|bd_inrt_tcd", _where_body(sql), re.I):
+    # 🆕 BK — 서술형 이자유형 지목("이자를 아예 안 주는")도 "콕 집음" 이다(_INTP_NAMED_Q 는 낱말만 본다)
+    if (_INTP_NAMED_Q.search(question) or _zero_coupon_q(question)
+            or re.search(r"bd_intp_tcd|bd_inrt_tcd", _where_body(sql), re.I)):
         return sql, False
     excl = ["TRIM(bd_intp_tcd)='이표채'", "TRIM(bd_inrt_tcd)='고정금리'"]
     if not re.search(r"srfc_irt\s*[><]", sql):
@@ -7901,17 +8011,35 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
                 pos = t.start() if t else len(sql)
                 sql = sql[:pos].rstrip() + " WHERE " + new_where + " " + sql[pos:]
             return sql, True
+    # ── 이자유형 블록 ─────────────────────────────────────────────────────────────────────────────────
+    # (BK · 2026-09-06 QA r1 BR-X10) — 구조 블록 뒤, 종류 블록 앞.
+    # 선언 `무이자질의` 가 "'이자를 안 주는' = bd_intp_tcd='할인채'" 를 적어 두었는데 enforce 슬롯이 없어 강제되지 않았다:
+    # '이자를 아예 안 주는 채권은 왜 그런거야?' 가 IN ('할인채','복리채','단리채') 로 나가 2,829종목 목록이 됐다.
+    # 복리채·단리채는 만기에 한꺼번에 줄 뿐 '안 주는' 게 아니다. WHERE 의 이자유형 술어를 확정식 하나로 — 있으면 교체, 없으면 주입.
+    intp_fixed = False
+    if _zero_coupon_q(question) and not re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        want = f"TRIM(bd_intp_tcd) = '{_zero_coupon_value()}'"
+        m_w = _WHERE_BODY.search(sql)
+        raw_body, marks = _split_slot_markers(m_w.group(1)) if m_w else ("", "")
+        m_i = _INTP_PRED.search(raw_body)
+        if m_i is None:
+            sql, intp_fixed = _append_exclusions(sql, [want])
+        elif set(re.findall(r"'([^']*)'", m_i.group(0))) != {_zero_coupon_value()}:
+            body = raw_body[:m_i.start()] + want + raw_body[m_i.end():]
+            sql = sql[:m_w.start()] + "WHERE " + body + marks + " " + sql[m_w.end():].lstrip()
+            intp_fixed = True
     # ── 종류 블록 ─────────────────────────────────────────────────────────────────────────────────────
     wm = re.search(r"\bWHERE\b", sql, re.I)
     if wm:
         tail = _WHERE_TAIL.search(sql, wm.end())
         scope = sql[wm.end():tail.start() if tail else len(sql)]
         if re.search(r"bd_knd|std_pd_mcls_nm|std_pd_scls_nm|pd_pbcm", scope, re.I):
-            return sql, False
+            return sql, intp_fixed
     filters = _question_kind_filters(question)
     if len(filters) != 1:
-        return sql, False
-    return _append_exclusions(sql, [next(iter(filters))])
+        return sql, intp_fixed
+    out, kind_fixed = _append_exclusions(sql, [next(iter(filters))])
+    return out, kind_fixed or intp_fixed
 
 
 def _question_structure_labels(question: str) -> list[str]:
@@ -11925,7 +12053,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 비교 경계 어휘 정합 — " + " · ".join(thresh_fixed)
              + " (2026-09-06 밤 서버 실측 #92: '5% 넘는' 이 >= 로 나가 615 — 정답 596, 5.000% 정확히 19종목 혼입)")
     sql, kind_fixed = ensure_kind_filter(sql, q)
-    if kind_fixed:
+    if kind_fixed and _zero_coupon_q(q) and re.search(r"bd_intp_tcd\s*\)?\s*=", sql, re.I):
+        step(f"[Guard] 이자 미지급 확정식 — '이자를 안 주는 채권' 은 bd_intp_tcd = '{_zero_coupon_value()}' 하나로 좁힌다 "
+             "(2026-09-06 서버 QA r1 BR-X10: HCX 가 IN ('할인채','복리채','단리채') 로 2,829종목 목록 — "
+             "복리채·단리채는 만기에 한꺼번에 줄 뿐 안 주는 게 아니다. 규칙 무이자질의)")
+    elif kind_fixed:
         step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
     sql, mcls_fixed = normalize_mcls_values(sql, q)
     if mcls_fixed:
@@ -12691,6 +12823,15 @@ def answer_question(
              "Y3 꼬리에 기준일 8/21 날조 + '모든 클래스를 합하여' 방법론 날조 — 기계 조립은 HCX 를 안 부르므로 꼬리가 구조적으로 사라진다)")
         result.think_trace = "\n".join(trace)
         result.answer = rk
+        return result
+    # 🔴 목록 조립기보다 **앞** — '왜' 는 종목을 달라는 말이 아니다 (2026-09-06 QA r1 BK · BR-X10)
+    why = _zero_coupon_reason_answer(sql, q)
+    if why is not None:
+        step("[Answer] 이자 미지급 설명 조립 — '왜 이자를 안 주나' 는 목록이 아니라 할인 발행 구조 설명 + 종목 수로 답한다. "
+             "수는 확정식·구매가능 모수로 결정층이 다시 센다, HCX 0회 "
+             "(2026-09-06 서버 QA r1 BR-X10: 설명형 질의에 복리채 30행 목록 · 규칙 무이자질의 '이유는 스키마에 없다')")
+        result.think_trace = "\n".join(trace)
+        result.answer = why
         return result
     bl = _bond_list_answer(sql, rows, n, q)
     if bl is not None:

@@ -505,3 +505,79 @@ def test_BJ_no_intervention_without_both_extremes():
     s = "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' AND mat_dt >= 20260824 LIMIT 30"
     assert pl.ensure_top_safety(s, "가장 위험한 채권 알려줘") == (s, False)
     assert pl.ensure_top_safety(s, "가장 안전하면서 수익률 5% 이상인 채권") == (s, False)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BK — 이자 미지급 = 할인채 확정식 · '왜' 는 설명형 (BR-X10)
+#   일반 규칙: 선언 query_rules.무이자질의 를 런타임이 강제한다 — '이자를 안 주는/무이자/무이표/제로쿠폰' 은
+#   bd_intp_tcd = '할인채' 하나로(있으면 교체·없으면 주입), 그리고 '왜' 문형은 목록이 아니라 구조 설명 + 종목 수로 답한다.
+#   값·통칭은 코드에 적지 않는다: 확정식 값은 선언 문장에서, 통칭은 synonyms 에서, 다른 이자유형은 DB distinct 로 읽는다.
+# ══════════════════════════════════════════════════════════════════════════════
+X10_Q = "이자를 아예 안 주는 채권은 왜 그런거야?"
+X10_SQL = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, TRIM(bd_intp_tcd) FROM domestic_bonds "
+           "WHERE bd_intp_tcd IN ('할인채', '복리채', '단리채') AND bd_inrt_tcd = '고정금리' GROUP BY pd_no LIMIT 30")
+
+
+def test_BK_zero_coupon_declaration_read():
+    """확정식 값·통칭·타 유형은 전부 선언/DB 에서 읽는다 (코드 목록 0)."""
+    assert pl._zero_coupon_value() == "할인채"                       # query_rules.무이자질의.text 의 bd_intp_tcd='…'
+    assert set(pl._other_coupon_types()) == {"이표채", "복리채", "단리채"}     # DB distinct
+    for w in ("무이자", "무이표", "제로쿠폰", "제로 쿠폰"):                    # synonyms 에서 온 통칭
+        assert pl._zero_coupon_q(f"{w} 채권 알려줘"), w
+
+
+def test_BK_zero_coupon_kind_fixed(ctx, con):
+    out, fixed = pl.ensure_kind_filter(X10_SQL, X10_Q)
+    assert fixed and "TRIM(bd_intp_tcd) = '할인채'" in out and "복리채" not in out and "단리채" not in out
+    assert "bd_inrt_tcd = '고정금리'" in out and "GROUP BY pd_no LIMIT 30" in out       # 나머지 절 보존
+    assert pl._sql_precheck(out, ctx, T, False, question=X10_Q) is None and guard.check_values(out, ctx) == []
+    assert pl.ensure_kind_filter(out, X10_Q)[1] is False                                 # 멱등
+    n, = _one(con, f"SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE TRIM(bd_intp_tcd) = '할인채' "
+                   f"AND curr_cd = 'KRW' AND mat_dt >= {pl.BUYABLE_INT}")
+    assert n == 686                                                                       # gold BR-X10 기대 종목 수
+
+
+def test_BK_zero_coupon_injected_when_absent():
+    """형제 — 이자유형 절이 아예 없으면 주입 · 어휘 변형 4종 · 이미 확정식이면 불개입(멱등)."""
+    bare = "SELECT pd_no, pd_nm FROM domestic_bonds WHERE curr_cd = 'KRW' LIMIT 30"
+    for q in ("무이자 채권 알려줘", "무이표채 뭐 있어?", "제로쿠폰 채권 목록", "이자 없는 채권 보여줘"):
+        out, fixed = pl.ensure_kind_filter(bare, q)
+        assert fixed and "TRIM(bd_intp_tcd) = '할인채'" in out and "curr_cd = 'KRW'" in out, q
+    already = "SELECT pd_no FROM domestic_bonds WHERE TRIM(bd_intp_tcd) = '할인채' LIMIT 30"
+    assert pl.ensure_kind_filter(already, "무이자 채권 알려줘") == (already, False)
+
+
+def test_BK_no_intervention():
+    """불개입 — 부정문 · 다른 이자유형을 콕 집음 · 채권 아닌 테이블 · JOIN/서브쿼리."""
+    assert not pl._zero_coupon_q("무이자 채권 말고 이표채로 알려줘")
+    assert not pl._zero_coupon_q("복리채는 이자를 안 주나?")
+    assert not pl._zero_coupon_q("이자를 가장 많이 주는 채권은?")
+    etf = "SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_grp_no = 'ETF' LIMIT 5"
+    assert pl.ensure_kind_filter(etf, "무이자 상품 알려줘") == (etf, False)
+    joined = ("SELECT b.pd_no FROM domestic_bonds b JOIN domestic_bonds c ON b.pd_no = c.pd_no "
+              "WHERE b.bd_intp_tcd = '복리채' LIMIT 5")
+    assert "복리채" in pl.ensure_kind_filter(joined, "무이자 채권 알려줘")[0]
+
+
+def test_BK_coupon_split_stands_down():
+    """충돌 예측 지점 — 표면금리 랭킹 분리 가드(_INTP_NAMED_Q)는 낱말만 봤다. 서술형 지목도 '콕 집음' 이라 불개입."""
+    sql = ("SELECT pd_no, pd_nm, srfc_irt FROM domestic_bonds WHERE curr_cd = 'KRW' "
+           "ORDER BY srfc_irt DESC LIMIT 5")
+    assert pl.ensure_coupon_type_split(sql, "이자를 안 주는 채권 중 표면금리 높은 순 5개 추천") == (sql, False)
+    assert pl.ensure_coupon_type_split(sql, "표면금리 높은 채권 추천해줘")[1] is True          # 종전 동작 유지
+
+
+def test_BK_why_answer_explains(ctx):
+    """'왜' 는 목록이 아니라 설명 + 종목 수. 수는 확정식·구매가능 모수로 결정층이 다시 센다(HCX SQL 모수에 안 맡긴다)."""
+    fixed_sql, _ = pl.ensure_kind_filter(X10_SQL, X10_Q)
+    ans = pl._zero_coupon_reason_answer(fixed_sql, X10_Q)
+    assert ans and "686종목" in ans and "할인채" in ans
+    assert "액면가" in ans and "발행 할인율" in ans                        # 선언이 허용한 서술 범위
+    assert "수록되어 있지 않습니다" in ans                                  # 발행 사유는 부재 고지
+    assert "국민주택" not in ans and "\n1. " not in ans                     # 목록이 아니다
+    # 형제 — 이유 문형 변형은 같은 경로 · 목록 문형·확정식 없는 SQL 은 종전 목록 경로
+    for q in ("무이자 채권은 왜 이자가 없어?", "제로쿠폰 채권은 어째서 이자를 안 주지?"):
+        assert pl._zero_coupon_reason_answer(fixed_sql, q), q
+    assert pl._zero_coupon_reason_answer(fixed_sql, "이자를 안 주는 채권 알려줘") is None
+    assert pl._zero_coupon_reason_answer("SELECT pd_nm FROM domestic_bonds LIMIT 5", X10_Q) is None
+    assert pl._zero_coupon_reason_answer("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", X10_Q) is None

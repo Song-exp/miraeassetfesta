@@ -7124,6 +7124,10 @@ _MCLS_IN = re.compile(r"(?:TRIM\(\s*)?std_pd_mcls_nm\s*\)?\s*IN\s*\([^)]*'국공
 # 단독(290종목/371행)으로 나갔다. 확정식은 295종목/377행 — bd_knd='국고채권' 인데 소분류가 '물가채' 인
 # 물가연동국고채권 5종목이 빠진다. 이번 질문은 결론(등급 미부여)이 같았지만 '몇 종목' 이면 290 오답이다.
 _SCLS_EQ = re.compile(r"(?:TRIM\(\s*)?std_pd_scls_nm\s*\)?\s*=\s*'국고채'", re.I)
+# 🔴 2026-09-06 QA r1 BA(A-043·D-027) — 리터럴 '국고채' 를 **등호로 비교하는 절은 컬럼이 무엇이든** 국고채 확정식이다.
+#    HCX 는 std_pd_mcls_nm='국고채'(대분류에 없는 값) 로도 쓰고, 값-컬럼 교정(F1)이 그것을 std_pd_scls_nm 로 옮긴 뒤엔
+#    소분류 단독(290 · 물가연동 5종목 누락)이 남는다. 어느 컬럼이든 '국고채' 등호는 확정식으로 치환한다.
+_KTB_LIT_EQ = re.compile(r"(?:TRIM\(\s*)?(?:std_pd_mcls_nm|std_pd_scls_nm|bd_knd)\s*\)?\s*=\s*'국고채'", re.I)
 _KTB_FILTER_FALLBACK = ("(TRIM(bd_knd)='국고채권' OR (COALESCE(TRIM(bd_knd),'')='' "
                         "AND TRIM(std_pd_scls_nm)='국고채'))")
 
@@ -7147,6 +7151,22 @@ _STRIPS_Q = re.compile(r"스트립|STRIPS|원금이자분리", re.I)
 
 
 _KTB_BDKND = re.compile(r"(?:TRIM\(\s*)?bd_knd\s*\)?\s*=\s*'국고채권'", re.I)
+
+
+def _loose_sql_rx(fragment: str) -> re.Pattern:
+    """SQL 조각을 공백·연산자 주변 공백에 무관하게 찾는 정규식 — 확정식이 이미 들어 있는지(멱등) 판정용."""
+    esc = re.escape(re.sub(r"\s+", " ", fragment.strip()))
+    esc = re.sub(r"(?:\\ )?(=|\\\(|\\\)|,)(?:\\ )?", lambda m: r"\s*" + m.group(1) + r"\s*", esc)
+    esc = esc.replace("\\ ", r"\s+")
+    while esc.startswith(r"\s*"):                            # 바깥 공백은 삼키지 않는다 — 치환 뒤 SQL 모양(✅ 문항 SQL) 보존
+        esc = esc[3:]
+    while esc.endswith(r"\s*"):
+        esc = esc[:-3]
+    return re.compile(esc, re.I)
+
+
+_KTB_FILTER_RX = _loose_sql_rx(_KTB_FILTER)
+_KTB_PH = "\x02KTB\x02"
 _PBCM_CONJ = re.compile(r"\s+AND\s+(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'"
                         r"|(?:TRIM\(\s*)?pd_pbcm\s*\)?\s*=\s*'([^']*)'\s+AND\s+", re.I)
 
@@ -7229,23 +7249,31 @@ def ensure_ktb_kind(sql: str, question: str) -> tuple[str, bool]:
             changed = True
     if ktb_head_is_gov(question):
         return sql, changed
-    if "국고채권" not in sql:
-        repl = _KTB_PLAIN if strips_aware else _KTB_FILTER
-        m = _MCLS_EQ.search(sql) or _MCLS_IN.search(sql)
+    # 🔴 2026-09-06 QA r1 BA — 종전 게이트 `"국고채권" not in sql` 은 A-043 처럼 OR 가지에 '국고채권' 이 있으면 ④ 를 통째로
+    #    건너뛰었고(290), D-027 은 std_pd_mcls_nm='국고채' 라 어느 패턴에도 안 걸렸다(48). 이제 **이미 들어 있는 확정식만
+    #    가리고**(마스킹 — 확정식 안의 std_pd_scls_nm='국고채' 를 다시 치환해 중첩되는 것을 막는다 = 멱등) 나머지 절을
+    #    컬럼 불문으로 본다. 확정식 문자열은 yaml 선언(_KTB_FILTER) 그대로, 공백 차이는 느슨 매칭으로 흡수한다.
+    repl = _KTB_PLAIN if strips_aware else _KTB_FILTER
+    present: list[str] = []                                  # 이미 있는 확정식은 원문 그대로 되돌린다(공백만 다른 HCX 표기 포함)
+    masked = _KTB_FILTER_RX.sub(lambda m: (present.append(m.group(0)), _KTB_PH)[1], sql)
+    m = _MCLS_EQ.search(masked) or _MCLS_IN.search(masked)
+    if m:
+        masked = masked[:m.start()] + repl + masked[m.end():]
+        changed = True
+    elif _KTB_LIT_EQ.search(masked):
+        # ④ '국고채' 등호(소분류·대분류·종류 컬럼 불문) → 확정식. 종류비교 CASE 처럼 같은 절이 여러 번 나오면 전부 바꾼다 —
+        #    앞 하나만 고치면 절반만 정본이 된다.
+        masked = _KTB_LIT_EQ.sub(lambda _: repl, masked)
+        changed = True
+    elif "std_pd_scls_nm" not in masked and not strips_aware:
+        # ③ bd_knd='국고채권' 단독(274) → STRIPS 결측 회수 확정식(295)
+        m = _KTB_BDKND.search(masked)
         if m:
-            return sql[:m.start()] + repl + sql[m.end():], True
-        # ④ 소분류 단독(std_pd_scls_nm='국고채') → 확정식. 이 분기는 확정식이 아직 없을 때만 도므로
-        #    (확정식엔 '국고채권' 이 들어 있다) 재작성이 확정식을 깨지 않는다. 종류비교 CASE 처럼
-        #    같은 절이 여러 번 나오면 전부 바꾼다 — 앞 하나만 고치면 절반만 정본이 된다.
-        if _SCLS_EQ.search(sql):
-            return _SCLS_EQ.sub(lambda _: repl, sql), True
-        return sql, changed
-    if "std_pd_scls_nm" not in sql and not strips_aware:
-        m = _KTB_BDKND.search(sql)
-        if m:
-            sql = sql[:m.start()] + _KTB_FILTER + sql[m.end():]
+            masked = masked[:m.start()] + _KTB_FILTER + masked[m.end():]
             changed = True
-    return sql, changed
+    for orig in present:
+        masked = masked.replace(_KTB_PH, orig, 1)
+    return masked, changed
 
 
 _BOND_COLS = ("bd_knd", "crd_grd", "srfc_irt", "applied_yield", "std_pd_mcls_nm",
@@ -12045,6 +12073,16 @@ def answer_question(
                     step("[Guard] 값-컬럼 교정 — " + " · ".join(fixed)
                          + " (2026-09-06 밤 서버 실측 #90·#94: 값 검사가 주인 컬럼을 짚고도 재생성으로 넘겨 HCX 가 발행일 축을 만기로 갈아끼움)")
                     sql, err, violations = fixed_sql, None, []
+                    # 🔴 2026-09-06 QA r1 BA — 컬럼이 바뀐 절은 종류 가드가 처음 봤던 절이 아니다. 확정식 가드 둘을 한 번 더 돌려
+                    #    소분류 단독(290)·종류 조건 부재를 잡는다(A-043 290→295 · D-027 48→49). 재실행이 SQL 을 바꾸면 검사도 다시.
+                    refixed, ktb_again = ensure_ktb_kind(sql, q)
+                    refixed, kind_again = ensure_kind_filter(refixed, q)
+                    if (ktb_again or kind_again) and not _sql_precheck(refixed, ctx, tables, cross, question=q) \
+                            and not guard.check_values(refixed, ctx):
+                        sql = refixed
+                        step("[Guard] 값-컬럼 교정 뒤 종류 확정식 재적용 — "
+                             + " · ".join(x for x, on in (("국고채 확정식", ktb_again), ("종류 조건 주입", kind_again)) if on)
+                             + " (2026-09-06 QA r1 BA: 교정된 소분류 단독 std_pd_scls_nm='국고채' 는 물가연동 5종목을 놓친다 — 290 vs 295)")
                     result.sql = sql
         problem = err or "; ".join(str(v) for v in violations)
     if err or violations:

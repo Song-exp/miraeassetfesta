@@ -39,6 +39,11 @@ INCLUDE_FILES = {
     ".dockerignore", ".env.example", ".gitignore", ".gitattributes",
     "README.md",        # 🔴 제출 필수 (환경 구성·실행 명령어). 아직 없으면 경고만 내고 넘어간다
     "docs/API_SPEC.md", # 🔴 제출 항목 3 그 자체. docs/ 밑이라 디렉터리 규칙으로는 안 잡힌다
+    # 🔴 2026-09-07 — 기술 제안서 PDF·워드. 주최 자료 8쪽 "산출물은 … Private Repository에 Push
+    #    (소스코드 · 기술제안서 · API 서버 정보 포함)" — 종전엔 손으로 복사하라고 안내만 했는데,
+    #    손 복사는 빠뜨리기 쉬워 목록에 넣는다. 저장소 루트에 있으면 자동으로 담긴다.
+    "[미래에셋AI Festival]_기술제안서_트리플에이치.pdf",
+    "[미래에셋AI Festival]_기술제안서_트리플에이치.docx",
 }
 
 # ── 제외 ─────────────────────────────────────────────────────────────
@@ -103,10 +108,11 @@ def main() -> int:
         missing.append("README.md — 환경 구성·실행 명령어 (제출 항목 1 필수)")
     if not (ROOT / "docs/API_SPEC.md").exists():
         missing.append("docs/API_SPEC.md — End-point URL + 요청/응답 스키마 (제출 항목 3 필수)")
+    for name in ("[미래에셋AI Festival]_기술제안서_트리플에이치.pdf",
+                 "[미래에셋AI Festival]_기술제안서_트리플에이치.docx"):
+        if not (ROOT / name).exists():
+            missing.append(f"{name} — 기술 제안서 (설명회 명시: PDF 와 워드 **둘 다**)")
     print("\n" + "─" * 62)
-    print("수동으로 더 넣어야 하는 것 (저장소 밖 산출물)")
-    print("  1. 기술 제안서 — PDF **와 워드 둘 다** (설명회 명시)")
-    print("     원본 원고: docs/기술제안서/27_기술제안서_ETF판_전체원고.md")
     if missing:
         print("\n🔴 빠진 필수 파일")
         for m in missing:

@@ -38,7 +38,9 @@ SQL_CONFIG = HCXConfig(model="HCX-005", max_tokens=1536, temperature=0.0)
 ANSWER_CONFIG = HCXConfig(model="HCX-005", max_tokens=1024, temperature=0.0)
 # 질의 의도 분석(2026-09-06 · 주최 8/31 공지 "질의 Intent 분석과 답변 생성은 HCX 필수"). 출력은 닫힌 어휘 JSON 한 덩이라
 # 짧고, 한 문항의 지연에 더해지므로 대기도 짧게 끊는다 — 실패하면 pipeline 이 규칙 라우팅으로 진행한다(답이 죽지 않는다).
-INTENT_CONFIG = HCXConfig(model="HCX-005", max_tokens=256, temperature=0.0, timeout_s=30.0)
+# 🔴 max_retries=0 — 429 면 즉시 None(종전 경로). 보조 호출 하나가 문항을 20초×3 대기로 50초대까지 미는 일을 막는다
+#    (서현 응답시간 분석 2026-09-06 §2.1: HCX 0회로 0.2~1.2초에 끝나던 13문항이 이 호출로 429 노출 → 재시도 정책 분리 제안).
+INTENT_CONFIG = HCXConfig(model="HCX-005", max_tokens=256, temperature=0.0, timeout_s=30.0, max_retries=0)
 
 INTENT_DOMAINS = ("채권", "국내ETF", "해외ETF", "펀드", "교차", "불명")
 INTENT_TASKS = ("조회", "개수", "랭킹", "비교", "추천", "설명", "답변불가", "되묻기", "불명")

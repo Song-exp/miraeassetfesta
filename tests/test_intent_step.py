@@ -119,3 +119,10 @@ def test_planner_intent_roundtrip_with_fake_client():
     assert "지어내지 않는다" in fake.calls[0][0] and "삼성전자 담은 ETF" in fake.calls[0][1]
     # 2인자 생성(종전 호출 형태)은 의도 클라이언트를 만들지 않는다 — 키 없는 환경에서도 생성이 죽지 않는다
     assert HCXPlanner(sql_client=FakeHCX("SELECT 1"), answer_client=FakeHCX("x"))._intent is None
+
+
+def test_intent_config_never_waits_on_rate_limit():
+    # 서현 응답시간 분석 §2.1 — 보조 호출이 429 대기(20초×3)로 문항을 50초대로 밀면 안 된다
+    from src.hcx.planner import INTENT_CONFIG
+
+    assert INTENT_CONFIG.max_retries == 0 and INTENT_CONFIG.timeout_s <= 30

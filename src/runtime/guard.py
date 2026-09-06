@@ -528,7 +528,8 @@ def drop_unused_ext_join(sql: str, schema: dict | None = None) -> tuple[str, lis
     return out, dropped
 
 
-def prune_dead_in_literals(sql: str, ctx: RuntimeContext) -> tuple[str, list[str]]:
+def prune_dead_in_literals(sql: str, ctx: RuntimeContext,
+                           protect: frozenset[str] = frozenset()) -> tuple[str, list[str]]:
     """IN 목록에서 **그 컬럼에 없는 값**만 걷어낸다. (보정된 SQL, 걷어낸 값 목록)
 
     2026-09-04 KG-012 실측 — 재생성 SQL 이 이랬다:
@@ -542,6 +543,12 @@ def prune_dead_in_literals(sql: str, ctx: RuntimeContext) -> tuple[str, list[str
        결과 보존적이라 조용한 오답을 만들 수 없다.
     🔴 불개입: 유효한 값이 하나도 안 남으면 손대지 않는다. 그건 빼는 순간 **모수가 넓어져** 조용한 오답이
        되므로 종전대로 기각해야 한다(단독 등호 `col = '없는값'` 도 같은 이유로 대상이 아니다).
+    🔴 `protect`: 걷어내면 **뒤 가드가 읽을 신호가 사라지는** 값. 결과 보존은 이 SQL 안에서만 참이지,
+       파이프라인 전체로는 거짓일 수 있다. 2026-09-06 사고 — '산금채는 몇 종목이야?' 가
+       `bd_knd IN ('산금채','특수은행채')` 로 나갔는데 여기서 '산금채' 를 걷어내자 남은 절이
+       `IN ('특수은행채')` 라 **정상으로 보였고**, 뒤의 restore_kind_breadth 가 질문의 확정식
+       (특수은행채 AND 한국산업은행)과 다르다는 것을 알아볼 근거를 잃어 503→1,299 조용한 오답이 됐다.
+       호출자가 종류 통칭처럼 '값은 아니지만 뜻이 있는' 낱말을 넘기면 그 값은 남긴다.
     """
     index = getattr(ctx, "value_index", None) or {}
     if not index:
@@ -561,10 +568,10 @@ def prune_dead_in_literals(sql: str, ctx: RuntimeContext) -> tuple[str, list[str
         lits = _LIT.findall(body)
         if len(lits) < 2:
             continue                                  # 단독 값은 빼면 모수가 넓어진다 — 불개입
-        keep = [l for l in lits if _norm(l) in vals]
+        keep = [l for l in lits if _norm(l) in vals or l in protect]
         if not keep or len(keep) == len(lits):
             continue                                  # 전부 죽었으면 기각이 옳다 · 전부 살았으면 할 일 없음
-        dropped += [l for l in lits if _norm(l) not in vals]
+        dropped += [l for l in lits if _norm(l) not in vals and l not in protect]
         body_new = ", ".join("'" + l + "'" for l in keep)
         out = out.replace(m.group(0), m.group(0).replace(body, body_new), 1)
     return out, dropped

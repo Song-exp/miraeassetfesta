@@ -12710,7 +12710,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 날조 종목명 조각 제거 — 질문에도 선언에도 없는 pd_nm LIKE 조각 " + " · ".join(f"'{n}'" for n in name_stripped)
              + " 의 OR 가지를 걷어냈다 (2026-09-05 난이도 상 #3: '우주항공 관련 발행사' 에 '%Space%' 즉석 번역 · AND 절이면 precheck 가 기각)")
     if tables:
-        sql, dead = guard.prune_dead_in_literals(sql, ctx)
+        # 종류 통칭('산금채')은 컬럼 값이 아니라서 죽은 값으로 보이지만, 걷어내면 남은 절이 정상처럼 보여
+        # 뒤의 restore_kind_breadth 가 확정식 불일치를 못 본다 (2026-09-06 · 503→1,299 조용한 오답).
+        sql, dead = guard.prune_dead_in_literals(
+            sql, ctx, protect=frozenset(tok for tok, _f in _kind_filters()[0] if tok in q))
         if dead:
             step("[Guard] IN 목록 정리 — 그 컬럼에 없는 값 " + " · ".join(f"'{d}'" for d in dead)
                  + " 을 걷어냈다 (0행 매칭이라 결과 불변 · 유효값이 남을 때만 · 2026-09-04 KG-012)")

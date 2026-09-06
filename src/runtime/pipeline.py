@@ -1630,7 +1630,8 @@ def _literal_grounded(table: str, conj: str, question: str) -> bool:
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,
 #    docs/question_design_public_funds_2026-08-31.md §4. 프롬프트에 실려도 무시되는 규칙의 결정 층) ──
 _ETF_INDEX_COL = re.compile(r"\b(?:\w+\.)?(?:cu_base_index|ref_base_index)\b", re.I)
-_INDEX_SUFFIX_TOKENS = {"TR", "PR", "CR", "NR", "GR", "TRI", "INDEX"}   # 지수 이름이 아니라 수익유형 접미·일반어
+_INDEX_SUFFIX_TOKENS = {"TR", "PR", "CR", "NR", "GR", "TRI", "INDEX",
+                        "TOTAL RETURN", "TOTALRETURN", "PRICE RETURN", "PRICERETURN", "NET TR"}   # 지수 이름이 아니라 수익유형 접미·일반어
 
 
 _INDEX_INTENT = re.compile(
@@ -1645,6 +1646,31 @@ _IDX_TOKEN_EXPR = "(' '||replace(replace(replace(ref_base_index,'(',' '),')',' '
 _TR_CANON = f"({_IDX_TOKEN_EXPR} GLOB '* TR *' OR ref_base_index LIKE '%Total Return%')"
 _PR_CANON = f"({_IDX_TOKEN_EXPR} GLOB '* PR *' OR ref_base_index LIKE '%Price Return%')"
 _TRPR_LIT = re.compile(r"'[^']*(?<![A-Za-z])(TR|PR)(?![A-Za-z])[^']*'|'%?Total Return%?'|'%?Price Return%?'", re.I)
+
+
+_WHERE_TRAILING_ORDER = re.compile(
+    r"\s+(AND|WHERE)\s+((?:\w+\.)?\w+)\s+(DESC|ASC)\b(?=\s+LIMIT\b|\s*;?\s*$)", re.I)
+
+
+def repair_where_order(sql: str) -> tuple[str, bool]:
+    """WHERE 절 끝에 정렬 지시가 서 있는 문법 오류(`… AND pd_dvid_yield DESC LIMIT 5`)를 ORDER BY 로 옮긴다. (SQL, 고쳤는지)
+
+    🔴 2026-09-06 서버 실측 세 번(A14 "전기테마 etf중에 고배당은뭐있어" · 1차·2차 재배포 모두) — HCX 가 '고배당 = 정렬' 규칙을
+       읽고도 정렬을 WHERE 안에 썼다: `WHERE (pd_abrv_nm LIKE '%전기%' OR …) AND pd_dvid_yield DESC LIMIT 5`. 검사기가
+       문법 오류로 기각하고 재생성도 같은 모양이라 "안전하게 실행할 수 없어" 로 끝났다. 조건은 다 맞았고 자리만 틀렸다.
+    발동: 이미 ORDER BY 가 없고, WHERE/AND 뒤에 `컬럼 DESC|ASC` 가 LIMIT 직전(또는 끝)에 서 있을 때만. 그 절을 떼어 ORDER BY 로.
+    """
+    if re.search(r"\border\s+by\b", sql, re.I):
+        return sql, False
+    m = _WHERE_TRAILING_ORDER.search(sql)
+    if not m:
+        return sql, False
+    col, direction = m.group(2), m.group(3).upper()
+    sql2 = sql[:m.start()] + sql[m.end():]
+    lim = re.search(r"\bLIMIT\b", sql2, re.I)
+    order = f" ORDER BY {col} {direction}"
+    sql2 = (sql2[:lim.start()].rstrip() + order + " " + sql2[lim.start():]) if lim else sql2.rstrip() + order
+    return re.sub(r"\s{2,}", " ", sql2).strip(), True
 
 
 _DELIST_Q = re.compile(r"상장\s*폐지|상폐|폐지\s*(?:예정|되|될|앞둔)|거래\s*종료|(?:곧|앞으로)\s*(?:없어지|사라지)")
@@ -1714,7 +1740,8 @@ def ensure_etf_tr_index(sql: str, question: str) -> tuple[str, bool]:
     if m_w:
         kept = []
         for c in guard.split_conjuncts(m_w.group(1)):
-            if _ETF_INDEX_COL.search(c) and _TRPR_LIT.search(c) and _GUARD_MARK not in c:
+            if _ETF_INDEX_COL.search(c) and (_TRPR_LIT.search(c) or re.search(r"Total\s*Return|Price\s*Return", c, re.I)) \
+                    and canon not in c:
                 if not replaced:
                     kept.append(_GUARD_MARK + canon)
                     replaced = True
@@ -5202,8 +5229,12 @@ def ensure_etf_diff_sign_note(answer: str, sql: str) -> tuple[str, bool]:
     return answer.rstrip() + "\n\n" + _DIFF_RT_SIGN_NOTE, True
 
 
+# 🔴 2026-09-06 2차 재배포 실측 — "상장폐지 예정 ETF": 71행을 받고 "정보를 **찾을 수 없습니다**. 따라서 답변을 **제공할 수
+#    없습니다**" · "5% 넘는 ETF": 212 를 받고 "정보를 **포함하고 있지 않습니다**". 둘 다 종전 문형 밖이라 전사 강제·집계 교정이
+#    침묵했다. 거절 변종은 모델이 계속 만든다 — 어미가 아니라 동사(찾을·제공할·포함하고)로 넓힌다.
 _REFUSAL_ANSWER = re.compile(
-    r"정보가?\s*(?:포함되어\s*있지\s*않|없)|답변(?:을|이)?\s*드릴\s*수\s*없|확인(?:할|이)\s*(?:수\s*)?(?:없|불가)|알\s*수\s*없")
+    r"정보(?:가|를|는)?\s*(?:포함(?:되어|하고)\s*있지\s*않|없|찾을\s*수\s*없)|답변(?:을|이)?\s*(?:드릴|제공할|해\s*드릴|할)\s*수\s*없"
+    r"|답변을\s*제공하(?:지\s*못|지\s*않)|확인(?:할|이)\s*(?:수\s*)?(?:없|불가)|알\s*수\s*없|찾을\s*수\s*없")
 _EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
 _NUMERIC_CELL = re.compile(r"^-?[\d,]+(?:\.\d+)?\s*(?:%|억원|천억원|조원|백만\w*|원|주|USD|\$)?$")
 # 질문 전체를 거절하는 문형 — 부분 유보("그 외는 확인할 수 없습니다")와 구분한다 (2026-09-05 #35 · R10 회귀 둘 다 지킨다)
@@ -5303,6 +5334,7 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
     if not frm:
         return answer, False
     head = re.sub(r"^\s*SELECT\s+", "", sql[:frm.start()], flags=re.I)
+    head = re.sub(r"/\*.*?\*/", "", head).strip()      # 2026-09-06 실측: 편입 확정식의 /*g:ETFHOLD*/ 표식이 COUNT 앞에 서서 불발
     if not re.match(r"\s*(?:COUNT|SUM)\s*\(", head, re.I) or "," in head.split("AS")[0]:
         return answer, False
     body = rows.splitlines()[1:]
@@ -6055,6 +6087,20 @@ def qualify_join_columns(sql: str, ctx) -> tuple[str, list[str]]:
     """
     if not re.search(r"\bjoin\b", sql, re.I):
         return sql, []
+    # 🔴 2026-09-06 C10 재배포 실측 — "삼성전자를 편입한 국내 ETF와 공모펀드는 각각 몇 개야?": UNION 둘째 가지
+    #    (public_funds p ⋈ ext_fund_holdings)의 itm_no 에 **첫 가지 별칭 e.** 가 붙어 'no such column: e.itm_no' 로
+    #    본 SQL·재생성 SQL 이 둘 다 죽었다. FROM 정규식이 문장 전체에서 첫 FROM 만 봤기 때문이다. 가지마다 자기 FROM 으로 한정한다.
+    pieces = _split_union(sql)
+    if pieces:
+        out, done = [], []
+        for i, piece in enumerate(pieces):
+            if i % 2 == 0:
+                fixed, cols = qualify_join_columns(piece, ctx)
+                out.append(fixed)
+                done += [c for c in cols if c not in done]
+            else:
+                out.append(piece)
+        return "".join(out), done
     amb = guard.ambiguous_columns(sql, ctx)
     if not amb:
         return sql, []
@@ -10378,9 +10424,9 @@ def _split_union(sql: str) -> list[str] | None:
 # 가지마다 그 가지의 FROM 기준으로 1회씩 거는 확정식 — 컬럼 정본화 · 기본모수 · 펀드단위 집계 교체
 def _branch_guards(branch: str, q: str) -> tuple[str, list[str]]:
     notes = []
-    for fn, label in ((lambda s: ensure_etf_index_canon(s), "ETF 기초지수 정본 축"),
-                      (lambda s: ensure_etf_delist(s, q), "ETF 상장폐지 확정식"),
+    for fn, label in ((lambda s: ensure_etf_delist(s, q), "ETF 상장폐지 확정식"),
                       (lambda s: ensure_etf_tr_index(s, q), "ETF TR·PR 지수 확정식"),
+                      (lambda s: ensure_etf_index_canon(s), "ETF 기초지수 정본 축"),
                       (lambda s: ensure_etf_mgmt_canon(s), "ETF 운용사 정본 축"),
                       (lambda s: ensure_etf_base_population(s, q), "ETF 기본모수"),
                       (lambda s: ensure_fund_base_population(s, q, post=True), "펀드 기본모수"),
@@ -11353,7 +11399,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         step("[Guard] 펀드 기본모수 주입 — 랭킹 SQL 에 판매중·공모 조건이 없어 보정 (2026-08-31 paired v2: 규칙 실려도 미적용이 answer 실패 1순위)")
     # 🔴 지수 확정식이 **모수 가드보다 먼저** 돌아야 한다 — 모수 가드의 날조 술어 제거가 오염 컬럼의
     #    지수 절을 '근거 없는 술어' 로 보고 지워 버린다(순서가 뒤면 지수 조건이 통째로 사라진다).
-    sql, idx_fixed = ensure_etf_index_canon(sql, q)
+    sql, worder_fixed = repair_where_order(sql)
+    if worder_fixed:
+        step("[Guard] WHERE 안의 정렬 지시를 ORDER BY 로 — `… AND <컬럼> DESC LIMIT n` 은 문법 오류지만 뜻은 정렬이다 "
+             "(2026-09-06 A14 서버 실측 3회: '전기테마 ETF 중 고배당' 이 재생성까지 같은 모양으로 실행 불가)")
     sql, delist_fixed = ensure_etf_delist(sql, q)
     if delist_fixed:
         step("[Guard] 상장폐지 확정식 — pd_lste_dt <> 99991231 을 표식 절로 세우고 판매중 조건을 걷어냄 "
@@ -11361,7 +11410,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, tr_fixed = ensure_etf_tr_index(sql, q)
     if tr_fixed:
         step("[Guard] TR·PR 지수 확정식 — 지수명의 TR 표기 3종(공백 토큰 · 괄호 (TR) · 철자 Total Return)을 한 식으로 "
-             "(2026-09-06 A10 재배포 실측: GLOB '*TR*' 부분일치 212 — TRF·STRIP 오탐 · 규칙식은 괄호·철자 42건 누락 · 판매중 ETF 236)")
+             "(2026-09-06 A10 재배포 실측: GLOB '*TR*' 부분일치 212 — TRF·STRIP 오탐 · 규칙식은 괄호·철자 42건 누락 · 판매중 ETF 236 · "
+             "2차 재배포 207: 기초지수 확정식이 먼저 돌아 'Total Return' 을 지수식으로 바꿈 → 이 확정식을 앞으로)")
+    sql, idx_fixed = ensure_etf_index_canon(sql, q)
     sql, mgmt_fixed = ensure_etf_mgmt_canon(sql)
     if mgmt_fixed:
         step("[Guard] ETF 운용사 확정식 — 오염 컬럼 cu_fund_mgmt_co(판매사·브랜드·상품명 혼재: '삼성증권(주)' 70행 "

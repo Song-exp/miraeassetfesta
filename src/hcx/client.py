@@ -121,6 +121,7 @@ class HCXResult:
     finish_reason: str
     rate_limit: RateLimit = field(default_factory=RateLimit)
     retries: int = 0  # 429 로 재시도한 횟수
+    wait_s: float = 0.0  # 429 로 잠든 시간 합 (2026-09-06 QA r1 BP④ — 기록만, 정책은 그대로)
     raw: dict = field(repr=False, default_factory=dict)
 
     @property
@@ -147,6 +148,11 @@ class HCXClient:
         self._client = client or httpx.Client(timeout=self.config.timeout_s)
         self._owns_client = client is None
         self.last_rate_limit = RateLimit()  # 호출자가 페이싱에 씁니다
+        # 🆕 2026-09-06 QA r1 BP④ — 마지막 호출의 429 재시도·대기·응답 시간. **기록만** 한다(재시도 정책은 리드 결정 영역).
+        #    trace 에 이 수치가 없어서 "60초 문항의 시간이 어디서 갔는지" 를 서버 로그로 확정할 수 없었다.
+        self.last_retries = 0
+        self.last_wait_s = 0.0
+        self.last_latency_s = 0.0
 
     # -- 내부 ------------------------------------------------------------
     def _payload(self, messages: list[dict]) -> dict:
@@ -183,6 +189,8 @@ class HCXClient:
 
         payload = self._payload(messages)
         retries = 0
+        waited = 0.0
+        self.last_retries, self.last_wait_s, self.last_latency_s = 0, 0.0, 0.0
         while True:
             t0 = time.perf_counter()
             try:
@@ -203,10 +211,13 @@ class HCXClient:
                 )
                 self.last_rate_limit = rl
                 time.sleep(wait)
+                waited += wait
                 retries += 1
+                self.last_retries, self.last_wait_s = retries, waited
                 continue
 
             if resp.status_code != 200:
+                self.last_retries, self.last_wait_s, self.last_latency_s = retries, waited, latency
                 raise HCXError(
                     f"{self.config.label} HTTP {resp.status_code}"
                     + (f" (재시도 {retries}회 후)" if retries else "")
@@ -232,6 +243,7 @@ class HCXClient:
         details = usage.get("completionTokensDetails") or {}
 
         self.last_rate_limit = rl
+        self.last_retries, self.last_wait_s, self.last_latency_s = retries, waited, latency
         return HCXResult(
             text=(message.get("content") or "").strip(),
             latency_s=latency,
@@ -241,6 +253,7 @@ class HCXClient:
             finish_reason=result.get("finishReason", ""),
             rate_limit=rl,
             retries=retries,
+            wait_s=waited,
             raw=body,
         )
 

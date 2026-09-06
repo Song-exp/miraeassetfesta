@@ -11919,6 +11919,16 @@ def answer_question(
         cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]
         hits, ground_lines = _ground(q, ctx, tables, cross)
 
+    # 도메인 밖(인사·잡담) — 라우터 미특정 · KG 매핑 없음 · 스키마/yaml 어휘 조각 없음 · 숫자/영문 없음이 겹칠 때만.
+    #   2026-09-06 실측 '안녕': 4테이블 근거문서로 HCX 에 가서 임의 SQL → 화이트리스트 기각 → "상품군 밖 자료를 함께 봐야" 오거절.
+    #   안내 문장으로 답하고 끝낸다(HCX 답변 생성 없음 · 의도 분석은 이미 위에서 1회).
+    if not tables and not hits and gate.is_off_domain(q, ctx):
+        step("[Gate] 도메인 밖 — 상품군 낱말·KG 매핑·스키마 어휘가 하나도 없는 질의(인사·잡담). 안내 문장으로 응답 "
+             "(2026-09-06 '안녕' 실측: HCX 가 임의 SQL 을 내 '상품군 밖 자료' 오거절)")
+        result.think_trace = "\n".join(trace)
+        result.answer = gate.OFF_DOMAIN_ANSWER
+        return result
+
     # Gate — HCX 호출 0회 기각 경로
     #   grounded_entity: 발행사·종목 개체가 접지됐는가 — absent_properties.vocab_ungrounded("○○ 관련 발행사") 판정에 쓴다 (2026-09-05 #3)
     g = gate.check(q, ctx, tables,

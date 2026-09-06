@@ -52,6 +52,55 @@ _CROSS_HINTS = ("보유한", "보유중", "편입", "구성종목", "담고 있�
                 "지분", "들고 있", "가지고 있", "많이 담")
 
 
+OFF_DOMAIN_ANSWER = (
+    "안녕하세요. 이 서비스는 국내 채권·국내/해외 ETF·공모펀드 데이터(기준일 2026-08-24)에 대한 질의응답입니다. "
+    "상품군이나 조건을 넣어 질문해 주세요. 예: '국고채는 총 몇 종목이야?', '순자산이 가장 큰 공모펀드 3개 알려줘', "
+    "'삼성전자를 담은 ETF는 몇 개야?'"
+)
+_DOMAIN_CHUNKS: dict[int, frozenset] = {}
+
+
+def _domain_chunks(ctx: RuntimeContext) -> frozenset:
+    """도메인 어휘의 두 글자 조각 — 스키마 한글명(DB) · yaml 컬럼 korean_name · yaml synonyms 키 · 상품 명사. 손 목록 0.
+
+    조각이 2자라 넓게 잡힌다('기준일' 의 '기준' 이 "기준이 뭐야" 에도 걸림) — 그 방향은 '도메인 안' 으로 기울어
+    안전하다(잘못 기각하는 것이 잘못 통과시키는 것보다 나쁘다)."""
+    key = id(ctx)
+    if key in _DOMAIN_CHUNKS:
+        return _DOMAIN_CHUNKS[key]
+    from .router import PRODUCT
+
+    words: set[str] = set(PRODUCT)
+    for cols in (getattr(ctx, "schema", None) or {}).values():
+        for _c, ko, *_ in cols:
+            words.add(ko or "")
+    for doc in (getattr(ctx, "enums", None) or {}).values():
+        for decl in ((doc.get("columns") or {}).values()):
+            if isinstance(decl, dict):
+                words.add(str(decl.get("korean_name") or ""))
+        words.update((doc.get("synonyms") or {}).keys())
+    chunks: set[str] = set()
+    for w in words:
+        for m in re.finditer(r"[가-힣]{2,}", w):
+            s = m.group(0)
+            chunks.update(s[i:i + 2] for i in range(len(s) - 1))
+    _DOMAIN_CHUNKS[key] = frozenset(chunks)
+    return _DOMAIN_CHUNKS[key]
+
+
+def is_off_domain(question: str, ctx: RuntimeContext) -> bool:
+    """금융상품 질의가 아닌 인사·잡담인가 — 라우터 미특정·KG 매핑 없음일 때 pipeline 이 마지막으로 묻는다.
+
+    2026-09-06 실측: '안녕' 이 4테이블 근거문서로 HCX 에 가서 임의 SQL 이 나오고 화이트리스트 기각 →
+    "질문의 상품군 밖 자료를 함께 봐야 하는 조건이라 답변을 제공하지 못했습니다" 라는 엉뚱한 거절이 나갔다.
+    판정: 숫자·영문자가 하나도 없고(상품코드·티커·기간·개수 가능성 배제) 도메인 어휘 조각도 하나 없으면 도메인 밖."""
+    squeezed = re.sub(r"\s+", "", question)
+    if not squeezed or re.search(r"[0-9A-Za-z%]", squeezed):
+        return False
+    chunks = _domain_chunks(ctx)
+    return not any(squeezed[i:i + 2] in chunks for i in range(len(squeezed) - 1))
+
+
 def detect_tables(question: str, ctx: RuntimeContext | None = None) -> list[str]:
     """호환용 — router.route 의 결과. 미특정이면 빈 목록(종전 의미 유지)."""
     from .loader import load_context

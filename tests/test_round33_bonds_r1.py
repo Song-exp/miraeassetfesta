@@ -301,3 +301,41 @@ def test_BD_siblings_other_column_and_order_by(ctx):
     out2, dropped = pl.drop_unknown_select_columns(sql, err)
     assert dropped == ["ORDER BY mtco_itm_no ASC"] and "ORDER BY pd_no ASC LIMIT 5" in out2
     assert pl._sql_precheck(out2, ctx, T, False, question="") is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BE — 구조 낱말 확정식 강제 (D-010)
+#   일반 규칙: 구조 낱말(_STRUCT_ALIASES 키)이 질문에 하나 있고 WHERE 에 그 판정식(선언 구조표시 CASE)이 없으면 AND 주입 + 구조 낱말 조각의 pd_nm LIKE 절 제거.
+# ══════════════════════════════════════════════════════════════════════════════
+COCO_PRED = "TRIM(bd_knd) IN ('특수은행채','일반은행채','금융지주회사채')"
+
+
+def test_BE_coco_predicate_injected(con):
+    sql = "SELECT pd_nm, pd_abrv_nm, pd_pbcm, bd_knd, pd_risk_gcd, pd_risk_nm FROM domestic_bonds WHERE (pd_nm LIKE '%코코본드%' ) GROUP BY pd_no LIMIT 30"
+    out, fixed = pl.ensure_kind_filter(sql, "코코본드 알려줘")
+    assert fixed and COCO_PRED in out and "pd_risk_gcd IN ('11','12','13')" in out and "코코본드%" not in out
+    n = _one(con, out.replace("SELECT pd_nm, pd_abrv_nm, pd_pbcm, bd_knd, pd_risk_gcd, pd_risk_nm", "SELECT COUNT(DISTINCT pd_no)").replace("GROUP BY pd_no LIMIT 30", ""))[0]
+    assert n == 223                                                                     # 판정식 = 선언(gold D-010 CASE 첫 WHEN)
+    # 형제: 동의어 '조건부자본증권' · WHERE 없는 SQL
+    out2, fixed2 = pl.ensure_kind_filter("SELECT pd_nm FROM domestic_bonds LIMIT 30", "조건부자본증권 알려줘")
+    assert fixed2 and "WHERE (" in out2 and COCO_PRED in out2 and out2.rstrip().endswith("LIMIT 30")
+
+
+def test_BE_sibling_structures(ctx):
+    # 전환사채: 라벨 조각('전환') LIKE 는 걷고 GLOB CB 판정식으로 · 후순위: 발행사 조건은 남기고 판정식만 AND
+    out, fixed = pl.ensure_kind_filter("SELECT pd_nm FROM domestic_bonds WHERE pd_nm LIKE '%전환%' GROUP BY pd_no LIMIT 30", "전환사채(CB) 알려줘")
+    assert fixed and "GLOB '*[0-9]CB*'" in out and "'%전환%'" not in out and "GROUP BY pd_no LIMIT 30" in out
+    out2, fixed2 = pl.ensure_kind_filter("SELECT pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm)='한국전력공사(주)' LIMIT 30", "한전 후순위채 있어?")
+    assert fixed2 and "TRIM(pd_pbcm)='한국전력공사(주)' AND (pd_nm LIKE '%(후)%'" in out2
+    assert pl._sql_precheck(out, ctx, T, False, question="") is None and pl._sql_precheck(out2, ctx, T, False, question="") is None
+
+
+@pytest.mark.parametrize("q, sql", [
+    ("영구채 알려줘", "SELECT pd_nm FROM domestic_bonds WHERE (pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%') AND mat_dt >= 20260824 GROUP BY pd_no LIMIT 30"),   # D-009 — 판정식 그대로
+    ("신종자본증권 중 만기가 가장 짧은 것 알려줘", "SELECT pd_nm FROM domestic_bonds WHERE (pd_nm LIKE '%신종%' OR pd_nm LIKE '%영구%') AND mat_dt >= 20260824 GROUP BY pd_no ORDER BY MIN(mat_dt) ASC LIMIT 1"),  # X11
+    ("전환사채와 교환사채 차이", "SELECT pd_nm FROM domestic_bonds LIMIT 30"),                                                                  # 구조 낱말 둘
+    ("코코본드 빼고 은행채 보여줘", "SELECT pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) IN ('일반은행채','특수은행채') LIMIT 30"),                # 배제 낱말 — 종류 블록도 불개입(종류 컬럼 있음)
+    ("코코본드 ETF 알려줘", "SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_grp_no='ETF' LIMIT 30"),                                           # 채권 밖
+])
+def test_BE_untouched_when_predicate_present(q, sql):
+    assert pl.ensure_kind_filter(sql, q) == (sql, False)

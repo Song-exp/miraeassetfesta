@@ -7864,6 +7864,35 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     나감. 필터 여부는 WHERE 범위에서만 본다(표시·정렬 컬럼은 필터가 아니다)."""
     if "domestic_bonds" not in sql:
         return sql, False
+    # ── 구조 블록 (BE · 2026-09-06 QA r1 D-010) — 종류 블록보다 앞 ─────────────────────────────────────────
+    # 동의어 선언이 있는 구조 낱말(코코본드·조건부자본증권·전환사채·CB·영구채·신종자본증권·후순위 …)이 질문에 하나 있고 WHERE 에 그 구조의
+    # 판정식(구조표시 CASE 의 WHEN 조건 — 선언에서 읽는다)이 없으면 판정식을 AND 주입하고, 그 구조 낱말의 조각으로 쓴 pd_nm LIKE 절은 걷는다.
+    # '코코본드 알려줘' 가 `pd_nm LIKE '%코코본드%'`(종목명에 그 낱말이 없다 — 0행) 로 나간 사고. D-009 '영구채'·X11 '신종자본증권' 처럼
+    # 판정식 그대로 쓴 SQL 은 리터럴 포함 판정으로 불개입. 구조 낱말 둘 이상·배제 낱말은 불개입(fix_structure_kind_literal 과 역할 분리 —
+    # 그쪽은 bd_knd 값으로 쓴 라벨의 치환, 이쪽은 부재 시 주입).
+    labels = _question_structure_labels(question)
+    if len(labels) == 1 and not _KIND_NEG_Q.search(question) and not re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        pred = _structure_predicates().get(labels[0])
+        m_w = _WHERE_BODY.search(sql)
+        raw_body, marks = _split_slot_markers(m_w.group(1)) if m_w else ("", "")
+        if pred and not set(re.findall(r"'([^']*)'", pred)) <= set(re.findall(r"'([^']*)'", raw_body)):
+            words = {a for a, l in _STRUCT_ALIASES.items() if l == labels[0]} | {labels[0]}
+            body = _flatten_and_groups(raw_body)
+            fold = "\x01"
+            folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
+            kept = []
+            for c in (x.replace(fold, " AND ").strip() for x in guard.split_conjuncts(folded)):
+                if c and not _is_structure_name_fragment(c, words):
+                    kept.append(c)
+            new_where = " AND ".join(kept + [f"({pred})"]) + marks
+            if m_w:
+                sql = sql[:m_w.start()] + "WHERE " + new_where + " " + sql[m_w.end():].lstrip()
+            else:
+                t = _WHERE_TAIL.search(sql)
+                pos = t.start() if t else len(sql)
+                sql = sql[:pos].rstrip() + " WHERE " + new_where + " " + sql[pos:]
+            return sql, True
+    # ── 종류 블록 ─────────────────────────────────────────────────────────────────────────────────────
     wm = re.search(r"\bWHERE\b", sql, re.I)
     if wm:
         tail = _WHERE_TAIL.search(sql, wm.end())
@@ -7874,6 +7903,39 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     if len(filters) != 1:
         return sql, False
     return _append_exclusions(sql, [next(iter(filters))])
+
+
+def _question_structure_labels(question: str) -> list[str]:
+    """질문의 구조 낱말(_STRUCT_ALIASES 키 — 긴 것부터 소진) → 구조표시 라벨 목록(중복 제거)."""
+    q, found = question, []
+    for alias in sorted(_STRUCT_ALIASES, key=len, reverse=True):
+        if alias in q:
+            label = _STRUCT_ALIASES[alias]
+            if label not in found:
+                found.append(label)
+            q = q.replace(alias, "◌")
+    return found
+
+
+_NAME_LIKE_ATOM = re.compile(r"^\(?\s*(?:TRIM\(\s*)?pd_nm\s*\)?\s+LIKE\s+'([^']*)'\s*\)?$", re.I)
+
+
+def _is_structure_name_fragment(clause: str, words: set[str]) -> bool:
+    """절이 pd_nm LIKE 만으로 이뤄져 있고 그 리터럴(% 제거)이 전부 구조 낱말의 조각('코코'·'전환'·'코코본드')이면 True."""
+    inner = clause.strip()
+    while inner.startswith("(") and inner.endswith(")") and len(guard.split_disjuncts(inner[1:-1])) >= 1 and inner.count("(") == inner.count(")"):
+        inner = inner[1:-1].strip()
+    parts = guard.split_disjuncts(inner)
+    if not parts:
+        return False
+    for part in parts:
+        m = _NAME_LIKE_ATOM.match(part.strip())
+        if not m:
+            return False
+        lit = m.group(1).replace("%", "").strip()
+        if len(lit) < 2 or not any(lit in w for w in words):
+            return False
+    return True
 
 
 _SUP = r"(?:가장|제일|젤|최고로?)"                       # 최상급 수식어

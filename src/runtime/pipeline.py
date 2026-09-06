@@ -1455,6 +1455,73 @@ def ensure_etf_return_sort(sql: str, question: str) -> tuple[str, bool]:
     return sql[:m_ob.start()].rstrip() + " " + new_ob + (" " + rest if rest else ""), True
 
 
+# 분배 축 — 질문이 무엇을 묻는지로 정렬 컬럼이 갈린다
+_DIV_Q = re.compile(r"분배|배당")
+# "많이 주는 · 자주 주는 · 횟수" → 연간 지급 횟수 · "높은 · 수익률 · 얼마" → 연환산 분배수익률
+_DIV_CNT_Q = re.compile(r"(?:많이|자주|여러\s*번)\s*(?:주|지급|나오)|지급\s*횟수|횟수가\s*많|자주\s*나오")
+# 🔴 분배**율**(율)과 수익**률**(률)은 글자가 다르다 — 한쪽만 적으면 한쪽이 통째로 빠진다(2026-09-07 실측)
+_DIV_YIELD_Q = re.compile(r"분배\s*(?:수익)?[율률]|배당\s*수익[율률]|고배당|배당[율률]|수익[율률]이?\s*(?:높|많|큰)")
+# 범주형 문자열 컬럼 — 순위 축으로 쓰면 글자 순서가 순위가 된다
+_CATEGORICAL_SORT_COLS = ("pd_dvid_cycl", "pd_dvid_pay_months", "pd_risk_nm", "pd_risk_cd", "pd_grp_no",
+                          "pd_curr_cd", "pd_curr_nm", "cu_strtegy", "pd_pen_risk_nm", "wu_inv_ast_type",
+                          "wu_inv_rgn", "ref_ast_type", "ref_geo_focus", "pd_exg_mkt_nm")
+
+
+def ensure_etf_dividend_sort(sql: str, question: str) -> tuple[str, str | None]:
+    """분배·배당 질의의 정렬이 범주형 문자열 컬럼이면 수치 축으로 바꾼다. (SQL, 바꾼 컬럼|None)
+
+    🔴 2026-09-07 서버 실측 — "1년에 배당금 제일 많이 주는 etf추천좀" 이 `ORDER BY 2 DESC` 로 나갔는데
+       2번 항목이 **분배주기(pd_dvid_cycl)** 였다. 값이 'M'·'Q'·'S'·'A' 라 내림차순은 알파벳 역순이고,
+       판매중 ETF 중 7건뿐인 'S'(반기·연 2회)가 상위 다섯을 채웠다. 질문과 정반대 답이다.
+       값이 전부 실재하는 행이라 환각 검사에도 전사 검사에도 걸리지 않는다.
+    발동: ① 국내 ETF 단일 SELECT ② 질문에 분배·배당 어휘 ③ 집계(COUNT) 아님
+          ④ 정렬 첫 항이 범주형 문자열 컬럼일 때만.
+    축 선택: '많이·자주·횟수' 는 연간 지급 횟수, '분배율·배당수익률·고배당' 은 연환산 분배수익률,
+            둘 다면 횟수(질문이 "몇 번 주는가" 를 물은 것이다). 어느 쪽도 아니면 손대지 않는다.
+    정렬 컬럼이 SELECT 에 없으면 함께 싣는다 — 답변기는 실린 값만 인용한다.
+    """
+    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql) or re.search(r"\bCOUNT\s*\(", sql, re.I):
+        return sql, None
+    if not _DIV_Q.search(question or ""):
+        return sql, None
+    frm = _FROM_KW.search(sql)
+    m_sel = _SELECT_HEAD.match(sql)
+    m_ob = _ORDER_BY_TERMS.search(sql)
+    if not (frm and m_sel and m_ob) or m_ob.start() < frm.start():
+        return sql, None
+    items = _split_select_items(sql[m_sel.end():frm.start()])
+    terms = [x.strip() for x in m_ob.group(1).split(",") if x.strip()]
+    if not terms:
+        return sql, None
+    parts = terms[0].split()
+    expr = parts[0]
+    if expr.isdigit():
+        idx = int(expr) - 1
+        target = items[idx] if 0 <= idx < len(items) else ""
+    else:
+        target = expr
+    if not any(re.search(rf"\b{c}\b", target, re.I) for c in _CATEGORICAL_SORT_COLS):
+        return sql, None                       # 정렬 축이 수치다 — 불개입
+    if _DIV_CNT_Q.search(question):
+        col = "pd_dvid_pay_cnt"
+    elif _DIV_YIELD_Q.search(question):
+        col = "pd_dvid_yield"
+    else:
+        return sql, None                       # 어느 축인지 문장이 정하지 않았다 — 손대지 않는다
+    head = sql[m_sel.end():frm.start()]
+    add = "" if re.search(rf"\b{col}\b", head, re.I) else f", {col}"
+    new_head = head.rstrip() + add + " "
+    body = sql[frm.start():m_ob.start()]
+    rest = sql[m_ob.end():].lstrip()
+    new_ob = "ORDER BY " + ", ".join([f"{_GUARD_MARK}{col} DESC"] + terms[1:])
+    guarded = f"{col} > 0"
+    if not re.search(rf"\b{col}\s*>", body, re.I):
+        m_where = re.search(r"\bWHERE\b", body, re.I)
+        body = (body[:m_where.end()] + f" {_GUARD_MARK}{guarded} AND" + body[m_where.end():]) if m_where else \
+               (body.rstrip() + f" WHERE {_GUARD_MARK}{guarded} ")
+    return sql[:m_sel.end()] + new_head + body + new_ob + (" " + rest if rest else ""), col
+
+
 _ETF_TBL_ANY = re.compile(r"\bfrom\s+(?:domestic|overseas)_etfs\b", re.I)
 _AUM_Q = re.compile(r"순\s*자산|AUM|운용\s*규모|자산\s*규모|시가\s*총액|펀드\s*규모|설정\s*액", re.I)
 _AUM_THRESH = re.compile(
@@ -12932,6 +12999,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     #    그 뒤 **ETF 기본모수 주입이 AND 두 절을 덧붙여** `A OR B AND C AND D` 를 만들었다. 검사기가 기각하고
     #    재생성도 같은 모양이라 "안전하게 실행할 수 없어" 로 끝났다 — 가드가 만든 결함을 가드가 막은 꼴이다.
     #    앞머리 한 번으로는 부족하다: 절을 덧붙이는 가드가 뒤에 있으므로 **검사 직전에 한 번 더** 접는다(멱등).
+    sql, div_sort = ensure_etf_dividend_sort(sql, q)
+    if div_sort:
+        step(f"[Guard] 분배 정렬 축 교정 — 범주형 문자열 컬럼으로 순위를 매기고 있어 {div_sort} 로 바꿨다 "
+             "(2026-09-07 실측: '1년에 배당금 제일 많이 주는 ETF' 가 분배주기(M·Q·S·A)를 내림차순해 "
+             "반기 지급 7건이 상위를 차지했다 — 값은 전부 실재해 환각 검사에 걸리지 않는다)")
     sql, ko_lit = ensure_korean_name_literal(sql, q)
     if ko_lit:
         step(f"[Guard] 상품명 리터럴 한글 복원 — 데이터에 0건인 영문 표기를 질문의 '{ko_lit}' 로 교체 "

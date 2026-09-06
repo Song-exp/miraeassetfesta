@@ -7482,6 +7482,120 @@ def align_threshold_operator(sql: str, question: str) -> tuple[str, list[str]]:
     return sql[:m_w.start(1)] + new_body + sql[m_w.end(1):], fixed
 
 
+_STRUCT_ALIASES = {   # 질문·HCX 가 쓰는 표기 → 구조표시 CASE 의 THEN 라벨
+    "전환사채": "전환사채", "CB": "전환사채", "교환사채": "교환사채", "EB": "교환사채",
+    "신주인수권부사채": "신주인수권부", "신주인수권부": "신주인수권부", "BW": "신주인수권부",
+    "영구채": "영구채", "신종자본증권": "영구채", "후순위채": "후순위", "후순위": "후순위",
+    "콜옵션부": "콜옵션부", "콜옵션": "콜옵션부", "풋옵션부": "풋옵션부", "풋옵션": "풋옵션부",
+    "물가연동": "물가연동", "물가채": "물가연동", "물가연동국고채": "물가연동", "STRIPS": "국고채 STRIPS", "분리채권": "국고채 STRIPS",
+    "코코본드": "은행 자본성증권(후순위·조건부자본·영구)", "조건부자본증권": "은행 자본성증권(후순위·조건부자본·영구)",
+}
+
+
+@lru_cache(maxsize=1)
+def _structure_predicates() -> dict[str, str]:
+    """구조표시 CASE 의 `WHEN 조건 THEN '라벨'` → {라벨: 조건}. 선언에서 읽는다(코드에 구조 판정식을 적지 않는다)."""
+    try:
+        case = _structure_case(_ev_ctx()) or ""
+    except Exception:                                        # noqa: BLE001
+        return {}
+    out = {}
+    for cond, label in re.findall(r"WHEN\s+(.*?)\s+THEN\s+'([^']+)'", case, re.S):
+        out[label] = cond.strip()
+    return out
+
+
+_BDKND_LIT = re.compile(r"(?:TRIM\(\s*)?\bbd_knd\s*\)?\s*(?:=\s*'([^']+)'|IN\s*\(([^)]*)\))", re.I)
+
+
+def fix_structure_kind_literal(sql: str) -> tuple[str, list[str]]:
+    """HCX 가 **구조 라벨**(전환사채·교환사채·영구채·후순위…)을 bd_knd 값으로 쓴 조건을 구조표시 CASE 의 판정식으로 바꾼다. (보정 SQL, 고친 라벨)
+
+    2026-09-06 서버 QA r1 — '전환사채(CB) 알려줘' 가 `bd_knd IN ('전환사채','교환사채')` 로 나가 값 검사 기각 → 재생성도 같은 값 → 오거절.
+    구조는 종류(bd_knd) 값이 아니라 종목명 패턴이다(규칙 구조표시). 값이 실재하는 bd_knd 리터럴은 손대지 않고, 라벨(별칭 포함)로
+    해석되는 리터럴만 CASE 의 조건으로 치환한다. 라벨과 실값이 섞인 IN 은 불개입(뜻이 갈린다)."""
+    if "domestic_bonds" not in sql:
+        return sql, []
+    preds = _structure_predicates()
+    if not preds:
+        return sql, []
+    real = {v.strip() for v in _column_values("domestic_bonds", "bd_knd")}
+    fixed = []
+
+    def _sub(m):
+        lits = [m.group(1)] if m.group(1) else [x.strip().strip("'") for x in m.group(2).split(",") if x.strip()]
+        labels = []
+        for lit in lits:
+            if lit in real:
+                return m.group(0)                            # 실값이 섞였다 — 불개입
+            lab = _STRUCT_ALIASES.get(lit) or _STRUCT_ALIASES.get(lit.upper())
+            if not lab or lab not in preds:
+                return m.group(0)
+            labels.append(lab)
+        fixed.extend(labels)
+        return "(" + " OR ".join(f"({preds[l]})" for l in labels) + ")"
+
+    new = _BDKND_LIT.sub(_sub, sql)
+    return (new, fixed) if fixed else (sql, [])
+
+
+_UNKNOWN_COL_ERR = re.compile(r"스키마에 없는 컬럼:\s*(.*)")
+
+
+def drop_unknown_select_columns(sql: str, err: str) -> tuple[str, list[str]]:
+    """검사기가 '스키마에 없는 컬럼' 으로 기각한 SQL 에서, 그 컬럼이 **SELECT 목록에만** 있으면 항목을 떼어 살린다. (보정 SQL, 뗀 컬럼)
+
+    2026-09-06 서버 QA r1 — '가장 안전한 회사채 3개 추천' 의 SELECT 에 펀드 컬럼 mtco_itm_no 하나가 섞여 통째로 기각 → 재생성(HCX 지연
+    60초) → 오거절. WHERE·ORDER·GROUP 에 없는 표시 컬럼은 떼어도 결과 행이 바뀌지 않는다. 조건절에 쓰였으면 불개입(재생성으로)."""
+    m = _UNKNOWN_COL_ERR.search(err or "")
+    if not m or "domestic_bonds" not in sql:
+        return sql, []
+    unknown = {c.lower() for c in re.findall(r"\b([A-Za-z_]\w*)\(", m.group(1))}
+    if not unknown:
+        return sql, []
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    sel = re.match(r"\s*SELECT\s+(DISTINCT\s+)?", sql, re.I)
+    if not frm or not sel:
+        return sql, []
+    rest = sql[frm.start():]
+    if any(re.search(rf"\b{re.escape(c)}\b", rest, re.I) for c in unknown):
+        return sql, []                                       # 조건·정렬에 쓰였다 — 떼면 뜻이 바뀐다
+    items = _split_select_items(sql[sel.end():frm.start()])
+    keep, dropped = [], []
+    for it in items:
+        cols_in = {c.lower() for c in re.findall(r"\b([A-Za-z_]\w*)\b", _SQL_LITERAL.sub("''", it))}
+        if cols_in & unknown:
+            dropped.append(it.strip())
+        else:
+            keep.append(it.strip())
+    if not dropped or not keep:
+        return sql, []
+    return sql[:sel.end()] + ", ".join(keep) + " " + rest, dropped
+
+
+_YIELD_LOW_Q = re.compile(r"(?:수익률|금리|이자)[이가은는]?\s*(?:가장|제일)?\s*(?:낮|적|작)|낮은\s*순|낮은\s*것|오름차순")
+_ORDER_YIELD_ASC = re.compile(r"(\bORDER\s+BY\s+)(MIN\()?\s*(applied_yield)\s*(\))?\s*(ASC\b|(?=,|\s+LIMIT|\s*$))", re.I)
+
+
+def flip_safety_sort(sql: str, question: str) -> tuple[str, bool]:
+    """안전 최상급 질의('리스크가 가장 낮은 채권 3개')의 ORDER BY applied_yield 오름차순을 내림차순으로. (보정 SQL, 고쳤는지)
+
+    2026-09-06 서버 QA r1 BND-S-002 — '16' 단독은 맞았는데 HCX 가 `ORDER BY MIN(applied_yield) ASC` 를 골라 물가채 0.557% 가 1위.
+    안전 버킷 안의 동점자 처리는 수익률 **높은 순**(위험등급방향 규칙 · #22 정답 수출입금융 6.231%). 질문이 수익률 낮은 쪽을
+    말하면 불개입."""
+    if "domestic_bonds" not in sql or not _TOP_SAFE_Q.search(question) or _YIELD_LOW_Q.search(question):
+        return sql, False
+    m = _ORDER_YIELD_ASC.search(sql)
+    if not m:
+        return sql, False
+    agg = "MAX(" if m.group(2) else ""
+    close = ")" if m.group(2) else ""
+    new = sql[:m.start()] + f"{m.group(1)}{agg}applied_yield{close} DESC" + sql[m.end():]
+    if m.group(2):
+        new = re.sub(r"MIN\(\s*applied_yield\s*\)(\s+AS\s+applied_yield)", r"MAX(applied_yield)\1", new, count=1, flags=re.I)
+    return new, True
+
+
 _KIND_NEG_Q = re.compile(r"제외|빼고|빼면|말고|아닌|않|없이|대신|만\s*(?:보여|알려|골라|추천)")
 
 
@@ -11367,6 +11481,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, grades_fixed = expand_grade_comparison(sql, q)
     if grades_fixed:
         step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, struct_fixed = fix_structure_kind_literal(sql)
+    if struct_fixed:
+        step("[Guard] 구조 라벨 교정 — bd_knd 값으로 쓴 구조 라벨(" + "·".join(struct_fixed) + ")을 규칙 구조표시의 종목명 판정식으로 "
+             "(2026-09-06 서버 QA r1: '전환사채(CB) 알려줘' 가 bd_knd IN ('전환사채','교환사채') 로 값 검사 기각 → 오거절)")
+    sql, safe_flip = flip_safety_sort(sql, q)
+    if safe_flip:
+        step("[Guard] 안전 최상급 정렬 방향 — ORDER BY applied_yield 오름차순을 내림차순으로 (2026-09-06 서버 QA r1 BND-S-002: "
+             "'리스크가 가장 낮은 채권 3개' 가 16 단독은 맞고 정렬만 ASC 라 물가채 0.557% 가 1위 — 안전 버킷의 동점자 처리는 높은 순)")
     sql, breadth_note = restore_kind_breadth(sql, q)
     if breadth_note:
         step(f"[Guard] 종류 좁힘 복원 — {breadth_note} (2026-09-06 밤 서버 실측 #91: '회사채' 를 HCX 가 일반회사채로 좁혀 모수 1,615 → 98, "
@@ -11887,6 +12009,17 @@ def answer_question(
 
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
+        if err and "스키마에 없는 컬럼" in err:
+            # 🆕 2026-09-06 QA r1 — 표시 컬럼 하나가 없는 컬럼이면 SELECT 에서 떼고 살린다(재생성 = HCX 지연 60초 + 같은 실수).
+            slim, dropped = drop_unknown_select_columns(sql, err)
+            if dropped:
+                err_s = _sql_precheck(slim, ctx, tables, cross, question=q)
+                if not err_s:
+                    step("[Guard] 없는 컬럼 제거 — SELECT 표시 항목 " + " · ".join(dropped) + " 을 뗐다(조건·정렬에 쓰이지 않아 결과 행 불변 · "
+                         "2026-09-06 서버 QA r1 BND-S-004: mtco_itm_no 하나로 통째 기각 → 재생성 76초 → 오거절)")
+                    sql, err = slim, None
+                    violations = guard.check_values(sql, ctx)
+                    result.sql = sql
         if not err and violations:
             # 🆕 2026-09-06 밤 #90·#94 — 주인 컬럼을 아는 위반은 결정층이 고친다. 재생성은 그다음(HCX 2차 실수·2.5~58초 방지).
             fixed_sql, fixed = fix_value_column(sql, violations)

@@ -581,3 +581,132 @@ def test_BK_why_answer_explains(ctx):
     assert pl._zero_coupon_reason_answer(fixed_sql, "이자를 안 주는 채권 알려줘") is None
     assert pl._zero_coupon_reason_answer("SELECT pd_nm FROM domestic_bonds LIMIT 5", X10_Q) is None
     assert pl._zero_coupon_reason_answer("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 5", X10_Q) is None
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BP — 재생성 절약 · HCX 429 기록 (docs/bonds_latency_analysis_2026-09-06.md)
+#   일반 규칙: ② 재생성이 정규화 후 같은 문장이거나 같은 값 위반을 되풀이하면 거기서 끝낸다(#87 형).
+#   ③ 위반이 발행사 컬럼뿐이고 주인 컬럼도 없으면 값이 진짜 없는 것이다 — 재생성 대신 즉시 되묻기.
+#   ④ 429 재시도·대기·응답 시간을 think_trace 의 [Plan] 마커로 남긴다(재시도 정책은 그대로 · 기록만).
+# ══════════════════════════════════════════════════════════════════════════════
+_BAD_KIND = "SELECT pd_no, pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) = '무지개채' AND mat_dt >= 20260824 LIMIT 5"
+_BAD_KIND2 = "SELECT pd_no, TRIM(pd_nm) FROM domestic_bonds WHERE TRIM(bd_knd) = '무지개채' AND mat_dt >= 20260824 LIMIT 10"
+_GOOD_KIND = "SELECT pd_no, TRIM(pd_nm) AS pd_nm FROM domestic_bonds WHERE TRIM(bd_knd) = '국고채권' AND mat_dt >= 20260824 LIMIT 5"
+_BAD_ISSUER = "SELECT pd_no, pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '삼성전자' AND mat_dt >= 20260824 LIMIT 5"
+
+
+def _P(sqls, calls):
+    """가짜 플래너 — 호출 순서대로 SQL 을 내고 호출 횟수를 기록한다(HCX 0회)."""
+    class P:
+        def plan_sql(self, q, g):
+            calls.append(q)
+            return sqls[min(len(calls) - 1, len(sqls) - 1)]
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "HCX 산문"
+    return P()
+
+
+def test_BP_norm_and_signature_helpers():
+    assert pl._norm_sql_text("SELECT  a\nFROM t ") == pl._norm_sql_text("select a from t")
+    assert pl._norm_sql_text("SELECT a FROM t LIMIT 5") != pl._norm_sql_text("SELECT a FROM t LIMIT 10")
+
+    class V:
+        def __init__(self, c, l):
+            self.column, self.literal = c, l
+    assert pl._violation_sig([V("a", "1"), V("b", "2")]) == pl._violation_sig([V("b", "2"), V("a", "1")])
+    assert pl._violation_sig([]) == () and pl._violation_sig(None) == ()
+
+
+def test_BP_same_regen_stops(ctx):
+    """② 재생성이 같은 문장을 되풀이하면 마커를 남기고 끝낸다 — 같은 가드·같은 검사를 두 번 태우지 않는다."""
+    calls = []
+    r = pl.answer_question("T-BP2", "무지개채 알려줘", planner=_P([_BAD_KIND], calls), ctx=ctx)
+    assert len(calls) == 2                       # 재생성 1회는 돈다(같은 문장인지는 받아 봐야 안다)
+    assert "재생성 무효" in r.think_trace and "#87 형" in r.think_trace
+    assert "확인할 수 없습니다" in r.answer
+
+
+def test_BP_same_violation_stops(ctx):
+    """② 문장이 달라도 같은 값 위반을 되풀이하면 끝낸다."""
+    calls = []
+    r = pl.answer_question("T-BP2b", "무지개채 알려줘", planner=_P([_BAD_KIND, _BAD_KIND2], calls), ctx=ctx)
+    assert len(calls) == 2 and "재생성 무효" in r.think_trace and "bd_knd='무지개채'" in r.think_trace
+
+
+def test_BP_regen_still_runs_when_it_changes(ctx):
+    """불개입 — 재생성이 고쳐 오면 종전대로 그 SQL 을 쓴다(BP② 가 재생성 자체를 막으면 안 된다)."""
+    calls = []
+    r = pl.answer_question("T-BP2c", "무지개채 알려줘", planner=_P([_BAD_KIND, _GOOD_KIND], calls), ctx=ctx)
+    assert len(calls) == 2 and "재생성 무효" not in r.think_trace
+    assert "국고채권" in r.sql and "무지개채" not in r.sql and r.retrieved_context.strip()
+
+
+def test_BP_issuer_absent_skips_regen(ctx):
+    """③ 발행사 값 부재는 재생성 없이 즉시 되묻기 — HCX 1회. 문구는 종전(재생성 후 실패) 경로와 같다."""
+    calls = []
+    r = pl.answer_question("T-BP3", "삼성전자가 발행한 채권 알려줘", planner=_P([_BAD_ISSUER], calls), ctx=ctx)
+    assert len(calls) == 1                                              # 재생성 생략
+    assert "발행사 값 부재 확정" in r.think_trace and "재생성 1회" not in r.think_trace
+    assert "확인할 수 없습니다" in r.answer and "말씀하신 건가요" in r.answer and "삼성카드" in r.answer
+
+
+def test_BP_non_issuer_violation_still_regenerates(ctx):
+    """③ 의 경계 — 발행사 밖의 위반은 종전대로 재생성을 탄다(owner '' 전체로 넓히면 D-037 의 등급 재생성을 잃는다)."""
+    calls = []
+    pl.answer_question("T-BP3b", "무지개채 알려줘", planner=_P([_BAD_KIND, _GOOD_KIND], calls), ctx=ctx)
+    assert len(calls) == 2
+    mixed = ("SELECT pd_no, pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '삼성전자' "
+             "AND TRIM(bd_knd) = '무지개채' AND mat_dt >= 20260824 LIMIT 5")
+    calls2 = []
+    r2 = pl.answer_question("T-BP3c", "삼성전자가 발행한 무지개채", planner=_P([mixed, _GOOD_KIND], calls2), ctx=ctx)
+    assert len(calls2) == 2 and "발행사 값 부재 확정" not in r2.think_trace     # 다른 위반이 섞이면 재생성한다
+
+
+def test_BP_hcx_call_note_recorded(ctx):
+    """④ 플래너가 통계를 주면 [Plan] 마커로 찍고, 안 주면(옛 플래너·가짜 플래너) 침묵한다."""
+    assert pl._hcx_call_note(object()) is None
+
+    class Stat:
+        def __init__(self, retries):
+            self._r = retries
+
+        def plan_sql(self, q, g):
+            return "SELECT pd_no, TRIM(pd_nm) AS pd_nm FROM domestic_bonds WHERE mat_dt >= 20260824 LIMIT 3"
+
+        def compose_answer(self, q, rows, answer_rules=""):
+            return "ok"
+
+        def last_call_stats(self):
+            return {"retries": self._r, "wait_s": 20.0 * self._r, "latency_s": 1.4}
+    r = pl.answer_question("T-BP4", "채권 3개만 보여줘", planner=Stat(2), ctx=ctx)
+    assert "[Plan] HCX 호출 — 응답 1.4s · 429 재시도 2회 · 대기 40s" in r.think_trace
+    assert "분당 토큰 한도" in r.think_trace                     # 꼬리는 재시도가 있을 때만
+    note = pl._hcx_call_note(Stat(0))
+    assert note and "재시도 0회 · 대기 0s" in note and "분당 토큰 한도" not in note
+
+
+def test_BP_client_records_retry_stats(monkeypatch):
+    """④ 클라이언트가 429 대기·재시도를 기록한다 — 정책(최대 3회·20초)은 그대로. 가짜 httpx 응답으로."""
+    import src.hcx.client as C
+
+    class Resp:
+        def __init__(self, code):
+            self.status_code, self.headers, self.text = code, {}, "{}"
+
+        def json(self):
+            return {"status": {"code": "20000"},
+                    "result": {"message": {"content": "SELECT 1"}, "usage": {}, "finishReason": "stop"}}
+
+    seq = [Resp(429), Resp(429), Resp(200)]
+
+    class Http:
+        def post(self, *a, **k):
+            return seq.pop(0)
+    slept = []
+    monkeypatch.setattr(C.time, "sleep", lambda s: slept.append(s))
+    cl = C.HCXClient(C.HCXConfig(model="X", max_retries=3, retry_wait_s=20.0), api_key="k", client=Http())
+    res = cl.complete("sys", "user")
+    assert res.retries == 2 and res.wait_s == 40.0 and slept == [20.0, 20.0]
+    assert cl.last_retries == 2 and cl.last_wait_s == 40.0 and cl.last_latency_s >= 0

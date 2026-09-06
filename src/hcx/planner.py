@@ -161,11 +161,27 @@ class HCXPlanner:
     ):
         self._sql = sql_client or HCXClient(SQL_CONFIG)
         self._answer = answer_client or HCXClient(ANSWER_CONFIG)
+        self._last_stats: dict | None = None      # 2026-09-06 QA r1 BP④ — 마지막 HCX 호출의 재시도·대기·응답 시간
+
+    def last_call_stats(self) -> dict | None:
+        """마지막 HCX 호출의 (retries · wait_s · latency_s). pipeline 이 think_trace 의 [Plan] 마커로 찍는다.
+
+        429 대기는 실패가 아니라 잠드는 것이라 로그에 아무 흔적이 없었다 — 60초 문항의 시간이 어디서 갔는지
+        서버 trace 만으로 확정할 수 없었다(2026-09-06 응답시간 분석 §2). 정책은 그대로 두고 기록만 올린다."""
+        return self._last_stats
+
+    def _record(self, client: HCXClient) -> None:
+        self._last_stats = {"retries": getattr(client, "last_retries", 0),
+                            "wait_s": getattr(client, "last_wait_s", 0.0),
+                            "latency_s": getattr(client, "last_latency_s", 0.0)}
 
     # -- Planner 프로토콜 -------------------------------------------------
     def plan_sql(self, question: str, grounding: str) -> str:
         user = f"{grounding}\n\n# 질문\n{question}\n\n# 출력\nSQL 한 문장 (되묻기면 CLARIFY: 문장 · 답변불가면 REFUSE: 사유):"
-        text = self._sql.complete(_SQL_SYSTEM, user).text
+        try:
+            text = self._sql.complete(_SQL_SYSTEM, user).text
+        finally:
+            self._record(self._sql)
         clarify = extract_clarify(text)
         if clarify:
             return clarify                      # pipeline 이 CLARIFY_PREFIX 를 보고 되묻기로 처리한다
@@ -177,7 +193,10 @@ class HCXPlanner:
     def compose_answer(self, question: str, rows: str, answer_rules: str = "") -> str:
         rules = f"# 답변 규칙 (ontology/*.yaml answer_rules)\n{answer_rules}\n\n" if answer_rules else ""
         user = f"# 질문\n{question}\n\n{rules}# 조회 결과 (첫 줄은 컬럼명)\n{rows}\n\n# 답변"
-        return self._answer.complete(_ANSWER_SYSTEM, user).text.strip()
+        try:
+            return self._answer.complete(_ANSWER_SYSTEM, user).text.strip()
+        finally:
+            self._record(self._answer)
 
     def close(self) -> None:
         self._sql.close()

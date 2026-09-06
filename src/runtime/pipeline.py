@@ -9923,6 +9923,35 @@ def _violated_issuer(violations) -> str | None:
     return None
 
 
+def _norm_sql_text(sql: str) -> str:
+    """SQL 동일성 비교용 정규화 — 공백 접기 + 대소문자 무시. 재생성이 '같은 문장' 을 냈는지 판정한다(BP②)."""
+    return re.sub(r"\s+", " ", sql or "").strip().casefold()
+
+
+def _violation_sig(violations) -> tuple:
+    """값 위반의 서명 — (컬럼, 리터럴) 집합. 재생성이 '같은 위반' 을 냈는지 판정한다(BP②)."""
+    return tuple(sorted((getattr(v, "column", ""), getattr(v, "literal", "")) for v in violations or ()))
+
+
+def _hcx_call_note(planner) -> str | None:
+    """마지막 HCX 호출의 응답·429 재시도·대기 — 플래너가 기록을 주면 한 줄로. 없으면 None.
+
+    2026-09-06 QA r1 BP④ — 60초를 넘긴 9문항의 시간이 어디로 갔는지 trace 로 확정할 수 없었다:
+    429 대기는 예외도 오류도 아니라 그냥 잠든다. 정책(재시도 3회·20초)은 그대로 두고 **기록만** 올린다."""
+    fn = getattr(planner, "last_call_stats", None)
+    if not callable(fn):
+        return None
+    try:
+        st = fn()
+    except Exception:                                        # noqa: BLE001
+        return None
+    if not st:
+        return None
+    r, w, lat = int(st.get("retries") or 0), float(st.get("wait_s") or 0.0), float(st.get("latency_s") or 0.0)
+    note = f"[Plan] HCX 호출 — 응답 {lat:.1f}s · 429 재시도 {r}회 · 대기 {w:.0f}s"
+    return note + (" (분당 토큰 한도에 걸려 창이 리셋될 때까지 잠들었다 — 이 문항의 시간은 대부분 여기다)" if r else "")
+
+
 def _suggest_similar_issuers(literal: str | None) -> list[str]:
     """발행사 리터럴이 DB 에 없을 때 같은 어두(앞 2글자)의 실제 발행사를 종목수 순으로 최대 4곳 — 되묻기 재료.
 
@@ -12412,6 +12441,9 @@ def answer_question(
              "HCX 계획 없이 마스터 요약 SQL 로 간다 (2026-09-06 OFFICIAL-002 재점검: HCX 환각 컬럼 기각 → 거절 · 산문 1/3 거절)")
     else:
         raw_sql = planner.plan_sql(q, grounding)
+        _hn = _hcx_call_note(planner)
+        if _hn:
+            step(_hn)
     result.raw_sql = raw_sql          # 가드 적용 전 원문 — 섀도 재생용(로그 전용)
     holdings_note = None
     if not raw_sql.strip().upper().startswith((REFUSE_PREFIX, CLARIFY_PREFIX)):
@@ -12556,6 +12588,9 @@ def answer_question(
                     "- ORDER BY 는 **위치 번호가 아니라 컬럼명·별칭**으로 쓴다(열 수가 바뀌어도 안 깨진다).")
         step(f"[Plan] 재생성 1회 — 문제를 근거문서에 붙여 다시 요청 (누적 {elapsed:.1f}s)")
         raw2 = planner.plan_sql(q, feedback)
+        _hn = _hcx_call_note(planner)
+        if _hn:
+            step(_hn)
         result.raw_sql = raw2         # 재생성이 돌면 그 원문이 마지막 플래너 산출이다
         if raw2.strip().upper().startswith(REFUSE_PREFIX):
             return raw2.strip()[len(REFUSE_PREFIX):].strip()
@@ -12567,7 +12602,17 @@ def answer_question(
         result.sql = sql2
         step("[Plan] 재생성 SQL — 아래 문장을 실행합니다\n" + sql2)
         err2 = _sql_precheck(sql2, ctx, tables, cross, question=q)
-        return sql2, err2, ([] if err2 else guard.check_values(sql2, ctx))
+        viol2 = [] if err2 else guard.check_values(sql2, ctx)
+        # 🆕 2026-09-06 QA r1 BP② — 재생성이 **정규화 후 같은 문장**이거나 **같은 위반**을 되풀이하면 거기서 끝낸다.
+        #    같은 문장에 같은 가드·같은 검사를 두 번 태워도 결과는 같다(#87 형). 판정을 남겨 다음 실측에서 세게 한다.
+        if _norm_sql_text(sql2) == _norm_sql_text(sql):
+            step("[Plan] 재생성 무효 — 정규화 후 직전 SQL 과 같은 문장이다(#87 형). 같은 검사를 되풀이하지 않고 종료한다")
+            return None
+        if violations and viol2 and _violation_sig(viol2) == _violation_sig(violations):
+            step("[Plan] 재생성 무효 — 직전과 같은 값 위반을 되풀이했다(#87 형): "
+                 + " · ".join(f"{c}='{l}'" for c, l in _violation_sig(viol2)))
+            return None
+        return sql2, err2, viol2
 
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
@@ -12606,6 +12651,17 @@ def answer_question(
         problem = err or "; ".join(str(v) for v in violations)
     if err or violations:
         step(f"[Guard] {'SQL 기각' if err else '값 검사 실패'} — {problem}")
+        # 🆕 2026-09-06 QA r1 BP③ — 위반이 **발행사 컬럼뿐**이면 값이 진짜 없는 것이다(발행사는 DB 에 있거나 없거나다).
+        #    재생성해도 HCX 가 없는 발행사를 만들어 낼 수는 없고 50~76초만 든다 — 바로 되묻는다(#87).
+        #    🔴 owner 가 빈 위반 전체로 넓히지 않는다: 등급 오기('AA')처럼 재생성이 고칠 수 있는 위반을 잃는다(D-037).
+        if not err and violations and all(getattr(v, "column", "") == "pd_pbcm" and not getattr(v, "owner", "")
+                                          for v in violations):
+            step("[Decision] 발행사 값 부재 확정 — 재생성 생략(HCX 1회 절약). 같은 이름의 발행사가 DB 에 없으므로 "
+                 "후보를 되묻는다 (2026-09-06 응답시간 분석: 재생성이 붙은 문항이 60초를 넘는다)")
+            result.think_trace = "\n".join(trace)
+            result.answer = ("요청하신 조건의 값이 데이터에 없어 확인할 수 없습니다."
+                             + _issuer_clarify_text(_violated_issuer(violations)))
+            return result
         rg = _regen(problem)
         if isinstance(rg, str):
             step(f"[Refuse] 재생성에서 답변불가 선언 · 사유: {rg}")

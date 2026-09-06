@@ -689,6 +689,40 @@ def is_issuance_time_q(question: str) -> bool:
     return bool(gate.resolve_relative_window(question) or gate.resolve_past_window(question)
                 or _YEAR_Q.search(question))
 _WHERE_BODY = re.compile(r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\bhaving\b|\border\s+by\b|\blimit\b|$)", re.I | re.S)
+
+
+def _flatten_and_groups(body: str) -> str:
+    """WHERE 본문에서 **AND 만으로 이어진 괄호 묶음**의 괄호를 뗀다 — `a AND (b AND c)` → `a AND b AND c`.
+
+    2026-09-06 밤 #94 — enforce 슬롯(BONDPOP)이 원 WHERE 를 괄호로 감싸므로 그 뒤에 도는 가드는 `(회사채 AND isu_dt …)` 를
+    '다른 컬럼과 섞인 절' 하나로 보고 물러났다. 함수 괄호(TRIM(·)·IN (·))와 OR 를 품은 묶음은 그대로 둔다 — 뜻이 바뀐다."""
+    out = body
+    for _ in range(6):                                          # 중첩 깊이 상한
+        changed = False
+        i = 0
+        while i < len(out):
+            if out[i] == "(":
+                prev = out[:i].rstrip()
+                if prev == "" or re.search(r"(?:\bAND|\bWHERE|\()\s*$", prev, re.I):
+                    depth, j = 0, i
+                    while j < len(out):
+                        if out[j] == "(":
+                            depth += 1
+                        elif out[j] == ")":
+                            depth -= 1
+                            if depth == 0:
+                                break
+                        j += 1
+                    if j < len(out):
+                        inner = out[i + 1:j]
+                        if not re.search(r"\bOR\b|\bNOT\b", _SQL_LITERAL.sub("''", inner), re.I):
+                            out = out[:i] + " " + inner + " " + out[j + 1:]
+                            changed = True
+                            continue
+            i += 1
+        if not changed:
+            break
+    return re.sub(r"\s+", " ", out).strip()
 _SQL_NOW = re.compile(r"'now'|\bCURRENT_DATE\b|\bCURRENT_TIMESTAMP\b|\bCURRENT_TIME\b", re.I)
 
 
@@ -745,6 +779,14 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
     issuance = is_issuance_time_q(question)
     if windows is None or direction == "past":
         windows = gate.resolve_relative_window(question, direction)
+    if not windows and issuance:
+        # 🆕 2026-09-06 밤 #94 — '2024년에 발행된 회사채 평균 표면금리': 발행 시점 질의로 판정되지만(연도 표기) 확정표는
+        #    상대 낱말만 풀어 창이 비었고, 가드가 물러난 사이 재생성 HCX 가 isu_dt 를 mat_dt <= 20241231 로 갈아끼웠다(0행 → 오거절).
+        #    절대 연도 하나면 그 해 1/1~12/31 을 발행 창으로 세운다(만기 쪽 align_maturity_year 와 대칭). 연도가 둘이면 불개입.
+        years = {int(y) for y in re.findall(r"(?<!\d)((?:19|20)\d{2})\s*년", question)}
+        if len(years) == 1:
+            y = years.pop()
+            windows = [(f"{y}년 발행", y * 10000 + 101, y * 10000 + 1231)]
     if not windows or len({(lo, hi) for _, lo, hi in windows}) != 1:
         return sql, None
     axis = "isu_dt" if issuance else "mat_dt"
@@ -759,7 +801,7 @@ def enforce_relative_window(sql: str, question: str, windows: list[tuple[str, in
     if axis == "isu_dt":
         want += " AND isu_dt > 0"                                # 규칙 발행시점축 — 0·NULL 26행은 미수록
     m_w = _WHERE_BODY.search(sql)
-    body = m_w.group(1) if m_w else ""
+    body = _flatten_and_groups(m_w.group(1)) if m_w else ""        # 🔄 #94 — 슬롯이 감싼 괄호를 펴서 절 단위로 본다
     fold = "\x01"
     folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
     conjuncts = [c.replace(fold, " AND ").strip() for c in guard.split_conjuncts(folded)]
@@ -3929,6 +3971,7 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         if len(parts) != len(cols):
             return None
         recs.append(dict(zip(cols, parts)))
+    gov_ids = _gov_bond_ids([r.get("pd_no") for r in recs if "crd_grd" in cols and not r.get("crd_grd") and r.get("pd_no")])
     # 행 앞머리에 오는 값은 정렬 축이다 — SELECT 에 applied_yield 와 srfc_irt 가 함께 오면 고정 순서상
     # 수익률이 앞에 서서 '표면금리 높은 순' 머리줄과 어긋난다 (2026-09-04). ORDER BY 컬럼을 먼저 본다.
     osort = re.search(r"\bORDER\s+BY\s+(?:MAX|MIN)?\(?\s*([A-Za-z_]\w*)", sql, re.I)
@@ -3996,7 +4039,9 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
             if c != ycol and c in cols and r.get(c):
                 bits.append(f"{_BOND_AXIS_KO.get(c, (c,))[0]} {r[c]}%")
         if "crd_grd" in cols:
-            bits.append(f"신용등급 {r['crd_grd']}" if r.get("crd_grd") else "신용등급 미수록")
+            # 🔄 2026-09-06 밤 #93 — 국공채는 '미수록' 이 아니라 **미부여**다(answer_rules). 조립기가 선언 문구를 안 지켰다.
+            bits.append(f"신용등급 {r['crd_grd']}" if r.get("crd_grd")
+                        else ("신용등급 미부여(국공채)" if r.get("pd_no") in gov_ids else "신용등급 미수록"))
         if "pd_risk_nm" in cols and r.get("pd_risk_nm"):
             bits.append(f"위험등급 {r['pd_risk_nm']}")
         if r.get("pd_risk_gcd") in ("12", "13"):
@@ -4064,7 +4109,7 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     #    6% 초과 일반 문구만으로는 '728% 를 받는다' 로 읽힌다. 행에 C0 가 있을 때만.
     if any((r.get("crd_grd") or "").strip() == "C0" for r in recs):
         tail.append(C0_YIELD_NOTE)
-    for note in bond_answer_notes(sql, "\n".join(out)):          # ESG 표기 기준 · 발행사명 기준 · 무등급 제외 — 단일 통로(P7)
+    for note in bond_answer_notes(sql, "\n".join(out), question):          # ESG 표기 기준 · 발행사명 기준 · 무등급 제외 — 단일 통로(P7)
         if note not in tail:
             tail.append(note)
     if tail:
@@ -4326,6 +4371,22 @@ def _explicit_limit_hit(sql: str, n: int) -> bool:
         return False
     k = int(m.group(1))
     return 0 < k < MAX_ROWS and n >= k
+
+
+def _gov_bond_ids(pd_nos: list) -> set:
+    """등급이 빈 행 중 대분류 국공채인 종목 — '미부여' 표기 판정(#93). 조회 실패면 빈 집합(종전 문구)."""
+    ids = [str(p) for p in pd_nos if p]
+    if not ids:
+        return set()
+    con = connect_readonly()
+    try:
+        q = ",".join("?" * len(ids))
+        rows = con.execute(f"SELECT DISTINCT pd_no FROM domestic_bonds WHERE pd_no IN ({q}) AND TRIM(std_pd_mcls_nm)='국공채'", ids).fetchall()
+        return {str(r[0]) for r in rows}
+    except sqlite3.Error:
+        return set()
+    finally:
+        con.close()
 
 
 def _bond_coverage_counts(sql: str) -> tuple[int, int] | None:
@@ -7368,6 +7429,89 @@ def _question_kind_filters(question: str) -> set[str]:
     return found
 
 
+_THRESH_WORD = re.compile(
+    r"(?P<num>\d+(?:\.\d+)?)\s*(?:%|퍼센트|프로|년|일|억\s*원?|만\s*원?|원)?\s*(?:을|를|이|가|은|는|짜리)?\s*"
+    r"(?P<op>넘|초과|보다\s*(?:높|큰|많|위)|이상|이하|미만|아래|밑|보다\s*(?:낮|작|적))"
+    r"(?P<neg>\s*(?:지\s*않|지\s*못|않|안\s|는\s*안))?")
+_THRESH_OP = {"넘": ">", "초과": ">", "이상": ">=", "이하": "<=", "미만": "<", "아래": "<", "밑": "<"}
+_NUM_PRED_INLINE = re.compile(r"\b(?<![.'])([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*(\d+(?:\.\d+)?)(?![\d.])")
+
+
+def _word_op(word: str) -> str | None:
+    w = re.sub(r"\s+", "", word)
+    if w.startswith("보다"):
+        return ">" if re.search(r"높|큰|많|위", w) else "<"
+    for k, op in _THRESH_OP.items():
+        if w.startswith(k):
+            return op
+    return None
+
+
+def align_threshold_operator(sql: str, question: str) -> tuple[str, list[str]]:
+    """질문의 경계 어휘(넘는·초과 → > · 이상 → >= · 미만 → < · 이하 → <=)와 SQL 의 수치 비교 연산자를 맞춘다. (보정 SQL, 고친 절)
+
+    2026-09-06 밤 서버 실측 #92 — 'A등급 이상 회사채 중 표면금리 5% 넘는 채권 몇 종목' 이 `srfc_irt >= 5` 로 나가 615(정답 596 —
+    5.000% 정확히 19종목이 섞임). 규칙 원문에 '초과' 라 적혀 있어도 HCX 는 부등호를 고르지 않는다.
+    범위: domestic_bonds 단일 FROM · WHERE 본문의 수치 비교(괄호 안 포함) · 날짜 컬럼(*_dt)·구매가능 리터럴 제외 · SQL 리터럴과
+    **같은 숫자**가 질문에 한 번만 나오고 그 바로 뒤에 경계 어휘가 있을 때만 · 부정('넘지 않는'·'안 넘는')은 불개입 ·
+    방향이 뒤집히면(질문 이상 vs SQL <) 의도 불명이라 불개입."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, []
+    m_w = _WHERE_BODY.search(sql)
+    if not m_w:
+        return sql, []
+    body = m_w.group(1)
+    fixed = []
+
+    def _sub(m):
+        col, op, num = m.group(1), m.group(2), m.group(3)
+        if col.lower().endswith("_dt"):
+            return m.group(0)
+        hits = [h for h in _THRESH_WORD.finditer(question) if float(h.group("num")) == float(num)]
+        if len(hits) != 1 or hits[0].group("neg"):
+            return m.group(0)
+        want = _word_op(hits[0].group("op"))
+        if not want or want == op or want[0] != op[0]:
+            return m.group(0)
+        fixed.append(f"{col} {op} {num} → {col} {want} {num} ('{hits[0].group('op').strip()}')")
+        return f"{col} {want} {num}"
+
+    new_body = _NUM_PRED_INLINE.sub(_sub, body)
+    if not fixed:
+        return sql, []
+    return sql[:m_w.start(1)] + new_body + sql[m_w.end(1):], fixed
+
+
+_KIND_NEG_Q = re.compile(r"제외|빼고|빼면|말고|아닌|않|없이|대신|만\s*(?:보여|알려|골라|추천)")
+
+
+def restore_kind_breadth(sql: str, question: str) -> tuple[str, str | None]:
+    """질문이 대분류 낱말(회사채·국공채·특수채)만 말했는데 SQL 이 그 낱말을 품은 **하위 종류 하나**로 좁혔으면 대분류 확정식으로 되돌린다.
+
+    2026-09-06 밤 서버 실측 #91 — '최근 6개월 안에 발행된 회사채 중 신용등급 AA 이상 표면금리 높은 순 5개' 가
+    `TRIM(bd_knd) = '일반회사채'` 로 나가 모수 98(정답 1,615) · 1위 한국남동발전 4.957%(정답 하나은행 콜옵션부 6.8%).
+    리드 결정(2026-08-31 #18): 회사채 = 대분류(std_pd_mcls_nm). ensure_kind_filter 는 종류 컬럼이 이미 있으면 물러나므로
+    좁힘은 못 잡았다. 불개입: 질문에 하위 종류 낱말('일반회사채')이나 배제·한정 낱말이 있을 때 · IN 목록이 둘 이상일 때."""
+    if "domestic_bonds" not in sql or _KIND_NEG_Q.search(question):
+        return sql, None
+    kinds, _ = _kind_filters()
+    mcls = [(tok, flt) for tok, flt in kinds if "std_pd_mcls_nm" in flt and tok in question]
+    if len(mcls) != 1:
+        return sql, None
+    tok, flt = mcls[0]
+    if any(t != tok and tok in t and t in question for t, _f in kinds):     # '일반회사채' 를 직접 말했다
+        return sql, None
+    pat = re.compile(r"(?:TRIM\(\s*)?\bbd_knd\s*\)?\s*(?:=\s*'([^']+)'|IN\s*\(\s*'([^']+)'\s*\))", re.I)
+    m = pat.search(sql)
+    if not m:
+        return sql, None
+    narrowed = m.group(1) or m.group(2)
+    if tok not in narrowed or narrowed == tok:
+        return sql, None
+    new = sql[:m.start()] + flt + sql[m.end():]
+    return new, f"bd_knd='{narrowed}' → {flt} (질문은 '{tok}' — 대분류)"
+
+
 def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
     """질문의 종류 낱말이 SQL 에 전혀 필터되지 않았으면 동의어 확정식을 주입. (보정된 SQL, 보정했는지)
 
@@ -9194,6 +9338,100 @@ def _issuer_clarify_text(literal: str | None) -> str:
 _BOND_COUNT_SUBJECT = re.compile(r"^(.*?[가-힣)])\s*(?:은|는|이|가)\s*(?:전부|총|모두|다|현재|지금)?\s*몇\s*(?:개|종목|건)")
 
 
+def fix_value_column(sql: str, violations) -> tuple[str, list[str]]:
+    """값 검사 위반 중 '주인 컬럼이 다른 것' 을 결정층이 직접 고친다 — 등호·단일 IN 의 컬럼을 주인으로. (보정 SQL, 고친 목록)
+
+    2026-09-06 밤 서버 실측 #90·#94 — HCX 가 `bd_intp_tcd='고정금리'`(주인 bd_inrt_tcd) · `bd_knd='회사채'`(주인 std_pd_mcls_nm) 를
+    썼다. 값 검사는 주인 컬럼까지 알아내고도 **재생성**으로 넘겼고, 재생성은 2.5~58초가 들며 #94 에서는 발행일 축을 만기로
+    갈아끼운 새 오답을 만들었다. 알아낸 것은 고치고, 재생성은 그다음이다.
+    범위: 주인이 하나(owner_counts 비었음)이거나 압도적(첫째가 둘째의 3배 이상)일 때만 · 등호와 원소 하나짜리 IN 만 ·
+    LIKE 는 불개입 · 고친 뒤 값 검사를 다시 통과해야 채택(호출자)."""
+    fixed = []
+    for v in violations or []:
+        owner = getattr(v, "owner", "")
+        counts = tuple(getattr(v, "owner_counts", ()) or ())
+        if not owner or (len(counts) >= 2 and counts[0][1] < 3 * counts[1][1]):
+            continue
+        lit = re.escape(v.literal)
+        pat = re.compile(rf"(?:TRIM\(\s*)?(?:\w+\.)?\b{re.escape(v.column)}\b\s*\)?\s*(=\s*'{lit}'|IN\s*\(\s*'{lit}'\s*\))", re.I)
+        new, k = pat.subn(lambda m: f"TRIM({owner}) {m.group(1)}", sql)
+        if k:
+            sql = new
+            fixed.append(f"{v.column}='{v.literal}' → {owner}")
+    return sql, fixed
+
+
+def _bond_avg_answer(sql: str, rows: str, n: int, question: str) -> str | None:
+    """domestic_bonds 단일 AVG 1행의 답변을 기계 조립한다 — 값·모수(종목·행)·계산 기준. 아니면 None. HCX 0회.
+
+    2026-09-06 밤 서버 실측 #94 — AVG 한 줄을 HCX 산문이 옮기다 NULL 을 '미수록' 으로 거절했다(58초). 목록·개수·분포와 같은 결론:
+    집계 해석은 LLM 에 맡기지 않는다. NULL 이면 '조건에 맞는 채권이 없다' 고 말하고, 값이 있으면 모수를 함께 적는다.
+    발동: ① domestic_bonds 단독 ② SELECT 항이 하나이고 AVG(...) ③ 1행 1열 ④ GROUP BY·JOIN·UNION·서브쿼리 없음."""
+    if n != 1 or "domestic_bonds" not in sql or re.search(r"\b(?:join|union|group\s+by)\b|\(\s*select\b", sql, re.I):
+        return None
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    sel = re.match(r"\s*SELECT\s+(?:DISTINCT\s+)?", sql, re.I)
+    if not frm or not sel:
+        return None
+    items = _split_select_items(sql[sel.end():frm.start()])
+    if len(items) != 1:
+        return None
+    m = re.search(r"AVG\(\s*(?:\w+\.)?([A-Za-z_]\w*)\s*\)", items[0], re.I)
+    if not m:
+        return None
+    col = m.group(1).lower()
+    lines = rows.splitlines()
+    if len(lines) == 1:                                       # NULL 한 칸은 _cell 이 '' 로 옮겨 빈 줄이 잘린다
+        raw = ""
+    elif len(lines) == 2:
+        raw = lines[1].split(" | ")[0].strip()
+    else:
+        return None
+    label = _BOND_AXIS_KO.get(col, (_BOND_COL_KO.get(col, col),))[0]
+    basis = f"기준일 {gate.DATA_CUTOFF}"
+    win = _effective_mat_window(sql)
+    if win:
+        basis = f"만기 {win} · 질문 시점 {gate.DATA_CUTOFF} 기준"
+    iw = re.search(r"isu_dt\s+BETWEEN\s+(\d{8})\s+AND\s+(\d{8})", sql, re.I)
+    if iw:
+        basis += f" · 발행일 {_fmt_ymd(iw.group(1))}~{_fmt_ymd(iw.group(2))}"
+    if raw in ("", "None"):
+        return f"조건에 해당하는 채권이 없어 {label} 평균을 낼 수 없습니다 ({basis})."
+    try:
+        val = float(raw)
+    except ValueError:
+        return None
+    cov = _bond_coverage_counts(sql)
+    unit = "%" if col in _BOND_YIELD_COLS or col in ("srfc_irt",) else ""
+    head = (f"조건에 해당하는 채권 {cov[1]:,}종목({cov[0]:,}행)의 평균 {label}은 {val:.2f}{unit}입니다 ({basis})."
+            if cov else f"조건에 해당하는 채권의 평균 {label}은 {val:.2f}{unit}입니다 ({basis}).")
+    tail = []
+    if cov and cov[0] != cov[1]:
+        tail.append("장내·장외로 두 번 수록된 종목은 행 단위로 평균했습니다.")
+    if col == "srfc_irt":
+        zero = _zero_rate_count(sql)
+        if zero:
+            tail.append(f"표면금리가 0으로 수록된 할인채 등 {zero:,}행이 평균에 포함되어 있습니다.")
+    return head + ((" " + " ".join(tail)) if tail else "")
+
+
+def _zero_rate_count(sql: str) -> int | None:
+    """AVG 모수 안의 srfc_irt = 0 행수 — 조립기가 평균의 성격을 밝히는 데 쓴다. 실패하면 None."""
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    con = connect_readonly()
+    try:
+        row = con.execute(f"SELECT COUNT(*) FROM {m.group(1).strip()} AND COALESCE(srfc_irt, 0) = 0"
+                          if re.search(r"\bWHERE\b", m.group(1), re.I) else
+                          f"SELECT COUNT(*) FROM {m.group(1).strip()} WHERE COALESCE(srfc_irt, 0) = 0").fetchone()
+        return int(row[0])
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
 def _bond_count_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     """domestic_bonds 단일 COUNT(1행 1열, 값 > 0)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
 
@@ -9496,7 +9734,10 @@ def _bond_risk_profile(r: dict, cols: list, spec: dict) -> str:
     except ValueError:
         dur_v = None
     if dur_v is not None and dur_v not in (0.0, 99.0):
-        parts.append(f"금리위험(듀레이션) {dur_v:g}년" + (f" · 잔존 {rem}일" if rem else ""))
+        rem_txt = str(rem) if rem else ""
+        if rem_txt and "일" not in rem_txt:                    # 🔄 #90 — _cell 이 이미 '10296일(약 28.2년)' 로 만든 값에 '일' 이 또 붙었다
+            rem_txt += "일"
+        parts.append(f"금리위험(듀레이션) {dur_v:g}년" + (f" · 잔존 {rem_txt}" if rem_txt else ""))
     elif dur_v in (0.0, 99.0):
         parts.append("듀레이션 미산출")
     struct = r.get("구조", "")
@@ -9523,7 +9764,13 @@ _ESG_LIKE = re.compile(r"pd_nm\s+LIKE\s+'%[(/][녹사지][)/]%'")
 ESG_LABEL_NOTE = "ESG 채권 여부는 종목명의 표기(녹=녹색채권 · 사=사회적채권 · 지=지속가능채권) 기준입니다."
 
 
-def bond_answer_notes(sql: str, answer: str) -> list[str]:
+SALES_LOT_NOTE = ("세후수익률·매수수익률·매매단가는 당사 판매 조건이 수록된 종목(장외 판매 LOT)에만 있어 그 종목 기준입니다. "
+                  "같은 종목에 LOT 이 여럿이면 가장 유리한 LOT 값입니다.")
+_SALES_COLS = re.compile(r"\b(?:after_tax_yield|buy_yield|trade_price|depo_equiv_yield_154|depo_equiv_yield_495)\b", re.I)
+_AFFILIATE_Q = re.compile(r"자회사|계열사|계열|그룹\s*사|모회사|지주사|관계사")
+
+
+def bond_answer_notes(sql: str, answer: str, question: str = "") -> list[str]:
     """가드가 만든 고지 의무 중 답변 본문에 아직 없는 것 — 목록 조립·HCX 산문 어느 경로든 끝에 덧붙인다.
 
     2026-09-05 난이도 상 #2·#5 실측: '발행사명 기준' 은 목록 조립 머리줄에만 있어 HCX 산문 경로에서 사라졌고, ESG 라벨의
@@ -9542,6 +9789,14 @@ def bond_answer_notes(sql: str, answer: str) -> list[str]:
         note = _slot_answer_notes().get(mark)
         if note and note not in answer and note not in notes:
             notes.append(note)
+    # 🆕 2026-09-06 밤 #93 — 판매행 축(세후·매수수익률)은 634행/326종목에만 값이 있다(규칙 판매행). 모수를 밝힌다.
+    if _SALES_COLS.search(sql) and "판매 조건" not in answer:
+        notes.append(SALES_LOT_NOTE)
+    # 🆕 2026-09-06 밤 #90 — '자회사·계열사' 는 데이터에 없는 관계다. 발행사명 LIKE 로 답했으면 그 대용을 밝힌다(#70 과 같은 원칙).
+    if question and _AFFILIATE_Q.search(question) and "발행사명" not in answer:
+        lits = sorted({m.group(1).strip("%") for m in _ISSUER_LIKE.finditer(sql) if m.group(1).strip("%")})
+        if lits:
+            notes.append(f"자회사·계열 관계는 데이터에 없어 발행사명에 '{'/'.join(lits)}' 이(가) 들어간 발행사 기준으로 답했습니다.")
     return notes
 
 
@@ -11112,6 +11367,14 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, grades_fixed = expand_grade_comparison(sql, q)
     if grades_fixed:
         step("[Guard] 등급 서열 확장 — 질문의 '이상/이하' 등급 조건이 단일 등급 비교로 좁혀져 TRIM(crd_grd) IN (서열 목록) 으로 확장 (2026-08-31 'A등급 이상'→crd_grd='A-' 실측)")
+    sql, breadth_note = restore_kind_breadth(sql, q)
+    if breadth_note:
+        step(f"[Guard] 종류 좁힘 복원 — {breadth_note} (2026-09-06 밤 서버 실측 #91: '회사채' 를 HCX 가 일반회사채로 좁혀 모수 1,615 → 98, "
+             "1위 뒤바뀜 — 리드 결정 '회사채 = 대분류' 를 결정층이 받는다)")
+    sql, thresh_fixed = align_threshold_operator(sql, q)
+    if thresh_fixed:
+        step("[Guard] 비교 경계 어휘 정합 — " + " · ".join(thresh_fixed)
+             + " (2026-09-06 밤 서버 실측 #92: '5% 넘는' 이 >= 로 나가 615 — 정답 596, 5.000% 정확히 19종목 혼입)")
     sql, kind_fixed = ensure_kind_filter(sql, q)
     if kind_fixed:
         step("[Guard] 종류 조건 주입 — 질문의 채권 종류 낱말이 SQL 에 필터되지 않아 동의어 확정식을 주입 (2026-08-31 저녁 'AA등급 이상 회사채'에 종류 조건 부재 실측 — 617160d 사고 ② 재발)")
@@ -11624,7 +11887,19 @@ def answer_question(
 
     if err or violations:
         # R-4 — 재생성 1회: SQL 기각 또는 WHERE 값이 DB 에 없을 때만. 예산(누적 12초) 안일 때만. 0행은 여기 오지 않는다.
+        if not err and violations:
+            # 🆕 2026-09-06 밤 #90·#94 — 주인 컬럼을 아는 위반은 결정층이 고친다. 재생성은 그다음(HCX 2차 실수·2.5~58초 방지).
+            fixed_sql, fixed = fix_value_column(sql, violations)
+            if fixed:
+                err_f = _sql_precheck(fixed_sql, ctx, tables, cross, question=q)
+                viol_f = [] if err_f else guard.check_values(fixed_sql, ctx)
+                if not err_f and not viol_f:
+                    step("[Guard] 값-컬럼 교정 — " + " · ".join(fixed)
+                         + " (2026-09-06 밤 서버 실측 #90·#94: 값 검사가 주인 컬럼을 짚고도 재생성으로 넘겨 HCX 가 발행일 축을 만기로 갈아끼움)")
+                    sql, err, violations = fixed_sql, None, []
+                    result.sql = sql
         problem = err or "; ".join(str(v) for v in violations)
+    if err or violations:
         step(f"[Guard] {'SQL 기각' if err else '값 검사 실패'} — {problem}")
         rg = _regen(problem)
         if isinstance(rg, str):
@@ -11760,6 +12035,13 @@ def answer_question(
              "'국고채를 포함한 국공채는 295종목' — 국공채 = 국고채 로 읽히는 사실 왜곡)")
         result.think_trace = "\n".join(trace)
         result.answer = bcnt
+        return result
+    bavg = _bond_avg_answer(sql, rows, n, q)
+    if bavg is not None:
+        step("[Answer] 채권 평균 답변 기계 조립 — 단일 AVG 1행을 모수(종목·행)·계산 기준과 함께 옮긴다, HCX 0회 "
+             "(2026-09-06 밤 서버 실측 #94: AVG NULL 을 HCX 가 '미수록' 으로 거절 · 58초)")
+        result.think_trace = "\n".join(trace)
+        result.answer = bavg
         return result
     zero = _zero_count_answer(sql, rows, n)
     if zero is not None:
@@ -11904,7 +12186,7 @@ def answer_question(
     if hedged:
         step(f"[Guard] 거짓 유보 제거 — 전수 집계({n}행 < 상한 {MAX_ROWS})에 '더 있을 수 있음·일부' 문장 "
              "(2026-09-02 R2 재검: 운용사 top5 전수 집계에 '더 많은 곳이 있을 수 있습니다')")
-    _bn = bond_answer_notes(sql, result.answer) if "domestic_bonds" in sql else []
+    _bn = bond_answer_notes(sql, result.answer, q) if "domestic_bonds" in sql else []
     if _bn:
         result.answer = result.answer.rstrip() + "\n\n" + " ".join(_bn)
         step("[Answer] 채권 고지 병기 — 가드 흔적(ESG 라벨 LIKE·발행사 접두 확장·등급 서열 정렬)이 요구하는 고지 중 답변에 없던 것을 기계로 덧붙임 "

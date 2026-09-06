@@ -1112,7 +1112,13 @@ def _col_asked(table: str, col: str, question: str) -> bool:
 
     판별을 **넓게** 잡는다: 지우는 쪽이 위험하므로 조금이라도 대응하면 사용자 조건으로 존중한다.
     '총보수요율' → '보수' 가 질문에 있으면 유지 · '기초지수' → '지수' 가 있으면 유지."""
+    # 🔴 2026-09-06 E25 재생 — DB 스키마 한글명은 '배수' 인데 yaml korean_name 은 '레버리지배수' 다. 한쪽만 보면
+    #    '레버리지 ETF' 의 `cu_lev_fector > 1` 이 "질문에 근거 없는 술어" 로 지워져 레버리지 질의가 전체 ETF 로 넓어진다.
+    #    두 이름을 다 본다(지우는 쪽이 위험하다).
     ko = _col_ko_of(table, col)
+    decl = (((getattr(_ev_ctx(), "enums", None) or {}).get(table) or {}).get("columns") or {}).get(col)
+    if isinstance(decl, dict):
+        ko = f"{ko} {decl.get('korean_name') or ''}"
     q = question.replace(" ", "")
     for word in _KO_CHUNK.findall(ko):
         for size in range(len(word), 1, -1):
@@ -1471,6 +1477,10 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
                 # 한글명 대조만으로는 이걸 못 본다. 지우는 쪽이 위험하므로 두 축 중 하나만 걸려도 남긴다.
                 lit_asked = any(re.sub(r"[%\s]", "", lit.strip("'")).casefold() in question.replace(" ", "").casefold()
                                 for lit in _SQL_LITERAL.findall(c) if len(re.sub(r"[%\s']", "", lit)) >= 2)
+                # 🔴 2026-09-06 E5 재생 — Ground 가 '미국' → `wu_inv_rgn='United States of America'` 로 접지한 리터럴은
+                #    질문에 글자로는 없다. 그 절을 지우면 WHERE 가 비어 `WHERE  LIMIT` 문법 오류 → 거절. KG 가 질문 낱말에서
+                #    끌어낸 값은 사용자 조건이다(펀드 처방: 접지 결과가 곧 질문의 조건).
+                lit_asked = lit_asked or _literal_grounded(tbl, c, question)
                 if cols and not (cols & set(strict)) and not lit_asked \
                         and not any(re.search(rf"\b{x}\b", head_tail, re.I) for x in cols) \
                         and not any(_col_asked(tbl, x, question) for x in cols):
@@ -1483,9 +1493,34 @@ def ensure_etf_base_population(sql: str, question: str) -> tuple[str, bool]:
                         and any(re.search(rf"\b{x}\b", sql[:frm.start()], re.I) for x in cols):
                     continue
                 kept.append(c)
-            if len(kept) != len(guard.split_conjuncts(m_w.group(1))):
+            # 🔴 술어를 전부 지우면 안 된다 — 빈 WHERE 는 문법 오류(E5 `WHERE  LIMIT 30`)고, 살려도 "조건 없는 전체 모수" 라
+            #    질문과 다른 답이다. 남는 절이 없으면 판별이 틀린 것으로 보고 원문을 둔다(가드는 넓히는 방향으로 실패한다).
+            if kept and len(kept) != len(guard.split_conjuncts(m_w.group(1))):
                 sql = sql[:m_w.start(1)] + " " + " AND ".join(kept) + " " + sql[m_w.end(1):]
     return sql, sql != orig
+
+
+def _literal_grounded(table: str, conj: str, question: str) -> bool:
+    """술어의 리터럴이 KG 별칭으로 (table, column) 에 매핑되는 값이고, 그 노드의 표기 하나가 질문에 있으면 True.
+
+    '미국' → Region_US → overseas_etfs.wu_inv_rgn='United States of America'. 질문엔 '미국' 만 있고 SQL 엔 영문 값만 있다 —
+    글자 대조로는 못 잇는 것을 KG 가 잇는다. 접지 결과가 없거나 노드 표기가 질문에 없으면 False(종전 판정 그대로)."""
+    ctx = _ev_ctx()
+    aliases = getattr(ctx, "kg_aliases", None) or {}
+    if not aliases:
+        return False
+    lits = {re.sub(r"[%\s]", "", lit.strip("'")).casefold() for lit in _SQL_LITERAL.findall(conj)}
+    lits.discard("")
+    if not lits:
+        return False
+    labels = {n.node_id: n.labels for n in (getattr(ctx, "kg_nodes", None) or [])}
+    q = question.replace(" ", "").casefold()
+    for node_id, rows in aliases.items():
+        for t, _c, raw in rows:
+            if t == table and str(raw).replace(" ", "").casefold() in lits:
+                if any(lb and lb.replace(" ", "").casefold() in q for lb in labels.get(node_id, ())):
+                    return True
+    return False
 
 
 # ── 펀드 랭킹 대표행·근거컬럼 가드 3종 (2026-08-31 밤 — FND-019·015 실측 채점 후속,

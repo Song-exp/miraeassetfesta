@@ -10097,6 +10097,7 @@ def build_grounding(
     future: list[str] | None = None,
     name_token: str | None = None,
     extra_mapping: list[str] | None = None,
+    bond_item: str | None = None,
 ) -> str:
     """플래너에 넘길 근거문서 — KG 매핑 + 도메인 규칙 + 스키마.
 
@@ -10137,6 +10138,16 @@ def build_grounding(
             f"# 🔴 상품 고유명 — 질문의 '{name_token}' 은 위 개체 매핑에 없는 **상품 이름**이다\n"
             f"# 위 매핑(운용사·지역 등)만으로 풀지 말 것. WHERE 에 itm_nm LIKE '%{name_token}%' 를 반드시 함께 넣는다.\n"
             f"# 이름으로 좁히면 클래스가 여럿 나온다 — LIMIT 1 로 한 행만 고르지 말고 전부 조회한다."
+        )
+    if bond_item:
+        # 종목 지시자 — 질문이 채권 **한 종목**을 지목했다. 발행사로 뭉개면 그 발행사 전체가 답이 된다
+        #    (#100 '1184 지금 살 수 있어?' -> 한전 전체 385종목 개수). 회차 숫자를 pd_no 에 넣는 것도 오답이다
+        #    (#98 `pd_no = 1184` -> 0행. pd_no 는 12자리 ISIN).
+        parts.append(
+            f"# [종목 지시자] 질문이 지목한 종목의 DB 실제 종목명은 '{bond_item}' 이다(실측 확인).\n"
+            f"# WHERE 에 TRIM(pd_nm) = '{bond_item}' 를 반드시 넣는다. 발행사(pd_pbcm)만으로 좁히지 말 것 —\n"
+            f"#   그 발행사의 다른 종목이 통째로 딸려 온다. 이름 안의 숫자는 회차이지 종목코드(pd_no)가 아니다.\n"
+            f"# 개수를 묻지 않았으면 COUNT 로 세지 말고 물어본 컬럼을 그대로 조회한다."
         )
     if cross:
         # 구성종목·설명서 조건은 ext_* 에 있고 마스터에는 없다. 조인 키를 주지 않으면
@@ -10246,6 +10257,60 @@ _ETF_NAME_LIKE_LIT = re.compile(
     r"(?:REPLACE\(\s*(?:\w+\.)?(?:pd_abrv_nm|pd_nm)\s*,\s*' '\s*,\s*''\s*\)|(?:TRIM\(\s*)?(?:\w+\.)?\b(?:pd_abrv_nm|pd_nm)\b\s*\)?)"
     r"\s+LIKE\s+'%([^%']+)%'", re.I)
 _TOKEN_SPLIT = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
+
+
+# 종목 지시자 — 질문이 지목한 **채권 한 종목** (P0-1 · 사고 #98·#99·#100) ----------------------
+# 채권 20,497종목에는 KG 노드가 없다(Sec_* 는 ETF·펀드 편입종목). 그래서 '한국전력공사채권1184' 에서
+#    발행사 노드만 잡히고 회차 1184 가 근거에서 사라졌고, 남은 숫자를 HCX 가 `pd_no = 1184` 로 메꿨다 —
+#    pd_no 는 12자리 ISIN 이라 어떤 값과도 안 맞는다. 같은 결손이 세 문항에서 세 오답으로 나왔다:
+#    (1) 0행 -> 실재하는 발행사를 '없다' (2) `bd_knd='국고채권'` 날조 (3) 종목을 버리고 발행사 전체 385종목 개수.
+#    종목을 KG 노드로 만들지는 않는다 — 2만 개를 노드화하면 Ground 의 길이 하한 설계가 무너진다.
+#    결정층 SQLite 조회 한 번으로 **질문의 표기를 DB 실제 값으로** 옮긴다.
+_ITEM_UNIT_AFTER = re.compile(r"^(?:년|년도|월|일|개|종목|건|퍼센트|프로|억|만|원|%)")
+_ITEM_MIN_LEN = 5          # 4자는 '서흥26' 1건뿐 — 하한을 5로 두면 연도 오탐이 크게 준다
+
+
+@lru_cache(maxsize=1)
+def _bond_item_names() -> dict:
+    """공백 제거 종목명 -> DB 실제 pd_nm. 숫자 없는 이름은 없다(20,497개 전수 확인)."""
+    try:
+        with connect_readonly() as con:
+            rows = con.execute("SELECT DISTINCT TRIM(pd_nm) FROM domestic_bonds WHERE pd_nm IS NOT NULL").fetchall()
+    except sqlite3.Error:
+        return {}
+    out = {}
+    for (nm,) in rows:
+        key = "".join((nm or "").split())          # 공백 흔들림 3종(붙임/띄움/괄호 앞) 정규화
+        if len(key) >= _ITEM_MIN_LEN and any(ch.isdigit() for ch in key):
+            out.setdefault(key, nm)
+    return out
+
+
+def bond_item_in_question(question: str) -> str | None:
+    """질문이 지목한 채권 종목의 **DB 실제 종목명**. 없으면 None. LLM 0회.
+
+    불개입(전부 실측으로 고정):
+    - 질문에 숫자가 없으면 아예 보지 않는다 — 종목명은 전부 숫자를 포함하므로 순 한글 낱말은 걸릴 수 없다.
+    - 앞이 숫자면 불일치(다른 회차의 꼬리를 무는 것을 막는다).
+    - 뒤가 숫자이거나 단위(년·월·일·개·억·원·% …)면 불일치 — `한글+2자리숫자` 종목명이 109개 있어
+      연도 표현과 충돌한다("삼천리24년 만기 채권" -> 종목 '삼천리24'). 실측으로 잡아 넣은 조건이다.
+    - 최장 일치 하나만 — '한국전력공사채권118' 이 아니라 '한국전력공사채권1184'.
+    오폭 실측: eval 195문항 0건.
+    """
+    nq = "".join((question or "").split())
+    if not any(ch.isdigit() for ch in nq):
+        return None
+    names, best = _bond_item_names(), None
+    for key in names:
+        i = nq.find(key)
+        while i >= 0:
+            tail = nq[i + len(key):]
+            if not (tail[:1].isdigit() or _ITEM_UNIT_AFTER.match(tail) or (i and nq[i - 1].isdigit())):
+                if best is None or len(key) > len(best):
+                    best = key
+                break
+            i = nq.find(key, i + 1)
+    return names.get(best) if best else None
 
 
 def _clarify_premise_absent(table: str, where: str, params: tuple) -> bool:
@@ -12876,6 +12941,17 @@ def answer_question(
                 step("[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함")
             hits, ground_lines = _ground(q, ctx, tables, cross)
 
+    # 종목 지시자 라우팅 — 이름이 가장 강한 신호인데 라우터가 못 본다(실측: '풍산109 수익률' -> 4테이블 미특정).
+    #   선언 어휘를 세 층이 같이 본다는 원칙을 종목명 축에도 적용한다. 채권 종목명과 ETF·해외ETF·펀드
+    #   이름의 교집합은 0건이라 다른 상품군을 가로챌 수 없다(실측).
+    if not tables:
+        _item = bond_item_in_question(q)
+        if _item:
+            tables, cross = ["domestic_bonds"], False
+            step(f"[Route] 미특정 -> 종목 지시자 — 질의가 채권 종목 '{_item}' 을 지목한다"
+                 " (종목명은 상품군 간 중복이 0건이라 이름 하나로 상품군이 정해진다)")
+            hits, ground_lines = _ground(q, ctx, tables, cross)
+
     # Intent 채택 — 규칙 라우터가 미특정이고 KG 매핑도 없을 때만. 이 자리의 대안은 '마스터 4테이블 근거문서를 주고
     # HCX 가 FROM 을 고르는 것' 이라, 같은 모델의 의도 판정을 먼저 쓰는 편이 나쁠 수 없다(2026-09-06).
     if not tables and not hits and intent and intent["domain"] in _INTENT_TABLE:
@@ -12961,11 +13037,16 @@ def answer_question(
         result.answer = "현재 시스템 구축 중으로 이 질의에는 답변을 제공할 수 없습니다."
         return result
 
+    bond_item = bond_item_in_question(q) if "domestic_bonds" in tables else None
+    if bond_item:
+        step(f"[Ground] 종목 지시 — 질의의 종목명을 DB 실제 값으로 옮겼다: '{bond_item}' "
+             "(KG 가 아니라 결정층 SQLite 조회다 — 채권 종목에는 KG 노드가 없다. "
+             "#98: 회차 1184 가 근거에서 사라지자 HCX 가 pd_no = 1184 로 메꿔 0행이 됐다)")
     name_token = residual_name_token(q, ground_lines) if tables == ["public_funds"] else None
     if name_token:
         step(f"[Ground] 잔여 상품 고유명 '{name_token}' — KG 매핑에 없는 이름이라 itm_nm 검색을 강제한다 "
              "(2026-08-31 밤 FND-016: 브랜드만 매핑되고 상품명이 소실돼 무관한 펀드 값이 답으로 나간 사고)")
-    grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token, mgmt_fallback)
+    grounding = build_grounding(ctx, hits, tables, cross, q, future, name_token, mgmt_fallback, bond_item)
     result.grounding = grounding
     blocks = " + ".join(_grounding_blocks(grounding)) or "없음"
     step(f"[Plan] 근거문서 조립 — 대상 {', '.join(tables) or '마스터 4테이블'} · "

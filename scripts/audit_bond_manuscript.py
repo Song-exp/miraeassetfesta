@@ -109,8 +109,14 @@ chk(L, "synonyms", 64, n("synonyms"))
 qr = d.get("query_rules") or {}
 chk(L, "query_rules 중 text/evidence 분리", 35,
     sum(1 for v in qr.values() if isinstance(v, dict) and "text" in v and "evidence" in v))
-chk(L, "query_rules 중 enforce 슬롯", 4,
+chk(L, "query_rules 중 enforce 규칙", 4,
     sum(1 for v in qr.values() if isinstance(v, dict) and "enforce" in v))
+try:
+    from src.runtime import guard as _guard  # enforce 는 list 도 된다(만기구간 3슬롯) — 규칙 수와 슬롯 수를 따로 센다
+    chk(L, "query_rules 중 enforce 슬롯(mark)", 6,
+        sum(len(_guard.enforce_slots(v)) for v in qr.values() if isinstance(v, dict)))
+except Exception as e:  # noqa: BLE001
+    rows.append((L, "query_rules 중 enforce 슬롯(mark)", 6, f"ERR {type(e).__name__}", False))
 
 t = io.open(TTL, encoding="utf-8").read()
 chk(L, "bond_kr.ttl 줄 수", 50, len(t.splitlines()))

@@ -203,9 +203,9 @@ PAGE = """<!doctype html>
         <h1>무엇을 찾아드릴까요?</h1>
         <p>국내·해외 ETF, 채권, 공모펀드를 조건으로 물어보세요.<br>답변 아래에서 실행된 SQL 과 판단 과정을 함께 확인할 수 있습니다.</p>
         <div class="chips" id="chips">
-          <button class="chip" type="button">미래에셋자산운용이 운용하는 국내 ETF 5개만 알려줘</button>
-          <button class="chip" type="button">신용등급 AA 이상인 회사채 알려줘</button>
-          <button class="chip" type="button">미국 나스닥100 을 추종하는 ETF 알려줘</button>
+          <button class="chip" type="button">신용등급 AA- 이상 채권 알려줘</button>
+          <button class="chip" type="button">분배율 가장 높은 ETF 3개</button>
+          <button class="chip" type="button">MMF를 제외하고 순자산이 가장 큰 공모펀드 5개 알려줘</button>
         </div>
       </div>
     </div>

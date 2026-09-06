@@ -225,3 +225,79 @@ def test_BI_kind_without_safe_grade_injects_fallback(con):
     step2, _ = pl.ensure_top_safety(step1, S010_Q)
     grades = {r[0] for r in con.execute(step2.replace("SELECT pd_no, TRIM(pd_nm) AS pd_nm, MAX(applied_yield) AS applied_yield", "SELECT DISTINCT pd_risk_gcd"))}
     assert grades == {"15"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BD — HCX 구문 결함 기계 교정(재생성 전) (D-037 · D-045 · D-010 · S-004)
+#   일반 규칙: ① IN 목록 안 TRIM('x') → 'x'(여분 `)` 함께) ② 따옴표 불균형 LIKE 조각의 OR 가지 제거 / AND 절이면 닫기
+#   ③ 스키마 밖 컬럼이 GROUP BY/ORDER BY 항에만 있으면 그 항 제거. 조건절에 쓰였으면 불개입.
+# ══════════════════════════════════════════════════════════════════════════════
+D037_RAW = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, crd_grd, mat_dt FROM domestic_bonds WHERE std_pd_mcls_nm = '회사채' AND crd_grd IN TRIM('AA'), TRIM('AA+') "
+            "AND mat_dt BETWEEN 20270101 AND 20271231 GROUP BY pd_no LIMIT 30")
+D045_RAW = ("SELECT pd_no, TRIM(pd_nm), MAX(srfc_irt) AS srfc_irt , crd_grd, mat_dt FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 AND "
+            "(TRIM(std_pd_mcls_nm) = '회사채' AND TRIM(crd_grd) IN ('AAA', 'AA+', 'AA0', 'AA-', 'A+', 'A0', 'A-'), TRIM('AA'), TRIM('AAA')) "
+            "AND srfc_irt IS NOT NULL AND srfc_irt > 0) AND pd_risk_gcd <> '11' GROUP BY pd_no ORDER BY MAX(srfc_irt) DESC LIMIT 5")
+D010_RAW = "SELECT pd_nm, pd_abrv_nm FROM domestic_bonds WHERE (pd_nm LIKE '%코코본드%' OR pd_nm LIKE '%/코/%) GROUP BY pd_no LIMIT 30"
+S004_RAW = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, MAX(applied_yield) AS applied_yield, pd_risk_gcd, pd_risk_nm, TRIM(crd_grd) AS crd_grd FROM domestic_bonds "
+            "WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 AND pd_risk_gcd IN ('15','16') AND std_pd_mcls_nm = '회사채' AND applied_yield > 0 "
+            "GROUP BY pd_no, mtco_itm_no ORDER BY MAX(applied_yield) DESC, pd_no ASC LIMIT 3")
+
+
+def test_BD_in_trim_literals(ctx, con):
+    out, fixed = pl.fix_sql_syntax_slips(D037_RAW)
+    assert fixed and "crd_grd IN ('AA', 'AA+')" in out and "TRIM('AA')" not in out
+    assert pl._sql_precheck(out, ctx, T, False, question="") is None                 # 문법 통과
+    out2, _ = pl.expand_grade_comparison(out, "내년에 만기가 되는 회사채 중 신용등급이 AA 이상인 것을 알려줘")
+    assert "IN ('AAA', 'AA+', 'AA0', 'AA-')" in out2 and guard.check_values(out2, ctx) == []   # 'AA' 오기는 서열 확장이 받는다
+
+
+def test_BD_trailing_trim_and_paren(ctx, con):
+    out, fixed = pl.fix_sql_syntax_slips(D045_RAW)
+    assert fixed and "TRIM('AA')" not in out and out.count("(") == out.count(")")
+    assert "srfc_irt > 0) AND pd_risk_gcd" in out and pl._sql_precheck(out, ctx, T, False, question="") is None
+    out2, _ = pl.expand_grade_comparison(out, "표면금리가 높은 순으로 A등급 이상 회사채 5종목 알려줘")
+    assert guard.check_values(out2, ctx) == [] and len(con.execute(out2).fetchall()) == 5   # gold D-045 5행
+
+
+def test_BD_unbalanced_like_branch(ctx):
+    out, fixed = pl.fix_sql_syntax_slips(D010_RAW)
+    assert fixed and "'%/코/%" not in out and "pd_nm LIKE '%코코본드%'" in out and "GROUP BY pd_no LIMIT 30" in out
+    assert pl._sql_precheck(out, ctx, T, False, question="") is None
+    # AND 자리면 가지를 떼지 않고 따옴표를 닫는다
+    out2, fixed2 = pl.fix_sql_syntax_slips("SELECT pd_nm FROM domestic_bonds WHERE pd_nm LIKE '%코코본드%' AND pd_nm LIKE '%/코/% GROUP BY pd_no LIMIT 30")
+    assert fixed2 and "pd_nm LIKE '%/코/%' GROUP BY" in out2
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT pd_nm FROM domestic_bonds WHERE TRIM(crd_grd) IN ('AAA', 'AA+') AND pd_nm LIKE '%코코%' LIMIT 30",          # 정상
+    "SELECT pd_nm FROM domestic_bonds WHERE pd_nm LIKE '%it''s%' LIMIT 30",                                             # 이스케이프 따옴표
+    "SELECT pd_nm FROM domestic_bonds WHERE TRIM(pd_pbcm) = '(주)한국은행' AND crd_grd IN ('AAA') LIMIT 30",              # 리터럴 안 괄호
+])
+def test_BD_syntax_slips_untouched(sql):
+    assert pl.fix_sql_syntax_slips(sql) == (sql, [])
+
+
+def test_BD_group_by_unknown_column(ctx, con):
+    err = pl._sql_precheck(S004_RAW, ctx, T, False, question="")
+    assert err and "스키마에 없는 컬럼" in err
+    out, dropped = pl.drop_unknown_select_columns(S004_RAW, err)
+    assert dropped == ["GROUP BY mtco_itm_no"] and "GROUP BY pd_no ORDER BY" in out and "mtco_itm_no" not in out
+    assert pl._sql_precheck(out, ctx, T, False, question="") is None
+    rows = con.execute(out).fetchall()
+    assert len(rows) == 3 and all(r[3] == "15" for r in rows)                          # gold S-004: 회사채 5등급 3종
+    # WHERE 에 쓰인 없는 컬럼은 불개입(조건이 바뀐다)
+    bad = "SELECT pd_no FROM domestic_bonds WHERE mtco_itm_no = 'x' GROUP BY pd_no, mtco_itm_no LIMIT 3"
+    assert pl.drop_unknown_select_columns(bad, "스키마에 없는 컬럼: mtco_itm_no(→ public_funds 컬럼이다)") == (bad, [])
+
+
+def test_BD_siblings_other_column_and_order_by(ctx):
+    """형제 케이스 — 다른 컬럼·값(bd_knd IN TRIM(...)) · ORDER BY 항의 없는 컬럼 · 채권 밖 테이블은 불개입."""
+    out, fixed = pl.fix_sql_syntax_slips("SELECT pd_nm FROM domestic_bonds WHERE bd_knd IN TRIM('일반회사채'), TRIM('할부금융채') AND curr_cd = 'KRW' LIMIT 30")
+    assert fixed and "bd_knd IN ('일반회사채', '할부금융채') AND curr_cd" in out and pl._sql_precheck(out, ctx, T, False, question="") is None
+    etf = "SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_risk_nm IN TRIM('6등급'), TRIM('5등급') LIMIT 30"
+    assert pl.fix_sql_syntax_slips(etf) == (etf, [])                                     # 채권 전용 — ETF 경로 불변
+    sql = "SELECT pd_no, TRIM(pd_nm) AS pd_nm FROM domestic_bonds WHERE curr_cd = 'KRW' ORDER BY mtco_itm_no ASC, pd_no ASC LIMIT 5"
+    err = pl._sql_precheck(sql, ctx, T, False, question="")
+    out2, dropped = pl.drop_unknown_select_columns(sql, err)
+    assert dropped == ["ORDER BY mtco_itm_no ASC"] and "ORDER BY pd_no ASC LIMIT 5" in out2
+    assert pl._sql_precheck(out2, ctx, T, False, question="") is None

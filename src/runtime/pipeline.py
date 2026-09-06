@@ -507,6 +507,67 @@ def rewrite_dialect_top(sql: str) -> tuple[str, bool]:
     return f"{out} LIMIT {n}", True
 
 
+_IN_TRIM_BARE = re.compile(r"\bIN\s+TRIM\(\s*'([^']*)'\s*\)((?:\s*,\s*TRIM\(\s*'[^']*'\s*\))*)", re.I)
+_IN_TRIM_TAIL = re.compile(r"\bIN\s*\(([^()]*)\)((?:\s*,\s*TRIM\(\s*'[^']*'\s*\))+)(\s*\))?", re.I)
+_SQL_QUOTE_OK = re.compile(r"'(?:[^']|'')*'")
+
+
+def fix_sql_syntax_slips(sql: str) -> tuple[str, list[str]]:
+    """HCX 구문 슬립을 재생성 전에 기계로 고친다 — 결과 의미가 확정적인 두 꼴만. (보정 SQL, 고친 항목)
+
+    🔴 2026-09-06 서버 QA r1 BD — 문법 기각 → 재생성(HCX 지연 60초·같은 실수) → 오거절 4건. 고칠 수 있는 슬립은 고친다(`rewrite_dialect_top`·
+    `ensure_limit` 원칙). 두 꼴:
+      ① IN 목록 안 `TRIM('x')` — D-037 `crd_grd IN TRIM('AA'), TRIM('AA+')` · D-045 `IN ('AAA', …), TRIM('AA'), TRIM('AAA'))`.
+         함수를 벗겨 리터럴로 목록에 넣는다(`IN ('AA','AA+')`). D-045 꼴은 IN 이 이미 닫힌 뒤 TRIM 항이 이어지고 여분 `)` 가 붙어 있어
+         함께 걷는다(전체 괄호 균형을 확인한 뒤에만). 값 오기('AA' → 'AA0')는 그다음 가드(등급 서열 확장·값 검사)의 몫.
+      ② 따옴표 불균형 LIKE 조각 — D-010 `(pd_nm LIKE '%코코본드%' OR pd_nm LIKE '%/코/%) GROUP BY …`. 닫히지 않은 마지막 리터럴이
+         LIKE/= 의 우변이면, OR 가지는 그 가지를 떼고(다른 가지가 남는다) AND·WHERE 자리면 다음 `)`·절 키워드 앞에서 따옴표를 닫는다.
+    복수 SELECT·서브쿼리는 불개입(구조를 잘못 짚을 위험). 채권 트랙 전용 — ETF·펀드 경로는 종전 그대로(재생성)."""
+    if "domestic_bonds" not in sql or re.search(r"\(\s*select\b|\bunion\b", sql, re.I):
+        return sql, []
+    fixed: list[str] = []
+    # ② 따옴표 불균형 — 리터럴 짝을 왼쪽부터 맺고 남는 홀수 따옴표 하나를 찾는다
+    if sql.count("'") % 2 == 1:
+        pos, last_open = 0, -1
+        while True:
+            m = _SQL_QUOTE_OK.match(sql, sql.find("'", pos)) if sql.find("'", pos) != -1 else None
+            if m is None:
+                nxt = sql.find("'", pos)
+                last_open = nxt
+                break
+            pos = m.end()
+        if last_open != -1:
+            head = sql[:last_open]
+            end_m = re.search(r"\)|\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|AND|OR)\b", sql[last_open + 1:], re.I)
+            end = last_open + 1 + (end_m.start() if end_m else len(sql) - last_open - 1)
+            pred = re.search(r"(\bOR\b|\bAND\b|\bWHERE\b|\()\s*(?:TRIM\(\s*)?\w+\s*\)?\s*(?:NOT\s+)?(?:LIKE|GLOB|=)\s*$", head, re.I)
+            if pred:
+                frag = sql[pred.start(): end].strip()
+                if pred.group(1).upper() == "OR":
+                    sql = sql[:pred.start()].rstrip() + " " + sql[end:].lstrip()
+                    fixed.append(f"따옴표 불균형 OR 가지 제거: {frag}")
+                else:
+                    sql = sql[:end].rstrip() + "' " + sql[end:].lstrip()
+                    fixed.append(f"따옴표 불균형 리터럴 닫음: {frag}'")
+    # ① IN 목록 안 TRIM('x')
+    def _lits(tail: str) -> list[str]:
+        return [f"'{v}'" for v in re.findall(r"TRIM\(\s*'([^']*)'\s*\)", tail, flags=re.I)]
+    def _bare(m: re.Match) -> str:
+        items = [f"'{m.group(1)}'"] + _lits(m.group(2))
+        fixed.append(f"IN TRIM(...) → IN ({', '.join(items)})")
+        return "IN (" + ", ".join(items) + ")"
+    sql = _IN_TRIM_BARE.sub(_bare, sql)
+    def _tail(m: re.Match) -> str:
+        items = [v.strip() for v in m.group(1).split(",") if v.strip()] + _lits(m.group(2))
+        extra = m.group(3) or ""
+        masked = _SQL_LITERAL.sub("''", sql)
+        keep_paren = extra and masked.count("(") >= masked.count(")")      # 여분 `)` 는 전체가 `)` 초과일 때만 걷는다
+        fixed.append(f"IN (…), TRIM(...) → IN ({', '.join(items)})" + ("" if keep_paren or not extra else " · 여분 ) 제거"))
+        return "IN (" + ", ".join(items) + ")" + (extra if keep_paren else "")
+    sql = _IN_TRIM_TAIL.sub(_tail, sql)
+    return sql, fixed
+
+
 def ensure_limit(sql: str) -> tuple[str, bool]:
     """LIMIT 이 없으면 붙인다. (보정된 SQL, 보정했는지)
 
@@ -7601,10 +7662,26 @@ def drop_unknown_select_columns(sql: str, err: str) -> tuple[str, list[str]]:
     if not frm or not sel:
         return sql, []
     rest = sql[frm.start():]
-    if any(re.search(rf"\b{re.escape(c)}\b", rest, re.I) for c in unknown):
-        return sql, []                                       # 조건·정렬에 쓰였다 — 떼면 뜻이 바뀐다
+    # 🆕 2026-09-06 QA r1 BD ③ — GROUP BY·ORDER BY **항**에만 있는 없는 컬럼도 그 항만 걷는다(S-004 `GROUP BY pd_no, mtco_itm_no`:
+    #    묶음 키에 없는 컬럼 하나가 붙어 통째 기각 → 재생성 76초 → 오거절). WHERE·HAVING 에 쓰였으면 불개입(조건이 바뀐다).
+    rest_wo_keys = _KEY_CLAUSE.sub(lambda m: m.group(1) + " ", rest)
+    if any(re.search(rf"\b{re.escape(c)}\b", rest_wo_keys, re.I) for c in unknown):
+        return sql, []                                       # 조건에 쓰였다 — 떼면 뜻이 바뀐다
+    dropped: list[str] = []
+
+    def _prune_keys(m: re.Match) -> str:
+        kw, body = m.group(1), m.group(2)
+        terms = [t.strip() for t in _split_select_items(body) if t.strip()]
+        keep_t = [t for t in terms
+                  if not ({c.lower() for c in re.findall(r"\b([A-Za-z_]\w*)\b", _SQL_LITERAL.sub("''", t))} & unknown)]
+        gone = [t for t in terms if t not in keep_t]
+        if not gone:
+            return m.group(0)
+        dropped.extend(f"{kw.upper()} {t}" for t in gone)
+        return (kw + " " + ", ".join(keep_t) + " ") if keep_t else ""
+    rest = _KEY_CLAUSE.sub(_prune_keys, rest)
     items = _split_select_items(sql[sel.end():frm.start()])
-    keep, dropped = [], []
+    keep = []
     for it in items:
         cols_in = {c.lower() for c in re.findall(r"\b([A-Za-z_]\w*)\b", _SQL_LITERAL.sub("''", it))}
         if cols_in & unknown:
@@ -11353,6 +11430,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if top_fixed:
         step("[Guard] 방언 토큰 치환 — `SELECT TOP n` 을 `LIMIT n` 으로 (10R 재검 ③-7 · U9 실측: 토큰 하나 빼면 "
              "정상인 SQL 이 문법 기각 → 재생성이 같은 토큰 반복 → 오거절. 기계로 고칠 수 있으면 보정한다)")
+    sql, slips = fix_sql_syntax_slips(sql)
+    if slips:
+        step("[Guard] 구문 슬립 교정 — " + " · ".join(slips)
+             + " (2026-09-06 서버 QA r1 BD: IN 목록 안 TRIM('x')·따옴표 불균형 LIKE 조각이 문법 기각 → 재생성 60초 → 오거절. "
+             "D-037·D-045·D-010 — 기계로 고칠 수 있으면 보정한다)")
     sql, or_fixed = ensure_or_group_parens(sql)
     if or_fixed:
         step("[Guard] 최상위 OR 재괄호화 — 괄호 없이 섞인 `A AND B OR C` 를 `A AND (B OR C)` 로 보정 "
@@ -12203,8 +12285,8 @@ def answer_question(
             if dropped:
                 err_s = _sql_precheck(slim, ctx, tables, cross, question=q)
                 if not err_s:
-                    step("[Guard] 없는 컬럼 제거 — SELECT 표시 항목 " + " · ".join(dropped) + " 을 뗐다(조건·정렬에 쓰이지 않아 결과 행 불변 · "
-                         "2026-09-06 서버 QA r1 BND-S-004: mtco_itm_no 하나로 통째 기각 → 재생성 76초 → 오거절)")
+                    step("[Guard] 없는 컬럼 제거 — " + " · ".join(dropped) + " 을 뗐다(SELECT 표시 항목·GROUP BY/ORDER BY 항만 — 조건에 쓰이지 않아 결과 행 불변 · "
+                         "2026-09-06 서버 QA r1 BND-S-004: GROUP BY pd_no, mtco_itm_no 로 통째 기각 → 재생성 76초 → 오거절)")
                     sql, err = slim, None
                     violations = guard.check_values(sql, ctx)
                     result.sql = sql

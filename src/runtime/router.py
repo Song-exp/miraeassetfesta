@@ -224,6 +224,14 @@ def route(question: str, ctx: RuntimeContext) -> Route:
     #    onto_route 는 순수 함수라 순서를 바꿔도 결과가 달라지지 않는다.
     o, score, hits = onto_route(question, ctx)
     p, why, groups = product_route(question, value_spans(question, ctx))
+    # 🔴 2026-09-06 ETF-B2 서버 실측 — "KODEX 200 운용사랑 기초지수 알려줘" 가 '운용사' 한 낱말로 public_funds 로 갔고
+    #    KODEX 200 을 펀드 이름으로 찾다 0행 → "확인되지 않습니다" 오답. ① 겹의 운용사 폴백은 **상품 명사가 없을 때**
+    #    쓰는 최후 수단인데, ② 겹은 그 사이 KODEX 200 을 국내 ETF 로 이미 접지하고 있었다.
+    #    값이 다른 상품군을 특정하면 값이 이긴다 — 폴백은 값이 침묵할 때만 선다.
+    if p == set(_MANAGER_TABLES) and why.startswith("운용사 표현") and o and not (o & p):
+        return Route([t for t in TABLES if t in o],
+                     "운용사 표현이 있으나 값이 상품군을 특정 — 값 " + str([hits[t] for t in TABLES if t in o]),
+                     True, len(o))
     if p:
         tables = p
         # 상품 명사가 둘 이상 후보(ETF → 국내/해외)면 온톨로지 값으로 좁힌다.

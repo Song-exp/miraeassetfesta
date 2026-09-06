@@ -5273,6 +5273,73 @@ def _answer_col_label(header: str) -> str:
 _SENTINEL_CELLS = frozenset({"KR0000000000", "None", "NULL", ""})
 
 
+_LIST_ITEM = re.compile(r"^\s*(\d+)[.)]\s*(.+)$")
+
+
+def _row_names(rows: str) -> list[str]:
+    """조회 결과 첫 열(상품명)을 행 순서대로. 머리줄은 뺀다."""
+    lines = [l for l in (rows or "").splitlines() if l.strip()]
+    if len(lines) < 2:
+        return []
+    return [l.split("|")[0].strip() for l in lines[1:] if l.split("|")[0].strip()]
+
+
+def reorder_answer_list(answer: str, rows: str, sql: str) -> tuple[str, bool]:
+    """번호 목록의 순서를 조회 결과 순서로 되돌린다. (답변, 고쳤는지)
+
+    🔴 2026-09-06 ETF-A2 서버 실측 — "에코프로 자회사를 편입한 ETF 중 **순자산 큰** 상품" 에 SQL 은 순자산
+       내림차순으로 30행을 정확히 냈는데, 답변이 1위에 KODEX 2차전지산업(1조 5,812억)을, 2위에 KODEX 200
+       (25조 8,342억)을 적었다. 값은 전부 실제 행이라 환각 검사·전사 검사에 걸리지 않는다 — **순서만 틀렸다.**
+       질문이 정렬을 지시했고 SQL 이 그 축으로 정렬했으면 답변의 순서는 협상 대상이 아니다.
+    발동: ORDER BY 가 있는 SELECT · 답변이 번호 목록 · 목록 항목이 전부 결과 행 이름에 붙고 2개 이상 · 순서가 다를 때만.
+    불개입: 결과에 없는 이름이 섞였거나(다른 가드 몫) 항목이 하나면 손대지 않는다. 문장은 그대로 두고 순서와 번호만 고친다.
+    """
+    if not answer or not re.search(r"\border\s+by\b", sql or "", re.I):
+        return answer, False
+    names = _row_names(rows)
+    if len(names) < 2:
+        return answer, False
+    lines = answer.splitlines()
+    idx, items = [], []
+    for i, line in enumerate(lines):
+        m = _LIST_ITEM.match(line)
+        if not m:
+            continue
+        body = m.group(2)
+        pos = next((j for j, nm in enumerate(names) if nm and nm in body), None)
+        if pos is None:
+            return answer, False          # 결과 밖 이름 — 순서 판단의 근거가 없다
+        idx.append(i)
+        items.append((pos, body))
+    if len(items) < 2 or [p for p, _ in items] == sorted(p for p, _ in items):
+        return answer, False
+    items.sort(key=lambda t: t[0])
+    for k, (i, (_, body)) in enumerate(zip(idx, items), start=1):
+        lines[i] = f"{k}. {body}"
+    return "\n".join(lines), True
+
+
+_ETF_TBL_RX = re.compile(r"\b(?:domestic_etfs|overseas_etfs)\b", re.I)
+
+
+def ensure_list_total(answer: str, sql: str, rows: str, n: int, question: str = "") -> tuple[str, bool]:
+    """목록 답변이 조회 행보다 적게 적었으면 총 건수를 기계로 덧붙인다. (답변, 붙였는지)
+
+    🔴 2026-09-06 ETF-C5 서버 실측 — "2026년에 상장한 ETF 중 월배당인 것" 에 25행을 받고 답변은 5개만 열거하며
+       총 건수를 말하지 않았다. 읽는 사람은 5개가 전부인지 일부인지 알 수 없다. 같은 부류가 라운드 14 의 🟡 6건이다.
+    발동: ETF 테이블 · COUNT 집계가 아닌 목록 · 번호 항목 수 < 행 수 · 답변에 그 수가 이미 없을 때만.
+    """
+    if not answer or n < 2 or not _ETF_TBL_RX.search(sql or "") or re.search(r"\bcount\s*\(", sql or "", re.I):
+        return answer, False
+    listed = sum(1 for line in answer.splitlines() if _LIST_ITEM.match(line))
+    if listed < 1 or listed >= n:
+        return answer, False
+    if re.search(r"(?<![\d,])" + f"{n:,}" + r"(?![\d,])", answer) or re.search(rf"(?<![\d,]){n}(?![\d,])", answer):
+        return answer, False
+    capped = " (조회 상한 30행이라 실제로는 더 많을 수 있습니다)" if n >= MAX_ROWS else ""
+    return (answer.rstrip() + f"\n\n조회된 상품은 {n}건이고, 위에는 그중 {listed}개를 적었습니다.{capped}", True)
+
+
 def ensure_rows_answered(answer: str, rows: str, n: int) -> tuple[str, bool]:
     """조회 결과가 있는데 결과를 **하나도 인용하지 않고** 거절한 답변을 기계 전사로 교체. (답변, 교체했는지)
 
@@ -11877,6 +11944,15 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
         sql, err_late = ensure_fund_return_error_exclusion(sql)
         if err_late:
             step("[Guard] 기점오류 제외 주입(후속) — 늦게 세운 수익률 축에 검증 3클래스 NOT IN 을 붙였다")
+    # 🔴 2026-09-06 ETF-B5 서버 실측 — "KODEX 200이랑 TIGER 200 중에 뭐가 더 커?" 가 답을 못 냈다.
+    #    HCX 원문은 `WHERE A LIKE … OR B LIKE …` 로 최상위에 OR 만 있어 체인 앞머리의 괄호 접기가 불개입했는데,
+    #    그 뒤 **ETF 기본모수 주입이 AND 두 절을 덧붙여** `A OR B AND C AND D` 를 만들었다. 검사기가 기각하고
+    #    재생성도 같은 모양이라 "안전하게 실행할 수 없어" 로 끝났다 — 가드가 만든 결함을 가드가 막은 꼴이다.
+    #    앞머리 한 번으로는 부족하다: 절을 덧붙이는 가드가 뒤에 있으므로 **검사 직전에 한 번 더** 접는다(멱등).
+    sql, paren_late = ensure_or_group_parens(sql)
+    if paren_late:
+        step("[Guard] OR 가지 재괄호화(후속) — 체인 중간에 붙은 AND 절이 최상위 OR 와 섞여 "
+             "필터가 마지막 가지에만 걸릴 자리였다 (2026-09-06 ETF-B5 실측: 기본모수 주입이 만든 혼용으로 무응답)")
     return sql
 
 
@@ -12581,6 +12657,15 @@ def answer_question(
         step("[Guard] 집계 오거절 교정 — 양수 COUNT 결과를 '정보 없음' 으로 오독한 답변을 기계 조립으로 교체 "
              "(2026-09-02 서버 실측: '퇴직연금으로 살 수 있는 채권 있어?' 에 COUNT 1,929 반환에도 오거절 · "
              "KG 4R X17: 펀드 COUNT 7 에 '확인할 수 없습니다')")
+    result.answer, reordered = reorder_answer_list(result.answer, rows, sql)
+    if reordered:
+        step("[Answer] 목록 순서 복원 — 답변의 번호 순서를 조회 결과 정렬 순서로 되돌렸다 "
+             "(2026-09-06 ETF-A2 실측: 순자산 큰 순 질의에 1.58조를 1위·25.8조를 2위로 적었다 — "
+             "값은 전부 실제 행이라 환각·전사 검사에 걸리지 않고 순서만 틀렸다)")
+    result.answer, total_added = ensure_list_total(result.answer, sql, rows, n, q)
+    if total_added:
+        step("[Answer] 목록 총 건수 병기 — 받은 행보다 적게 적은 답변에 총 건수와 적은 개수를 기계로 덧붙였다 "
+             "(2026-09-06 ETF-C5 실측: 25행을 받고 5개만 열거 · 라운드 14 의 🟡 6건이 같은 부류)")
     result.answer, rows_forced = ensure_rows_answered(result.answer, rows, n)
     if rows_forced:
         step("[Answer] 결과 전사 강제 — 1행 이상을 받고도 결과를 하나도 인용하지 않고 거절한 답변을 기계 전사로 교체 "

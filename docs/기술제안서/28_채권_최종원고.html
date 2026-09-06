@@ -42,7 +42,7 @@ em { color: #333; }
 <h2>1.1 도착점부터 — 우리 온톨로지는 무엇인가</h2>
 <p>우리 온톨로지는 그래프를 탐색하는 장치가 아니다. <strong>LLM 이 관계형 마스터에 대해 SQL 을 틀리지 않게 만드는 세 층의 장치</strong>다. 값을 미리 접지하는 사전(값 사전), 규칙을 프롬프트에 싣는 문서(규칙 문서), 생성 전후를 막고 고치는 장치(게이트·가드). 세 층이 한 벌의 yaml 선언에서 생성되고, 같은 선언을 읽는다.</p>
 <p><img alt="그림 1 — 세 층 구조와 채권의 실물" src="figures/fig1_three_layers.svg" /></p>
-<p>채권 도메인에서 이 세 층의 실물은 다음과 같다. 선언의 원천은 <code>enums/domestic_bonds.yaml</code> 1,361줄 하나이고, <code>bond_kr.ttl</code> 50줄과 KG 는 거기서 생성된다.</p>
+<p>채권 도메인에서 이 세 층의 실물은 다음과 같다. 선언의 원천은 <code>enums/domestic_bonds.yaml</code> 1,407줄 하나이고, <code>bond_kr.ttl</code> 50줄과 KG 는 거기서 생성된다.</p>
 <table>
 <thead>
 <tr>
@@ -62,13 +62,13 @@ em { color: #333; }
 <tr>
 <td style="text-align: left;">규칙 문서</td>
 <td style="text-align: left;">그 값으로 무엇을 어떻게 묻는가</td>
-<td style="text-align: left;">질의 규칙 49 · 답변 규칙 21 · 되묻기 14 — 매 질의 근거문서 25,750자로 프롬프트에 실림</td>
+<td style="text-align: left;">질의 규칙 49 · 답변 규칙 21 · 되묻기 14 — 매 질의 근거문서 25,837자로 프롬프트에 실림</td>
 <td style="text-align: left;">Plan · Answer</td>
 </tr>
 <tr>
 <td style="text-align: left;">게이트 · 가드</td>
 <td style="text-align: left;">생성 전에 막고 생성 후에 고친다</td>
-<td style="text-align: left;">부재 선언 11 · 금지 컬럼 4 · 위험등급 범위 0~6 · 결정층 가드 36</td>
+<td style="text-align: left;">부재 선언 11 · 금지 컬럼 4 · 위험등급 범위 0~6 · 결정층 가드 37</td>
 <td style="text-align: left;">Gate · Guard</td>
 </tr>
 </tbody>
@@ -335,7 +335,7 @@ em { color: #333; }
 </tr>
 </tbody>
 </table>
-<p>그래서 통칭마다 <strong>확정식</strong>을 선언했다. 다의 통칭 3종(국고채·은행채·지방채)은 확정식 그대로, 나머지는 종류 별칭표와 동의어 57개로 실값에 붙인다. 은행채 하나를 보면 <code>TRIM(bd_knd) IN ('일반은행채','특수은행채')</code> 두 값이고 2,031행이다. 여기서 부수적으로 발견한 것이 고정폭 패딩이다 — <code>bd_knd</code> 값에 공백이 채워져 있어 <code>TRIM</code> 없이 같은 조건을 걸면 16행만 나온다. 값을 고치지 않고 조회 시 <code>TRIM</code> 하는 것으로 선언했고, 패딩이 실재하는 컬럼 7개를 포함해 13개 컬럼에 적용했다.</p>
+<p>그래서 통칭마다 <strong>확정식</strong>을 선언했다. 다의 통칭 3종(국고채·은행채·지방채)은 확정식 그대로, 나머지는 종류 별칭표와 동의어 64개로 실값에 붙인다. 은행채 하나를 보면 <code>TRIM(bd_knd) IN ('일반은행채','특수은행채')</code> 두 값이고 2,031행이다. 여기서 부수적으로 발견한 것이 고정폭 패딩이다 — <code>bd_knd</code> 값에 공백이 채워져 있어 <code>TRIM</code> 없이 같은 조건을 걸면 16행만 나온다. 값을 고치지 않고 조회 시 <code>TRIM</code> 하는 것으로 선언했고, 패딩이 실재하는 컬럼 7개를 포함해 13개 컬럼에 적용했다.</p>
 <h3>2.2.3 순서가 있는 축은 하나였다</h3>
 <p>두 번째는 <strong>등급</strong>이었다. 2.1.4 에서 들여온 코드북이 여기서 개체가 된다. 표준등급 20을 rank 1(AAA)~20(D) 노드로 세우고, 투자등급(rank 1~10)·투기등급(11~20) 두 밴드를 상위 개념(<code>skos:broader</code>)으로 두었다. 빌드가 밴드→등급을 closure 20으로 펼친다. DB 표기 <code>AA0</code> 는 사용자가 말하는 <code>AA</code> 와 같은 노드의 alias 로 흡수된다 — 사용자의 <code>AA</code> 는 DB 에 0건이고 <code>AA0</code> 로 적혀 있다(한국식 중간값 표기).</p>
 <p>이 축은 채권이 네 상품군 중 <strong>유일하게 갖는 서열 축</strong>이다. "AA- 이상" 같은 순서 질의는 이 closure 없이는 SQL 로 옮길 수 없다. 규칙 <code>등급서열</code> 은 "이상·이하가 붙으면 <code>TRIM(crd_grd) IN (서열 확장 목록)</code>, <code>=</code> 단일 등급은 오답"을 싣는다.</p>
@@ -536,7 +536,7 @@ fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
 <tr>
 <td style="text-align: left;">규칙 선언</td>
 <td style="text-align: left;">그 값으로 무엇을 어떻게 묻는가</td>
-<td style="text-align: left;">질의 규칙 49(그중 35는 지시와 근거를 분리, 2는 선언 자체가 SQL 을 고치는 <code>enforce</code> 슬롯) · 답변 규칙 21 · 되묻기 14(다의어 7 · 사람의 선택 5 · 존재하지 않는 개체 1 · 조건부 계산 1)</td>
+<td style="text-align: left;">질의 규칙 49(그중 35는 지시와 근거를 분리, 4는 선언 자체가 SQL 을 고치는 <code>enforce</code> 슬롯) · 답변 규칙 21 · 되묻기 14(다의어 7 · 사람의 선택 5 · 존재하지 않는 개체 1 · 조건부 계산 1)</td>
 <td style="text-align: left;">전수는 부록 §6.2</td>
 </tr>
 </tbody>
@@ -641,7 +641,7 @@ fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
 <tr>
 <td style="text-align: left;"><code>query_rules</code> 49</td>
 <td style="text-align: left;">플래너 — 지시만 싣고 근거는 뺀다</td>
-<td style="text-align: right;">25,750자</td>
+<td style="text-align: right;">25,837자</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>answer_rules</code> 21</td>
@@ -703,13 +703,13 @@ fp:riskGradeValue_DomesticBond rdfs:subPropertyOf fp:riskGradeValue ;
 <tr>
 <td style="text-align: left;">규칙 주입 (Plan)</td>
 <td style="text-align: left;">개체 매핑·도메인 규칙·되묻기 규칙·스키마를 근거문서로 조립해 넘긴다</td>
-<td style="text-align: left;">근거문서 25,750자</td>
+<td style="text-align: left;">근거문서 25,837자</td>
 <td style="text-align: center;">1 (SQL 만)</td>
 </tr>
 <tr>
 <td style="text-align: left;">검증 · 조립 (Verify · Answer)</td>
 <td style="text-align: left;">단일 SELECT·화이트리스트·LIMIT·WHERE 값 사전 대조를 통과하면 실행. 답변 문장은 기계가 조립</td>
-<td style="text-align: left;">결정층 가드 36 · 값 검사기</td>
+<td style="text-align: left;">결정층 가드 37 · 값 검사기</td>
 <td style="text-align: center;">0</td>
 </tr>
 </tbody>
@@ -823,7 +823,7 @@ _GRADE_SHAPE = re.compile(r&quot;^([A-D])\1{0,3}[+\-0]?$&quot;)
 <h1>03. 시스템 구성도</h1>
 <p><img alt="그림 4 — 오프라인 빌드와 온라인 파이프라인" src="figures/fig4_pipeline.svg" /></p>
 <p>오프라인에서는 마스터 21,882행을 적재하고, 프로파일러 전수 스캔과 사람의 판정이 <code>enums/domestic_bonds.yaml</code>·<code>shared/*.yaml</code>·코드북 CSV 로 들어간다. <code>build_ontology.py</code> 가 검증 7종을 통과하면 <code>bond_kr.ttl</code>, KG 4테이블, 값 사전을 생성한다. 사람은 왼쪽 yaml 까지만 쓰고 오른쪽 ttl 과 KG 는 손대지 않는다.</p>
-<p>온라인에서는 질문이 Route → Ground → Gate 를 LLM 0회로 지나고, Plan 에서 근거문서 25,750자를 조립해 SQL 을 생성하고(LLM 1회), Guard 36이 SQL 을 고치고, Verify 가 값 사전과 대조하고, Execute 가 SQLite 를 읽고, Answer 가 목록·집계·분포를 기계로 조립한다(LLM 0회). 응답에 함께 나가는 <code>think_trace</code> 는 각 단계가 실제로 한 일의 로그이고 LLM 생성물이 아니다.</p>
+<p>온라인에서는 질문이 Route → Ground → Gate 를 LLM 0회로 지나고, Plan 에서 근거문서 25,837자를 조립해 SQL 을 생성하고(LLM 1회), Guard 36이 SQL 을 고치고, Verify 가 값 사전과 대조하고, Execute 가 SQLite 를 읽고, Answer 가 목록·집계·분포를 기계로 조립한다(LLM 0회). 응답에 함께 나가는 <code>think_trace</code> 는 각 단계가 실제로 한 일의 로그이고 LLM 생성물이 아니다.</p>
 <hr />
 <h1>04. 주요 기능 흐름도 — 수집 → 온톨로지 설계 → 그래프 구축 → 검색</h1>
 <p>주최가 정한 이 장의 흐름은 우리가 밟은 작업 순서와 같다. 02장이 수집·설계·구축을 겪은 순서대로 적었으니, 이 장은 마지막 걸음 — <strong>검색을 시작한 뒤 오답이 설계를 어떻게 바꿨는가</strong> — 를 적는다.</p>
@@ -940,6 +940,12 @@ vocab:
 <td style="text-align: left;">부류 전수조사</td>
 <td style="text-align: left;">부재 선언 4건 선제 — 9 → 11</td>
 </tr>
+<tr>
+<td style="text-align: left;">9/6</td>
+<td style="text-align: left;">"하이일드 수익률 높은 순 5개" — <code>투기등급</code> 규칙이 프롬프트에 실렸는데 무시돼 모수 18,060 · <code>ORDER BY 3</code> 서수가 가드 넷을 우회 (#84)</td>
+<td style="text-align: left;">선언만 있고 강제 없음 · SQL 표기 변이</td>
+<td style="text-align: left;"><code>enforce</code> 슬롯 SPECGRADE·만기구간 · 서수 ORDER BY 정규화 한 겹(가드마다 변이를 배우게 하지 않는다) · 커밋 <code>89640fa</code></td>
+</tr>
 </tbody>
 </table>
 <p>같은 대장을 라운드 단위로 다시 세면 아래와 같다. 사고 수 자체는 줄지 않았다 — 9월 5일에 14건이 난 것은 그날 일부러 어려운 난이도 문항을 던졌기 때문이다. 줄어든 것은 사고의 <strong>종류</strong>다. 첫 주는 SQL 이 오류 없이 틀리고 값이 빠지는 사고였고, 그 수리는 라우터·게이트·가드·조립기, 즉 결정층 자체를 세우는 코드였다. 9월 4일부터는 값이 전부 맞는데 축·모수·순서·경계가 틀리는 사고로 바뀌었고, 수리는 이미 있는 가드에 분기를 더하거나 선언 한 줄을 더하는 쪽으로 옮겨 갔다. 마지막 라운드는 사고보다 먼저 구멍을 찾았고, 같은 날 사용자가 직접 던진 4문항은 3문항이 정답이었다.</p>
@@ -991,14 +997,14 @@ vocab:
 </tr>
 <tr>
 <td style="text-align: left;">9/6</td>
-<td style="text-align: right;">7 (정답 확인 2 · 선제 3 · 미수리 2)</td>
+<td style="text-align: right;">7 (정답 확인 2 · 선제 3)</td>
 <td style="text-align: right;">2</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: left;">사고 전 발견 4건 · 사용자 4문항 중 3 정답</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: left;">사고 전 발견 4건 · 사용자 4문항 중 3 정답 · 오답 1건(#84)은 선언-미강제 → <code>enforce</code> 슬롯으로 닫음</td>
 </tr>
 </tbody>
 </table>
-<p>세는 기준은 이렇다. "선언만 고침"은 yaml 규칙 원문·동의어·부재 선언·금지 컬럼·값 사전만 바꾸고 코드가 그대로인 수리다. "코드 고침"은 가드·게이트·조립기 어느 하나라도 바뀐 수리이고, 새 가드를 세운 것과 있는 가드에 분기를 더한 것이 섞여 있다. 정답 확인·gold 결함·미수리는 어느 쪽에도 세지 않았다. 선언만으로 닫힌 16건 중 6건이 부재 선언이다 — 축이 없다는 사실을 한 줄 적으면 게이트가 새 축을 막는다는 것이 이 표에서 가장 값싼 수리였다.</p>
+<p>세는 기준은 이렇다. "선언만 고침"은 yaml 규칙 원문·동의어·부재 선언·금지 컬럼·값 사전만 바꾸고 코드가 그대로인 수리다. "코드 고침"은 가드·게이트·조립기 어느 하나라도 바뀐 수리이고, 새 가드를 세운 것과 있는 가드에 분기를 더한 것이 섞여 있다. 정답 확인·gold 결함은 어느 쪽에도 세지 않았다. 선언만으로 닫힌 16건 중 6건이 부재 선언이다 — 축이 없다는 사실을 한 줄 적으면 게이트가 새 축을 막는다는 것이 이 표에서 가장 값싼 수리였다.</p>
 <h2>4.2 지금 한 질의가 어떻게 흐르는가 — 공식 예시 #1</h2>
 <p><em>"현재 판매 가능한 원화채권 중 AA- 이상 종목 알려줘"</em> — 서버 실측 2.4초, LLM 호출 1회(SQL 생성만).</p>
 <p>Route 가 "채권"으로 <code>domestic_bonds</code> 단일 테이블을 고르고 값 <code>['AA-']</code> 를 잡는다. Ground 가 <code>'AA-'</code> 를 <code>CG_AAm</code> 으로, <code>'원화'</code> 를 <code>Curr_KRW</code> 로 접지한다. Gate 가 등급 토큰을 표준표와 대조해 통과시킨다. Plan 이 개체 매핑·규칙(<code>구매가능</code>·<code>등급서열</code>·<code>등급정규화</code>·<code>대표행</code>)·되묻기·스키마를 근거문서로 조립해 SQL 을 생성한다. Guard 가 단일 등급 비교를 서열 목록으로 교체한다. Verify 가 WHERE 리터럴을 값 사전과 대조한다. Answer 가 30행을 기계로 조립한다.</p>
@@ -1123,7 +1129,7 @@ LIMIT 30
 </tr>
 </tbody>
 </table>
-<p>이 기준을 사고 대장에 적용하면, 수리 79건 중 코드 없이 닫힌 것이 16건이다 — 규칙 원문 정정·동의어·답변 규칙·부재 선언 6건·금지 컬럼·값 사전. 부재 선언 여섯은 코드 변경 0으로 게이트가 새 축을 막았고, 라운드별 수는 4.1 의 표에 있다. 나머지 63건은 코드가 바뀌었고 그 사실은 5.4 에 적는다.</p>
+<p>이 기준을 사고 대장에 적용하면, 수리 81건 중 코드 없이 닫힌 것이 16건이다 — 규칙 원문 정정·동의어·답변 규칙·부재 선언 6건·금지 컬럼·값 사전. 부재 선언 여섯은 코드 변경 0으로 게이트가 새 축을 막았고, 라운드별 수는 4.1 의 표에 있다. 나머지 65건은 코드가 바뀌었고 그 사실은 5.4 에 적는다.</p>
 <p>이 여섯이 가능한 이유는 하나다. <strong>무언가를 나눌 때 낱말로 나누지 않고 그것이 무엇의 성질인지를 물었기 때문이다.</strong> 공모/사모는 종목명의 <code>(사)</code> 가 아니라 발행 방식 컬럼의 성질이라 이름 규약이 바뀌어도 판정이 흔들리지 않는다. 등급 서열은 코드북의 성질이고 실재 여부는 데이터의 성질이라 둘을 나눠 두었다. 통칭은 접두·접미 변형의 성질이라 목록이 아니라 규칙이다. 위험등급 범위는 테이블의 성질이라 테이블마다 선언했다. 부재는 도메인의 성질이지 어휘의 성질이 아니라 테이블 단위로 선언했다. 낱말로 나누면 규칙이 사례 목록이 되고 사례는 데이터가 바뀔 때마다 사람이 늘려야 한다. 성격으로 나누면 규칙이 일반 규칙이 되고 새 값·새 표기·새 상품군이 그 규칙을 그대로 통과한다. 확장성은 따로 만든 기능이 아니라 그 판단의 부산물이다.</p>
 <p>채권은 표기에 정보가 많이 실린 도메인이다. 특수구조 10종은 종목명에만 있고, ESG 라벨도, 발행사 약칭도, 등급의 한국식 <code>0</code> 표기도 전부 이름과 표기의 문제다. 낱말로 나누고 싶은 유혹이 가장 큰 도메인이었고, 매번 그 반대로 갔다. 표기를 보되 표기로 판정하지 않았다.</p>
 <h2>5.3 현업 적용 지점</h2>
@@ -1159,8 +1165,8 @@ LIMIT 30
 <li>값이 갈리는 중복 8종목의 두 줄 병기는 선언까지만 있고 런타임 강제가 아직 없다.</li>
 <li>발행주체 유형·만기 구간·담보 유형·발행사 분류 4축은 경계값이 도메인 합의 사항이라 골격만 두었다.</li>
 <li>등급 이력·발행사 재무·계열 정보는 데이터에 없어 답하지 않는다 — 이것은 결함이 아니라 선언이다.</li>
-<li>사고 수리 79건 중 코드 변경이 63건이다. 첫 주 25건은 결정층 자체를 세운 것이라 치더라도, 9월 4일 이후에도 코드 수리(18건)가 선언 수리(6건)보다 많다. 선언만으로 닫히는 비율을 올리는 것이 다음 목표이고 아직 도달하지 않았다.</li>
-<li>선언이 있는데 강제가 없어 안 지켜진 패턴이 두 번 반복됐다 — 9월 4일 기본모수, 9월 6일 투기등급. 선언마다 강제 슬롯이 붙었는지 점검하는 일이 아직 사람 손에 있다.</li>
+<li>사고 수리 81건 중 코드 변경이 65건이다. 첫 주 25건은 결정층 자체를 세운 것이라 치더라도, 9월 4일 이후에도 코드 수리(20건)가 선언 수리(6건)보다 많다. 선언만으로 닫히는 비율을 올리는 것이 다음 목표이고 아직 도달하지 않았다.</li>
+<li>선언이 있는데 강제가 없어 안 지켜진 패턴이 두 번 반복됐다 — 9월 4일 기본모수, 9월 6일 투기등급. 둘 다 <code>enforce</code> 슬롯으로 닫았지만, 선언마다 강제 슬롯이 붙었는지 점검하는 일이 아직 사람 손에 있다.</li>
 </ul>
 <h2>5.5 닫으며</h2>
 <p>우리가 만든 것은 채권 챗봇이 아니라, 판정을 선언으로 고정하고 그 선언이 실행되게 하는 틀이다. 채권은 그 틀이 가장 좁은 조건에서 시험된 도메인이었다. 더할 데이터가 없었기 때문에 없는 것을 없다고 말하는 법을 먼저 배웠고, 데이터가 좁아 값 오류는 금방 드러났기 때문에 값이 전부 진짜인데 답이 틀린 부류를 정면으로 만났고, 데이터 판이 한 번 통째로 갈렸기 때문에 선언이 데이터보다 오래 살아야 한다는 기준을 실제로 겪었다. 그 셋이 채권에서 나왔지만 채권에만 남지 않는다. 부재 선언도, 유사 상품의 축 표도, 위험요인 재료 표도 테이블 단위 선언이라 다른 상품군이 같은 키를 선언하면 같은 코드가 돈다.</p>
@@ -1248,7 +1254,7 @@ WHERE (TRIM(std_pd_mcls_nm) = '국공채'
 -- 개수질문 — 행 수가 아니라 종목 수
 SELECT COUNT(DISTINCT pd_no) FROM domestic_bonds WHERE ...
 </code></pre>
-<p><strong>결정층 가드 36</strong> — yaml 이 이름으로 지목한 <code>pipeline.py</code> 함수를 센 수다. 그 규칙으로 실측하면 39가 나오고, 조립 헬퍼 3개(<code>build_grounding</code>·<code>compose_answer</code>·<code>normalize_table_names</code>)를 빼면 36이다. 규칙 49 · 답변 규칙 21 · 되묻기 14에 가드 36 — 수가 맞지 않는 것이 정상이다. 선언만으로 지켜지는 규칙에는 가드를 붙이지 않았고, 가드는 실측에서 실제로 어긋난 자리에만 달았다.</p>
+<p><strong>결정층 가드 37</strong> — yaml 이 이름으로 지목한 <code>pipeline.py</code> 함수를 센 수다. 그 규칙으로 실측하면 40이 나오고, 조립 헬퍼 3개(<code>build_grounding</code>·<code>compose_answer</code>·<code>normalize_table_names</code>)를 빼면 37이다. 규칙 49 · 답변 규칙 21 · 되묻기 14에 가드 37 — 수가 맞지 않는 것이 정상이다. 선언만으로 지켜지는 규칙에는 가드를 붙이지 않았고, 가드는 실측에서 실제로 어긋난 자리에만 달았다.</p>
 <h2>6.3 낱말이 아니라 성격으로 나눈 자리 — 전수</h2>
 <table>
 <thead>

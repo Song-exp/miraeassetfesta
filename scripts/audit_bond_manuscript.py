@@ -94,7 +94,7 @@ raw = io.open(YAML, encoding="utf-8").read()
 d = _yaml.safe_load(raw)
 n = lambda k: len(d.get(k) or [])
 
-chk(L, "yaml 줄 수", 1361, len(raw.splitlines()))
+chk(L, "yaml 줄 수", 1407, len(raw.splitlines()))
 chk(L, "columns", 58, n("columns"))
 chk(L, "query_rules", 49, n("query_rules"))
 chk(L, "answer_rules", 21, n("answer_rules"))
@@ -105,11 +105,11 @@ chk(L, "absent_properties", 8, n("absent_properties"))
 chk(L, "forbidden_columns", 4, n("forbidden_columns"))
 chk(L, "similarity_axes 축", 5, n("similarity_axes"))
 chk(L, "gate_constants", 1, n("gate_constants"))
-chk(L, "synonyms", 57, n("synonyms"))
+chk(L, "synonyms", 64, n("synonyms"))
 qr = d.get("query_rules") or {}
 chk(L, "query_rules 중 text/evidence 분리", 35,
     sum(1 for v in qr.values() if isinstance(v, dict) and "text" in v and "evidence" in v))
-chk(L, "query_rules 중 enforce 슬롯", 2,
+chk(L, "query_rules 중 enforce 슬롯", 4,
     sum(1 for v in qr.values() if isinstance(v, dict) and "enforce" in v))
 
 t = io.open(TTL, encoding="utf-8").read()
@@ -147,7 +147,7 @@ try:
         from src.runtime import loader
     ctx = loader.load_context()
     T = ["domestic_bonds"]
-    chk(L, "planner_context 자", 25750, len(ctx.planner_context(T)))
+    chk(L, "planner_context 자", 25837, len(ctx.planner_context(T)))
     chk(L, "answer_context 자", 3390, len(ctx.answer_context(T)))
     chk(L, "clarify_context 자", 1489, len(ctx.clarify_context(T)))
 except Exception as e:
@@ -163,7 +163,7 @@ src = io.open("src/runtime/pipeline.py", encoding="utf-8").read()
 defined = set(re.findall(r"^\s*def\s+(\w+)", src, re.M))
 named = set(re.findall(r"\b([a-z_]{6,})\b", raw))
 guards = sorted(f for f in defined if f in named and not f.startswith("_") and f not in HELPERS)
-chk(L, "가드(지목 함수 − 조립 헬퍼 3)", 36, len(guards))
+chk(L, "가드(지목 함수 − 조립 헬퍼 3)", 37, len(guards))
 
 # ─────────────────────────────────────────────────────────────
 # ⑥ 외부 수집 · 평가셋

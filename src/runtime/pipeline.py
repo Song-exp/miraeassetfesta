@@ -4148,6 +4148,14 @@ def _effective_mat_window(sql: str) -> str | None:
     return f"{_fmt_ymd(str(hi))} {'이전' if hi_strict else '까지'}"
 
 
+def _is_zero(v) -> bool:
+    """결과 칸이 숫자 0 인가 — '0'·'0.0'·0.0 을 한 판정으로. 값이 아니라 결측 표기인 0 을 가려낼 때 쓴다."""
+    try:
+        return float(str(v).strip()) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _fmt_ymd(v: str) -> str:
     s = v.strip().rstrip("0").rstrip(".") if re.fullmatch(r"\d{8}\.0+", v.strip()) else v.strip()
     return f"{s[:4]}-{s[4:6]}-{s[6:]}" if re.fullmatch(r"\d{8}", s) else (s or "미수록")
@@ -4278,17 +4286,27 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         # 🔴 장내종가는 **기준일과 한 덩어리로만** 적는다 (규칙 `장내종가`·`가격축`). 유효 1,270행의 종가 기준일은
         #    2019~2026년에 흩어져 있고 구매가능 모수 1,262 중 2026년치는 150(12%)뿐이라, 기준일 없이 적으면
         #    사용자는 오늘 시세로 읽는다. 기준일 컬럼은 _BOND_HIDE 라 아래 일반 루프가 못 싣는다 — 여기서 짝지어 낸다.
+        # 🆕 2026-09-06 QA r1 BO(e) — 장내종가 0 은 값이 아니라 **거래 없음**이다(스키마 missing_semantics `0: missing`
+        #    · 16,476행 · 주최 공지 "0 = 의도된 값"). 종전엔 문자열이 truthy 라 '장내종가 0.0' 이 30행에 그대로 나갔다
+        #    (D-013 녹색채권 실측) — 수익률 0 을 '미수록' 으로 적는 바로 위 규칙과 같은 축이다.
         if "exg_close_price" in cols and r.get("exg_close_price"):
             _bd = r.get("exg_close_price_base_dt")
             _bd = _fmt_ymd(_bd) if _bd and _bd.strip() else None
-            bits.append(f"장내종가 {r['exg_close_price']}" + (f"(종가 기준일 {_bd})" if _bd else ""))
+            if _is_zero(r["exg_close_price"]):
+                bits.append("장내종가 없음(장내 거래 없음)")
+            else:
+                bits.append(f"장내종가 {r['exg_close_price']}" + (f"(종가 기준일 {_bd})" if _bd else ""))
         # SELECT * 는 58컬럼 전부가 오므로 위 핵심 항목만 보이고 나머지는 옮기지 않는다(2026-09-03 BAC 행 실측)
         for c in ([] if star else cols):
             if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm",
                                         "exg_close_price", "구분") or c in _BOND_YIELD_COLS:
                 continue
             if r.get(c):
-                bits.append(f"{_BOND_COL_KO.get(c, c)} {_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c]}")
+                # 🆕 2026-09-06 QA r1 BO(d) — 날짜 컬럼은 만기(mat_dt)만 사람 표기였다. 일반 루프로 실리는 발행일(isu_dt)은
+                #    `_cell` 이 REAL 을 정수로만 되돌려 '발행일 20260626' 이 그대로 나갔다(D-052 실측). 날짜는 한 규칙으로 적는다.
+                bits.append(f"{_BOND_COL_KO.get(c, c)} "
+                            + (_fmt_ymd(r[c]) if c.endswith("_dt") else
+                               (_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c])))
         tag = f"[{r['구분']}] " if both and r.get("구분") else ""
         out.append(f"{i}. {tag}{r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
         if risk_spec and i <= int(risk_spec["max_rows"]):
@@ -4311,6 +4329,17 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         vals = [r.get(ycol) for r in recs if r.get(ycol)]
         if len(vals) != len(set(vals)):
             tail.append(f"{_BOND_AXIS_KO.get(ycol, (ycol,))[0]} {TIE_BREAK_NOTE}")
+    # 🆕 2026-09-06 QA r1 BO(a) — **표시 밖 동률**은 위 문장이 못 잡는다(보인 행끼리는 값이 다 다를 수 있다).
+    #    목록이 모수보다 짧으면(최상급 LIMIT 1 포함) 경계값과 같은 값을 가진 종목이 몇 개인지 세어 밝힌다.
+    if scol and total and total > n and recs:
+        _edge = recs[-1].get(scol)
+        if _edge:
+            _tie = _bond_axis_tie_count(sql, scol, _edge)
+            _shown = sum(1 for r in recs if r.get(scol) == _edge)
+            if _tie and _tie > _shown:
+                _nm = _BOND_AXIS_KO.get(scol, (_BOND_COL_KO.get(scol, scol),))[0]
+                _disp = _fmt_ymd(str(_edge)) if scol.endswith("_dt") else str(_edge)
+                tail.append(f"{_nm} {_disp}인 종목은 모두 {_tie:,}종목으로 동률이며, 그중 {_shown}종목을 표시했습니다.")
     # 이자유형분리로 축을 좁혔으면 그 사실을 밝힌다 — 모수가 그만큼 줄어든 목록이다 (gold BND-D-012 must_include '고정금리')
     if (_ORDER_SRFC.search(sql) and re.search(r"bd_intp_tcd\s*\)?\s*=\s*'이표채'", sql)
             and re.search(r"bd_inrt_tcd\s*\)?\s*=\s*'고정금리'", sql)):
@@ -4626,6 +4655,35 @@ def _bond_coverage_counts(sql: str) -> tuple[int, int] | None:
     finally:
         con.close()
     return int(row[0]), int(row[1])
+
+
+def _bond_axis_tie_count(sql: str, col: str, value: str) -> int | None:
+    """같은 모수에서 정렬 축 값이 경계값과 **똑같은** 종목 수 — 목록에 안 보이는 동률을 세는 자리. 아니면 None.
+
+    🆕 2026-09-06 QA r1 BO(a) — '만기가 가장 짧은 채권 뭐야?' 에 LIMIT 1 로 한 종목만 나갔는데 실제로는 만기 2026-08-24
+    종목이 20개 동률이었다(D-032 · gold note '이상적 답은 동률 언급'). 최상급 하나를 집는 순간 나머지 19종목은
+    사용자에게 존재하지 않는 것이 된다 — 표시 밖 동률은 결정층이 세어 밝힌다(F-021 728.524% 2종목도 같은 자리).
+    모수는 조립기가 커버리지를 세는 것과 **같은 FROM·WHERE**(_bond_coverage_counts 와 같은 판정)."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:union|having|join)\b|\(\s*select\b", sql, re.I):
+        return None
+    if re.search(r"\bgroup\s+by\b(?!\s+pd_no\b)", sql, re.I):
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m or not re.fullmatch(r"[a-z_]\w*", col or "", re.I):
+        return None
+    try:
+        v = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    con = connect_readonly()
+    try:
+        where = " AND " if re.search(r"\bwhere\b", m.group(1), re.I) else " WHERE "
+        row = con.execute(f"SELECT COUNT(DISTINCT pd_no) FROM {m.group(1).strip()}{where}{col} = ?", (v,)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return int(row[0]) if row else None
 
 
 _HEADER_WRAP = re.compile(r"^(?:TRIM|UPPER|LOWER)\(\s*(?:\w+\.)?(\w+)\s*\)$", re.I)
@@ -5516,7 +5574,7 @@ def ensure_positive_count_answered(answer: str, sql: str, rows: str, n: int,
     return f"{prefix}{subject}조회 결과 {val:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF}).", True
 
 
-def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
+def _distribution_answer(sql: str, rows: str, n: int, question: str = "") -> str | None:
     """2열(범주 라벨 · COUNT(*)) GROUP BY 분포 결과의 답변을 기계 조립한다. 아니면 None.
 
     발동 조건(전부): GROUP BY 존재 · JOIN 없음 · SELECT 가 정확히 2항목이고 둘째가 COUNT(*) ·
@@ -5562,7 +5620,12 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     total = sum(c for _, c, _ in pairs)
     if not with_funds:
         unit = "종목" if is_pdno else "건"
-        head = f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}{unit}입니다 (기준일 {gate.DATA_CUTOFF})."
+        # 2026-09-06 QA r1 BO(i) — 분포는 **어느 축으로 갈랐는지**가 값의 절반이다. 종전엔 축이 답에 없어
+        #    소분류 13범주가 '채권 종류' 로 읽혔다(A-015 실측 · 정본 6.1 의 3단 계층에서 '채권종류' 는 bd_knd).
+        #    축 이름은 결과 헤더의 컬럼에서 읽는다(_BOND_COL_KO) — 새로 쓰는 서술이 아니라 이미 확정된 사실이다.
+        axis_ko = _BOND_COL_KO.get(_bare_header(rows.splitlines()[0].split(" | ")[0])) if is_pdno else None
+        head = (f"조회 결과 {len(pairs)}개 범주, 합계 {total:,}{unit}입니다 "
+                f"({'집계 축 ' + axis_ko + ' · ' if axis_ko else ''}기준일 {gate.DATA_CUTOFF}).")
         if is_pdno:
             # 범주별 DISTINCT 합은 전체 DISTINCT 와 다를 수 있다(복수 범주 걸친 종목 — 등급별집계 규칙:
             # 위험등급 합 20,505 > 전체 20,497). 전체는 같은 WHERE 로 따로 세고 차이를 문자열로 굽는다.
@@ -5576,12 +5639,16 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
                     finally:
                         con.close()
                     if overall != total:
-                        head = (f"조회 결과 {len(pairs)}개 범주, 전체 {overall:,}종목입니다 (기준일 {gate.DATA_CUTOFF}). "
+                        head = (f"조회 결과 {len(pairs)}개 범주, 전체 {overall:,}종목입니다 "
+                                f"({'집계 축 ' + axis_ko + ' · ' if axis_ko else ''}기준일 {gate.DATA_CUTOFF}). "
                                 f"범주별 합은 {total:,}종목 — 복수 범주에 걸린 종목이 중복 집계되어 전체와 다릅니다.")
                 except sqlite3.Error:
                     pass
         lines = [head, ""]
         lines += [f"- {lab if lab else '(미수록)'}: {c:,}{unit}" for lab, c, _ in pairs]
+        alt = _bond_axis_alternative(sql, rows, question) if is_pdno else None
+        if alt:
+            lines += ["", alt]
         return "\n".join(lines)
     # 🔴 유형별 펀드 수의 단순 합(3,222)은 전체 펀드 수(3,040)가 아니다 — 실측 182펀드가 클래스별로 유형이 갈린다
     #    (176건은 일부 클래스만 평가 미수록·6건은 실제 상이). 전체는 같은 WHERE 로 COUNT(DISTINCT 펀드키) 를
@@ -5608,6 +5675,40 @@ def _distribution_answer(sql: str, rows: str, n: int) -> str | None:
     if distinct is not None and fund_sum != distinct:
         lines += ["", f"클래스별 유형이 갈리는 펀드 {abs(fund_sum - distinct):,}건은 복수 범주에 계수되어 범주별 펀드 수의 합({fund_sum:,})은 전체 펀드 수({distinct:,})와 다릅니다."]
     return "\n".join(lines)
+
+
+_KIND_AXIS_Q = re.compile(r"종류\s*(?:별|마다)|(?:무슨|어떤|어느)\s*종류")
+
+
+def _bond_axis_alternative(sql: str, rows: str, question: str) -> str | None:
+    """질문이 '종류별' 을 물었는데 다른 축으로 집계했을 때, 정본 축(bd_knd)의 범주 수를 **실측**해 한 줄로. 아니면 None.
+
+    2026-09-06 QA r1 BO(i) — A-015 는 소분류(13범주)로 집계돼 값은 맞았지만 사용자가 물은 '채권 종류' 는
+    bd_knd(정본 6.1 의 3단 계층 중 셋째 단)다. 축이 갈렸다는 사실만 밝히고 범주 수는 같은 모수에서 다시 센다 —
+    답변에 새 서술을 쓰지 않는다(수는 전부 SQLite 가 준다). 정본 축은 _BOND_COL_KO 의 '종류' 라벨로 찾는다."""
+    if not question or not _KIND_AXIS_Q.search(question) or "domestic_bonds" not in sql:
+        return None
+    canon = next((c for c, ko in _BOND_COL_KO.items() if ko == "종류"), None)
+    col = _bare_header(rows.splitlines()[0].split(" | ")[0])
+    axis_ko = _BOND_COL_KO.get(col)
+    if not canon or not axis_ko or col == canon:
+        return None
+    m = _SIMPLE_FROM_WHERE.search(sql)
+    if not m:
+        return None
+    con = connect_readonly()
+    try:
+        where = " AND " if re.search(r"\bwhere\b", m.group(1), re.I) else " WHERE "
+        k = con.execute(f"SELECT COUNT(DISTINCT TRIM({canon})) FROM {m.group(1).strip()}"
+                        f"{where}COALESCE(TRIM({canon}),'') <> ''").fetchone()[0]
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    if not k:
+        return None
+    return (f"위 집계의 축은 {axis_ko}({col})입니다. 같은 모수를 채권 종류({canon}) 축으로 세면 {int(k):,}개 범주로 갈립니다 "
+            f"— 대분류·소분류·채권종류는 서로 다른 단입니다.")
 
 
 _BASE_POP_COND = re.compile(r"\b(?:sale_yn|prvo_pbff_desc)\b", re.I)
@@ -10484,6 +10585,8 @@ def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
 
 
 _BOND_YIELD_SORT = re.compile(r"\border\s+by\s+(?:MAX|MIN)?\(?\s*(applied_yield|after_tax_yield|srfc_irt|buy_yield)\b", re.I)
+# 듀레이션 축 정렬 — 대표행 형(MIN(dur))·bare 둘 다. 잔존일수 병기의 발동 신호다 (2026-09-06 QA r1 BO-f).
+_BOND_DUR_SORT = re.compile(r"\border\s+by\s+(?:MAX|MIN)?\(?\s*dur\b", re.I)
 
 
 _ORDINAL_KEY = re.compile(r"(\bORDER\s+BY\s+|,\s*)(\d+)(?=\s*(?:ASC|DESC|,|\bLIMIT\b|/\*|$))", re.I)
@@ -10535,10 +10638,15 @@ def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
 
     2026-09-02 실측: '한전 채권 수익률 높은 순' SELECT 가 pd_nm·applied_yield·crd_grd 뿐 — 5.051%(만기 2052)
     와 4.744%(만기 2038)가 만기 없이 나열돼 판단 재료가 없다. ensure_fund_evidence_columns(펀드)의 채권판.
+    🆕 2026-09-06 QA r1 BO(f) — **듀레이션 정렬에는 잔존일수를 병기한다.** 듀레이션은 잔존만기가 아니라 가중평균 회수기간이라
+    dur 0.0073 다섯 종목만 나열하면 며칠 남은 채권인지 알 수 없다(D-011 실측 · 리드 J 결정 '답변에 잔존일수를 함께 보여 준다').
+    수익률 축의 병기(만기일·신용등급)는 그대로 — 축마다 필요한 재료가 다르다.
     불개입: 집계·GROUP BY·JOIN·`*`. crd_grd 는 ensure_grade_select_column 과 같은 표기(TRIM … AS crd_grd)."""
     if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
         return sql, False
-    if not _BOND_YIELD_SORT.search(sql):
+    yield_sort = bool(_BOND_YIELD_SORT.search(sql))
+    dur_sort = bool(_BOND_DUR_SORT.search(sql))
+    if not (yield_sort or dur_sort):
         return sql, False
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm:
@@ -10549,10 +10657,12 @@ def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
     if _AGG_HEAD.search(head) or "*" in head or re.search(r"\bGROUP\s+BY\b(?!\s+pd_no\b)", sql, re.I):
         return sql, False
     add = []
-    if not re.search(r"\bmat_dt\b", head):
+    if yield_sort and not re.search(r"\bmat_dt\b", head):
         add.append("mat_dt")
-    if not re.search(r"\bcrd_grd\b", head):
+    if yield_sort and not re.search(r"\bcrd_grd\b", head):
         add.append("TRIM(crd_grd) AS crd_grd")
+    if dur_sort and not re.search(r"\bremaining_days\b", head):
+        add.append("remaining_days")
     if not add:
         return sql, False
     return head.rstrip() + ", " + ", ".join(add) + " " + rest, True
@@ -10721,12 +10831,45 @@ def bond_answer_notes(sql: str, answer: str, question: str = "") -> list[str]:
             and "5등급" not in answer.replace("(5등급)", ""):
         absent = _kinds_without_safe_grade(question)
         notes.append(SAFE_15_16_NOTE_FALLBACK if absent else SAFE_15_16_NOTE)
+    # 🆕 2026-09-06 QA r1 BO(b) — 통칭 하나가 **여러 종류 값**으로 풀리면(은행채 = 일반+특수 · 지방채 3종 · 국민주택 2종)
+    #    사용자는 자기가 무엇을 본 것인지 모른다(S-003 실측: 답 3종목이 전부 특수은행채인데 '은행채' 라고만 적혔다).
+    #    포함 종류는 **선언(kind_filters)의 확정식 리터럴**에서 읽는다 — 코드에 이름을 적지 않는다.
+    for _tok, _incl in _kind_coverage_notes(sql, question):
+        _n = f"'{_tok}' 은(는) {' · '.join(_incl)} 를 포함한 기준입니다(종류필터 확정식)."
+        if _n not in answer and _n not in notes:
+            notes.append(_n)
     # 🆕 2026-09-06 밤 #90 — '자회사·계열사' 는 데이터에 없는 관계다. 발행사명 LIKE 로 답했으면 그 대용을 밝힌다(#70 과 같은 원칙).
     if question and _AFFILIATE_Q.search(question) and "발행사명" not in answer:
         lits = sorted({m.group(1).strip("%") for m in _ISSUER_LIKE.finditer(sql) if m.group(1).strip("%")})
         if lits:
             notes.append(f"자회사·계열 관계는 데이터에 없어 발행사명에 '{'/'.join(lits)}' 이(가) 들어간 발행사 기준으로 답했습니다.")
     return notes
+
+
+_KIND_IN_LIST = re.compile(r"IN\s*\(([^)]*)\)", re.I)
+
+
+def _kind_coverage_notes(sql: str, question: str) -> list[tuple[str, list[str]]]:
+    """질문이 부른 종류 통칭 중 확정식이 **2종 이상**을 담은 것 — [(통칭, 포함 종류 목록)]. 원천은 선언 kind_filters.
+
+    발동(전부): ① 질문에 그 통칭이 있고 ② 그 통칭의 확정식이 IN 목록(값 2개 이상)이며 ③ 그 확정식이 SQL 에 실려 있다.
+    등호 하나로 풀리는 통칭(회사채·카드채)·국고채 OR 확정식(같은 종류의 결측 회수)은 병기할 것이 없어 대상이 아니다."""
+    if "domestic_bonds" not in sql or not question:
+        return []
+    norm = re.sub(r"\s+", "", sql)
+    out: list[tuple[str, list[str]]] = []
+    for tok, expr in _kind_filters()[0]:
+        if tok not in question or re.sub(r"\s+", "", expr) not in norm:
+            continue
+        m = _KIND_IN_LIST.search(expr)
+        if not m:
+            continue
+        lits = [v.strip() for v in re.findall(r"'([^']*)'", m.group(1)) if v.strip()]
+        if len(lits) < 2:
+            continue
+        if (tok, lits) not in out:
+            out.append((tok, lits))
+    return out
 
 
 @lru_cache(maxsize=1)
@@ -13068,7 +13211,7 @@ def answer_question(
     # 🔴 분포(2열 GROUP BY COUNT) 답변은 기계 조립 — HCX 0회 (2026-09-01 FND-038 재검 실측:
     #    행수 병기 후에도 19행 중 17행만 나열 + 금지된 '일부' 서술 재발. 목록 전사는 LLM 에게
     #    맡길 수 없다 — 결정층에서 전 행을 그대로 옮긴다).
-    dist = _distribution_answer(sql, rows, n)
+    dist = _distribution_answer(sql, rows, n, q)
     if dist is not None:
         step("[Answer] 분포 답변 기계 조립 — 2열(범주·건수) GROUP BY 결과는 HCX 없이 전 행을 그대로 옮긴다 "
              "(2026-09-01 FND-038 재검: 19행 중 17행 나열 + '일부' 서술 재발)")

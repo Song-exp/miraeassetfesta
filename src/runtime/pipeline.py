@@ -460,6 +460,26 @@ _REFUSAL_REASONS: tuple[tuple[str, str], ...] = (
 )
 
 
+_FABRICATED_REASON = re.compile(r"개인\s*정보\s*보호법|보호법|법적(?:인)?\s*(?:문제|책임|제한)|법률|법에\s*따라|정책(?:에|상)\s*따라|규정(?:에|상)\s*따라|위반|처벌|불법")
+_GENERIC_REFUSE = ("질문이 가리키는 정보는 제공된 4개 상품 마스터와 수집 테이블(구성종목·설명서)에 수록되어 있지 않습니다. "
+                   "수록된 상품의 보수·수익률·위험등급·구성종목 같은 수치는 조회해 드릴 수 있습니다.")
+
+
+def sanitize_refusal_reason(why: str, question: str) -> tuple[str, bool]:
+    """플래너 거절 사유에서 **지어낸 법·정책 근거**를 걷어낸다. (사유, 교체했는지)
+
+    🔴 2026-09-06 #44 서버 실측 — 질문이 URL 한 줄(https://…/winners)이었는데 사유가 "개인정보 보호법에 따라 수집하거나
+       제공할 수 없습니다 … 법적인 문제가 될 수 있습니다". 거절은 맞지만 이유가 창작이다. `_refusal.yaml` 인물_정보 규칙이
+       "법적·정책적 사유를 지어내지 않는다" 고 적어 두었는데도(8/31 같은 문형) 재발 — 규칙은 확률, 코드로 옮긴다.
+       질문에 그 낱말(법·정책·위반)이 있으면 사용자가 꺼낸 화제라 손대지 않는다.
+    """
+    if not why or not _FABRICATED_REASON.search(why):
+        return why, False
+    if re.search(r"법|정책|규정|위반", question):
+        return why, False
+    return _GENERIC_REFUSE, True
+
+
 def refusal_reason_text(err: str | None) -> str:
     """기각 사유(내부 문자열) → 사용자 문장. 부류를 못 가리면 종전 문구 그대로."""
     for needle, human in _REFUSAL_REASONS:
@@ -4681,11 +4701,16 @@ def strip_false_hedge(text: str, sql: str, n: int) -> tuple[str, bool]:
     펀드를 운용하는 곳이 있을 수 있습니다" — 집계가 전수라 유보가 거짓이다. 목록이 LIMIT 에 잘린 경우(커버리지
     병기)는 유보가 정당하므로 불개입. 전부 지워지면 원문 유지.
     """
-    if n >= MAX_ROWS or not re.search(r"\bgroup\s+by\b|\b(?:count|sum)\s*\(", sql, re.I):
+    if n >= MAX_ROWS:
         return text, False
+    # 🔴 2026-09-06 #43 서버 실측 — "캠브리콘 편입 중국 반도체 ETF": 14행(< 상한 30, LIMIT 30 미달 = 전수)을 받고
+    #    "조회된 14건 중 상위 4개 … 이외에도 더 많은 상품들이 있을 수 있습니다". 집계가 아니어도 **잘리지 않은 목록**이면
+    #    유보는 거짓이다 — 종전엔 GROUP BY·COUNT·SUM 이 있을 때만 걷어냈다(#40 '2026년 상장' 도 같은 문장이 나갔다).
+    aggregated = bool(re.search(r"\bgroup\s+by\b|\b(?:count|sum)\s*\(", sql, re.I))
     if _explicit_limit_hit(sql, n) and not re.search(r"\b(?:count|sum)\s*\(", sql, re.I):
         return text, False          # 상위 k 로 잘린 개체 목록(채권 대표행 GROUP BY pd_no + MAX/MIN) — '더 있다' 는 참이다.
                                     # COUNT/SUM 정렬 top-k(운용사 top5)는 전수 집계라 유보가 거짓 — 종전대로 걷어낸다.
+    del aggregated                  # 집계 여부는 더 이상 발동 조건이 아니다 — 잘리지 않았으면 전수다
     out = _FALSE_HEDGE.sub("", text)
     if out == text:
         return text, False
@@ -11376,6 +11401,10 @@ def answer_question(
         why, refuse_stripped = strip_disclaimer(why)
         if refuse_stripped:
             step("[Guard] 면책 문구 제거(Refuse 경로) — 거절문도 같은 문형 가드를 탄다 (14R gold ③-17)")
+        why, reason_fixed = sanitize_refusal_reason(why, q)
+        if reason_fixed:
+            step("[Guard] 거절 사유 창작 제거 — 질문에 없는 법·정책·위반 사유를 데이터 부재 사유로 교체 "
+                 "(2026-09-06 #44 실측: URL 한 줄 질문에 '개인정보 보호법에 따라 … 법적인 문제' — _refusal.yaml 인물_정보 규칙이 금지한 문형)")
         step("[Decision] 데이터 범위 밖 — HCX 답변 생성 없이 종료")
         result.think_trace = "\n".join(trace)
         # 플래너 사유는 고객 문장으로 — 컬럼명 괄호는 뗀다 (2026-09-05 wording)

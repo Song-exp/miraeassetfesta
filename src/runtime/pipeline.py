@@ -8419,12 +8419,15 @@ def ensure_kind_filter(sql: str, question: str) -> tuple[str, bool]:
         raw_body, marks = _split_slot_markers(m_w.group(1)) if m_w else ("", "")
         if pred and not set(re.findall(r"'([^']*)'", pred)) <= set(re.findall(r"'([^']*)'", raw_body)):
             words = {a for a, l in _STRUCT_ALIASES.items() if l == labels[0]} | {labels[0]}
+            # 판정식 자신의 리터럴 — 선언이 쓰는 표기는 '남이 좁힌 조건' 이 아니다 (#101)
+            pred_lits = {x for x in re.findall(r"'([^']*)'", pred)} | {
+                x.replace("%", "").strip() for x in re.findall(r"'([^']*)'", pred)}
             body = _flatten_and_groups(raw_body)
             fold = "\x01"
             folded = re.sub(r"(BETWEEN\s+\S+)\s+AND\s+(\S+)", rf"\1{fold}\2", body, flags=re.I)
             kept = []
             for c in (x.replace(fold, " AND ").strip() for x in guard.split_conjuncts(folded)):
-                if c and not _is_structure_name_fragment(c, words):
+                if c and not _is_structure_name_fragment(c, words, pred_lits):
                     kept.append(c)
             new_where = " AND ".join(kept + [f"({pred})"]) + marks
             if m_w:
@@ -8480,10 +8483,25 @@ def _question_structure_labels(question: str) -> list[str]:
 _NAME_LIKE_ATOM = re.compile(r"^\(?\s*(?:TRIM\(\s*)?pd_nm\s*\)?\s+LIKE\s+'([^']*)'\s*\)?$", re.I)
 
 
-def _is_structure_name_fragment(clause: str, words: set[str]) -> bool:
-    """절이 pd_nm LIKE 만으로 이뤄져 있고 그 리터럴(% 제거)이 전부 구조 낱말의 조각('코코'·'전환'·'코코본드')이면 True."""
+def _is_structure_name_fragment(clause: str, words: set[str], pred_lits: set[str] = frozenset()) -> bool:
+    """절이 pd_nm LIKE 만으로 이뤄져 있고 그 리터럴(% 제거)이 전부 구조 낱말의 조각이거나
+    **판정식 자신의 리터럴**이면 True.
+
+    2026-09-06 사고 #101 — '전환사채(CB)는 몇 종목이야?' 가 388종목이 정답인데 385 로 나갔다.
+    HCX 가 `(pd_nm LIKE '%전환%' OR pd_nm LIKE '%(전환%' OR pd_nm LIKE '%/전환%')` 를 썼고 구조 블록이
+    판정식을 AND 로 주입했는데, 이 절을 **걷지 못해** 판정식과 교집합이 됐다: 이름에 '전환' 이 없는
+    CB 표기 3종목(제주반도체9CB · 애드바이오텍10CB · 11CB)이 잘렸다.
+    걷지 못한 이유는 `'(전환' in '전환사채'` 가 거짓이기 때문이다 — 그런데 `'%(전환%'` 는 **판정식이
+    직접 쓰는 표기**다(ESG·구조 라벨은 이름 안에서 괄호·슬래시로 감싸여 나타난다는 name_encoding 규약).
+    선언이 쓰는 표기를 선언이 모르는 표기로 취급하던 자리다. 같은 구멍이 판정식에 괄호 표기를 쓰는
+    라벨 전부에 있다 — 전환사채·후순위·풋옵션부.
+    """
     inner = clause.strip()
-    while inner.startswith("(") and inner.endswith(")") and len(guard.split_disjuncts(inner[1:-1])) >= 1 and inner.count("(") == inner.count(")"):
+    # 괄호 짝은 **문자열 리터럴 안의 괄호**를 빼고 센다 (10R 에서 이미 배운 규칙 — pipeline.py:3190 참조.
+    # 여기에만 적용이 안 돼 있었다): `pd_nm LIKE '%(전환%'` 의 여는 괄호가 절의 괄호로 세어져 겉괄호가
+    # 안 벗겨졌고, 그래서 OR 묶음이 통째로 원자 판정에 실패해 구조 조각 절이 안 걷혔다 (#101).
+    bal = lambda t: (lambda m: m.count("(") == m.count(")"))(_SQL_LITERAL.sub("''", t))
+    while inner.startswith("(") and inner.endswith(")") and len(guard.split_disjuncts(inner[1:-1])) >= 1 and bal(inner):
         inner = inner[1:-1].strip()
     parts = guard.split_disjuncts(inner)
     if not parts:
@@ -8492,7 +8510,10 @@ def _is_structure_name_fragment(clause: str, words: set[str]) -> bool:
         m = _NAME_LIKE_ATOM.match(part.strip())
         if not m:
             return False
-        lit = m.group(1).replace("%", "").strip()
+        raw = m.group(1).strip()
+        lit = raw.replace("%", "").strip()
+        if raw in pred_lits or lit in pred_lits:
+            continue                                  # 판정식이 직접 쓰는 표기 — 남의 조건이 아니다
         if len(lit) < 2 or not any(lit in w for w in words):
             return False
     return True

@@ -272,3 +272,36 @@ def test_BO_i_fund_distribution_untouched():
     rows = _rows(["fnd_type_nm", "COUNT(*)"], ["주식형", 100], ["채권형", 50])
     out = pl._distribution_answer(sql, rows, 2, "유형별로 몇 개야?")
     assert out.startswith("조회 결과 2개 범주, 합계 150건입니다 (기준일") and "집계 축" not in out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BO(j) — 추천 정렬의 **방향** 교정 (S-002 '리스크가 가장 낮은 채권 3개' 가 수익률 오름차순)
+#   HEAD 확인: 라운드33 의 flip_safety_sort 가 이미 이 자리를 덮는다 — 같은 목적의 가드를 새로 만들지 않고 동작을 고정한다.
+#   일반 규칙: 안전 최상급 질의의 동점자 처리는 수익률 높은 순(위험등급방향) · 질문이 수익률 낮은 쪽을 말하면 불개입.
+# ══════════════════════════════════════════════════════════════════════════════
+S002_Q = "리스크가 가장 낮은 채권 3개만 골라줘"
+S002_SQL = ("SELECT pd_nm, pd_risk_nm, MIN(applied_yield) AS applied_yield , TRIM(crd_grd) AS crd_grd, mat_dt "
+            "FROM domestic_bonds WHERE pd_risk_gcd = '16' AND curr_cd = 'KRW' AND mat_dt >= 20260824 "
+            "AND applied_yield > 0 GROUP BY pd_no ORDER BY MIN(applied_yield) ASC, pd_no ASC LIMIT 3")
+
+
+def test_BO_j_safety_sort_direction_fixed(con):
+    out, fixed = pl.flip_safety_sort(S002_SQL, S002_Q)
+    assert fixed and "MAX(applied_yield) DESC" in out and "MIN(applied_yield)" not in out
+    top = con.execute(out).fetchall()[0]
+    assert round(float(top[2]), 3) == 6.231                      # gold S-002 1위 수출입금융
+    assert pl._bond_list_answer(out, _rows(["pd_nm", "pd_risk_nm", "applied_yield", "crd_grd", "mat_dt"],
+                                           ["한국수출입금융(구조) 1604바-단리-15(콜/변)", "매우낮은위험(6등급)",
+                                            "6.231", "AAA", "20310427"]), 1, S002_Q).count("수익률 높은 순") == 1
+
+
+def test_BO_j_explicit_low_yield_untouched():
+    """불개입 — 질문이 수익률 낮은 쪽을 말하면(D-034 '수익률 낮은 순') 방향을 뒤집지 않는다."""
+    sql = S002_SQL.replace("pd_risk_gcd = '16' AND ", "")
+    assert pl.flip_safety_sort(sql, "한전 채권 수익률 낮은 순으로 알려줘") == (sql, False)
+
+
+def test_BO_j_already_desc_idempotent():
+    """불개입 — 이미 내림차순이면 멱등."""
+    sql = S002_SQL.replace("MIN(applied_yield) ASC", "MAX(applied_yield) DESC")
+    assert pl.flip_safety_sort(sql, S002_Q) == (sql, False)

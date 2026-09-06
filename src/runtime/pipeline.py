@@ -10529,6 +10529,11 @@ def rewrite_etf_holdings(sql: str, question: str, ctx, hits, tables: list | None
         preds.append("NOT (ABS(COALESCE(m.cu_lev_fector, 1)) > 1 OR m.pd_abrv_nm LIKE '%레버리지%' OR m.pd_nm LIKE '%레버리지%')")
     if re.search(r"인버스", q_flat) and _ETF_HOLD_EXCL_Q.search(q_flat):
         preds.append("NOT (COALESCE(m.cu_lev_fector, 1) < 0 OR m.pd_abrv_nm LIKE '%인버스%' OR m.pd_nm LIKE '%인버스%')")
+    # 🔴 확정식이 세운 술어는 전부 의도된 것이다 — 뒤의 기본모수 가드(날조 술어 제거)·다른 가드가 "질문에 근거 없는 술어" 로
+    #    오판해 지우지 못하게 절마다 가드 표식을 붙인다(11R gold ③-1 과 같은 규약). 운용사 조건은 영문 정본 리터럴이라
+    #    질문의 한글 표기와 글자 대조가 안 된다 — 표식이 없으면 지워질 수 있다.
+    #    모수 절(pd_grp_no·pd_sale_yn)은 표식 없이 둔다 — 기본모수 가드가 그 절을 자기 확정식으로 알아봐야 재주입하지 않는다.
+    preds = [p if (p == spec["grp"] or _GUARD_MARK in p) else _GUARD_MARK + p for p in preds]
     where = " AND ".join(preds)
     mark = "/*g:ETFHOLD*/"
     frm = f"FROM {table} m JOIN {spec['ext']} h ON {spec['join']}"

@@ -59,3 +59,12 @@ def test_pipeline_still_plans_for_vague_but_financial_question(ctx):
     p = _P()
     P.answer_question("T", "수익률 제일 높은 거 5개만 알려줘", planner=p, ctx=ctx)
     assert p.calls >= 1
+
+
+@needs_db
+@pytest.mark.parametrize("q", ["좌수 알려줘", "설정 좌수는?", "운용역이 누구야", "기준가 추이 알려줘", "등급 이력 보여줘"])
+def test_absent_property_words_are_in_domain(ctx, q):
+    """🔴 2026-09-06 로컬 재생 — 없다고 **선언한** 축의 낱말은 스키마 한글명에 없다(컬럼이 없으니까).
+    absent_properties 의 vocab 을 도메인 어휘에 넣지 않으면 '좌수 알려줘' 가 인사·잡담으로 오분류돼
+    '미수록' 고지 대신 서비스 안내가 나간다. vocab 은 정규식이라('좌[ ]?수') 한글만 남겨 조각을 뽑는다."""
+    assert not gate.is_off_domain(q, ctx), q

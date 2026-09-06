@@ -11892,9 +11892,9 @@ def _etf_holdings_targets(sql: str, tables: list | None, question: str) -> list[
     if len(etf_tabs) == 2:
         first = "overseas_etfs" if _ETF_HOLD_OVS_Q.search(question) else "domestic_etfs"
         return [first, "overseas_etfs" if first == "domestic_etfs" else "domestic_etfs"]
-    if re.search(r"overseas_etfs|ext_ovs_etf_holdings", sql, re.I):
+    if re.search(r"\boverseas_etfs\b|\bext_ovs_etf_holdings\b", sql, re.I):
         return ["overseas_etfs"]
-    if re.search(r"domestic_etfs|ext_etf_holdings", sql, re.I):
+    if re.search(r"\bdomestic_etfs\b|\bext_etf_holdings\b", sql, re.I):
         return ["domestic_etfs"]
     return []
 

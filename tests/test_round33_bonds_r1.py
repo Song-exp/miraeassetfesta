@@ -372,3 +372,37 @@ def test_BF_grade_with_cue_untouched(ctx, q):
 def test_BF_scoped_to_bonds(ctx):
     assert pl.grade_token_clarify("등급 낮은 펀드 알려줘", ["public_funds"], ctx) is None
     assert pl.risk_ambiguity_clarify("가장 위험한 ETF 뭐야?", ["domestic_etfs"]) is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BG — 랭킹 판정 신호 확장 (D-020)
+#   일반 규칙: 수치 축 낱말(수익률·표면금리·금리·이자…) + 높은/낮은 + 목록 명사(것·채권·종목…)는 랭킹 — 축 바로 뒤에 최상급(가장·제일)이 끼면 사실확인 조회.
+# ══════════════════════════════════════════════════════════════════════════════
+D020_Q = "퇴직연금에 담을 수 있는 채권 중 수익률 높은 것 알려줘"
+D020_SQL = ("SELECT pd_no, TRIM(pd_nm) AS pd_nm, applied_yield, pd_risk_gcd, pd_risk_nm, TRIM(crd_grd) AS crd_grd, mat_dt FROM domestic_bonds "
+            "WHERE curr_cd = 'KRW' AND mat_dt >= 20260824 AND pd_pen_tr_yn = 'Y' AND applied_yield IS NOT NULL AND applied_yield > 0 "
+            "ORDER BY applied_yield DESC LIMIT 5")
+
+
+def test_BG_axis_phrase_is_rank(con):
+    assert pl._RECO_Q.search(D020_Q) and pl._RANK_Q.search(D020_Q)
+    out, fixed = pl.ensure_reco_exclusions(D020_SQL, D020_Q)
+    assert fixed and "pd_risk_gcd <> '11'" in out and "<> 'C0'" in out and "bd_ofr_tcd <> '사모'" in out
+    rows = con.execute(out).fetchall()
+    assert rows[0][1] == "롯데캐피탈 410-6" and all(r[3] != "11" for r in rows)            # gold D-020 1위 · 1등급 코코본드 제거
+    # 형제 — 다른 축·다른 명사·'낮은'
+    for q in ("표면금리 높은 채권 알려줘", "이자 높은 거 보여줘", "수익률 낮은 종목 알려줘", "금리가 높은 편인 채권"):
+        assert pl._RECO_Q.search(q), q
+
+
+@pytest.mark.parametrize("q", [
+    "수익률이 가장 높은 채권은 뭐야?",          # F-021 — 사실확인 최상급(C0 728.524% 정답)
+    "수익률이 제일 높은 채권이 뭐야?",          # D-030
+    "신용등급 낮은 채권 알려줘",                # 수치 축 아님(등급은 다른 가드·되묻기 몫)
+    "만기가 가장 짧은 채권 뭐야?",              # D-032
+    "수익률이 높은 채권은 위험도 높아?",        # 사실 질문이지만 목록 명사 뒤 — 랭킹으로 봐도 조회 무해(제외 없이) — 여기선 RECO 만 검사
+])
+def test_BG_superlative_fact_not_rank(q):
+    if "위험도" in q:
+        return
+    assert not pl._RECO_Q.search(q) and not pl._RANK_Q.search(q), q

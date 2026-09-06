@@ -6733,7 +6733,11 @@ _BACKSTOP_PARTS = [                              # (SQL 에 이미 있는지 볼
     ("(정부보증)", "pd_nm LIKE '%(정부보증)%'"),
     ("한국주택금융공사", "TRIM(pd_pbcm) IN ('한국주택금융공사','한국토지주택공사','한국산업은행','(주)중소기업은행')"),
 ]
-_RANK_Q = re.compile(r"추천|순으로|순위|톱|top\s*\d|골라|\d+\s*(?:개|종목|가지)", re.I)
+# 🔴 2026-09-06 QA r1 BG(D-020) — 수치 축 낱말 + 높은/낮은 + 목록 명사('수익률 높은 것 알려줘')는 랭킹이다(고위험제외·기본 정렬).
+#    축 낱말 바로 뒤에 높낮이가 와야 한다 — '수익률이 **가장** 높은 채권'(F-021·D-030 사실확인 최상급, C0 728.524% 가 정답)은
+#    '가장' 이 끼어 매치되지 않는다(그쪽은 조회 — 제외 없이 보여주고 주의 문구). 축은 수치 축만(등급·안전은 다른 가드·되묻기 몫).
+_AXIS_RANK_PHRASE = r"(?:수익률|표면금리|세후수익률|금리|이자율|이율|이자)[이가은는도의]?\s*(?:높은|낮은)\s*(?:것|거|걸|채권|종목|편|쪽)"
+_RANK_Q = re.compile(r"추천|순으로|순위|톱|top\s*\d|골라|\d+\s*(?:개|종목|가지)|" + _AXIS_RANK_PHRASE, re.I)
 _WHERE_TAIL = re.compile(r"\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT)\b", re.I)
 
 
@@ -6842,7 +6846,7 @@ def _append_exclusions(sql: str, excl: list[str]) -> tuple[str, bool]:
     return sql[:pos].rstrip() + joiner + " AND ".join(excl) + " " + sql[pos:], True
 
 
-_RECO_Q = re.compile(r"추천|랭킹|순위|톱|top|골라|(?:높은|낮은)\s*순", re.I)   # '골라줘' 는 추천 신호 (BND-S-002 · 2026-09-01 실측)
+_RECO_Q = re.compile(r"추천|랭킹|순위|톱|top|골라|(?:높은|낮은)\s*순|" + _AXIS_RANK_PHRASE, re.I)   # '골라줘' 는 추천 신호 (BND-S-002 · 2026-09-01 실측) · 축+높낮이 목록은 BG
 
 
 def ensure_reco_exclusions(sql: str, question: str) -> tuple[str, bool]:

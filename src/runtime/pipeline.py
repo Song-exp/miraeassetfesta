@@ -11693,6 +11693,9 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     return sql
 
 
+_INTENT_TABLE = {"채권": "domestic_bonds", "국내ETF": "domestic_etfs", "해외ETF": "overseas_etfs", "펀드": "public_funds"}
+
+
 def answer_question(
     question_id: str,
     question: str,
@@ -11707,6 +11710,21 @@ def answer_question(
 
     q = question.strip()
     step(f"[Normalize] 질의 정규화 — 길이 {len(q)}")
+
+    # Intent — 질의 의도 분석 (HCX-005 · 주최 8/31 공지 필수 구간). 출력은 닫힌 어휘 JSON 이고 planner.parse_intent 가
+    # 검증한다: 목록 밖 낱말은 '불명', 질문에 글자 그대로 없는 개체·조건은 버린다. 결과는 trace 에 남고, 규칙 라우터와
+    # KG 가 **둘 다 침묵한 자리(미특정 · 매핑 0)** 에서만 상품군을 채운다. SQL 조건·답변 문장에는 들어가지 않는다 —
+    # 무엇을 지어내도 답에 닿는 길이 없다. 실패(None)면 종전 경로 그대로.
+    intent = None
+    analyze = getattr(planner, "analyze_intent", None) if planner is not None else None
+    if callable(analyze):
+        intent = analyze(q)
+        if intent:
+            step(f"[Intent] HCX-005 질의 의도 분석 — 상품군 {intent['domain']} · 과제 {intent['task']}"
+                 f" · 개체 {intent['entities'] or '없음'} · 조건 {intent['constraints'] or '없음'}"
+                 " (검증: 닫힌 어휘 · 질문에 있는 어구만 · 라우팅 보조로만 쓴다)")
+        else:
+            step("[Intent] 의도 분석 실패 — 규칙 라우팅으로 진행 (이 단계는 답을 막지 않는다)")
 
     # Route — 상품군을 Ground 보다 먼저 정한다. 같은 표기가 여러 도메인에 걸릴 때 어느 노드를 고를지가
     # 여기서 갈린다. 단어 목록이 아니라 문장 구조 + 온톨로지 값으로 정한다 (router.py, 2026-08-30 F)
@@ -11762,6 +11780,15 @@ def answer_question(
                 cross = True
                 step("[Route] 설명서 항목 질의 — ext_fund_page(설정일·환매조건·설명서 보수) 조인 대상에 포함")
             hits, ground_lines = _ground(q, ctx, tables, cross)
+
+    # Intent 채택 — 규칙 라우터가 미특정이고 KG 매핑도 없을 때만. 이 자리의 대안은 '마스터 4테이블 근거문서를 주고
+    # HCX 가 FROM 을 고르는 것' 이라, 같은 모델의 의도 판정을 먼저 쓰는 편이 나쁠 수 없다(2026-09-06).
+    if not tables and not hits and intent and intent["domain"] in _INTENT_TABLE:
+        tables = [_INTENT_TABLE[intent["domain"]]]
+        step(f"[Route] 미특정 → Intent 채택 — 규칙 라우터·KG 가 둘 다 침묵해 HCX 의도 분석의 상품군 {intent['domain']}"
+             f"({tables[0]}) 을 쓴다")
+        cross = gate.is_cross_query(q, tables, r.groups) and tables != ["domestic_bonds"]
+        hits, ground_lines = _ground(q, ctx, tables, cross)
 
     # Gate — HCX 호출 0회 기각 경로
     #   grounded_entity: 발행사·종목 개체가 접지됐는가 — absent_properties.vocab_ungrounded("○○ 관련 발행사") 판정에 쓴다 (2026-09-05 #3)

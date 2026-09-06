@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """HCX 플래너 — pipeline 의 `Planner` 프로토콜 구현체.
 
-두 지점에서만 LLM 을 씁니다 (BUILD_PLAN §5 — 그 외 단계는 코드가 합니다):
+세 지점에서만 LLM 을 씁니다 (BUILD_PLAN §5 — 그 외 단계는 코드가 합니다):
 
+  ⓪ analyze_intent 질의 → 의도 분류 JSON(상품군·과제·질문 속 개체·조건) — 2026-09-06 추가, 주최 8/31 공지 "질의 Intent 분석은 HCX 필수"
   ① plan_sql       질의 + 근거문서 → SQLite SELECT 한 문장
   ② compose_answer 질의 + 조회 결과 → 한국어 답변
+
+🔴 ⓪ 의 출력은 parse_intent 가 닫힌 어휘로 검증하고, pipeline 은 trace 기록과 '규칙 라우터·KG 가 둘 다 침묵한 자리의
+   상품군 선택' 에만 씁니다. SQL 조건·답변 문장에는 들어가지 않으므로 무엇을 지어내도 답에 닿는 길이 없습니다.
 
 🔴 여기서 만든 SQL 을 신뢰하지 않습니다. 반환값은 pipeline.validate_sql() 이 다시 검사하고
    (SELECT 단일문·테이블 화이트리스트·LIMIT), 통과한 것만 read-only 커넥션에서 실행됩니다.
@@ -32,6 +36,25 @@ from .client import HCXClient, HCXConfig
 # max_tokens 는 상한이지 사용량이 아니다 — 짧은 SQL 의 비용은 그대로다. HCX-005 출력 한도(4,096) 안.
 SQL_CONFIG = HCXConfig(model="HCX-005", max_tokens=1536, temperature=0.0)
 ANSWER_CONFIG = HCXConfig(model="HCX-005", max_tokens=1024, temperature=0.0)
+# 질의 의도 분석(2026-09-06 · 주최 8/31 공지 "질의 Intent 분석과 답변 생성은 HCX 필수"). 출력은 닫힌 어휘 JSON 한 덩이라
+# 짧고, 한 문항의 지연에 더해지므로 대기도 짧게 끊는다 — 실패하면 pipeline 이 규칙 라우팅으로 진행한다(답이 죽지 않는다).
+INTENT_CONFIG = HCXConfig(model="HCX-005", max_tokens=256, temperature=0.0, timeout_s=30.0)
+
+INTENT_DOMAINS = ("채권", "국내ETF", "해외ETF", "펀드", "교차", "불명")
+INTENT_TASKS = ("조회", "개수", "랭킹", "비교", "추천", "설명", "답변불가", "되묻기", "불명")
+
+_INTENT_SYSTEM = """너는 금융상품 질의의 의도 분류기다. 질문 한 문장을 읽고 아래 JSON 한 덩이만 출력한다. 설명·코드펜스·다른 글자를 붙이지 않는다.
+
+{"domain": "<채권|국내ETF|해외ETF|펀드|교차|불명>", "task": "<조회|개수|랭킹|비교|추천|설명|답변불가|되묻기|불명>", "entities": ["질문에 그대로 있는 고유명"], "constraints": ["질문에 그대로 있는 조건 어구"]}
+
+규칙 — 지어내지 않는다
+- domain·task 는 위 목록의 낱말 하나만 쓴다. 판단이 안 되면 "불명" 이다. 목록 밖의 낱말을 만들지 않는다.
+- entities·constraints 에는 질문 문장에 **글자 그대로 들어 있는 어구만** 넣는다. 질문에 없는 상품명·회사명·숫자·등급·기간을 추가하지 않는다. 없으면 빈 배열 [] 로 둔다.
+- 값을 해석·환산·번역하지 않는다(예: '삼성전자' 를 종목코드로, '3배' 를 'x3' 으로 바꾸지 않는다).
+- 답을 하지 않는다. SQL·수치·상품 목록을 쓰지 않는다. 이 출력은 답변이 아니라 분류표다.
+
+domain 의 뜻: 채권=국내 채권 · 국내ETF=국내 상장 ETF/ETN · 해외ETF=해외 상장 ETF · 펀드=공모펀드 · 교차=둘 이상의 상품군을 한 질문에서 함께 묻는 경우 · 불명=상품군 낱말이 없어 정할 수 없는 경우.
+task 의 뜻: 개수=몇 개/몇 종목 · 랭킹=높은/낮은 순·상위 N · 비교=둘의 우열 · 추천=골라 달라 · 설명=구조·의미 설명 · 답변불가=실시간 시세·미래 전망·데이터 밖 정보 · 되묻기=다의어로 뜻을 정할 수 없음."""
 
 _SQL_SYSTEM = """너는 SQLite SQL 생성기다. 주어진 스키마·도메인 규칙·개체 매핑만 사용해 질문을 SQL 한 문장으로 옮긴다.
 
@@ -150,17 +173,66 @@ def extract_refuse(text: str) -> str:
     return f"{REFUSE_PREFIX} {m.group(1).strip().rstrip('`').strip()}"
 
 
+_JSON_BLOB = re.compile(r"\{.*\}", re.S)
+
+
+def parse_intent(text: str, question: str) -> dict | None:
+    """의도 분류 출력을 **닫힌 어휘로 검증**해 dict 로, 어기면 None. 환각 방어는 프롬프트가 아니라 여기서 한다.
+
+    - domain·task 는 목록 밖이면 '불명' 으로 접는다(모델이 만든 낱말은 살지 못한다).
+    - entities·constraints 는 질문에 글자 그대로(공백 무시) 들어 있는 어구만 남긴다 — 질문에 없는 것은 전부 버린다.
+    - JSON 이 아니거나 dict 가 아니면 None → pipeline 은 '분석 실패' 로 기록하고 규칙 라우팅으로 간다.
+    """
+    import json
+
+    m = _JSON_BLOB.search(text or "")
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
+    except ValueError:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    squeezed = re.sub(r"\s+", "", question).casefold()
+
+    def _verbatim(items) -> list[str]:
+        out: list[str] = []
+        for it in items if isinstance(items, list) else []:
+            s = str(it).strip()
+            if 1 <= len(s) <= 40 and re.sub(r"\s+", "", s).casefold() in squeezed and s not in out:
+                out.append(s)
+        return out[:8]
+
+    domain = obj.get("domain") if obj.get("domain") in INTENT_DOMAINS else "불명"
+    task = obj.get("task") if obj.get("task") in INTENT_TASKS else "불명"
+    return {"domain": domain, "task": task,
+            "entities": _verbatim(obj.get("entities")), "constraints": _verbatim(obj.get("constraints"))}
+
+
 class HCXPlanner:
-    """pipeline.Planner 구현. 호출 2회(plan_sql·compose_answer)가 한 질의의 HCX 예산이다."""
+    """pipeline.Planner 구현. 호출 3회(analyze_intent·plan_sql·compose_answer)가 한 질의의 HCX 예산이다."""
 
     def __init__(
         self,
         *,
         sql_client: HCXClient | None = None,
         answer_client: HCXClient | None = None,
+        intent_client: HCXClient | None = None,
     ):
         self._sql = sql_client or HCXClient(SQL_CONFIG)
         self._answer = answer_client or HCXClient(ANSWER_CONFIG)
+        self._intent = intent_client          # 지연 생성 — 종전 2인자 호출(테스트·도구)이 그대로 동작해야 한다
+
+    def analyze_intent(self, question: str) -> dict | None:
+        """질의 의도 분류(HCX 1회) → 검증된 dict, 실패면 None. 예외는 여기서 삼킨다 — 이 단계 때문에 답이 죽지 않는다."""
+        try:
+            if self._intent is None:
+                self._intent = HCXClient(INTENT_CONFIG)
+            text = self._intent.complete(_INTENT_SYSTEM, f"# 질문\n{question}\n\n# 출력(JSON 한 덩이)").text
+        except Exception:  # noqa: BLE001 — 키 없음·네트워크·rate limit·타임아웃 전부 '분석 실패' 한 가지로
+            return None
+        return parse_intent(text, question)
 
     # -- Planner 프로토콜 -------------------------------------------------
     def plan_sql(self, question: str, grounding: str) -> str:
@@ -182,6 +254,8 @@ class HCXPlanner:
     def close(self) -> None:
         self._sql.close()
         self._answer.close()
+        if self._intent is not None:
+            self._intent.close()
 
 
 def build_planner() -> HCXPlanner | None:

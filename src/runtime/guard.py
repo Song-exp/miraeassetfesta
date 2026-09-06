@@ -1045,6 +1045,32 @@ def _inject_where(sql: str, cond: str) -> tuple[str, bool]:
     return f"{sql[:s]}WHERE {cond} {sql[s:]}", True
 
 
+# 범주 낱말 바로 뒤의 부정·배제 표지 — '정크 **말고**'·'사모 **빼고**'·'부실채 **제외하고**'·'투기등급 **아닌**'.
+# 사이에 조사·명사(채권·등급·채·것·건·들)는 순서·개수 무관 최대 넷까지 건너뛴다(2026-09-06 재점검: '채권**은** 빼고'·
+# '채권**들은** 말고'·'C0 **등급은** 제외' 6문형). 앞에 오는 부정('제외하고 투기등급')은 드물어 보지 않는다.
+# 🔄 2026-09-06 밤 — pipeline 에서 여기로 옮겼다(정본은 여기 하나). 슬롯 판정 `positive_any` 축이 같은 검사를 써야 하는데
+#    guard 는 pipeline 을 import 할 수 없다(방향: pipeline → guard · FUND_KEY_EXPR 과 같은 전례). pipeline 은 이것을 import 한다.
+_NEG_AFTER = re.compile(r"(?:\s*(?:채권|등급|채|것|건|들|[은는이가을를도]))?" * 4
+                        + r"\s*(?:말고|빼고|빼면|빼\s*주|제외|아닌|아니|않|없는|없이|대신|밖에)")
+
+
+def mentions_positively(pat: str, question: str) -> bool:
+    """질문이 그 범주를 **달라고** 언급했는가 — 부정 표지가 바로 뒤에 오면 언급이 아니라 배제다.
+
+    2026-09-06 — 우회(범주 언급 = 제외 절 생략)가 부정문에도 발동하고 있었다: '정크 말고 안전한 채권 추천해줘' 가
+    C0 절을 풀어 728% 부실채가 **안전 추천** 상단에 오를 자리였다. 부류 단위로 닫는다(사모·투기·부실·하이일드·정크 전부).
+    실측: 부정문 5/5 제외 유지 · 긍정문 4/4 우회 유지."""
+    for m in re.finditer(pat, question, re.I):
+        if not _NEG_AFTER.match(question, m.end()):
+            return True
+    return False
+
+
+def _words_pattern(words) -> str:
+    r"""슬롯 어휘 목록 → 정규식. 낱말 안의 공백은 `\s*`(있어도 없어도)로 — '투기 등급'·'투기등급' 을 한 항목으로."""
+    return "|".join(r"\s*".join(re.escape(p) for p in str(w).split()) for w in words if str(w).strip())
+
+
 def _match_when(spec: dict, sql: str, question: str, tables: list[str], grounded: set) -> bool:
     """다섯 축 판정 — tables / question / grounded / sql.has / sql.lacks (+ any_of_has).
     축 밖의 키가 있으면 **발동하지 않는다** (validate_enforce 가 로드에서 거르지만 이중 방어)."""
@@ -1152,6 +1178,18 @@ def _apply_one(sql: str, enf: dict, subs: dict, in_union: bool = False) -> tuple
     return sql, False
 
 
+def enforce_slots(rule) -> list[dict]:
+    """규칙의 `enforce` 선언을 슬롯 목록으로 — dict 하나면 [dict], list 면 dict 항목만. 그 밖(문자열 규칙·없음)은 []."""
+    if not isinstance(rule, dict):
+        return []
+    enf = rule.get("enforce")
+    if isinstance(enf, dict):
+        return [enf]
+    if isinstance(enf, list):
+        return [e for e in enf if isinstance(e, dict)]
+    return []
+
+
 def apply_enforce(sql: str, question: str, tables: list[str], grounded, ctx: RuntimeContext
                   ) -> tuple[str, list[str]]:
     """yaml `query_rules.<name>.enforce` 선언을 SQL 에 적용한다. (보정된 SQL, 발동한 mark 목록)
@@ -1167,28 +1205,30 @@ def apply_enforce(sql: str, question: str, tables: list[str], grounded, ctx: Run
         for name, rule in ((ctx.enums.get(t) or {}).get("query_rules") or {}).items():
             if not isinstance(rule, dict):
                 continue
-            enf = rule.get("enforce")
-            # 🔴 키는 `enabled` 다 — `off` 로 쓰면 YAML 1.1 이 그것을 **불리언 키**로 읽어
-            #    딕셔너리에 False 키가 생기고 enf.get("off") 가 영원히 None 이 된다(실측으로 잡음).
-            if not isinstance(enf, dict) or enf.get("enabled", True) is False:
-                continue
-            mark = str(enf.get("mark") or name)
-            if f"M:{mark}" in sql:
-                continue                       # 멱등 — 이미 발동했다
-            hit = False
-            in_union = len(branches) > 1       # 최상위 UNION 이 있는가
-            for i, part in enumerate(branches):
-                if _ENF_UNION.fullmatch(part.strip()):
-                    continue                   # 구분자는 건너뛴다
-                if not _match_when(enf.get("when") or {}, part, question, tables, grounded):
+            # 🔄 2026-09-06 밤 — 규칙 하나에 슬롯 **여럿**(list)도 받는다(만기구간 단·중·장). dict 는 종전 그대로 —
+            #    펀드·ETF 선언은 손대지 않았다. 슬롯마다 mark 가 달라야 한다(validate_enforce 가 중복을 거부).
+            for enf in enforce_slots(rule):
+                # 🔴 키는 `enabled` 다 — `off` 로 쓰면 YAML 1.1 이 그것을 **불리언 키**로 읽어
+                #    딕셔너리에 False 키가 생기고 enf.get("off") 가 영원히 None 이 된다(실측으로 잡음).
+                if enf.get("enabled", True) is False:
                     continue
-                new, ok = _apply_one(part, enf, subs, in_union)
-                if ok:
-                    branches[i], hit = new, True
-            if hit:
-                fired.append(mark)
-                sql = "".join(branches) + f" /*M:{mark}*/"
-                branches = _split_union(sql)
+                mark = str(enf.get("mark") or name)
+                if f"M:{mark}" in sql:
+                    continue                       # 멱등 — 이미 발동했다
+                hit = False
+                in_union = len(branches) > 1       # 최상위 UNION 이 있는가
+                for i, part in enumerate(branches):
+                    if _ENF_UNION.fullmatch(part.strip()):
+                        continue                   # 구분자는 건너뛴다
+                    if not _match_when(enf.get("when") or {}, part, question, tables, grounded):
+                        continue
+                    new, ok = _apply_one(part, enf, subs, in_union)
+                    if ok:
+                        branches[i], hit = new, True
+                if hit:
+                    fired.append(mark)
+                    sql = "".join(branches) + f" /*M:{mark}*/"
+                    branches = _split_union(sql)
     return ("".join(branches) if not fired else sql), fired
 
 

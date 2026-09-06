@@ -410,7 +410,7 @@ def load_context() -> RuntimeContext:
 # 오타 하나가 조용히 "발동 안 함" 으로 끝나면 가드를 뗀 뒤에 오답으로 나타난다.
 _WHEN_AXES = {"tables", "question", "grounded", "sql"}
 _SQL_AXES = {"has", "lacks", "any_of_has"}
-_QUESTION_AXES = {"any", "not_any"}
+_QUESTION_AXES = {"any", "not_any", "positive_any"}   # positive_any: 부정 표지 뒤따르면 불발(guard.mentions_positively)
 _PLACEHOLDER = re.compile(r"\{(\w+)(?::nospace)?\}")
 _KNOWN_PLACEHOLDERS = {"fund_key", "code", "key", "col", "type", "brand", "token"}
 
@@ -423,10 +423,18 @@ def validate_enforce(ctx: "RuntimeContext") -> None:
     for t in TABLES:
         cols = {c for c, _ko, _ty in (ctx.schema.get(t) or [])}
         for name, rule in ((ctx.enums.get(t) or {}).get("query_rules") or {}).items():
-            enf = rule.get("enforce") if isinstance(rule, dict) else None
-            if not isinstance(enf, dict) or enf.get("enabled", True) is False:
+          raw = rule.get("enforce") if isinstance(rule, dict) else None
+          if raw is not None and not isinstance(raw, (dict, list)):
+              errs.append(f"{t}.query_rules.{name}.enforce: dict 또는 dict 의 list 여야 한다")
+              continue
+          slots = raw if isinstance(raw, list) else ([raw] if isinstance(raw, dict) else [])
+          for si, enf in enumerate(slots):          # 🔄 2026-09-06 밤 — list 슬롯(만기구간 단·중·장)도 항목마다 같은 검증
+            if not isinstance(enf, dict):
+                errs.append(f"{t}.query_rules.{name}.enforce[{si}]: dict 가 아니다")
                 continue
-            where = f"{t}.query_rules.{name}.enforce"
+            if enf.get("enabled", True) is False:
+                continue
+            where = f"{t}.query_rules.{name}.enforce" + (f"[{si}]" if isinstance(raw, list) else "")
             action = enf.get("action")
             if action not in ENFORCE_ACTIONS:
                 errs.append(f"{where}: action '{action}' 은 지원 목록 {ENFORCE_ACTIONS} 밖")

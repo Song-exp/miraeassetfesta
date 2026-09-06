@@ -5004,6 +5004,24 @@ def ensure_etf_scope_note(answer: str, sql: str) -> tuple[str, bool]:
     return f"({scope} 기준, 기준일 {gate.DATA_CUTOFF})\n" + answer, True
 
 
+_DIFF_RT_SIGN_NOTE = ("괴리율의 부호: 양수(+)는 시장가격이 순자산가치(NAV)보다 높은 고평가, 음수(−)는 낮은 저평가를 뜻합니다. "
+                      "크기 비교는 절대값 기준입니다.")
+
+
+def ensure_etf_diff_sign_note(answer: str, sql: str) -> tuple[str, bool]:
+    """괴리율(du_diff_rt)로 정렬·조회한 답변 꼬리에 부호의 뜻을 기계로 붙인다. (답변, 붙였는지)
+
+    2026-09-06 재생 E13(오답 색인 #13) — "괴리율 가장 큰 ETF" 는 ABS 정렬은 맞으나 +고평가/−저평가를 안 밝혔다(조립 층 🟡).
+    숫자 옆 한 마디는 HCX 산문에 맡기면 라운드마다 뒤집힌다(펀드 DOM-08·T13 과 같은 처방: 결측률·축 고지는 코드가 적는다).
+    답변이 이미 고평가/저평가를 말했거나 SQL 이 괴리율을 쓰지 않으면 불개입.
+    """
+    if not _ETF_TBL.search(sql) or not re.search(r"\bdu_diff_rt\b", sql, re.I):
+        return answer, False
+    if re.search(r"고평가|저평가", answer):
+        return answer, False
+    return answer.rstrip() + "\n\n" + _DIFF_RT_SIGN_NOTE, True
+
+
 _REFUSAL_ANSWER = re.compile(
     r"정보가?\s*(?:포함되어\s*있지\s*않|없)|답변(?:을|이)?\s*드릴\s*수\s*없|확인(?:할|이)\s*(?:수\s*)?(?:없|불가)|알\s*수\s*없")
 _EXIST_Q = re.compile(r"있(?:어|나|습니까|나요|는지)")
@@ -11895,6 +11913,9 @@ def answer_question(
     if etf_scope:
         step("[Answer] ETF 모수 한정 고지 — 어느 테이블을 봤는지 머리줄에 기계 표기 "
              "(10R 재검 ③-11 · V7·W10 은 6R 에 있던 '국내' 가 7R·9R 엔 없다 — 라운드마다 뒤집히므로 고정한다)")
+    result.answer, diff_sign = ensure_etf_diff_sign_note(result.answer, sql)
+    if diff_sign:
+        step("[Answer] 괴리율 부호 고지 — +고평가/−저평가 의 뜻을 꼬리에 기계 표기 (2026-09-06 재생 E13 · 오답 색인 #13 축뒤집기)")
     result.answer, pct_dropped = strip_unsourced_percent(result.answer, rows)
     if pct_dropped:
         step(f"[Guard] 근거 밖 백분율 제거 — 조회 결과에 없는 값 {', '.join(pct_dropped[:3])}% 를 담은 문장을 걷어냄 "

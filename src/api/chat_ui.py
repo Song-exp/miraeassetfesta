@@ -63,10 +63,9 @@ PAGE = """<!doctype html>
   }
   /* 팀명 — 기준일 옆 구석. 선 하나로만 끊고 색은 보조 텍스트다 */
   .team {
-    flex:0 0 auto; color:var(--sub); font-size:12.5px; white-space:nowrap;
+    flex:0 0 auto; color:var(--ink); font-size:12.5px; font-weight:600; white-space:nowrap;
     padding-left:11px; margin-left:11px; border-left:1px solid var(--line);
   }
-  .team b { color:var(--ink); font-weight:600 }
 
   /* ── 대화 영역 ──────────────────────────────────────────── */
   .log { flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; padding:24px 20px 12px }
@@ -194,7 +193,7 @@ PAGE = """<!doctype html>
     <div class="mark"><i></i></div>
     <div class="brand">금융상품 Agent</div>
     <div class="asof">데이터 기준일 2026-08-24</div>
-    <div class="team">팀 <b>트리플에이치</b></div>
+    <div class="team">트리플에이치</div>
   </header>
 
   <div class="log" id="log">

@@ -3800,6 +3800,10 @@ def _fmt_ymd(v: str) -> str:
     return f"{s[:4]}-{s[4:6]}-{s[6:]}" if re.fullmatch(r"\d{8}", s) else (s or "미수록")
 
 
+C0_YIELD_NOTE = ("C0 등급 종목의 수익률은 부도·부실 상태에서 평가가격이 크게 떨어져 산출된 계산상 수치라 "
+                 "실제로 기대할 수 있는 수익이 아닙니다.")
+
+
 def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     """채권 목록(정렬 랭킹·조건 목록)의 답변을 기계 조립한다. 아니면 None. HCX 0회.
 
@@ -3950,8 +3954,20 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     if (_ORDER_SRFC.search(sql) and re.search(r"bd_intp_tcd\s*\)?\s*=\s*'이표채'", sql)
             and re.search(r"bd_inrt_tcd\s*\)?\s*=\s*'고정금리'", sql)):
         tail.append(COUPON_SPLIT_NOTE)
-    if _RECO_Q.search(question) and "pd_risk_gcd <> '11'" in sql and "bd_ofr_tcd <> '사모'" in sql:
-        tail.append("위험등급이 매우 높은(1등급) 채권과 사모 채권은 제외했습니다.")
+    # 🔄 2026-09-06 밤 #84 구조 점검 — 종전엔 두 절이 **둘 다** 있을 때만 한 문장. 하이일드처럼 1등급 절만 빠지면 사모를
+    #    제외했는데 고지가 통째로 사라졌다. 절마다 따로 말한다(둘 다면 종전 문장과 글자가 같다).
+    if _RECO_Q.search(question):
+        excl_bits = []
+        if "pd_risk_gcd <> '11'" in sql:
+            excl_bits.append("위험등급이 매우 높은(1등급) 채권")
+        if "bd_ofr_tcd <> '사모'" in sql:
+            excl_bits.append("사모 채권")
+        if excl_bits:
+            tail.append("과 ".join(excl_bits) + "은 제외했습니다.")
+    # 🆕 2026-09-06 밤 #84 P5 — C0(부도·워크아웃) 종목의 수익률은 평가가 폭락의 산술 결과다(신보 유동화 728.524%).
+    #    6% 초과 일반 문구만으로는 '728% 를 받는다' 로 읽힌다. 행에 C0 가 있을 때만.
+    if any((r.get("crd_grd") or "").strip() == "C0" for r in recs):
+        tail.append(C0_YIELD_NOTE)
     for note in bond_answer_notes(sql, "\n".join(out)):          # ESG 표기 기준 · 발행사명 기준 · 무등급 제외 — 단일 통로(P7)
         if note not in tail:
             tail.append(note)
@@ -6515,6 +6531,25 @@ _NEG_AFTER = guard._NEG_AFTER
 _mentions_positively = guard.mentions_positively
 
 
+_SPEC_GRADE_WORDS_FALLBACK = ("하이일드", "정크", "투기등급", "투기 등급", "투자부적격", "투자 부적격", "투자등급 미만")
+
+
+@lru_cache(maxsize=1)
+def _spec_grade_pattern() -> str:
+    """투기등급 범주 어휘의 정규식 — yaml `query_rules.투기등급.triggers` 가 정본(슬롯 positive_any 와 같은 목록).
+
+    🔴 2026-09-06 밤(#84 ②) — 이 어휘가 yaml 과 코드 두 곳에 손으로 적혀 있어 갈렸다: yaml 은 '고위험제외 전체 미적용',
+    코드는 C0 절만 건너뛰었다. 투기등급 126종목이 **전부 위험등급 1등급**이라 `pd_risk_gcd <> '11'` 이 들어가면 0행.
+    로드 실패 시 폴백 상수(같은 7개)."""
+    words = None
+    try:
+        rule = ((_ev_ctx().enums.get("domestic_bonds") or {}).get("query_rules") or {}).get("투기등급") or {}
+        words = rule.get("triggers") if isinstance(rule, dict) else None
+    except Exception:                                        # noqa: BLE001
+        words = None
+    return guard._words_pattern(words or _SPEC_GRADE_WORDS_FALLBACK)
+
+
 def _rank_exclusions(sql: str, question: str) -> list[str]:
     """고위험제외·수익률정상 중 SQL 에 빠진 절 — 질문이 그 범주를 명시하면 그 절은 건너뛴다.
 
@@ -6529,11 +6564,12 @@ def _rank_exclusions(sql: str, question: str) -> list[str]:
     if not re.search(r"mat_dt\s*>=?\s*\d", sql) and not _PAST_MATURITY_Q.search(question):
         excl.append(f"mat_dt >= {BUYABLE_INT}")
     # 🔴 우회는 **긍정 언급**일 때만 — 부정('말고·빼고·제외·아닌')은 배제 요청이라 절을 그대로 넣는다(_mentions_positively).
-    if "'11'" not in sql and not _mentions_positively(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급", question):
+    # 🔄 2026-09-06 밤 #84 ② — 투기등급 어휘(yaml triggers)도 1등급 절을 건너뛴다: 그 126종목은 전부 1등급이라 절이 곧 0행이다.
+    if "'11'" not in sql and not _mentions_positively(r"위험\s*(?:이|가)?\s*높|고위험|[1-3]\s*등급|" + _spec_grade_pattern(), question):
         excl.append("pd_risk_gcd <> '11'")
     # 🔄 2026-09-06 — 우회 어휘에 하이일드·정크·투자부적격이 없어 '하이일드 채권 알려줘' 가 126→23종목으로
     #    조용히 줄었다(규칙 투기등급). 낱말은 yaml query_rules.투기등급.triggers 와 같은 집합이어야 한다.
-    if "C0" not in sql and not _mentions_positively(r"C0|투기|부실|하이\s*일드|high\s*yield|정크|투자\s*부적격|투자등급\s*미만", question):
+    if "C0" not in sql and not _mentions_positively(r"C0|투기|부실|high\s*yield|" + _spec_grade_pattern(), question):
         excl.append("COALESCE(TRIM(crd_grd),'') <> 'C0'")
     if "사모" not in sql and not _mentions_positively(r"사모", question):
         excl.append("bd_ofr_tcd <> '사모'")
@@ -6826,7 +6862,10 @@ def ensure_grade_rank_sort(sql: str, question: str) -> tuple[str, bool]:
     new = sql[:m.start()] + m.group(1) + key + ("" if has_more else tail_keys) + rest
     # ② 질문에 등급 값이 없으면 crd_grd IN/= 절은 날조 — AND 결합에서만 걷어낸다. enforce 슬롯(BONDPOP)이 원 WHERE 를
     #    괄호로 감싸므로 AND 만으로 이어진 괄호 그룹은 안으로 들어가고, OR 가 최상위인 그룹은 통째로 둔다.
-    if not _GRADE_VALUE_Q.search(question):
+    # 🔴 2026-09-06 밤 #84 구조 점검 — enforce 슬롯 SPECGRADE(투기등급 확정식)가 넣은 IN 은 날조가 아니다. 슬롯이 먼저 돌고
+    #    이 가드가 뒤에 돌므로 마크를 본다('하이일드 채권 신용등급 낮은 순'). 어휘도 같은 목록으로 넓힌다(_spec_grade_pattern).
+    if (not _GRADE_VALUE_Q.search(question) and "M:SPECGRADE" not in new
+            and not re.search(_spec_grade_pattern(), question, re.I)):
         wm = re.search(r"\bWHERE\b", new, re.I)
         if wm:
             t = _WHERE_TAIL.search(new, wm.end())
@@ -9169,6 +9208,50 @@ def _zero_count_answer(sql: str, rows: str, n: int) -> str | None:
 _BOND_YIELD_SORT = re.compile(r"\border\s+by\s+(?:MAX|MIN)?\(?\s*(applied_yield|after_tax_yield|srfc_irt|buy_yield)\b", re.I)
 
 
+_ORDINAL_KEY = re.compile(r"(\bORDER\s+BY\s+|,\s*)(\d+)(?=\s*(?:ASC|DESC|,|\bLIMIT\b|/\*|$))", re.I)
+
+
+def resolve_ordinal_order_by(sql: str) -> tuple[str, bool]:
+    """채권 단일 테이블 SQL 의 `ORDER BY 3 DESC`(서수)를 SELECT 3번째 항(별칭이 있으면 별칭, 없으면 식)으로 되돌린다.
+
+    2026-09-06 밤 서버 실측 #84 ③ — HCX 가 `ORDER BY 3 DESC` 로 쓰자 뒤의 가드 넷이 통째로 비켜 갔다: 대표행 극값(bare
+    applied_yield) · 동률 2차 키 · 근거컬럼 병기(등급·만기 없는 목록에 "등급을 확인하세요") · 머리줄 정렬축("그중 5개").
+    가드마다 서수를 배우게 하지 않고 앞에서 한 번 되돌린다 — #74(TRIM 감쌈)·#76(SELECT *)와 같은 부류(표기 변이 우회).
+    🔴 범위: domestic_bonds 단일 FROM 만 — gold 서수 9건 중 8건이 UNION(ETF 교차)이고 UNION 의 ORDER BY 는 서수가 정석이며
+       ETF 가드 테스트가 그 형을 전제한다(2026-09-06 과적합 점검). JOIN·UNION·서브쿼리·SELECT * 불개입. 서수가 항 수를 넘으면 원문.
+    SQLite 의미는 동일하다(서수 = 그 위치의 결과 열) — 되돌린 SQL 은 같은 행을 낸다(gold ETF-D-036 형 대조)."""
+    if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+        return sql, False
+    om = re.search(r"\bORDER\s+BY\b", sql, re.I)
+    if not om or not _ORDINAL_KEY.search(sql, om.start()):
+        return sql, False
+    frm = re.search(r"\bFROM\b", sql, re.I)
+    sel = re.match(r"\s*SELECT\s+(?:DISTINCT\s+)?", sql, re.I)
+    if not frm or not sel:
+        return sql, False
+    items = [it.strip() for it in _split_select_items(sql[sel.end():frm.start()])]
+    if not items or any(it == "*" or it.endswith(".*") for it in items):
+        return sql, False
+
+    def _ref(item: str) -> str:
+        m = re.search(r"\s+AS\s+(\w+)\s*$", item, re.I)
+        return m.group(1) if m else item
+
+    changed = False
+
+    def _sub(m):
+        nonlocal changed
+        n = int(m.group(2))
+        if not 1 <= n <= len(items):
+            return m.group(0)
+        changed = True
+        return m.group(1) + _ref(items[n - 1])
+
+    head, tail = sql[:om.start()], sql[om.start():]
+    tail = _ORDINAL_KEY.sub(_sub, tail)
+    return (head + tail, True) if changed else (sql, False)
+
+
 def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
     """수익률·금리로 정렬한 채권 목록의 SELECT 에 mat_dt(만기일)·crd_grd(신용등급)를 병기. (보정된 SQL, 보정했는지)
 
@@ -9183,7 +9266,9 @@ def ensure_bond_evidence_columns(sql: str) -> tuple[str, bool]:
     if not frm:
         return sql, False
     head, rest = sql[:frm.start()], sql[frm.start():]
-    if _AGG_HEAD.search(head) or "*" in head or re.search(r"\bGROUP\s+BY\b", sql, re.I):
+    # 🔄 2026-09-06 밤 #84 ③ — HCX 가 직접 `GROUP BY pd_no` 를 쓴 목록(#84 SQL)에도 붙인다: 종목 단위 묶음에서 만기·등급은
+    #    한 값이라 bare 로 실어도 대표행 규칙과 어긋나지 않는다(대표행 가드 자신이 그렇게 만든다). 다른 키의 GROUP BY 는 불개입.
+    if _AGG_HEAD.search(head) or "*" in head or re.search(r"\bGROUP\s+BY\b(?!\s+pd_no\b)", sql, re.I):
         return sql, False
     add = []
     if not re.search(r"\bmat_dt\b", head):
@@ -9332,7 +9417,29 @@ def bond_answer_notes(sql: str, answer: str) -> list[str]:
         notes.append(f"발행사명이 {'/'.join(pfx)} 로 시작하는 발행사 기준입니다(계열 소속 여부는 데이터에 없어 이름으로 판정).")
     if "/*GRADESORT:" in sql and GRADE_SORT_NOTE not in answer:
         notes.append(GRADE_SORT_NOTE)
+    # 🆕 2026-09-06 밤 #84 P4 — enforce 슬롯이 넣은 조건의 **정의**는 사용자가 봐야 한다(하이일드 = BB+ 이하 · 단기채 = 잔존 1년 미만).
+    #    문구는 yaml 슬롯의 `answer_note` 에서 읽는다 — 코드에 정의를 적지 않는다. 마크가 없으면 침묵(종전 동일).
+    for mark in re.findall(r"/\*M:(\w+)\*/", sql):
+        note = _slot_answer_notes().get(mark)
+        if note and note not in answer and note not in notes:
+            notes.append(note)
     return notes
+
+
+@lru_cache(maxsize=1)
+def _slot_answer_notes() -> dict[str, str]:
+    """채권 enforce 슬롯의 mark → answer_note. 선언에 없으면 빈 사전(로드 실패 포함)."""
+    out: dict[str, str] = {}
+    try:
+        rules = (_ev_ctx().enums.get("domestic_bonds") or {}).get("query_rules") or {}
+    except Exception:                                        # noqa: BLE001
+        return out
+    for _name, rule in rules.items():
+        for enf in guard.enforce_slots(rule):
+            mark, note = str(enf.get("mark") or _name), enf.get("answer_note")
+            if note:
+                out[mark] = str(note).strip()
+    return out
 
 
 _KO_ALIAS_ITEM = re.compile(
@@ -9416,8 +9523,11 @@ def ensure_bond_representative(sql: str) -> tuple[str, bool]:
     불개입: 집계·GROUP BY·DISTINCT·JOIN·`*`·SELECT 에 pd_exg_mkt(장내/장외를 묻는 질의)·pd_no 미포함이면 주입해 묶는다."""
     if "domestic_bonds" not in sql or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
         return sql, False
-    if re.search(r"\bGROUP\s+BY\b|\bDISTINCT\b|\bpd_exg_mkt\b", sql, re.I):
+    if re.search(r"\bGROUP\s+BY\b(?!\s+pd_no\b)|\bDISTINCT\b|\bpd_exg_mkt\b", sql, re.I):
         return sql, False
+    # 🔄 2026-09-06 밤 #84 ③ — HCX 가 직접 `GROUP BY pd_no` 를 썼으면 묶음은 있으되 정렬 컬럼이 bare 다(어느 행의 값으로
+    #    정렬될지 정해지지 않음 — 중복행 간 수익률이 다른 8종목). 이 경우 GROUP BY 는 두고 정렬 컬럼만 극값으로 감싼다.
+    already_grouped = bool(re.search(r"\bGROUP\s+BY\s+pd_no\b", sql, re.I))
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm:
         return sql, False
@@ -9425,12 +9535,16 @@ def ensure_bond_representative(sql: str) -> tuple[str, bool]:
     if _AGG_HEAD.search(head) or "*" in head or not re.search(r"\b(?:pd_nm|pd_abrv_nm|pd_no)\b", head):
         return sql, False
     m = _ORDER_BY_HEAD.search(rest)
+    wrapped = False
     if m:
         col, direction = m.group(1).strip(), (m.group(2) or "ASC").upper()
         if re.fullmatch(r"[A-Za-z_]\w*", col) and not col.isdigit():
             agg = "MAX" if direction == "DESC" else "MIN"
             head, _, _ = _wrap_sort_col(head, col, agg)
             rest = _wrap_order_by_col(rest, col, agg)
+            wrapped = True
+    if already_grouped:
+        return (head.rstrip() + " " + rest, True) if wrapped else (sql, False)
     t = re.search(r"\b(?:ORDER\s+BY|LIMIT)\b", rest, re.I)
     pos = t.start() if t else len(rest)
     rest = rest[:pos].rstrip() + " GROUP BY pd_no " + rest[pos:]
@@ -10927,6 +11041,11 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     sql, riskname_fixed = ensure_risk_name_column(sql)
     if riskname_fixed:
         step("[Guard] 위험등급 이름 보강 — SELECT 의 pd_risk_gcd 옆에 pd_risk_nm 추가 (코드 '16' 이 '위험등급 16등급' 으로 노출된 실측 오답 차단 — 답변은 pd_risk_nm 문구 인용)")
+    sql, ord_fixed = resolve_ordinal_order_by(sql)
+    if ord_fixed:
+        step("[Guard] 서수 정렬 정규화 — ORDER BY 의 서수(3 DESC)를 SELECT 항 이름으로 되돌림 (2026-09-06 서버 실측 #84: "
+             "'하이일드 채권 수익률 높은 순' 이 ORDER BY 3 DESC 로 나가 대표행 극값·동률 2차 키·근거컬럼·머리줄 정렬축 가드 넷이 "
+             "통째로 비켜 감 — 채권 단일 테이블만, UNION 은 서수가 정석이라 불개입)")
     sql, gradecol_fixed = ensure_grade_select_column(sql)
     if gradecol_fixed:
         step("[Guard] 신용등급 컬럼 보강 — WHERE 의 crd_grd 조건이 SELECT 에 없어 주입 (2026-09-02 서버 실측: '등급 높은 채권' 이 AA- 이상 15,845종목을 필터하고도 SELECT 미포함으로 '등급 정보가 없다' 오거절)")

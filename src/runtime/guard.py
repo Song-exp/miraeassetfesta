@@ -1087,6 +1087,10 @@ def _match_when(spec: dict, sql: str, question: str, tables: list[str], grounded
     q = spec.get("question") or {}
     if q.get("any") and not any(str(w) in question for w in q["any"]):
         return False
+    # 🆕 2026-09-06 밤 — **긍정 언급** 축. `any` 는 부분 문자열이라 '하이일드 **말고** 안전한 채권' 에도 참이 되어
+    #    투기등급 필터를 넣을 자리였다(오답기록 #84 과적합 점검). 부정 표지가 바로 뒤에 오면 언급이 아니라 배제다.
+    if q.get("positive_any") and not mentions_positively(_words_pattern(q["positive_any"]), question):
+        return False
     if q.get("not_any") and any(str(w) in question for w in q["not_any"]):
         return False
     g = spec.get("grounded")

@@ -444,3 +444,64 @@ def test_BH_multi_agg_row_assembled():
     assert pl._bond_avg_answer("SELECT COUNT(DISTINCT pd_no), MAX(applied_yield) FROM domestic_bonds LIMIT 30", "a | b\n1 | 2", 1, "q") is None
     assert pl._bond_avg_answer("SELECT TRIM(bd_knd), AVG(srfc_irt) FROM domestic_bonds GROUP BY 1 LIMIT 30", "bd_knd | AVG\na | 1\nb | 2", 2, "q") is None
     assert pl._bond_avg_answer("SELECT AVG(srfc_irt), GROUP_CONCAT(pd_nm) FROM domestic_bonds LIMIT 30", "a | b\n1 | x", 1, "q") is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BJ — 반대 방향 최상급 비교 조립 (S-007)
+#   일반 규칙: 안전·위험 최상급이 한 질문에 오면 6등급 1종목 ∪ 1등급 1종목(각 수익률 높은 순) UNION ALL 템플릿을 결정층이 세우고,
+#   조립기는 /*TOPBOTH*/ 마커로 UNION 을 허용해 '각 1종목' 머리줄을 쓴다(위험 쪽은 조회라 고위험제외 미적용 · C0 주의 문구).
+# ══════════════════════════════════════════════════════════════════════════════
+S007_Q = "가장 안전한 채권이랑 가장 위험한 채권 하나씩 보여줘"
+S007_SQL = ("SELECT TRIM(pd_nm) AS pd_nm, pd_risk_nm, applied_yield FROM domestic_bonds WHERE (pd_risk_gcd = '16' OR pd_risk_gcd = '11') "
+            "AND mat_dt >= 20260824 AND curr_cd = 'KRW' GROUP BY pd_no LIMIT 2")
+
+
+def test_BJ_both_extremes_template(ctx, con):
+    out, fixed = pl.ensure_top_safety(S007_SQL, S007_Q)
+    assert fixed and pl.TOPBOTH_MARK in out and out.count("UNION ALL") == 1 and "pd_risk_gcd = '16'" in out and "pd_risk_gcd = '11'" in out
+    assert pl._sql_precheck(out, ctx, T, False, question=S007_Q) is None and guard.check_values(out, ctx) == []
+    assert pl.ensure_top_safety(out, S007_Q) == (out, False)                            # 멱등
+    rows, n = pl._execute(out)
+    assert n == 2
+    ans = pl._bond_list_answer(out, rows, n, S007_Q)
+    assert ans and "6등급" in ans and "1등급" in ans and "[가장 안전]" in ans and "[가장 위험]" in ans
+    assert "제외했습니다" not in ans and pl.C0_YIELD_NOTE in ans                          # gold S-007 must_not_include · C0 주의
+    # 형제 — 어휘 변형도 같은 템플릿 · 한쪽 최상급만이면 종전 경로('16' 단독)
+    for q in ("제일 안전한 채권과 제일 위험한 채권 하나씩 알려줘", "가장 안전한 것과 위험도가 가장 높은 것 비교해줘"):
+        assert pl.TOPBOTH_MARK in pl.ensure_top_safety(S007_SQL, q)[0], q
+    one, _ = pl.ensure_top_safety("SELECT pd_no FROM domestic_bonds WHERE pd_risk_gcd IN ('15','16') LIMIT 3", "가장 안전한 채권 3개 추천해줘")
+    assert pl.TOPBOTH_MARK not in one and "pd_risk_gcd = '16'" in one
+    etf = "SELECT pd_abrv_nm FROM domestic_etfs WHERE pd_grp_no='ETF' LIMIT 2"
+    assert pl.ensure_top_safety(etf, S007_Q) == (etf, False)                            # 채권 전용
+
+
+def test_BJ_variant_inputs_same_template(ctx):
+    """형제 — HCX 가 낸 SQL 의 컬럼·값·ORDER BY 항이 달라도 결정층 템플릿은 하나(입력 SQL 을 고치는 게 아니라 세운다)."""
+    variants = [
+        "SELECT pd_no, pd_nm, srfc_irt FROM domestic_bonds WHERE pd_risk_nm IN ('매우낮은위험','매우높은위험') AND curr_cd='KRW' LIMIT 2",
+        "SELECT pd_nm, applied_yield FROM domestic_bonds WHERE pd_risk_gcd IN ('11','16') ORDER BY applied_yield ASC LIMIT 2",
+        "SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd IN ('16','11') ORDER BY pd_risk_gcd DESC, srfc_irt DESC LIMIT 2",
+    ]
+    first = pl.ensure_top_safety(variants[0], S007_Q)[0]
+    for s in variants:
+        out, fixed = pl.ensure_top_safety(s, S007_Q)
+        assert fixed and out == first, s                       # 입력이 달라도 결과 SQL 동일
+    assert pl._sql_precheck(first, ctx, T, False, question=S007_Q) is None
+
+
+def test_BJ_survives_full_guard_chain(ctx):
+    """가드 체인 전체를 태워도 템플릿이 살아 2행(6등급 1 · 1등급 1)을 낸다 — ensure_limit·정렬 가드가 가지 안 LIMIT 을 건드리지 않는다."""
+    tpl = pl.ensure_top_safety(S007_SQL, S007_Q)[0]
+    chained = pl._apply_sql_guards(tpl, S007_Q, None, None, lambda m: None, ctx, list(T))
+    assert pl.TOPBOTH_MARK in chained and chained.count("LIMIT 1") == 2
+    rows, n = pl._execute(chained)
+    assert n == 2 and "매우낮은위험(6등급)" in rows and "매우높은위험(1등급)" in rows
+    ans = pl._bond_list_answer(chained, rows, n, S007_Q)
+    assert ans and ans.count("\n1. [가장 안전]") == 1 and "2. [가장 위험]" in ans
+
+
+def test_BJ_no_intervention_without_both_extremes():
+    """불개입 — 위험 최상급만이면(안전 최상급 없음) 종전대로 물러난다 · 수익률 하한 요구도 종전대로."""
+    s = "SELECT pd_nm FROM domestic_bonds WHERE curr_cd='KRW' AND mat_dt >= 20260824 LIMIT 30"
+    assert pl.ensure_top_safety(s, "가장 위험한 채권 알려줘") == (s, False)
+    assert pl.ensure_top_safety(s, "가장 안전하면서 수익률 5% 이상인 채권") == (s, False)

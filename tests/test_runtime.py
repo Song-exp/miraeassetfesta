@@ -550,7 +550,7 @@ def test_check_values_currency(ctx):
 
 
 def test_ensure_top_safety():
-    from src.runtime.pipeline import ensure_top_safety
+    from src.runtime.pipeline import ensure_top_safety, TOPBOTH_MARK as pl_TOPBOTH
     # 2026-08-31 실측 — '가장 안전한 채권 3개' 가 IN ('15','16') + 수익률 내림차순으로 나가
     # 5등급 콜옵션부 7.1% 가 1~3위 (위험등급방향의 '16 단독' 분기 미적용)
     sql = ("SELECT DISTINCT pd_no, TRIM(pd_nm), applied_yield, pd_risk_gcd, pd_risk_nm FROM domestic_bonds "
@@ -590,14 +590,17 @@ def test_ensure_top_safety():
                 "FROM domestic_bonds WHERE pd_risk_gcd IN ('15','16') ORDER BY applied_yield DESC LIMIT 3")
     f3, c3 = ensure_top_safety(case_sql, q)
     assert c3 and "IN ('11','12','13')" in f3 and "pd_risk_gcd = '16'" in f3 and "IN ('15','16')" not in f3
+    # 🆕 2026-09-06 QA r1 BJ — 반대 방향 최상급 동반은 종전 '불개입' 에서 '양방향 템플릿' 으로 **의도적으로 바뀌었다**
+    # (S-007 실측: 물러나면 HCX 의 `(16 OR 11) LIMIT 2` 가 6등급 국민주택 2행을 냄). 새 동작은 아래 한 줄과
+    # tests/test_round33_bonds_r1.py::test_BJ_* 가 고정한다.
+    assert pl_TOPBOTH in ensure_top_safety(sql, "가장 안전한 채권과 가장 위험한 채권 하나씩 알려줘")[0]
     # 불개입 — 이미 16 단독 / 최상급 아님(IN 15,16 이 정답) / 안정추구형(15,16) / 수익률 하한 요구(폴백 영역) /
-    # 6등급 없는 종류(회사채 — 강제하면 0행) / 반대 방향 최상급 동반(비교 질의) / 채권 테이블 아님
+    # 6등급 없는 종류(회사채 — 강제하면 0행) / 채권 테이블 아님
     assert not ensure_top_safety("SELECT pd_nm FROM domestic_bonds WHERE pd_risk_gcd = '16' LIMIT 3", q)[1]
     assert not ensure_top_safety(sql, "위험 낮은 채권 3개 추천해줘")[1]
     assert not ensure_top_safety(sql, "안정추구형 투자자용 채권 3개")[1]
     assert not ensure_top_safety(sql, "가장 안전한 채권 중 수익률 6.5% 이상 3개")[1]
     assert not ensure_top_safety(sql, "가장 안전한 회사채 3개 추천해줘")[1]
-    assert not ensure_top_safety(sql, "가장 안전한 채권과 가장 위험한 채권 하나씩 알려줘")[1]
     assert not ensure_top_safety("SELECT pd_abrv_nm FROM domestic_etfs LIMIT 3", q)[1]
 
 

@@ -4027,7 +4027,8 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     발동(전부): ① domestic_bonds 단독(JOIN·UNION·서브쿼리 없음) ② SELECT 에 집계 없음 ③ 헤더에 pd_nm ④ 1행 이상 ≤ 상한.
     머리줄: 커버리지(전체 N종목 중 상위 k) · 정렬 축·방향 · 기준일. 본문: 결과 행 그대로(수익률·신용등급·만기·잔존·구조/보강 열).
     꼬리: 규칙의 조건부 문구만 — 6% 초과·2/3등급이 있을 때 원금 주의, 추천 질의면 고위험(1등급)·사모 제외 고지(SQL 에 그 절이 있을 때만)."""
-    if "domestic_bonds" not in sql or n < 1 or re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+    both = TOPBOTH_MARK in sql                                   # BJ — 양방향 최상급 템플릿(UNION ALL 두 가지)은 허용
+    if "domestic_bonds" not in sql or n < 1 or (not both and re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I)):
         return None
     frm = re.search(r"\bFROM\b", sql, re.I)
     if not frm or re.search(r"\b(?:COUNT|SUM|AVG|TOTAL|GROUP_CONCAT)\s*\(", sql[:frm.start()], re.I):
@@ -4085,7 +4086,10 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
     sim = re.search(r"/\*SIM:(.*?)\*/", sql)
     if sim:                                     # 유사채권 확정식(#73) — 기준 채권과 쓴 폭을 머리줄에 굽는다
         basis += f" · {sim.group(1)}"
-    if total and total > n:
+    if both:
+        head = (f"가장 안전한 채권(위험등급 6등급 매우낮은위험)과 가장 위험한 채권(위험등급 1등급 매우높은위험)을 각 1종목씩, "
+                f"같은 등급 안에서는 수익률 높은 순으로 골랐습니다 ({basis}).")
+    elif total and total > n:
         head = (f"조건에 해당하는 채권은 전체 {total:,}종목이며, {axis_txt + ' ' if axis_txt else ''}상위 {n}개는 다음과 같습니다 ({basis})."
                 if axis_txt else f"조건에 해당하는 채권은 전체 {total:,}종목이며, 그중 {n}개는 다음과 같습니다 ({basis}).")
     else:
@@ -4142,11 +4146,12 @@ def _bond_list_answer(sql: str, rows: str, n: int, question: str) -> str | None:
         # SELECT * 는 58컬럼 전부가 오므로 위 핵심 항목만 보이고 나머지는 옮기지 않는다(2026-09-03 BAC 행 실측)
         for c in ([] if star else cols):
             if c in _BOND_HIDE or c in ("pd_nm", "crd_grd", "pd_risk_nm", "mat_dt", "remaining_days", "pd_pbcm",
-                                        "exg_close_price") or c in _BOND_YIELD_COLS:
+                                        "exg_close_price", "구분") or c in _BOND_YIELD_COLS:
                 continue
             if r.get(c):
                 bits.append(f"{_BOND_COL_KO.get(c, c)} {_fmt_won(r[c]) if c in _BOND_WON_COLS else r[c]}")
-        out.append(f"{i}. {r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
+        tag = f"[{r['구분']}] " if both and r.get("구분") else ""
+        out.append(f"{i}. {tag}{r['pd_nm']}" + (" — " + " · ".join(bits) if bits else ""))
         if risk_spec and i <= int(risk_spec["max_rows"]):
             prof = _bond_risk_profile(r, cols, risk_spec)
             if prof:
@@ -7977,6 +7982,17 @@ def _kinds_without_safe_grade(question: str) -> set[str]:
 
 
 _RISK_POS = re.compile(r"pd_risk_gcd\s*(?:IN\s*\(([^)]*)\)|=\s*'(\d+)')", re.I)
+TOPBOTH_MARK = "/*TOPBOTH*/"
+
+
+def _top_both_template() -> str:
+    """'가장 안전한 채권과 가장 위험한 채권 하나씩' — 6등급 1종목 ∪ 1등급 1종목(각 수익률 높은 순 · 구매가능 모수). 가지 안 LIMIT 은 부질의로 감싼다(SQLite)."""
+    cols = "pd_no, TRIM(pd_nm) AS pd_nm, MAX(applied_yield) AS applied_yield, pd_risk_gcd, pd_risk_nm, TRIM(crd_grd) AS crd_grd, mat_dt"
+
+    def branch(label: str, code: str) -> str:
+        return (f"SELECT * FROM (SELECT '{label}' AS 구분, {cols} FROM domestic_bonds WHERE curr_cd = 'KRW' AND mat_dt >= {BUYABLE_INT} "
+                f"AND pd_risk_gcd = '{code}' AND applied_yield > 0 GROUP BY pd_no ORDER BY MAX(applied_yield) DESC, pd_no ASC LIMIT 1)")
+    return branch("가장 안전", "16") + " UNION ALL " + branch("가장 위험", "11") + " " + TOPBOTH_MARK
 # 최상급 없는 안전 어휘 — 위험등급방향 규칙 "'안전한·위험 낮은·안정추구' = IN ('15','16')" (2026-09-06 QA r1 BI · D-025)
 _PLAIN_SAFE_Q = re.compile(r"안전|안정\s*추구|(?:위험|리스크)(?:도|성)?[이가은는]?\s*낮")
 _GRADE_NUM_Q = re.compile(r"[0-6]\s*등급")
@@ -8000,7 +8016,14 @@ def ensure_top_safety(sql: str, question: str) -> tuple[str, bool]:
     top = bool(_TOP_SAFE_Q.search(question))
     if not top and not _PLAIN_SAFE_Q.search(question):
         return sql, False
-    if _TOP_RISK_Q.search(question) or _YIELD_DEMAND_Q.search(question):
+    if _YIELD_DEMAND_Q.search(question):
+        return sql, False
+    if _TOP_RISK_Q.search(question):
+        # 🆕 2026-09-06 QA r1 BJ(S-007) — 안전·위험 최상급이 한 질문에 오면(비교 질의) 종전엔 통째로 물러났고 HCX 는
+        #    `(16 OR 11) … LIMIT 2` 로 6등급 국민주택 2행을 냈다. 결정층이 두 가지 UNION ALL 템플릿(각 LIMIT 1 · 위험 쪽은 조회라
+        #    고위험제외 미적용 — C0 728.524% 가 사실이고 주의 문구는 조립기가 단다)으로 SQL 을 세운다. 이미 템플릿이면 멱등.
+        if top and TOPBOTH_MARK not in sql and not re.search(r"\b(?:join|union)\b|\(\s*select\b", sql, re.I):
+            return _top_both_template(), True
         return sql, False
     wm = re.search(r"\bWHERE\b", sql, re.I)
     lo = wm.end() if wm else len(sql)
@@ -11936,7 +11959,10 @@ def _apply_sql_guards(sql: str, q: str, name_token: str | None, future, step, ct
     if riskstrip_fixed:
         step("[Guard] 날조 위험필터 제거 — 수익률·금리 최상급 조회에 질문에 없는 위험등급 절이 끼어 제거 (2026-09-01 서버 실측: '수익률이 제일 높은 채권' 에 pd_risk_gcd='16' 날조 → 6등급 최고 6.231% 오답, 실제 최고 728.524% C0)")
     sql, topsafe_fixed = ensure_top_safety(sql, q)
-    if topsafe_fixed:
+    if topsafe_fixed and TOPBOTH_MARK in sql:
+        step("[Guard] 양방향 최상급 템플릿 — '가장 안전한 것과 가장 위험한 것' 은 6등급 1종목 ∪ 1등급 1종목(각 수익률 높은 순)으로 결정층이 SQL 을 세운다 "
+             "(2026-09-06 서버 QA r1 BND-S-007: HCX 가 `(16 OR 11) LIMIT 2` 로 6등급 국민주택 2행 — 위험 쪽은 조회라 고위험제외를 붙이지 않고 C0 주의 문구만)")
+    elif topsafe_fixed:
         step("[Guard] 최상급 안전 교정 — '가장 안전한' 질의의 위험등급 필터를 '16'(매우낮은위험) 단독으로 교정 (2026-08-31 실측: IN ('15','16')+수익률 내림차순이 5등급 콜옵션부 7.1% 를 1~3위로 올림 — 위험등급방향 규칙의 '16 단독' 분기 미적용)")
     sql, cap_fixed = strip_unasked_maturity_cap(sql, q)
     if cap_fixed:

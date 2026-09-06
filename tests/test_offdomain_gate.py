@@ -68,3 +68,17 @@ def test_absent_property_words_are_in_domain(ctx, q):
     absent_properties 의 vocab 을 도메인 어휘에 넣지 않으면 '좌수 알려줘' 가 인사·잡담으로 오분류돼
     '미수록' 고지 대신 서비스 안내가 나간다. vocab 은 정규식이라('좌[ ]?수') 한글만 남겨 조각을 뽑는다."""
     assert not gate.is_off_domain(q, ctx), q
+
+
+@needs_db
+@pytest.mark.parametrize("q", ["무지개채 알려줘", "그런 상품 있어?", "아무거나 추천해줘", "몇 개야", "목록 보여줘"])
+def test_lookup_ask_is_never_offdomain(ctx, q):
+    """🔴 QA r1 §E(팀원 보고) — 미등록 고유명 단독 질의가 인사로 잡히면 안 된다.
+    '무지개채 알려줘' 는 안내 문장이 아니라 값 부재('확인할 수 없음') 경로여야 한다(주최 §3)."""
+    assert not gate.is_off_domain(q, ctx), q
+
+
+@needs_db
+@pytest.mark.parametrize("q", ["반가워", "잘 지내?", "수고했어", "날씨 좋네"])
+def test_more_smalltalk_still_off_domain(ctx, q):
+    assert gate.is_off_domain(q, ctx), q

@@ -58,6 +58,11 @@ OFF_DOMAIN_ANSWER = (
     "'삼성전자를 담은 ETF는 몇 개야?'"
 )
 _DOMAIN_CHUNKS: dict[int, frozenset] = {}
+# 조회를 요구하는 표현 — 이게 있으면 무엇을 묻는지 몰라도 데이터 질의다(인사·잡담은 조회를 요구하지 않는다).
+# '뭐해'·'누구야'·'어때' 같은 잡담 어미와 겹치지 않게 조회 동사·수량 문형만 잡는다.
+_LOOKUP_ASK = re.compile(
+    r"알려|알랴|보여|찾아|조회|검색|추천|뭐가|뭐야(?<!뭐해야)|뭔데|어떤것|어떤거|어느것|"
+    r"있어|있나|있는지|있을까|없어\?|몇\s*(?:개|종목|건|곳|가지)|얼마|목록|리스트")
 
 
 def _domain_chunks(ctx: RuntimeContext) -> frozenset:
@@ -102,9 +107,15 @@ def is_off_domain(question: str, ctx: RuntimeContext) -> bool:
 
     2026-09-06 실측: '안녕' 이 4테이블 근거문서로 HCX 에 가서 임의 SQL 이 나오고 화이트리스트 기각 →
     "질문의 상품군 밖 자료를 함께 봐야 하는 조건이라 답변을 제공하지 못했습니다" 라는 엉뚱한 거절이 나갔다.
-    판정: 숫자·영문자가 하나도 없고(상품코드·티커·기간·개수 가능성 배제) 도메인 어휘 조각도 하나 없으면 도메인 밖."""
+    판정: 숫자·영문자가 하나도 없고(상품코드·티커·기간·개수 가능성 배제) **조회 요구 표현도 없고**
+    도메인 어휘 조각도 하나 없으면 도메인 밖.
+
+    🔴 2026-09-06 QA r1 §E(팀원 보고) — 조회 요구 예외가 없으면 **미등록 고유명 단독 질의**가 인사로 잡힌다.
+       '무지개채 알려줘' 가 안내 문장으로 나갔는데(주최 §3 은 '확인할 수 없음' 을 요구), '무지개채권 알려줘' 는
+       상품 명사가 있어 정상 경로였다. 인사·잡담은 조회를 요구하지 않는다 — 요구가 있으면 모르는 이름이라도
+       값 부재 경로로 보낸다(잘못 기각이 잘못 통과보다 나쁘다는 이 게이트의 원칙 그대로)."""
     squeezed = re.sub(r"\s+", "", question)
-    if not squeezed or re.search(r"[0-9A-Za-z%]", squeezed):
+    if not squeezed or re.search(r"[0-9A-Za-z%]", squeezed) or _LOOKUP_ASK.search(squeezed):
         return False
     chunks = _domain_chunks(ctx)
     return not any(squeezed[i:i + 2] in chunks for i in range(len(squeezed) - 1))

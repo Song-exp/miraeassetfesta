@@ -4,6 +4,12 @@
 > 내용은 더미여도 됩니다. **살아 있는 것 자체가 API 40점의 전제**입니다.
 >
 > 구성: `Caddy(80/443, TLS 자동) → api(FastAPI:8000)` · 도메인 없이 `nip.io` 사용
+>
+> 🔴 2026-09-06 — **`deploy/Caddyfile` 을 고쳤으면 `docker compose up -d --force-recreate caddy` 로 컨테이너를 다시 만든다.**
+> compose 가 파일 하나를 bind mount 하는데 `git pull` 은 새 파일을 쓰고 이름을 바꾸므로 inode 가 달라진다. 컨테이너는
+> 옛 inode 를 계속 보고 있어 `caddy reload` 가 "Valid configuration" 을 찍고도 **옛 설정이 그대로 돈다**(실측 — 80 이
+> 계속 308 이었다). 인증서 볼륨(caddy_data)은 유지되므로 재생성해도 재발급이 없다. `deploy.sh` 는 api 만 다루므로
+> Caddy 변경은 이 절차를 따로 밟는다.
 
 ---
 

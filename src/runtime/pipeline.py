@@ -4560,6 +4560,30 @@ _BUDGET_Q = re.compile(r"\d[\d,]*\s*(?:억|천만|백만|만)\s*원?\s*(?:짜리
                        r"|예산|여유\s*자금|투자할\s*(?:돈|금액)|목돈")
 
 
+def _axis_substitution_caveat(sql: str, question: str) -> str | None:
+    """종류 낱말인데 확정식이 **발행사 축**이면 그 사실을 밝힌다. 아니면 None. (#97)
+
+    '산금채' 는 채권 종류를 부르는 말인데 bd_knd 에는 그 값이 없다 — 산업금융채권은 한국산업은행이
+    발행한 특수은행채라서 확정식이 발행사 축을 쓴다. 축을 갈아끼우고 말하지 않는 것이 오답이다
+    (#66 발행축·#79 가격축과 같은 부류 — 값은 전부 실제 행이라 환각 검사에 안 걸린다).
+    선언에서 읽으므로 앞으로 붙는 통칭에도 그대로 적용된다 — 사례가 아니라 축 판정이다.
+    """
+    norm = lambda t: re.sub(r"\s+", "", t or "")
+    for tok, flt in _kind_filters()[0]:
+        if tok not in question or "pd_pbcm" not in flt or norm(flt) not in norm(sql):
+            continue
+        m_iss = re.search(r"pd_pbcm\s*\)?\s*=\s*'([^']+)'", flt)
+        m_knd = re.search(r"bd_knd\s*\)?\s*=\s*'([^']+)'", flt)
+        if not m_iss:
+            continue
+        tail = f" 중 발행사가 '{m_iss.group(1)}'인 종목" if m_knd else f"발행사가 '{m_iss.group(1)}'인 종목"
+        head = f"채권 종류 '{m_knd.group(1)}'" if m_knd else ""
+        josa = "은" if (ord(tok[-1]) - 0xAC00) % 28 else "는"
+        return (f"※ '{tok}'{josa} 채권 종류를 부르는 말이지만 데이터의 종류 값에는 그 이름이 없어 "
+                f"**발행사 기준**으로 집계했습니다 — {head}{tail}입니다.")
+    return None
+
+
 def domain_caveats(sql: str, rows: str, question: str = "") -> list:
     """숫자만으로는 오해되는 자리에 **도메인 한 문장**을 붙인다.
 
@@ -4573,6 +4597,9 @@ def domain_caveats(sql: str, rows: str, question: str = "") -> list:
        **선취 수수료**를 따로 떼는데 그 금액이 마스터에 없어, 유불리는 **투자 기간의 문제**다.
     """
     out = []
+    axis = _axis_substitution_caveat(sql, question)
+    if axis:
+        out.append(axis)
     if re.search(r"sale_yn\s*=\s*'판매완료'", sql):
         out.append("※ '판매완료' 는 **신규 가입이 닫힌 것**이지 청산(펀드 해지)이 아닙니다 — "
                    "이미 가입한 투자자는 계속 보유·환매할 수 있습니다.")

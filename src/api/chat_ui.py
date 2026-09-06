@@ -61,6 +61,12 @@ PAGE = """<!doctype html>
     margin-left:auto; flex:0 0 auto; color:var(--sub); font-size:12.5px;
     border:1px solid var(--line); border-radius:999px; padding:3px 11px; white-space:nowrap;
   }
+  /* 팀명 — 기준일 옆 구석. 선 하나로만 끊고 색은 보조 텍스트다 */
+  .team {
+    flex:0 0 auto; color:var(--sub); font-size:12.5px; white-space:nowrap;
+    padding-left:11px; margin-left:11px; border-left:1px solid var(--line);
+  }
+  .team b { color:var(--ink); font-weight:600 }
 
   /* ── 대화 영역 ──────────────────────────────────────────── */
   .log { flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; padding:24px 20px 12px }
@@ -170,6 +176,12 @@ PAGE = """<!doctype html>
   .tip { max-width:820px; margin:8px auto 0; color:var(--sub); font-size:11.5px }
 
   @media (max-width:560px) {
+    /* 헤더 오른쪽에 기준일 + 팀명이 같이 서므로 좁은 화면에서는 눈금을 줄인다 */
+    header { padding:0 14px; gap:8px }
+    .brand { font-size:14.5px }
+    .asof, .team { font-size:11.5px }
+    .asof { padding:2px 8px }
+    .team { padding-left:8px; margin-left:8px }
     .log { padding:18px 14px 10px }
     .composer { padding:12px 14px calc(12px + env(safe-area-inset-bottom)) }
     .bubble.me { max-width:86% }
@@ -182,6 +194,7 @@ PAGE = """<!doctype html>
     <div class="mark"><i></i></div>
     <div class="brand">금융상품 Agent</div>
     <div class="asof">데이터 기준일 2026-08-24</div>
+    <div class="team">팀 <b>트리플에이치</b></div>
   </header>
 
   <div class="log" id="log">

@@ -1226,17 +1226,58 @@ _ETF_AXIS_FILTERS = (
      re.compile(r"\(H\)|\(합성 H\)|Hedged", re.I),
      "(pd_abrv_nm LIKE '%(H)%' OR pd_abrv_nm LIKE '%(합성 H)%' OR pd_nm LIKE '%(H)%')"),
 )
+# 🔴 2026-09-06 재생 E25·E5·E7 — 규칙 문서에만 있던 세 축을 확정식으로. 국내·해외 조건이 다르면 표별로 적는다.
+#    인버스: 국내는 컬럼이 없어 상품명 키워드(yaml derivation_rules.inverse_direction 선언 그대로), 해외는 cu_inverse_short_yn.
+#    배수: ABS(cu_lev_fector) = N (부호는 방향이지 배수가 아니다 · yaml answer_policy).
+#    추적오차: 0 은 미입력(normalization.zero_as_missing) — 그 컬럼으로 정렬·조회할 때만 `> 0` 을 붙인다.
+_ETF_NEG = r"(?:\s*(?:ETF|상품)?\s*(?:는|은|를|을|도|만)?\s*(?:빼고|제외|말고|아닌|없는|뺀|제외한|빼면|제외하고))"
+_ETF_INVERSE_COND = {"domestic_etfs": "(pd_abrv_nm LIKE '%인버스%' OR pd_nm LIKE '%인버스%')",
+                     "overseas_etfs": "cu_inverse_short_yn = 'Y'"}
+_ETF_INVERSE_RX = re.compile(r"인버스|cu_inverse_short_yn", re.I)
+_ETF_LEV_COND = "ABS(COALESCE(cu_lev_fector, 1)) > 1"
+_ETF_LEV_RX = re.compile(r"\bcu_lev_fector\b", re.I)
+_ETF_MULT_Q = re.compile(r"(?<![\d.])([1-3](?:\.\d)?)\s*배(?!당|분|수익|율)")
+_ETF_MULT_RX = re.compile(r"ABS\(\s*(?:COALESCE\()?\s*cu_lev_fector[^)]*\)\s*\)?\s*=|\bcu_lev_fector\s*(?:=|IN)\b", re.I)
+_ETF_TE_Q = re.compile(r"추적\s*오차")
+_ETF_TE_RX = re.compile(r"\bdu_chas_errt\s*>\s*0", re.I)
 
 
 def ensure_etf_axis_filter(sql: str, question: str) -> tuple[str, bool]:
-    """질문의 축 낱말(월배당·연금·환헤지)이 SQL 에 없으면 확정식을 주입한다. (보정된 SQL, 보정했는지)"""
-    if not _DOM_ETF_TBL.search(sql) or not _single_select(sql):
+    """질문의 축 낱말(월배당·연금·환헤지·인버스·배수·추적오차)이 SQL 에 없으면 확정식을 주입한다. (보정된 SQL, 보정했는지)
+
+    부정("인버스는 빼고")은 `NOT (조건)` 으로 — E25 실측: '빼고' 가 SQL 에 한 글자도 없어 KB 인버스2배레버리지가 답 9번에 들어갔다.
+    """
+    if not _ETF_TBL.search(sql) or not _single_select(sql):
         return sql, False
+    tbl = _ETF_TBL.search(sql).group(0).split()[-1].lower()
     changed = False
-    for q_rx, sql_rx, cond in _ETF_AXIS_FILTERS:
-        if q_rx.search(question) and not sql_rx.search(sql):
-            sql, ok = _append_exclusions(sql, [cond])
-            changed = changed or ok
+    if tbl == "domestic_etfs":
+        for q_rx, sql_rx, cond in _ETF_AXIS_FILTERS:
+            if q_rx.search(question) and not sql_rx.search(sql):
+                sql, ok = _append_exclusions(sql, [cond])
+                changed = changed or ok
+    if re.search(r"\bjoin\b", sql, re.I):
+        return sql, changed          # 편입 조인 문장은 rewrite_etf_holdings 가 부정·배수를 자기 규약으로 세운다
+    conds = []
+    if not _ETF_INVERSE_RX.search(sql):
+        if re.search(r"인버스" + _ETF_NEG, question):
+            conds.append(f"NOT {_ETF_INVERSE_COND[tbl]}")
+        elif "인버스" in question:
+            conds.append(_ETF_INVERSE_COND[tbl])
+    if not _ETF_LEV_RX.search(sql):
+        if re.search(r"레버리지" + _ETF_NEG, question):
+            conds.append(f"NOT ({_ETF_LEV_COND})")
+        elif "레버리지" in question and not _ETF_MULT_Q.search(question):
+            conds.append(_ETF_LEV_COND)
+    m_mult = _ETF_MULT_Q.search(question)
+    if m_mult and not _ETF_MULT_RX.search(sql):
+        conds.append(f"ABS(cu_lev_fector) = {m_mult.group(1)}")
+    if _ETF_TE_Q.search(question) and tbl == "domestic_etfs" and re.search(r"\bdu_chas_errt\b", sql, re.I) \
+            and not _ETF_TE_RX.search(sql):
+        conds.append("du_chas_errt > 0")
+    if conds:
+        sql, ok = _append_exclusions(sql, conds)
+        changed = changed or ok
     return sql, changed
 
 

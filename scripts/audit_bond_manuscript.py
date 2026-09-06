@@ -203,9 +203,9 @@ try:
     rec = io.open(REC, encoding="utf-8").read()
     body = rec[rec.index("## §1."):rec.index("## §2.")]
     inc = len(re.findall(r"^\| \d+ \|", body, re.M))
-    chk(L, "오답기록 사고 건수", 86, inc)
+    chk(L, "오답기록 사고 건수", 96, inc)
 except Exception as e:
-    rows.append((L, "오답기록 사고 건수", 86, f"ERR {type(e).__name__}", False))
+    rows.append((L, "오답기록 사고 건수", 96, f"ERR {type(e).__name__}", False))
 
 chk(L, "평가셋 문항", 230, tot)
 chk(L, "gold_sql 붙은 문항", 166, gold)
